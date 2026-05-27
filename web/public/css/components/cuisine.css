@@ -1,0 +1,168 @@
+/*
+ * components/cuisine.css
+ *
+ * What:  Styles for the round cuisine pills (Pizza / Burger / etc) shown
+ *        in the "What's on your mind?" row.
+ * Why:   Mirrors the food-delivery pattern (Zomato / Swiggy) — round icon
+ *        plus label, hover lifts.
+ * Used:  Imported by base.css.
+ */
+
+.cuisine-pill {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-2);
+    text-align: center;
+    text-decoration: none;
+    color: var(--color-text);
+    transition: transform 120ms ease;
+    /* Match the parent scroll-item width so a long category name
+     * can't push the pill wider than its slot in the horizontal row. */
+    width: 100%;
+    min-width: 0;
+}
+.cuisine-pill:hover { transform: translateY(-2px); }
+
+.cuisine-pill__icon {
+    width: 76px;
+    height: 76px;
+    border-radius: 50%;
+    background-color: var(--color-bg-alt);
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+    /* Positioning context for the absolutely-positioned photo
+     * overlay (.cuisine-pill__photo). */
+    position: relative;
+    transition: background-color 120ms ease;
+}
+.cuisine-pill:hover .cuisine-pill__icon { background-color: var(--color-primary-soft); }
+
+/* Active-filter state — set by /js/pages/home.js when the page is
+ * filtered to a specific cuisine via the ?cuisine= URL param. The
+ * active pill carries a brand-red underline below the label + a
+ * bolder label colour. No ring around the icon — Zomato-style tab-
+ * indicator look reads cleaner than encircling the image. */
+.cuisine-row__item.is-active-filter {
+    position: relative;
+}
+.cuisine-row__item.is-active-filter::after {
+    content: '';
+    position: absolute;
+    left: 12%;
+    right: 12%;
+    bottom: -6px;
+    height: 3px;
+    background-color: var(--color-primary);
+    border-radius: var(--radius-pill);
+}
+.cuisine-row__item.is-active-filter .cuisine-pill__name {
+    color: var(--color-primary-dark);
+    font-weight: 700;
+}
+
+/* Real category image — sits on top of the placeholder. When it
+ * 404s, /js/pages/home.js sets style.display=none on the <img> and
+ * the placeholder (initial letter) behind it shows through. */
+.cuisine-pill__photo {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 50%;
+    background-color: var(--color-bg-alt);
+}
+
+/* Placeholder variant — when no category_image exists. Brand-tinted
+ * circle (filled by home.js from data-tint) with a big centred
+ * initial letter. Same look + feel as the restaurant placeholder
+ * cards, scaled down to fit the pill. */
+.cuisine-pill__icon--placeholder {
+    background-color: var(--color-bg-alt);
+    /* Soft diagonal highlight — home.js overlays this on top of the
+     * data-tint colour so every pill has a subtle gradient. The
+     * fallback below covers the moment before JS runs. */
+    background-image: linear-gradient(135deg, rgba(255, 255, 255, 0.45), transparent 60%);
+}
+.cuisine-pill__initial {
+    font-size: 1.9rem;
+    font-weight: 800;
+    color: rgba(28, 28, 28, 0.45);
+    letter-spacing: -0.02em;
+    user-select: none;
+    line-height: 1;
+}
+
+/* "All" pill — the last item in the cuisine row. Visually distinct
+ * from the picture-based pills so the user reads it as a navigation
+ * action rather than a cuisine. Soft brand-red background + brand-
+ * red icon + bold red label. */
+.cuisine-pill__icon--all {
+    background-color: var(--color-primary-soft);
+    background-image: none;
+    color: var(--color-primary);
+}
+.cuisine-pill__icon--all svg {
+    color: var(--color-primary);
+    width: 38%;
+    height: 38%;
+}
+.cuisine-row__item--all .cuisine-pill__name {
+    color: var(--color-primary);
+    font-weight: 600;
+}
+/* Desktop already shows the full cuisines grid up top, so the "All"
+ * pill is only useful on mobile where the row scrolls away. Hidden
+ * on desktop. */
+@media (min-width: 768px) {
+    .cuisine-row__item--all { display: none; }
+}
+
+/* Sub-cuisine pill — spliced in after the selected parent (e.g.
+ * Kebab → Chicken Kebab, Donner Kebab). Rendered slightly smaller +
+ * with a lighter outline so the user reads them as related-but-
+ * narrower options, not equal-weight siblings to the main cuisines.
+ * They're full-fledged pills though — clicking one navigates with
+ * its own ?cuisine=<name> just like a main pill. */
+.cuisine-row__item--sub .cuisine-pill__icon {
+    width: 60px;
+    height: 60px;
+    box-shadow: inset 0 0 0 2px var(--color-primary-soft);
+}
+.cuisine-row__item--sub .cuisine-pill__initial { font-size: 1.55rem; }
+.cuisine-row__item--sub .cuisine-pill__name {
+    font-size: 0.78rem;
+    color: var(--color-primary);
+    font-weight: 500;
+}
+@media (max-width: 767px) {
+    .cuisine-row__item--sub .cuisine-pill__icon {
+        width: 44px;
+        height: 44px;
+    }
+    .cuisine-row__item--sub .cuisine-pill__initial { font-size: 1.2rem; }
+}
+
+.cuisine-pill__name {
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--color-text-muted);
+    /* Cap the label so long names ("BAKED POTATOES",
+     * "dffasdfadsfasd") never spill outside the pill width. Two-line
+     * clamp + ellipsis on the third — keeps the row visually tidy
+     * across desktop AND mobile because the rule is relative to the
+     * pill, not a hard px value. line-height tightened so two short
+     * lines still fit the slot without pushing card height up. */
+    width: 100%;
+    max-width: 100%;
+    line-height: 1.2;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    overflow-wrap: anywhere;          /* break long no-space words */
+    word-break: break-word;
+    text-overflow: ellipsis;
+}

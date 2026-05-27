@@ -1,0 +1,142 @@
+<%#
+  views/auth/profile.ejs
+
+  What:  Step 3 — Personal details. Matches the mockup the user shared.
+         Layout:
+                       Personal Details
+
+           What's your name?
+           ┌──────────────────────────┐
+           │ John Smith               │
+           └──────────────────────────┘
+
+           Email
+           ┌──────────────────────────┐
+           │ john@email.com           │
+           └──────────────────────────┘
+
+           What's your dietary preference?
+           [🥬 Veg]  [🍗 Non-veg]            ← Veg-selected default
+
+           What's your dietary preference?
+           [ Veg dishes from all restaurants ]
+           [ Pure Veg restaurants only       ]   ← Pure Veg selected default
+
+           ┌──────────── Done ────────────┐
+           └──────────────────────────────┘
+                All details from all restaurants
+
+  Used:  Rendered by AuthController when ?step=profile. Submitting the
+         form (any state — static demo) lands on the home page.
+-%>
+<section class="auth-page auth-page--plain">
+    <div class="auth-form auth-form--centered">
+
+        <%# Back to step 1. Going back to OTP wouldn't be useful — the
+            code already expired or was consumed — so we send the user
+            all the way to the mobile-number screen. %>
+        <a class="auth-back" href="/signin" aria-label="Back to sign in">
+            <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="19" y1="12" x2="5" y2="12"/>
+                <polyline points="12 19 5 12 12 5"/>
+            </svg>
+            <span>Back</span>
+        </a>
+
+        <h1 class="auth-form__title auth-form__title--centered">Personal Details</h1>
+
+        <form id="profile-form" class="profile-form" method="post" action="/signin/save-profile" novalidate>
+            <%# Name field — required. The server splits this on the
+                first space into firstname / lastname before inserting
+                into the customer table. %>
+            <div class="profile-field">
+                <label class="profile-field__label" for="profile-name">What's your name?</label>
+                <input
+                    id="profile-name"
+                    class="profile-field__input"
+                    type="text"
+                    name="name"
+                    value=""
+                    placeholder="Your full name"
+                    autocomplete="name"
+                    maxlength="120"
+                    required
+                >
+            </div>
+
+            <%# Email field — optional. %>
+            <div class="profile-field">
+                <label class="profile-field__label" for="profile-email">Email <span class="profile-field__hint">(optional)</span></label>
+                <input
+                    id="profile-email"
+                    class="profile-field__input"
+                    type="email"
+                    name="email"
+                    value=""
+                    placeholder="you@example.com"
+                    autocomplete="email"
+                    maxlength="180"
+                >
+            </div>
+
+            <%# Diet preference — Veg / Non-veg. Tap toggles, only one
+                selected at a time. Demo defaults to Veg. %>
+            <div class="profile-field">
+                <p class="profile-field__label">What's your dietary preference?</p>
+                <div class="diet-row" role="group" aria-label="Dietary preference">
+                    <button
+                        type="button"
+                        class="diet-chip is-selected"
+                        data-action="select-diet"
+                        data-value="veg"
+                    >
+                        <span class="diet-chip__icon" aria-hidden="true">🥬</span>
+                        <span>Veg</span>
+                    </button>
+                    <button
+                        type="button"
+                        class="diet-chip"
+                        data-action="select-diet"
+                        data-value="non-veg"
+                    >
+                        <span class="diet-chip__icon" aria-hidden="true">🍗</span>
+                        <span>Non-veg</span>
+                    </button>
+                </div>
+                <input type="hidden" name="diet" id="diet-value" value="veg">
+            </div>
+
+            <%# Show-me filter (shown only when diet=veg — for the demo
+                we show it unconditionally; the toggle JS shows / hides
+                it based on the chip selection). %>
+            <div class="profile-field" id="show-me-field">
+                <p class="profile-field__label">What's your dietary preference?</p>
+                <div class="filter-row" role="group" aria-label="Show me">
+                    <button
+                        type="button"
+                        class="filter-chip"
+                        data-action="select-filter"
+                        data-value="all"
+                    >
+                        Veg dishes from all restaurants
+                    </button>
+                    <button
+                        type="button"
+                        class="filter-chip is-selected"
+                        data-action="select-filter"
+                        data-value="pure-veg"
+                    >
+                        Pure Veg restaurants only
+                    </button>
+                </div>
+                <input type="hidden" name="show_me" id="show-me-value" value="pure-veg">
+            </div>
+
+            <button type="submit" class="btn btn--primary btn--lg btn--block profile-submit">
+                Done
+            </button>
+
+            <p class="profile-caption">All details from all restaurants</p>
+        </form>
+    </div>
+</section>

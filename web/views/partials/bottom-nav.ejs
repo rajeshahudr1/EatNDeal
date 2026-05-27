@@ -1,0 +1,61 @@
+<%#
+  views/partials/bottom-nav.ejs
+
+  What:  Mobile-only fixed bottom navigation — five tabs matching the
+         marketplace mockup
+         (https://eatndeal.neutroveg.com/admin/market-place/mockups).
+         Hidden on desktop (handled in bottom-nav.css media query).
+  Why:   Matches the Zomato / Swiggy / Foodhub mobile-app convention.
+         Cart / Orders / Profile bounce to /signin?next=… when no
+         session exists, keeping the nav usable for guest browsing.
+  Used:  Included from views/_layout.ejs after the floating partials.
+
+  Icon style: NATIVE EMOJI CHARACTERS — exactly the characters the
+  reference mockup uses (🏠 🔍 🛒 📋 👤). We render them via the
+  OS-native colour-emoji font so:
+    • iOS / macOS shows Apple Color Emoji (matches the design source)
+    • Windows shows Segoe UI Emoji
+    • Android shows Noto Color Emoji
+  This is the cleanest "exact" match — no per-OS SVG tinkering, and
+  no external font / image dependency (Coding-Conventions rule #5).
+
+  Inputs:
+   • active_nav   — string set by each page's render call. The matching
+                    link gets the is-active class.
+   • user_session — when present, Cart/Orders/Profile link straight
+                    through; when absent, they route via /signin?next=…
+-%>
+<%
+    // Build per-tab href so unauthenticated users land on /signin with a
+    // `next` hint. Keeps the nav usable without forcing a login wall.
+    var hrefCart    = user_session ? '/cart'    : '/signin?next=' + encodeURIComponent('/cart');
+    var hrefOrders  = user_session ? '/orders'  : '/signin?next=' + encodeURIComponent('/orders');
+    var hrefProfile = user_session ? '/profile' : '/signin?next=' + encodeURIComponent('/profile');
+%>
+<nav class="bottom-nav" aria-label="Primary mobile navigation">
+
+    <a href="/" class="bottom-nav__item <%= active_nav === 'home' ? 'is-active' : '' %>">
+        <span class="bottom-nav__icon" aria-hidden="true">🏠</span>
+        <span class="bottom-nav__label">Home</span>
+    </a>
+
+    <a href="/search" class="bottom-nav__item <%= active_nav === 'search' ? 'is-active' : '' %>">
+        <span class="bottom-nav__icon" aria-hidden="true">🔍</span>
+        <span class="bottom-nav__label">Search</span>
+    </a>
+
+    <a href="<%= hrefCart %>" class="bottom-nav__item <%= active_nav === 'cart' ? 'is-active' : '' %>">
+        <span class="bottom-nav__icon" aria-hidden="true">🛒</span>
+        <span class="bottom-nav__label">Cart</span>
+    </a>
+
+    <a href="<%= hrefOrders %>" class="bottom-nav__item <%= active_nav === 'orders' ? 'is-active' : '' %>">
+        <span class="bottom-nav__icon" aria-hidden="true">📋</span>
+        <span class="bottom-nav__label">Orders</span>
+    </a>
+
+    <a href="<%= hrefProfile %>" class="bottom-nav__item <%= active_nav === 'profile' ? 'is-active' : '' %>">
+        <span class="bottom-nav__icon" aria-hidden="true">👤</span>
+        <span class="bottom-nav__label">Profile</span>
+    </a>
+</nav>

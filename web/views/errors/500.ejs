@@ -1,0 +1,27 @@
+<%#
+  views/errors/500.ejs
+
+  What:  Friendly "something went wrong" view rendered when an uncaught
+         server error fires. In development, the underlying message is
+         shown for faster debugging; in production it stays hidden.
+  Why:   Default Express 500 leaks stack traces — bad both for UX and
+         security. This template keeps the brand intact and gives the
+         user a way out.
+  Used:  Rendered from web/index.js error handler.
+-%>
+<section class="error-page">
+    <div class="error-page__inner">
+        <p class="error-page__code">500</p>
+        <h1 class="error-page__title">Something went wrong on our end</h1>
+        <p  class="error-page__body">We're sorry for the inconvenience. Please try again in a moment, or head back to the home page.</p>
+
+        <% if (typeof error_msg !== 'undefined' && error_msg) { %>
+            <details class="error-page__details">
+                <summary>Developer detail</summary>
+                <pre><%= error_msg %></pre>
+            </details>
+        <% } %>
+
+        <a class="btn btn--primary btn--lg" href="/">Go to home</a>
+    </div>
+</section>

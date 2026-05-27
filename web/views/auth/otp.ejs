@@ -1,0 +1,76 @@
+<%#
+  views/auth/otp.ejs
+
+  What:  Step 2 — OTP verification screen. Matches the mockup the user
+         shared. Six square digit boxes, auto-advance from one to the
+         next on every keystroke. Static demo: any code submits and
+         lands on the personal-details screen.
+  Layout:
+           ← Back
+
+                       Verify Code
+                    We sent a code to
+                      +60 12-345 6789
+
+              ┌─┐ ┌─┐ ┌─┐ ┌─┐ ┌─┐ ┌─┐
+              │4│ │2│ │8│ │_│ │_│ │_│
+              └─┘ └─┘ └─┘ └─┘ └─┘ └─┘
+
+                  Resend code in 0:45
+
+           ┌────────── Verify ──────────┐
+           └────────────────────────────┘
+  Used:  Rendered by AuthController when ?step=otp.
+-%>
+<section class="auth-page auth-page--plain">
+    <div class="auth-form auth-form--centered">
+
+        <%# Back to Step 1. data-action is delegated in app.js — but
+            for now it's just a plain link to /signin (no query). %>
+        <a class="auth-back" href="/signin" aria-label="Back to sign in">
+            <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="19" y1="12" x2="5" y2="12"/>
+                <polyline points="12 19 5 12 12 5"/>
+            </svg>
+            <span>Back</span>
+        </a>
+
+        <h1 class="auth-form__title auth-form__title--centered">Verify Code</h1>
+        <p class="auth-form__subtitle auth-form__subtitle--centered">
+            We sent a code to<br>
+            <strong class="otp-phone"><%= phone_display %></strong>
+        </p>
+
+        <%# Six-digit OTP. /js/pages/otp.js wires keystroke auto-advance,
+            paste support, and on the 6th digit copies the joined value
+            into the hidden `otp` field + submits the form. The country
+            + contact aren't in this form because the server already has
+            them in req.session.pendingAuth — we just submit the code. %>
+        <form id="otp-form" class="otp-form" method="post" action="/signin/verify" novalidate>
+            <input type="hidden" name="otp" id="otp-value" value="">
+
+            <div class="otp-row" role="group" aria-label="6-digit verification code">
+                <% for (var i = 0; i < 6; i++) { %>
+                    <input
+                        class="otp-box"
+                        type="text"
+                        inputmode="numeric"
+                        pattern="\d*"
+                        maxlength="1"
+                        autocomplete="one-time-code"
+                        aria-label="Digit <%= i + 1 %>"
+                        data-otp-index="<%= i %>"
+                    >
+                <% } %>
+            </div>
+
+            <p class="otp-timer">
+                Resend code in <strong class="otp-timer__countdown" id="otp-countdown">0:45</strong>
+            </p>
+
+            <button type="submit" class="btn btn--primary btn--lg btn--block otp-submit">
+                Verify
+            </button>
+        </form>
+    </div>
+</section>

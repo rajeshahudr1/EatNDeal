@@ -1,0 +1,54 @@
+<%#
+  views/static/page.ejs
+
+  What:  Single shared template that renders any of the 9 static pages
+         (About, Help, Terms, Privacy, Contact, Partner, Ride, Business,
+         Careers). All page content is data-driven from
+         web/data/staticPages.js via res.locals.page.
+  Why:   DRY — one template instead of nine; editors update copy by
+         changing staticPages.js, not the markup. Section types
+         (text / list / faq / steps / perks / cta) each have their own
+         partial under views/static/sections/ for cleanliness.
+  Used:  Rendered by every action in Controllers/StaticPageController.js.
+
+  Inputs (via res.locals):
+   • page.title     — heading text
+   • page.lede      — subtitle paragraph under the heading
+   • page.sections  — ordered array of { type, ... } blocks
+   • page.slug      — used in the data-page-slug body attribute so per-
+                       page CSS overrides (rare) can target a single page
+-%>
+<article class="static-page" data-page-slug="<%= page.slug %>">
+
+    <%# Page hero — title + lede on a soft red-tinted band. Same shape
+        across every static page so the visual rhythm is consistent. %>
+    <header class="static-page__hero">
+        <div class="static-page__hero-inner">
+            <h1 class="static-page__title"><%= page.title %></h1>
+            <% if (page.lede) { %>
+                <p class="static-page__lede"><%= page.lede %></p>
+            <% } %>
+        </div>
+    </header>
+
+    <%# Content sections — dispatched on `type`. Anything unknown falls
+        back to a safe "no-op" so a typo in staticPages.js never breaks
+        the page. %>
+    <div class="static-page__body">
+        <% (page.sections || []).forEach(function (section) { %>
+            <% if (section.type === 'text') { %>
+                <%- include('sections/text', { section: section }) -%>
+            <% } else if (section.type === 'list') { %>
+                <%- include('sections/list', { section: section }) -%>
+            <% } else if (section.type === 'faq') { %>
+                <%- include('sections/faq', { section: section }) -%>
+            <% } else if (section.type === 'steps') { %>
+                <%- include('sections/steps', { section: section }) -%>
+            <% } else if (section.type === 'perks') { %>
+                <%- include('sections/perks', { section: section }) -%>
+            <% } else if (section.type === 'cta') { %>
+                <%- include('sections/cta', { section: section }) -%>
+            <% } %>
+        <% }); %>
+    </div>
+</article>

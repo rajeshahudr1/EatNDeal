@@ -1,0 +1,47 @@
+<%#
+  views/partials/promo-strip.ejs
+
+  What:  Eye-catching promo band that sits just under the header on every
+         page. Highlights the welcome offer for new customers, matches the
+         Zomato/Swiggy/Foodhub convention of surfacing the headline deal
+         immediately on landing.
+  Why:   First thing a new visitor sees after the location chip. Drives
+         the "first order" hook without pushing sign-up in their face.
+  Used:  Included from views/_layout.ejs right after the header.
+
+  Static copy for now. Wire to /api/v1/promotions in the next phase so
+  the strip swaps between active promos automatically.
+-%>
+<%#
+  "Order now" button behaviour
+  ────────────────────────────
+  • No location yet  → opens the location modal so the user can pick
+                       a delivery area first. Same as the header chip.
+  • Location set     → goes straight to the home page (a plain <a href="/">).
+                       Per the user request: don't ask for location
+                       again — they already picked one. We point at "/"
+                       (the restaurant feed) which is where they were
+                       going to anyway, and the browser does a normal
+                       full reload of the page.
+-%>
+<div class="promo-strip" role="region" aria-label="Welcome offer">
+    <div class="promo-strip__inner">
+        <span class="promo-strip__icon" aria-hidden="true">🎉</span>
+        <p class="promo-strip__copy">
+            <strong>50% OFF</strong>
+            on your first order — use code
+            <span class="promo-strip__code">WELCOME50</span>
+        </p>
+        <% if (user_location) { %>
+            <a href="/" class="promo-strip__cta">Order now</a>
+        <% } else { %>
+            <button
+                type="button"
+                class="promo-strip__cta"
+                data-action="open-location-modal"
+            >
+                Order now
+            </button>
+        <% } %>
+    </div>
+</div>

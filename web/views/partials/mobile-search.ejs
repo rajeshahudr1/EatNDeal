@@ -1,0 +1,37 @@
+<%#
+  views/partials/mobile-search.ejs
+
+  What:  Sticky full-width search row shown ONLY on mobile. Sits
+         between the site header (logo + location chip + bell) and
+         the page content. The cuisines row sticks immediately below
+         this bar — so the user sees three sticky layers stacked on
+         mobile:
+            [ logo  ·  location  ·  bell  ]    ← header (60-68 px)
+            [        🔍  search…         ]    ← this bar     (~52 px)
+            [ pizza · burger · indian … ]    ← cuisines
+         Desktop renders its own inline search inside the header
+         (header.ejs) and hides this partial via CSS.
+  Why:   On small screens the header doesn't have room for a wide
+         search input alongside everything else. A dedicated row
+         keeps the search field big enough to be tappable + the
+         existing icon set in the header untouched.
+  Used:  Included from views/_layout.ejs after the header, before
+         the promo strip / page body.
+-%>
+<div class="mobile-search" role="search">
+    <form class="mobile-search__form" data-no-loader>
+        <svg class="mobile-search__icon" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="7"/>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+        <input
+            type="search"
+            class="mobile-search__input"
+            id="site-search-mobile"
+            placeholder="Search restaurants, dishes, cuisines"
+            autocomplete="off"
+            spellcheck="false"
+            data-search-scope="home"
+        >
+    </form>
+</div>

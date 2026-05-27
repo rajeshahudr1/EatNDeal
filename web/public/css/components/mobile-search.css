@@ -1,0 +1,74 @@
+/*
+ * components/mobile-search.css
+ *
+ * What:  Sticky full-width search row shown only on small screens
+ *        (< 768 px). Sits directly under the site header and above
+ *        the cuisines row so the user has a constant search affordance
+ *        no matter how far they scroll on the home page.
+ * Why:   The mobile header is already crowded (logo / two-line
+ *        location / bell / hamburger) — there isn't room for an inline
+ *        search box like the desktop has. Dedicated row keeps the
+ *        input big enough to be tappable.
+ * Used:  Loaded by views/_layout.ejs via its own <link> tag.
+ *        Markup mount lives in views/partials/mobile-search.ejs.
+ */
+
+/* Desktop hides the mobile search entirely — the desktop header has
+ * its own inline search input. */
+@media (min-width: 768px) {
+    .mobile-search { display: none !important; }
+}
+
+@media (max-width: 767px) {
+    /* Hide the desktop header search slot — on mobile the inline
+     * version would collide with the location chip + bell + hamburger. */
+    .site-header__search { display: none; }
+}
+
+.mobile-search {
+    position: sticky;
+    /* Top of the viewport — on mobile the site header is NOT sticky
+     * (it scrolls away with the page, see mobile.css). The search
+     * bar is the first thing that stops at the top edge as the user
+     * scrolls; the cuisines row stacks just below it. */
+    top: 0;
+    /* Above the cuisines sticky strip (z-index 40) so when the user
+     * scrolls and the cuisines come up under this bar they slip
+     * underneath, not over it. */
+    z-index: 45;
+    background-color: #fff;
+    border-bottom: 1px solid var(--color-border-soft);
+    padding: var(--space-2) var(--space-3);
+}
+
+.mobile-search__form {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    background-color: var(--color-bg-alt);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-pill);
+    padding: 0.55rem 0.85rem;
+    transition: border-color 120ms ease, background-color 120ms ease, box-shadow 120ms ease;
+}
+.mobile-search__form:focus-within {
+    background-color: #fff;
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 3px rgba(229, 37, 42, 0.12);
+}
+.mobile-search__icon { color: var(--color-text-soft); flex: 0 0 auto; }
+.mobile-search__input {
+    flex: 1;
+    min-width: 0;
+    border: 0;
+    background: transparent;
+    outline: none;
+    font-size: 0.95rem;
+    color: var(--color-text);
+}
+.mobile-search__input::placeholder { color: var(--color-text-soft); }
+.mobile-search__input::-webkit-search-cancel-button,
+.mobile-search__input::-webkit-search-decoration {
+    -webkit-appearance: none;
+    appearance: none;
+}

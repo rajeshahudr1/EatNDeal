@@ -1,0 +1,117 @@
+/*
+ * components/hero.css
+ *
+ * What:  Landing hero band visuals — colours, typography weight, and the
+ *        Zomato/Swiggy-style search-as-CTA bar. Sizing (font scale,
+ *        paddings) varies between mobile and desktop and lives in those
+ *        files. This file owns visual treatment only.
+ * Why:   The hero is the first impression — needs a clean, food-delivery
+ *        feel: bold heading, soft tinted background, one big
+ *        search-shaped entry point that opens the location modal.
+ * Used:  Loaded by views/_layout.ejs via its own <link> tag.
+ */
+
+.hero {
+    text-align: center;
+}
+
+.hero__title-accent { color: var(--color-primary); }
+.hero__title       { letter-spacing: -0.02em; }
+.hero__subtitle    {
+    max-width: 580px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+/* ── Search-as-CTA bar ─────────────────────────────────────────── *
+ * Acts like a single big input. The whole element is the click target
+ * (role="button" in markup); the inner pill on the right looks like a
+ * submit button. Hover lifts subtly. Matches the Zomato / Swiggy /
+ * Foodhub pattern — the homepage shows a "search-shaped" entry point,
+ * the real search runs inside the location modal that opens on click. */
+
+/* `<button>` elements are inline-block by default and shrink to fit
+ * their content. With our long placeholder + "Find food" pill, that
+ * pushed the bar wider than the mobile viewport and the whole page
+ * scrolled sideways. Forcing `width: 100%` + `box-sizing: border-box`
+ * caps the bar at its container, and `max-width: 620px` keeps it
+ * centred on wider screens. */
+.hero__search {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 620px;
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    background-color: #fff;
+    border-radius: var(--radius-pill);
+    padding: 0.5rem 0.5rem 0.5rem var(--space-5);
+    margin: var(--space-6) auto 0;
+    box-shadow: var(--shadow-2);
+    cursor: pointer;
+    transition: transform 80ms ease, box-shadow 120ms ease;
+    text-align: left;
+}
+.hero__search:hover {
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-3);
+}
+
+/* Suppress the browser's default focus ring on mouse-click (Chrome paints
+ * a dashed outline that bleeds onto the icon + inner "Find food" pill).
+ * Keyboard users still get a proper outline via :focus-visible below. */
+.hero__search:focus { outline: none; }
+.hero__search::-moz-focus-inner { border: 0; }   /* Firefox inner border on <button> */
+
+.hero__search:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 4px;
+}
+
+.hero__search-icon {
+    color: var(--color-text-soft);
+    flex: 0 0 auto;
+}
+
+.hero__search-text {
+    /* min-width: 0 lets the flex item shrink below its content's
+     * intrinsic width — without it `white-space: nowrap` would push
+     * the bar to fit the full placeholder text. */
+    flex: 1;
+    min-width: 0;
+    color: var(--color-text-muted);
+    font-size: 0.95rem;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.hero__search-cta {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: 0.7rem 1.2rem;
+    background-color: var(--color-primary);
+    color: #fff;
+    border-radius: var(--radius-pill);
+    font-weight: 600;
+    font-size: 0.9rem;
+    flex: 0 0 auto;
+    transition: background-color 120ms ease;
+}
+.hero__search:hover .hero__search-cta {
+    background-color: var(--color-primary-dark);
+}
+
+.hero__hint {
+    margin-top: var(--space-3);
+    color: var(--color-text-soft);
+    font-size: 0.85rem;
+}
+
+/* Mobile tweaks — keep the pill, shrink the inner CTA slightly. */
+@media (max-width: 767px) {
+    .hero__search       { padding: 0.4rem 0.4rem 0.4rem var(--space-4); gap: var(--space-2); }
+    .hero__search-text  { font-size: 0.88rem; }
+    .hero__search-cta   { padding: 0.6rem 0.85rem; font-size: 0.85rem; }
+}

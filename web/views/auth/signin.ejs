@@ -1,0 +1,172 @@
+<%#
+  views/auth/signin.ejs
+
+  What:  Single mobile-first auth entry page — pink brand band on top,
+         white form area below. Matches the mockup the user shared.
+  Layout:
+           ┌────────────────────────────┐
+           │   (light pink band)        │
+           │       [Logo]               │
+           │      Eats N Deals          │   ← bold red wordmark
+           ├────────────────────────────┤
+           │   (white form area)        │
+           │   Log in or sign up        │
+           │   Enter your mobile number │
+           │                            │
+           │  ┌─────┐  ┌──────────────┐ │   ← country chip + phone input
+           │  │MY+60│  │ Mobile number│ │     in TWO separate rounded
+           │  └─────┘  └──────────────┘ │     boxes (not joined)
+           │                            │
+           │  ┌────── Continue ─────┐   │
+           │  └─────────────────────┘   │
+           │                            │
+           │   ─── or continue with ─── │
+           │      ○   ○   ○             │   ← circular social icons
+           │   By continuing …          │
+           └────────────────────────────┘
+  Why:   Food-delivery convention — one mobile-number entry. OTP comes
+         next; the api decides whether this is a new signup or existing
+         sign-in. We don't ask the user to choose.
+  Used:  Rendered by Controllers/AuthController.signinPage.
+-%>
+<section class="auth-page">
+
+    <%# Top bar — focused-flow style: only a back-to-home button
+        (the global header is hidden by the bare layout). Position
+        is absolute at the top-left of the card on desktop and
+        top-left of the viewport on mobile (styled in auth-page.css). %>
+    <a class="auth-back auth-back--top" href="/" aria-label="Back to home">
+        <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="19" y1="12" x2="5" y2="12"/>
+            <polyline points="12 19 5 12 12 5"/>
+        </svg>
+        <span>Back</span>
+    </a>
+
+    <%# Pink brand band — logo + wordmark centred. Tinted background
+        (`--color-primary-soft`) plus an ambient gradient for a soft
+        glow. Logo is cache-busted so a swap on disk + restart
+        propagates here too. %>
+    <header class="auth-brand-band">
+        <a class="auth-brand-band__link" href="/" aria-label="<%= brand.name %> home">
+            <img
+                class="auth-brand-band__logo"
+                src="<%= brand.logoUrl %>?v=<%= ASSET_VERSION %>"
+                alt=""
+            >
+        </a>
+    </header>
+
+    <%# White form area. No card / shadow — full-bleed white surface
+        flowing straight from the pink band above. %>
+    <div class="auth-form" role="region" aria-labelledby="auth-title">
+        <h1 id="auth-title" class="auth-form__title">Log in or sign up</h1>
+        <p class="auth-form__subtitle">Enter your mobile number to continue</p>
+
+        <%# Sign-in form. Real submit: POST /signin/start →
+            AuthController.startOtp → calls api/v1/auth/send-otp →
+            stashes phone in session → redirects to ?step=otp.
+            /js/pages/signin.js handles the digits-only filter + the
+            country-picker chip; submit is a plain form POST. %>
+        <form id="signin-form" class="signin-form" method="post" action="/signin/start" novalidate>
+            <%# Forward the `next` URL through the POST so AuthController.startOtp
+                can stash it on req.session.pendingAuth — that's what
+                verifyOtp later reads when redirecting an *existing*
+                customer back to the page they came from. Without this
+                field every existing-user sign-in would land on "/" no
+                matter where they started. %>
+            <input type="hidden" name="next" value="<%= next %>">
+            <input type="hidden" name="next" value="<%= next %>">
+
+            <%# Two separate rounded boxes — country chip on the left
+                and phone-number input on the right. The chip is a
+                button that opens the full-screen country picker. %>
+            <div class="signin-form__row">
+                <button
+                    type="button"
+                    id="country-picker-trigger"
+                    class="country-chip"
+                    data-action="open-country-picker"
+                    aria-haspopup="dialog"
+                    aria-controls="country-picker"
+                    aria-label="Choose country"
+                >
+                    <span class="country-chip__flag" id="country-chip-flag" aria-hidden="true">🇬🇧</span>
+                    <span class="country-chip__code" id="country-chip-code">+44</span>
+                    <svg class="country-chip__arrow" aria-hidden="true" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="6 9 12 15 18 9"/>
+                    </svg>
+                </button>
+
+                <%# inputmode="numeric" + pattern="[0-9]*" together:
+                    - on mobile, brings up the digits-only keypad
+                    - tells the form / a11y the value must be digits only
+                    The real "block non-digit keystrokes + strip pasted
+                    junk" rule lives in /js/pages/signin.js (a pattern
+                    attribute alone does NOT prevent typing letters in
+                    type="tel"). %>
+                <input
+                    id="signin-mobile"
+                    class="signin-form__input"
+                    type="tel"
+                    name="mobile"
+                    inputmode="numeric"
+                    pattern="[0-9]*"
+                    autocomplete="tel-national"
+                    placeholder="Mobile number"
+                    minlength="6"
+                    maxlength="15"
+                    required
+                >
+                <input type="hidden" name="country_iso"  id="signin-country-iso"  value="GB">
+                <input type="hidden" name="country_dial" id="signin-country-dial" value="+44">
+            </div>
+
+            <p class="signin-form__error" id="signin-error" hidden></p>
+
+            <button type="submit" class="btn btn--primary btn--lg btn--block signin-form__submit">
+                Continue
+            </button>
+        </form>
+
+        <div class="auth-divider"><span>or continue with</span></div>
+
+        <%# Social buttons — circular, icon-only (matches the mockup).
+            Real anchors that hit our OAuth redirect endpoint:
+              GET /signin/oauth/<provider>?next=<encoded next URL>
+            The web controller mints a CSRF `state`, stashes it in the
+            session, and bounces the browser to Google / Facebook. The
+            callback exchanges the code, calls /api/v1/auth/social-
+            signin, and sets the session.
+            The `next` value flows through so existing users land where
+            they came from after the round trip. %>
+        <div class="auth-socials">
+            <a href="/signin/oauth/google?next=<%= encodeURIComponent(next) %>"
+               class="auth-social"
+               aria-label="Continue with Google">
+                <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+                    <path fill="#4285F4" d="M21.6 12.227c0-.71-.064-1.392-.182-2.045H12v3.868h5.385a4.6 4.6 0 0 1-2 3.018v2.51h3.232c1.89-1.74 2.983-4.305 2.983-7.351z"/>
+                    <path fill="#34A853" d="M12 22c2.7 0 4.964-.895 6.618-2.422l-3.232-2.51c-.896.6-2.04.955-3.386.955-2.605 0-4.81-1.76-5.595-4.123H3.064v2.59A9.997 9.997 0 0 0 12 22z"/>
+                    <path fill="#FBBC05" d="M6.405 13.9a6.005 6.005 0 0 1 0-3.8V7.51H3.064a10 10 0 0 0 0 8.98l3.341-2.59z"/>
+                    <path fill="#EA4335" d="M12 5.977c1.469 0 2.786.505 3.823 1.495l2.867-2.867C16.96 2.99 14.695 2 12 2A9.997 9.997 0 0 0 3.064 7.51l3.341 2.59C7.19 7.737 9.395 5.977 12 5.977z"/>
+                </svg>
+            </a>
+            <a href="/signin/oauth/facebook?next=<%= encodeURIComponent(next) %>"
+               class="auth-social"
+               aria-label="Continue with Facebook">
+                <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+                    <path fill="#1877F2" d="M22 12.06C22 6.5 17.52 2 12 2S2 6.5 2 12.06c0 5.02 3.66 9.19 8.44 9.94v-7.03H7.9v-2.91h2.54V9.85c0-2.5 1.49-3.89 3.77-3.89 1.09 0 2.24.2 2.24.2v2.46h-1.26c-1.24 0-1.63.77-1.63 1.56v1.88h2.78l-.44 2.91h-2.34V22c4.78-.75 8.44-4.92 8.44-9.94z"/>
+                </svg>
+            </a>
+        </div>
+
+        <p class="auth-form__legal">
+            By continuing, you agree to our
+            <a href="<%= brand.termsUrl   || '/terms'   %>">Terms of Service</a>
+            &amp;
+            <a href="<%= brand.privacyUrl || '/privacy' %>">Privacy Policy</a>.
+        </p>
+    </div>
+</section>
+
+<%- include('../partials/country-picker') -%>

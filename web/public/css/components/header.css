@@ -1,0 +1,221 @@
+/*
+ * components/header.css
+ *
+ * What:  Visual styles for the top navigation bar. Two-line location
+ *        chip + notification bell + brand logo + (desktop) primary nav
+ *        and auth buttons.
+ * Why:   Matches the food-delivery mockup the user shared — red pin
+ *        with a bold label on top, lighter address underneath, gold
+ *        bell with a red unread-count badge.
+ * Used:  Loaded by views/_layout.ejs via its own <link> tag.
+ *        Mobile/desktop layout overrides live in mobile.css and
+ *        desktop.css — this file owns the per-element visuals.
+ */
+
+.site-header {
+    position: sticky;
+    top: 0;
+    z-index: var(--z-header);
+    background-color: #fff;
+    border-bottom: 1px solid var(--color-border-soft);
+    backdrop-filter: saturate(180%) blur(6px);
+    -webkit-backdrop-filter: saturate(180%) blur(6px);
+}
+
+.site-header__brand {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-weight: 700;
+    color: var(--color-text);
+}
+
+/* Logo sizing — height fixed, width auto so aspect ratio survives a
+ * future logo swap. Tighter on mobile (and hidden entirely on mobile,
+ * see mobile.css — the mockup gives the freed space to the location). */
+.site-header__logo {
+    height: 44px;
+    width: auto;
+    display: block;
+    border-radius: var(--radius-sm);
+}
+
+/* ── Two-line location chip ──────────────────────────────────────── *
+ * Visually frameless button so the LABEL + sub-address read like the
+ * primary header element rather than another pill. Mockup reference:
+ * https://eatndeal.neutroveg.com/admin/market-place/mockups
+ *                  (Customer App → Home & Restaurant Discovery)
+ *
+ *  🔴 Pin │ Bold title  ▼
+ *         │ Lighter sub-address
+ */
+
+.site-header__location {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: 0.35rem 0.5rem 0.35rem 0;
+    background: transparent;
+    border: 0;
+    color: var(--color-text);
+    text-align: left;
+    cursor: pointer;
+    border-radius: var(--radius-md);
+    transition: background-color 120ms ease;
+    min-width: 0;            /* allow inner truncation */
+}
+.site-header__location:hover { background-color: var(--color-bg-alt); }
+
+.site-header__location-pin {
+    flex: 0 0 auto;
+    filter: drop-shadow(0 2px 3px rgba(229, 37, 42, 0.25));
+}
+
+.site-header__location-stack {
+    display: inline-flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+    line-height: 1.2;
+}
+
+.site-header__location-title {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-weight: 700;
+    font-size: 0.95rem;
+    color: var(--color-text);
+}
+
+.site-header__location-name {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 220px;
+}
+
+.site-header__location-arrow {
+    color: var(--color-text);
+    flex: 0 0 auto;
+}
+
+.site-header__location-sub {
+    color: var(--color-text-muted);
+    font-size: 0.78rem;
+    font-weight: 400;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 240px;
+}
+
+/* ── Desktop header search ───────────────────────────────────────── *
+ * Replaces the old "Restaurants / Offers / Help" inline nav. Lives
+ * INSIDE the header inner flex row on desktop only; mobile gets its
+ * own sticky search bar (see partials/mobile-search.ejs) so we hide
+ * this slot below 768 px via mobile.css. */
+.site-header__search {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    background-color: var(--color-bg-alt);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-pill);
+    padding: 0.45rem 0.9rem;
+    flex: 1 1 360px;
+    max-width: 520px;
+    margin: 0 var(--space-4);
+    transition: border-color 120ms ease, background-color 120ms ease, box-shadow 120ms ease;
+}
+.site-header__search:focus-within {
+    background-color: #fff;
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 3px rgba(229, 37, 42, 0.12);
+}
+.site-header__search-icon { color: var(--color-text-soft); flex: 0 0 auto; }
+.site-header__search-input {
+    flex: 1;
+    min-width: 0;
+    border: 0;
+    background: transparent;
+    outline: none;
+    font-size: 0.95rem;
+    color: var(--color-text);
+}
+.site-header__search-input::placeholder { color: var(--color-text-soft); }
+/* Hide native clear button + search decoration in WebKit / Edge. */
+.site-header__search-input::-webkit-search-cancel-button,
+.site-header__search-input::-webkit-search-decoration {
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+/* ── Primary nav (desktop only) ──────────────────────────────────── */
+
+.site-header__nav-link {
+    color: var(--color-text-muted);
+    font-weight: 500;
+    font-size: 0.95rem;
+    transition: color 120ms ease;
+    padding: 0.25rem 0;
+    position: relative;
+}
+.site-header__nav-link:hover     { color: var(--color-text); }
+.site-header__nav-link.is-active { color: var(--color-text); font-weight: 600; }
+.site-header__nav-link.is-active::after {
+    content: '';
+    position: absolute;
+    bottom: -4px;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background-color: var(--color-primary);
+    border-radius: var(--radius-pill);
+}
+
+/* ── Notification bell + badge ───────────────────────────────────── */
+
+.site-header__bell {
+    position: relative;
+    width: 40px;
+    height: 40px;
+    display: inline-grid;
+    place-items: center;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--color-text);
+    cursor: pointer;
+    transition: background-color 120ms ease, transform 80ms ease;
+    flex: 0 0 auto;
+}
+.site-header__bell:hover  { background-color: var(--color-bg-alt); }
+.site-header__bell:active { transform: scale(0.96); }
+
+.site-header__bell-icon {
+    display: block;
+    pointer-events: none;
+}
+
+.site-header__bell-badge {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    background-color: var(--color-primary);
+    color: #fff;
+    border-radius: 9px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    line-height: 1;
+    display: inline-grid;
+    place-items: center;
+    box-shadow: 0 0 0 2px #fff;     /* tiny ring so the badge pops off the bell */
+}
+
+/* ── Auth buttons (desktop) + mobile hamburger ───────────────────── */
+
+.site-header__auth     { display: inline-flex; gap: var(--space-2); align-items: center; }
+.site-header__menu-btn { color: var(--color-text); }

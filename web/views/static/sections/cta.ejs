@@ -1,0 +1,18 @@
+<%#
+  CTA section — a red card with heading + body + primary button. Used
+  as a closing prompt on most static pages (e.g. "Still need help? →
+  Contact us"). Stays in the page flow (not sticky).
+-%>
+<section class="static-section static-section--cta">
+    <div class="static-cta">
+        <div class="static-cta__copy">
+            <h2 class="static-cta__heading"><%= section.heading %></h2>
+            <% if (section.body) { %>
+                <p class="static-cta__body"><%= section.body %></p>
+            <% } %>
+        </div>
+        <a class="btn btn--primary btn--lg" href="<%= (section.button && section.button.href) || '/' %>">
+            <%= (section.button && section.button.label) || 'Continue' %>
+        </a>
+    </div>
+</section>

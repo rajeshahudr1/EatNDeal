@@ -1,0 +1,127 @@
+<%#
+  views/account/index.ejs
+
+  What:  Signed-in customer's profile screen. Name + email + mobile
+         number are all editable. Mobile is the new piece — social-
+         signup customers arrive here with NULL phone and need to add
+         one before checkout.
+
+  Used:  Rendered by AuthController.accountPage at GET /account.
+         Form POSTs to /account → AuthController.updateProfile →
+         /api/v1/auth/update-profile.
+-%>
+<%
+    var fullName = [account_user.firstname, account_user.lastname]
+        .filter(Boolean)
+        .join(' ');
+
+    // Best-effort prefill for the country chip. We store country_code
+    // as the dial code without a "+" (e.g. "44"). If the customer has
+    // no phone yet (social-signup), default to GB +44.
+    var currentDial = account_user.country_code
+        ? '+' + account_user.country_code
+        : '+44';
+    var currentIso  = (account_user.country_code === '44') ? 'GB' : 'GB';
+    // Crude flag emoji default — JS replaces this once the country
+    // picker loads the full list from /api/v1/countries.
+    var currentFlag = '🇬🇧';
+-%>
+<section class="auth-page auth-page--plain">
+    <div class="auth-form auth-form--centered">
+        <h1 class="auth-form__title auth-form__title--centered">My Profile</h1>
+
+        <form id="account-form" class="profile-form" method="post" action="/account" novalidate>
+            <div class="profile-field">
+                <label class="profile-field__label" for="account-name">Name</label>
+                <input
+                    id="account-name"
+                    class="profile-field__input"
+                    type="text"
+                    name="name"
+                    value="<%= fullName %>"
+                    placeholder="Your full name"
+                    autocomplete="name"
+                    maxlength="120"
+                    required
+                >
+            </div>
+
+            <div class="profile-field">
+                <label class="profile-field__label" for="account-email">
+                    Email <span class="profile-field__hint">(optional)</span>
+                </label>
+                <input
+                    id="account-email"
+                    class="profile-field__input"
+                    type="email"
+                    name="email"
+                    value="<%= account_user.email || '' %>"
+                    placeholder="you@example.com"
+                    autocomplete="email"
+                    maxlength="180"
+                >
+            </div>
+
+            <%# Mobile number — editable. Same UI pattern as the sign-in
+                page: country chip on the left (opens the picker overlay)
+                + plain phone input on the right. Hidden fields carry
+                the chosen ISO + dial code through to the POST. %>
+            <div class="profile-field">
+                <label class="profile-field__label" for="account-mobile">
+                    Mobile number
+                    <% if (!account_user.contact_no) { %>
+                        <span class="profile-field__hint">(add to enable checkout)</span>
+                    <% } %>
+                </label>
+                <div class="signin-form__row">
+                    <button
+                        type="button"
+                        id="country-picker-trigger"
+                        class="country-chip"
+                        data-action="open-country-picker"
+                        aria-haspopup="dialog"
+                        aria-controls="country-picker"
+                        aria-label="Choose country"
+                    >
+                        <span class="country-chip__flag" id="country-chip-flag" aria-hidden="true"><%= currentFlag %></span>
+                        <span class="country-chip__code" id="country-chip-code"><%= currentDial %></span>
+                        <svg class="country-chip__arrow" aria-hidden="true" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="6 9 12 15 18 9"/>
+                        </svg>
+                    </button>
+
+                    <input
+                        id="account-mobile"
+                        class="signin-form__input"
+                        type="tel"
+                        name="mobile"
+                        inputmode="numeric"
+                        pattern="[0-9]*"
+                        autocomplete="tel-national"
+                        placeholder="Mobile number"
+                        value="<%= account_user.contact_no || '' %>"
+                        minlength="6"
+                        maxlength="15"
+                    >
+                    <input type="hidden" name="country_iso"  id="account-country-iso"  value="<%= currentIso %>">
+                    <input type="hidden" name="country_dial" id="account-country-dial" value="<%= currentDial %>">
+                </div>
+            </div>
+
+            <button type="submit" class="btn btn--primary btn--lg btn--block profile-submit">
+                Save changes
+            </button>
+        </form>
+
+        <%# Logout — separate form so a stray click never triggers it
+            accidentally. %>
+        <form method="post" action="/logout" class="account-logout">
+            <button type="submit" class="btn btn--ghost btn--lg btn--block">Log out</button>
+        </form>
+    </div>
+</section>
+
+<%# Country picker overlay — same partial the sign-in page uses.
+    /js/pages/account.js binds it to the chip + writes the picked
+    country into the hidden inputs. %>
+<%- include('../partials/country-picker') -%>

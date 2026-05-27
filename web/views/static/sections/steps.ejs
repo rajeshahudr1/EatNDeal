@@ -1,0 +1,19 @@
+<%#
+  Numbered steps section — used by "How it works" style content
+  (e.g. Partner / Ride pages). Each step has an icon + title + body
+  and is auto-numbered by CSS counter.
+-%>
+<section class="static-section static-section--steps">
+    <% if (section.heading) { %>
+        <h2 class="static-section__heading static-section__heading--centered"><%= section.heading %></h2>
+    <% } %>
+    <ol class="static-steps" role="list">
+        <% (section.items || []).forEach(function (s) { %>
+            <li class="static-step">
+                <span class="static-step__icon" aria-hidden="true"><%= s.icon %></span>
+                <h3 class="static-step__title"><%= s.title %></h3>
+                <p  class="static-step__body"><%= s.body %></p>
+            </li>
+        <% }); %>
+    </ol>
+</section>

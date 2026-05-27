@@ -1,0 +1,62 @@
+<%#
+  views/partials/country-picker.ejs
+
+  What:  Full-screen (mobile) / centred-card (desktop) overlay listing
+         every country with its flag + name + dial code. Opens when the
+         user taps the country chip on the sign-in form. Filterable by
+         typed text (matches name OR dial code).
+  Why:   The sign-in flow needs a way to switch country before entering
+         a phone number. We render an empty mount here; /js/pages/signin.js
+         fetches /api/v1/countries on demand and fills the list.
+  Used:  Included from views/auth/signin.ejs (and any future page that
+         needs the picker).
+-%>
+<div
+    id="country-picker"
+    class="country-picker"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="country-picker-title"
+    aria-hidden="true"
+    hidden
+>
+    <div class="country-picker__backdrop" data-action="close-country-picker" aria-hidden="true"></div>
+
+    <div class="country-picker__panel" role="document">
+        <div class="country-picker__head">
+            <h2 id="country-picker-title" class="country-picker__title">Choose country</h2>
+            <button
+                type="button"
+                class="country-picker__close"
+                data-action="close-country-picker"
+                aria-label="Close"
+            >
+                <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="18" y1="6"  x2="6"  y2="18"/>
+                    <line x1="6"  y1="6"  x2="18" y2="18"/>
+                </svg>
+            </button>
+        </div>
+
+        <div class="country-picker__searchwrap">
+            <svg class="country-picker__searchicon" aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="11" cy="11" r="7"/>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+            <input
+                id="country-picker-search"
+                class="country-picker__search"
+                type="search"
+                autocomplete="off"
+                spellcheck="false"
+                placeholder="Search country or code"
+            >
+        </div>
+
+        <%# List body — filled at runtime from GET /api/v1/countries. The
+            empty-state below is shown until the fetch resolves OR if the
+            search filter produces no matches. %>
+        <ul id="country-picker-list" class="country-picker__list" role="listbox" aria-label="Countries"></ul>
+        <p id="country-picker-empty" class="country-picker__empty" hidden>No matches.</p>
+    </div>
+</div>

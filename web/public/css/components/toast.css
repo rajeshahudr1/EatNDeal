@@ -1,0 +1,116 @@
+/*
+ * components/toast.css
+ *
+ * What:  Floating toast notifications shown via window.EatNDealUi.showToast().
+ *        Stack drops in from the TOP-CENTRE of the viewport so the message
+ *        is impossible to miss. Solid coloured background per type with
+ *        white text — high contrast against any page (white pages used to
+ *        eat the old white-with-thin-border toast entirely).
+ * Why:   Coding-Conventions rule #8 — replaces native alert(). Visibility
+ *        is the whole point: if the user can't tell a toast appeared,
+ *        every error/success silently goes by.
+ * Used:  Imported by base.css.
+ */
+
+.toast-stack {
+    position: fixed;
+    z-index: var(--z-toast);
+    /* Top-right on desktop. 88 px clears the site header so the toast
+     * doesn't overlap the logo / location chip. The brand-red border
+     * makes it pop against the white page even at the edge. */
+    top: 88px;
+    right: var(--space-4);
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: var(--space-2);
+    pointer-events: none;
+    width: max-content;
+    max-width: min(420px, calc(100vw - 32px));
+}
+
+@media (max-width: 767px) {
+    .toast-stack {
+        /* On small screens "top-right corner" reads better as a top
+         * full-width strip — the available horizontal space is tiny
+         * either way, so we just centre it across the viewport. */
+        top: 68px;
+        left: var(--space-3);
+        right: var(--space-3);
+        width: auto;
+        max-width: none;
+    }
+}
+
+.toast {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    background-color: #fff;
+    color: var(--color-primary-dark);
+    /* Thick brand-red border + drop shadow — white card pops against
+     * any page background. The 2 px border was the previous design;
+     * the user wanted it heavier so toasts read as "alerts" not as
+     * subtle inline notifications. */
+    border: 2px solid var(--color-primary);
+    border-radius: var(--radius-md);
+    box-shadow: 0 8px 24px rgba(229, 37, 42, 0.18);
+    pointer-events: auto;
+    animation: toastIn 220ms ease-out;
+    font-weight: 600;
+    min-width: 240px;
+}
+
+/* All toast types share the white-bg + red-text + red-border look so
+ * every message reads with the same brand-strong visibility. Subtle
+ * accent tweaks below distinguish the FOUR types without giving up
+ * the consistent palette the user asked for. */
+.toast--success {
+    /* Slight green tint on the left edge keeps "success" recognisable
+     * without breaking the red dominant theme. */
+    border-left-width: 6px;
+    border-left-color: var(--color-success);
+}
+.toast--error,
+.toast--info,
+.toast--warn {
+    /* All others use the solid red border. */
+    border-color: var(--color-primary);
+}
+
+.toast.is-leaving { animation: toastOut 180ms ease-in forwards; }
+
+.toast__msg {
+    font-size: 0.95rem;
+    color: inherit;
+    flex: 1;
+    line-height: 1.35;
+}
+.toast__close {
+    color: var(--color-primary);
+    background: transparent;
+    border: 0;
+    padding: 0 0 0 var(--space-2);
+    line-height: 1;
+    font-size: 1.25rem;
+    cursor: pointer;
+    font-weight: 700;
+}
+.toast__close:hover { color: var(--color-primary-dark); }
+
+@keyframes toastIn {
+    from { transform: translateX(16px); opacity: 0; }
+    to   { transform: translateX(0);    opacity: 1; }
+}
+@keyframes toastOut {
+    from { transform: translateX(0);    opacity: 1; }
+    to   { transform: translateX(16px); opacity: 0; }
+}
+@media (max-width: 767px) {
+    /* Mobile slides down from the top instead of right. */
+    @keyframes toastIn {
+        from { transform: translateY(-16px); opacity: 0; }
+        to   { transform: translateY(0);     opacity: 1; }
+    }
+}

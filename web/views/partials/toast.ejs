@@ -1,0 +1,17 @@
+<%#
+  views/partials/toast.ejs
+
+  What:  Mount point for stacked toast notifications. Empty at render time —
+         /js/ui/toast.js inserts <li class="toast"> children when
+         window.EatNDealUi.showToast(type, msg) is called.
+  Why:   Coding-Conventions rule #8 — no native alert(). All transient
+         messages flow through this stack.
+  Used:  Included from views/_layout.ejs (rendered once per page).
+-%>
+<ul
+    id="toast-stack"
+    class="toast-stack"
+    role="status"
+    aria-live="polite"
+    aria-relevant="additions"
+></ul>

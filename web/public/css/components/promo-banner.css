@@ -1,0 +1,37 @@
+/*
+ * components/promo-banner.css
+ *
+ * What:  The "Join EatNDeal rewards" banner near the bottom of the
+ *        landing page.
+ * Why:   Soft CTA to drive sign-ups without being intrusive at the top of
+ *        the page.
+ * Used:  Imported by base.css.
+ */
+
+/* Centred on every viewport with guaranteed 16 px breathing room on
+ * left + right. The previous combo of `margin: ... var(--space-4)` +
+ * `margin-left/right: auto` cancelled the horizontal spacing whenever
+ * the viewport was narrower than --container-max, so on mobile the
+ * box hit the screen edges.
+ *
+ * Solution: cap the WIDTH at (viewport - 2 * space-4), centre with
+ * auto margins, then cap max-width at the design container. Works on
+ * every viewport — narrow phones get the space-4 gutter, wide screens
+ * cap at the container width and centre. */
+/* !important on the width + margin to guarantee the 16 px gutter on
+ * mobile wins against any cascading rule (older cached service-worker
+ * stylesheets, future overrides). User explicitly asked for this. */
+.promo-banner {
+    box-sizing: border-box !important;
+    width: calc(100% - 2 * var(--space-4)) !important;
+    max-width: var(--container-max) !important;
+    margin: var(--space-8) auto !important;
+    background:
+        linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-dark) 100%);
+    color: #fff;
+    border-radius: var(--radius-xl);
+    overflow: hidden;
+}
+.promo-banner__title { font-weight: 700; margin-bottom: var(--space-2); }
+.promo-banner__body  { color: rgba(255, 255, 255, 0.92); max-width: 520px; }
+.promo-banner .btn--accent { box-shadow: var(--shadow-2); }

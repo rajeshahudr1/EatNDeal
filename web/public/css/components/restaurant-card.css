@@ -1,0 +1,174 @@
+/*
+ * components/restaurant-card.css
+ *
+ * What:  Cards in the "Popular near you" grid. Image header, body with
+ *        name + cuisine tags + meta row (rating / delivery time / fee).
+ * Why:   Each card is a clickable link — the entire surface routes to the
+ *        restaurant detail page. Hover lift + shadow signal interactivity.
+ * Used:  Imported by base.css.
+ */
+
+.restaurant-card {
+    display: flex;
+    flex-direction: column;
+    background-color: #fff;
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    box-shadow: var(--shadow-1);
+    transition: transform 120ms ease, box-shadow 120ms ease;
+    color: var(--color-text);
+}
+.restaurant-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-2); }
+
+.restaurant-card__image {
+    position: relative;
+    aspect-ratio: 16 / 10;
+    background-color: var(--color-bg-alt);
+    overflow: hidden;
+}
+.restaurant-card__image img { width: 100%; height: 100%; object-fit: cover; }
+
+/* Real photo, layered on top of the placeholder. Absolute positioning
+ * so the initial letter behind it stays exactly where it is — if the
+ * image 404s, /js/pages/home.js sets style.display=none on the img and
+ * the placeholder shows through with zero layout shift. */
+.restaurant-card__photo {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    background-color: var(--color-bg-alt);
+}
+
+/* Restaurant-sized variant of the shared FSSAI veg marker. The
+ * dish-card uses a 16px square; restaurants get a slightly larger
+ * 20px square because the image area is much bigger and the marker
+ * needs to be visible at a glance. Position stays top-left of the
+ * image — same convention. */
+.restaurant-card__veg {
+    width: 20px;
+    height: 20px;
+    border-width: 2px;
+    border-radius: 4px;
+}
+.restaurant-card__veg.veg-marker--veg::after {
+    width: 9px;
+    height: 9px;
+}
+.restaurant-card__veg.veg-marker--non-veg::after {
+    border-left:  6px solid transparent;
+    border-right: 6px solid transparent;
+    border-bottom: 10px solid var(--color-primary);
+}
+
+/* Placeholder image — colour-tinted block with one big initial letter,
+ * used while we don't ship cover photos. The tint colour comes via a
+ * `data-tint` attribute on the element; /js/pages/home.js reads it and
+ * sets `style.background` (CSP-safe — no inline style attribute on the
+ * server-rendered HTML). */
+.restaurant-card__image--placeholder {
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.35), transparent 60%), var(--color-bg-alt);
+    display: grid;
+    place-items: center;
+}
+.restaurant-card__initial {
+    font-size: 4rem;
+    font-weight: 800;
+    color: rgba(28, 28, 28, 0.32);
+    letter-spacing: -0.02em;
+    user-select: none;
+}
+
+/* "Closed" state — desaturate the card + tag the placeholder with a
+ * pill. Whole link stays clickable so users can still peek at the
+ * menu / mark as favourite. */
+.restaurant-card.is-closed { opacity: 0.85; }
+.restaurant-card.is-closed .restaurant-card__image--placeholder { filter: grayscale(40%); }
+.restaurant-card__closed-overlay {
+    position: absolute;
+    top: var(--space-3);
+    right: var(--space-3);
+    padding: 0.25rem 0.65rem;
+    background-color: rgba(20, 20, 20, 0.78);
+    color: #fff;
+    border-radius: var(--radius-pill);
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+/* Offer ribbon — the ONE place we use green on a card. The brand is red-
+ * dominant; an extra red badge over a red CTA feels muddy, so the offer
+ * ribbon uses success green for a clear visual cue without clashing.
+ * Pill shape with subtle drop-shadow for readability against varied food
+ * photography. */
+.restaurant-card__badge {
+    position: absolute;
+    left: var(--space-3);
+    bottom: var(--space-3);
+    padding: 0.3rem 0.7rem;
+    background-color: var(--color-success);
+    color: #fff;
+    border-radius: var(--radius-pill);
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
+}
+
+.restaurant-card__body { padding: var(--space-4); }
+.restaurant-card__name {
+    font-size: 1rem;
+    font-weight: 600;
+    margin-bottom: var(--space-1);
+}
+.restaurant-card__cuisines {
+    font-size: 0.85rem;
+    color: var(--color-text-muted);
+    margin-bottom: var(--space-3);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.restaurant-card__meta {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    font-size: 0.85rem;
+    color: var(--color-text-muted);
+}
+/* Rating badge — gold pill with a dark star + dark text. Matches the
+ * Zomato/Foodhub mockup; reads as a quality cue and contrasts well
+ * against the card image when the badge sits over it later. */
+.restaurant-card__rating {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.2rem 0.55rem;
+    background-color: #FFB400;
+    color: #1C1C1C;
+    border-radius: var(--radius-sm);
+    font-weight: 700;
+    font-size: 0.8rem;
+}
+.restaurant-card__rating svg { color: #1C1C1C; }
+
+/* Distance chip — replaces the old delivery-fee chip per the project
+ * change to surface "how close is this restaurant" instead of
+ * delivery cost on each card. Small pin icon + km value, sits in the
+ * meta row alongside rating + delivery-time. */
+.restaurant-card__distance {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    color: var(--color-text-muted);
+    font-weight: 500;
+    white-space: nowrap;
+}
+.restaurant-card__distance svg {
+    color: var(--color-primary);
+    flex: 0 0 auto;
+}

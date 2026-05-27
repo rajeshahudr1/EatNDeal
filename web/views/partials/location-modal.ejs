@@ -1,0 +1,117 @@
+<%#
+  views/partials/location-modal.ejs
+
+  What:  Full-screen "Where do you want to order from?" modal. Opens
+         automatically on first visit (when no user_location is in session),
+         and on demand when the user clicks the location chip in the header.
+  Why:   Food-delivery convention — pick the area first, then see restaurants
+         that serve it. Modal is full-screen on mobile (immersive) and a
+         large centred card on desktop. Pure CSS positioning — open / close
+         is just a body class toggle, handled in /js/ui/location-modal.js.
+  Used:  Included from views/_layout.ejs.
+
+  Inputs from data-* on <body>:
+   • data-has-location — "true"  → modal stays hidden until user opens it
+                          "false" → /js/app.js opens it on DOM-ready
+-%>
+<div
+    id="location-modal"
+    class="location-modal"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="location-modal-title"
+    aria-hidden="true"
+    hidden
+>
+    <div class="location-modal__backdrop" data-action="close-location-modal" aria-hidden="true"></div>
+
+    <div class="location-modal__panel" role="document">
+
+        <div class="location-modal__header">
+            <h2 id="location-modal-title" class="location-modal__title">Where do you want to order from?</h2>
+            <p  class="location-modal__subtitle">Enter your postcode or share your location and we will show every restaurant that delivers to you.</p>
+
+            <button
+                type="button"
+                class="location-modal__close"
+                data-action="close-location-modal"
+                aria-label="Close"
+            >
+                <svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="18" y1="6"  x2="6"  y2="18"/>
+                    <line x1="6"  y1="6"  x2="18" y2="18"/>
+                </svg>
+            </button>
+        </div>
+
+        <div class="location-modal__body">
+
+            <%# Postcode / address search input. The dropdown list below is
+                populated by /js/ui/location-modal.js after each keystroke
+                (debounced + min 3 chars per the api's contract). %>
+            <div class="location-search">
+                <label class="location-search__label" for="location-search-input">Postcode or address</label>
+                <div class="location-search__field">
+                    <svg class="location-search__icon" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="11" cy="11" r="7"/>
+                        <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                    </svg>
+                    <input
+                        id="location-search-input"
+                        class="location-search__input"
+                        type="search"
+                        autocomplete="off"
+                        spellcheck="false"
+                        placeholder="e.g. SW1A 1AA or 10 Downing Street"
+                        aria-controls="location-search-suggestions"
+                        aria-expanded="false"
+                    >
+                </div>
+
+                <ul
+                    id="location-search-suggestions"
+                    class="location-search__suggestions"
+                    role="listbox"
+                    hidden
+                ></ul>
+
+                <p class="location-search__status" id="location-search-status" hidden></p>
+            </div>
+
+            <div class="location-modal__divider"><span>or</span></div>
+
+            <%# Geolocation button — uses the browser's navigator.geolocation
+                API. On success we forward the lat/lng to the api which maps
+                them to the nearest postcode for delivery-zone lookups. %>
+            <button
+                type="button"
+                class="btn btn--secondary btn--block btn--lg"
+                data-action="use-current-location"
+            >
+                <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="9"/>
+                    <line x1="12" y1="3"  x2="12" y2="6"/>
+                    <line x1="12" y1="18" x2="12" y2="21"/>
+                    <line x1="3"  y1="12" x2="6"  y2="12"/>
+                    <line x1="18" y1="12" x2="21" y2="12"/>
+                    <circle cx="12" cy="12" r="2.5" fill="currentColor"/>
+                </svg>
+                Use my current location
+            </button>
+
+            <%# Popular cities — quick shortcuts. Static for now; can become
+                dynamic once we have a /cities endpoint. %>
+            <div class="location-popular">
+                <p class="location-popular__label">Popular cities</p>
+                <div class="location-popular__chips">
+                    <button type="button" class="chip" data-city="London">London</button>
+                    <button type="button" class="chip" data-city="Manchester">Manchester</button>
+                    <button type="button" class="chip" data-city="Birmingham">Birmingham</button>
+                    <button type="button" class="chip" data-city="Leeds">Leeds</button>
+                    <button type="button" class="chip" data-city="Glasgow">Glasgow</button>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>

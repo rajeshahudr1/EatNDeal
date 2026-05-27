@@ -1,0 +1,35 @@
+<%#
+  views/partials/loader.ejs
+
+  What:  Empty mount for the global loading overlay. /js/ui/loader.js
+         flips its aria-hidden / hidden attributes to show / hide;
+         CSS in components/loader.css does all the visual work.
+  Why:   Rendered once per page so showLoader() is instant (no DOM
+         creation cost on first call). Cache-busts the brand logo
+         with ASSET_VERSION so a logo swap + server restart
+         propagates here too.
+  Used:  Included from views/_layout.ejs.
+-%>
+<div
+    id="app-loader"
+    class="app-loader"
+    role="status"
+    aria-live="polite"
+    aria-busy="false"
+    aria-hidden="true"
+    hidden
+>
+    <div class="app-loader__backdrop" aria-hidden="true"></div>
+    <div class="app-loader__inner">
+        <div class="app-loader__ringwrap">
+            <div class="app-loader__ring" aria-hidden="true"></div>
+            <div class="app-loader__ring app-loader__ring--inner" aria-hidden="true"></div>
+            <img
+                class="app-loader__logo"
+                src="<%= brand.logoUrl %>?v=<%= ASSET_VERSION %>"
+                alt=""
+            >
+        </div>
+        <p class="app-loader__label" id="app-loader-label">Loading…</p>
+    </div>
+</div>

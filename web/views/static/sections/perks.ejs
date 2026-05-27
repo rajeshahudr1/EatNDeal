@@ -1,0 +1,19 @@
+<%#
+  Perks section — 3-column card row (single column on mobile). Each
+  card has an emoji icon + title + body. Used for "Why us" / "What
+  we offer" style content blocks.
+-%>
+<section class="static-section static-section--perks">
+    <% if (section.heading) { %>
+        <h2 class="static-section__heading static-section__heading--centered"><%= section.heading %></h2>
+    <% } %>
+    <ul class="static-perks" role="list">
+        <% (section.items || []).forEach(function (p) { %>
+            <li class="static-perk">
+                <span class="static-perk__icon" aria-hidden="true"><%= p.icon %></span>
+                <h3 class="static-perk__title"><%= p.title %></h3>
+                <p  class="static-perk__body"><%= p.body %></p>
+            </li>
+        <% }); %>
+    </ul>
+</section>

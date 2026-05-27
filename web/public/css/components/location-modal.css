@@ -1,0 +1,177 @@
+/*
+ * components/location-modal.css
+ *
+ * What:  Full-screen / centred-panel location picker modal. Mobile shows
+ *        full-screen; desktop centres a card. Layout differences are in
+ *        desktop.css / mobile.css; this file owns the visuals (backdrop,
+ *        input, suggestion list).
+ * Why:   First UX moment for a new visitor. Needs to feel solid + simple.
+ * Used:  Imported by base.css.
+ */
+
+.location-modal {
+    position: fixed;
+    inset: 0;
+    z-index: var(--z-modal);
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+}
+.location-modal[aria-hidden="false"] { display: flex; }
+.location-modal[aria-hidden="true"]  { display: none; }
+
+/* Backdrop fades in over 200ms; panel slides up + fades in over 240ms
+ * with an ease-out curve so the first-visit modal lands smoothly
+ * instead of popping abruptly. Animation runs each time `display`
+ * flips from `none` to `flex` (when aria-hidden goes false). */
+.location-modal[aria-hidden="false"] .location-modal__backdrop {
+    animation: location-modal-fade 200ms ease-out;
+}
+.location-modal[aria-hidden="false"] .location-modal__panel {
+    animation: location-modal-rise 240ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@keyframes location-modal-fade {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+@keyframes location-modal-rise {
+    from { transform: translateY(20px); opacity: 0; }
+    to   { transform: translateY(0);    opacity: 1; }
+}
+/* When the user prefers reduced motion, skip the animation entirely. */
+@media (prefers-reduced-motion: reduce) {
+    .location-modal[aria-hidden="false"] .location-modal__backdrop,
+    .location-modal[aria-hidden="false"] .location-modal__panel {
+        animation: none;
+    }
+}
+
+.location-modal__backdrop {
+    position: absolute;
+    inset: 0;
+    background-color: rgba(20, 20, 20, 0.45);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+}
+
+.location-modal__panel {
+    position: relative;
+    background-color: #fff;
+    overflow: auto;
+    box-shadow: var(--shadow-3);
+}
+
+.location-modal__header { position: relative; }
+.location-modal__title { font-weight: 700; line-height: 1.2; margin-bottom: var(--space-2); }
+.location-modal__subtitle { color: var(--color-text-muted); font-size: 0.95rem; }
+
+.location-modal__close {
+    position: absolute;
+    top: var(--space-4);
+    right: var(--space-4);
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background-color: var(--color-bg-alt);
+    color: var(--color-text);
+    display: grid;
+    place-items: center;
+    transition: background-color 120ms ease;
+}
+.location-modal__close:hover { background-color: var(--color-border); }
+
+/* ── Search field ──────────────────────────────────────────────────── */
+
+.location-search__label {
+    display: block;
+    font-weight: 600;
+    font-size: 0.9rem;
+    margin-bottom: var(--space-2);
+    color: var(--color-text);
+}
+.location-search__field {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+.location-search__icon {
+    position: absolute;
+    left: var(--space-4);
+    color: var(--color-text-soft);
+    pointer-events: none;
+}
+.location-search__input {
+    width: 100%;
+    padding: 0.95rem 1rem 0.95rem 2.6rem;
+    font-size: 1rem;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background-color: var(--color-bg-soft);
+    transition: border-color 120ms ease, background-color 120ms ease, box-shadow 120ms ease;
+}
+/* Softer focus ring — 2px instead of 3px + lower-alpha brand red so
+ * the auto-focused input on first open doesn't read as a heavy halo. */
+.location-search__input:focus {
+    outline: none;
+    background-color: #fff;
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 2px rgba(229, 37, 42, 0.18);
+}
+
+.location-search__suggestions {
+    margin-top: var(--space-3);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background-color: #fff;
+    max-height: 260px;
+    overflow-y: auto;
+}
+.location-search__suggestions li {
+    padding: var(--space-3) var(--space-4);
+    border-bottom: 1px solid var(--color-border-soft);
+    cursor: pointer;
+    transition: background-color 100ms ease;
+    font-size: 0.95rem;
+}
+.location-search__suggestions li:last-child { border-bottom: 0; }
+.location-search__suggestions li:hover,
+.location-search__suggestions li.is-focused { background-color: var(--color-bg-alt); }
+.location-search__suggestions strong { color: var(--color-primary-dark); font-weight: 600; }
+
+.location-search__status {
+    margin-top: var(--space-3);
+    font-size: 0.85rem;
+    color: var(--color-text-soft);
+}
+
+/* ── "or" divider ──────────────────────────────────────────────────── */
+
+.location-modal__divider {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    margin: var(--space-6) 0;
+    color: var(--color-text-soft);
+    font-size: 0.85rem;
+}
+.location-modal__divider::before,
+.location-modal__divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background-color: var(--color-border);
+}
+
+/* ── Popular cities ────────────────────────────────────────────────── */
+
+.location-popular { margin-top: var(--space-6); }
+.location-popular__label {
+    font-size: 0.85rem;
+    color: var(--color-text-muted);
+    margin-bottom: var(--space-3);
+}
+.location-popular__chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+}

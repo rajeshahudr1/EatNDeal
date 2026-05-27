@@ -1,0 +1,176 @@
+/*
+ * app.js
+ *
+ * What:  Per-page orchestrator. Runs on DOMContentLoaded across every
+ *        page. Responsibilities:
+ *         • Auto-open the location modal on first visit
+ *           (when window.boot.hasLocation === false).
+ *         • Register the PWA service worker.
+ *         • Bind the mobile menu hamburger toggle.
+ * Why:   Tiny glue. Anything page-specific lives in /js/pages/<name>.js
+ *        and is loaded by the child view setting `extra_js`.
+ * Used:  Loaded last in views/_layout.ejs (defer order matters).
+ */
+
+(function () {
+    'use strict';
+
+    /**
+     * onReady
+     *
+     * What:  Initial dispatcher run when the DOM is parsed. Calls every
+     *        feature-specific init below.
+     * Why:   One controlled entry point keeps load order predictable.
+     *
+     *        NO auto-open of the location modal on first visit. Users
+     *        always have a clear entry-point on the page itself (the
+     *        header chip, the hero search pill, the "Set my location"
+     *        empty state, the "Get started" promo CTA) — a forced popup
+     *        is unnecessary and intrusive.
+     *        The modal opens ONLY when the user explicitly clicks one
+     *        of those entry-points, via the delegated
+     *        data-action="open-location-modal" handler in
+     *        /js/ui/location-modal.js.
+     */
+    function onReady() {
+        registerServiceWorker();
+        bindMobileMenu();
+        bindNotificationsBell();
+    }
+
+    /**
+     * registerServiceWorker
+     *
+     * What:  Registers /service-worker.js at root scope (the header
+     *        Service-Worker-Allowed: / set in web/index.js makes this
+     *        legal). The SW caches the app shell and is required for the
+     *        PWA "Add to Home Screen" prompt.
+     * Why:   Coding-Conventions / project rule — web is a PWA.
+     */
+    function registerServiceWorker() {
+        if (!('serviceWorker' in navigator)) { return; }
+        // Don't register on http: localhost; browsers allow it on
+        // http://localhost so we don't guard for protocol here.
+        navigator.serviceWorker.register('/service-worker.js').catch(function (err) {
+            if (window.console) { window.console.warn('[sw] register failed', err && err.message); }
+        });
+    }
+
+    /**
+     * bindMobileMenu
+     *
+     * What:  Hooks up the hamburger button in the header to open the
+     *        mobile drawer (views/partials/mobile-drawer.ejs).
+     *        Also binds every [data-action="close-mobile-menu"] surface
+     *        (close button + backdrop) so taps anywhere outside the panel
+     *        dismiss it. Esc on the keyboard closes it too.
+     * Why:   The hamburger has to actually do something on mobile — it is
+     *        the only entry point to Sign in / Sign up / secondary nav
+     *        on small screens (header has room for logo + chip + button).
+     * Type:  WRITE (DOM event bindings).
+     * Inputs: none — looks up the DOM nodes itself.
+     * Output: void.
+     * Used:   Called once from onReady() above.
+     *
+     * Change log:
+     *   2026-05-25 — initial: was a no-op class toggle, now drives the
+     *                full slide-in drawer.
+     */
+    function bindMobileMenu() {
+        var btn    = document.querySelector('[data-action="toggle-mobile-menu"]');
+        var drawer = document.getElementById('mobile-drawer');
+        if (!btn || !drawer) { return; }
+
+        // Inline helpers keep state changes in one place — easy to audit
+        // later when we add transitions or hooks.
+        function open() {
+            drawer.hidden = false;
+            drawer.setAttribute('aria-hidden', 'false');
+            document.body.classList.add('is-mobile-menu-open');
+            btn.setAttribute('aria-expanded', 'true');
+        }
+        function close() {
+            // Move focus out of the drawer BEFORE flipping aria-hidden,
+            // else Chrome warns about aria-hidden on an ancestor of the
+            // focused element. Forwarding focus to the hamburger button
+            // is also good UX — returns the user to where the drawer
+            // was triggered from.
+            var active = document.activeElement;
+            if (active && drawer.contains(active) && typeof active.blur === 'function') {
+                active.blur();
+                btn.focus({ preventScroll: true });
+            }
+
+            drawer.setAttribute('aria-hidden', 'true');
+            document.body.classList.remove('is-mobile-menu-open');
+            btn.setAttribute('aria-expanded', 'false');
+            // Wait for the CSS transition (220ms) before hiding from a11y
+            // tree — that way the slide-out animation actually plays.
+            window.setTimeout(function () {
+                if (drawer.getAttribute('aria-hidden') === 'true') {
+                    drawer.hidden = true;
+                }
+            }, 240);
+        }
+
+        // Hamburger → toggle
+        btn.addEventListener('click', function () {
+            if (drawer.getAttribute('aria-hidden') === 'false') { close(); } else { open(); }
+        });
+
+        // Close button + backdrop (both carry data-action="close-mobile-menu")
+        drawer.querySelectorAll('[data-action="close-mobile-menu"]').forEach(function (el) {
+            el.addEventListener('click', close);
+        });
+
+        // Esc closes when the drawer is open
+        document.addEventListener('keydown', function (ev) {
+            if (ev.key === 'Escape' && drawer.getAttribute('aria-hidden') === 'false') { close(); }
+        });
+
+        // If the viewport grows past the mobile breakpoint (e.g. user
+        // rotates a tablet), close the drawer so the desktop nav can
+        // take over cleanly.
+        var mq = window.matchMedia('(min-width: 768px)');
+        function onBreakpoint(e) { if (e.matches) { close(); } }
+        if (typeof mq.addEventListener === 'function') {
+            mq.addEventListener('change', onBreakpoint);
+        } else if (typeof mq.addListener === 'function') {
+            mq.addListener(onBreakpoint);                  // older Safari
+        }
+    }
+
+    /**
+     * bindNotificationsBell
+     *
+     * What:   Click handler for the header notification bell. Until the
+     *         /notifications page is built, every tap surfaces a friendly
+     *         "coming soon" toast — clearer feedback than a dead link.
+     * Why:    The bell is visually prominent (gold icon + red badge);
+     *         clicking it must do SOMETHING obvious, otherwise users
+     *         think the site is broken.
+     * Type:   WRITE (DOM event binding).
+     * Inputs: none — looks up nodes itself.
+     * Output: void.
+     * Used:   Called once from onReady().
+     *
+     * Change log:
+     *   2026-05-25 — initial.
+     */
+    function bindNotificationsBell() {
+        document.addEventListener('click', function (ev) {
+            var btn = ev.target.closest && ev.target.closest('[data-action="open-notifications"]');
+            if (!btn) { return; }
+            ev.preventDefault();
+            if (window.EatNDealUi && window.EatNDealUi.showToast) {
+                window.EatNDealUi.showToast('info', 'Notifications are coming soon.');
+            }
+        });
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', onReady);
+    } else {
+        onReady();
+    }
+})();

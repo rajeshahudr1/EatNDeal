@@ -1,0 +1,19 @@
+{
+    "name": "EatNDeal",
+    "short_name": "EatNDeal",
+    "description": "Delicious food delivered.",
+    "start_url": "/",
+    "scope": "/",
+    "display": "standalone",
+    "orientation": "portrait",
+    "background_color": "#FFFFFF",
+    "theme_color": "#87C253",
+    "icons": [
+        {
+            "src": "/brand/logo.png",
+            "sizes": "any",
+            "type": "image/png",
+            "purpose": "any"
+        }
+    ]
+}

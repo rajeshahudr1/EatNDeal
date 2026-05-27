@@ -1,0 +1,48 @@
+/*
+ * components/how-step.css
+ *
+ * What:  Styles for the three "How it works" step cards.
+ * Why:   Brief explainer band on the landing page. Each step has a circled
+ *        number, an icon, and a short title + body.
+ * Used:  Imported by base.css.
+ */
+
+.how-step {
+    text-align: center;
+    background-color: var(--color-bg-alt);
+    border-radius: var(--radius-lg);
+    padding: var(--space-8) var(--space-5);
+    position: relative;
+}
+.how-step__num {
+    position: absolute;
+    top: var(--space-4);
+    right: var(--space-4);
+    width: 28px;
+    height: 28px;
+    background-color: var(--color-primary);
+    color: #fff;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    font-weight: 700;
+    font-size: 0.9rem;
+}
+.how-step__icon {
+    width: 64px;
+    height: 64px;
+    margin: 0 auto var(--space-4);
+    border-radius: 50%;
+    background-color: #fff;
+    display: grid;
+    place-items: center;
+    box-shadow: var(--shadow-1);
+}
+.how-step__icon img { width: 60%; height: 60%; object-fit: contain; }
+
+.how-step__title {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin-bottom: var(--space-2);
+}
+.how-step__body { color: var(--color-text-muted); font-size: 0.92rem; }

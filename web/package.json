@@ -1,0 +1,33 @@
+{
+  "name": "eatndeal-web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "EatNDeal Marketplace web PWA — Node + Express + EJS. Talks to api/ only; never to the database.",
+  "main": "index.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node --no-deprecation index.js",
+    "dev": "nodemon --exec \"node --no-deprecation\" index.js"
+  },
+  "dependencies": {
+    "chalk": "^4.1.2",
+    "compression": "^1.7.4",
+    "dotenv": "^16.4.5",
+    "ejs": "^3.1.10",
+    "ejs-locals": "^1.0.2",
+    "express": "^4.19.2",
+    "express-flash": "^0.0.2",
+    "express-session": "^1.18.0",
+    "helmet": "^7.1.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.4"
+  },
+  "overrides": {
+    "ejs-locals": {
+      "ejs": "^3.1.10"
+    }
+  }
+}

@@ -141,3 +141,38 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+.claude/settings.local.json
+
+# ── EatNDeal: api + web local-only runtime data ─────────────────────
+# Everything inside api/ and web/ except their source code stays on
+# the developer's machine. User uploads, on-disk session/cache, secret
+# credentials, OS junk — none of it belongs in git.
+#
+# Note: each folder also has its own nested .gitignore covering the
+# same ground; these root-level entries are the single source of
+# truth so the list is visible in one place.
+
+# api — Node + Express + Knex
+api/uploads/                       # customer-uploaded files (logos, banners, product photos)
+api/runtime/                       # any runtime cache / pid / lock files written by the api
+api/logs/                          # rolled log output (if/when winston is wired)
+api/firebase-service-account.json  # FCM push credentials — never commit
+api/.env                           # secrets (db url, jwt secret, sms api key, oauth secrets)
+
+# web — Node + Express + EJS PWA
+web/runtime/                       # future on-disk session store, cache, etc.
+web/logs/                          # rolled log output
+web/.env                           # secrets (session secret, oauth client secrets, api url)
+
+# OS clutter that appears in both
+api/.DS_Store
+web/.DS_Store
+api/Thumbs.db
+web/Thumbs.db
+ARCHITECTURE-REFERENCE.md
+CODING-CONVENTIONS.md
+EXISTING-CODEBASE.md
+README.md
+web/.env.example
+api/.env.example
+api/.env.example

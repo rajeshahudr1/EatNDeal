@@ -1,0 +1,111 @@
+/*
+ * components/promo-strip.css
+ *
+ * What:  Eye-catching offer band that sits just under the header on every
+ *        page. Solid brand-red background, white text, single CTA pill.
+ * Why:   Matches the EatNDeal mockup which uses one signature red — no
+ *        orange gradient. Stays in flow (not sticky) so the scroll surface
+ *        starts clean.
+ * Used:  Imported by views/_layout.ejs via its own <link> tag.
+ */
+
+/* Solid red strip — the mockup uses a single brand red, no orange gradient. */
+.promo-strip {
+    background-color: var(--color-primary);
+    color: #fff;
+}
+
+.promo-strip__inner {
+    max-width: var(--container-max);
+    margin: 0 auto;
+    padding: var(--space-3) var(--space-4);
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+}
+
+.promo-strip__icon {
+    font-size: 1.25rem;
+    flex: 0 0 auto;
+}
+
+.promo-strip__copy {
+    flex: 1;
+    margin: 0;
+    font-size: 0.95rem;
+    line-height: 1.4;
+}
+.promo-strip__copy strong { font-weight: 700; }
+
+.promo-strip__code {
+    display: inline-block;
+    margin-left: 0.25rem;
+    padding: 0.1rem 0.5rem;
+    background-color: rgba(255, 255, 255, 0.22);
+    border: 1px dashed rgba(255, 255, 255, 0.6);
+    border-radius: var(--radius-sm);
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    font-size: 0.85rem;
+}
+
+.promo-strip__cta {
+    flex: 0 0 auto;
+    padding: 0.55rem 1.1rem;
+    background-color: #fff;
+    color: var(--color-primary-dark);
+    border-radius: var(--radius-md);
+    font-weight: 600;
+    font-size: 0.9rem;
+    transition: transform 80ms ease, box-shadow 120ms ease;
+    white-space: nowrap;
+    /* Same rule renders the CTA whether it's a <button> (no location
+     * yet → opens modal) or an <a href="/"> (location set → reload).
+     * Anchor defaults that need overriding: */
+    text-decoration: none;
+    display: inline-block;
+    border: 0;
+    cursor: pointer;
+}
+.promo-strip__cta:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.18);
+}
+.promo-strip__cta:active { transform: translateY(0); }
+
+/* Mobile — compact single-line strip. Was wrapping to 2 rows which
+ * ate ~80 px of viewport for what's only an upsell. Now:
+ *   icon · short copy (truncated)               CTA
+ * All on one line, tight padding, smaller fonts. */
+@media (max-width: 767px) {
+    .promo-strip__inner {
+        flex-wrap: nowrap;
+        padding: var(--space-2) var(--space-3);
+        gap: var(--space-2);
+    }
+    .promo-strip__icon {
+        font-size: 1rem;
+        order: 1;
+    }
+    .promo-strip__copy {
+        font-size: 0.78rem;
+        line-height: 1.25;
+        flex: 1 1 0;
+        min-width: 0;
+        order: 2;
+        /* Long copy clips with ellipsis instead of pushing to a 2nd row. */
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    .promo-strip__code {
+        font-size: 0.7rem;
+        padding: 0.05rem 0.35rem;
+    }
+    .promo-strip__cta {
+        order: 3;
+        padding: 0.35rem 0.7rem;
+        font-size: 0.78rem;
+        margin-left: 0;
+    }
+}

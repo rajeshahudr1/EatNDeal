@@ -1,0 +1,57 @@
+<%#
+  views/partials/cookie-consent.ejs
+
+  What:  Floating cookie-consent banner shown on first visit. Sits
+         fixed near the bottom of the viewport, above the mobile
+         bottom-nav. Once the user taps "Accept" we set the
+         `eatndeal_consent` cookie (1-year max-age) and the banner
+         never shows again.
+  Why:   Project rule — we use cookies for the session (sign-in JWT,
+         saved delivery location, locale prefs). UK GDPR requires
+         explicit consent before non-essential cookies are set. This
+         banner is the consent surface.
+  Used:  Included from views/_layout.ejs on EVERY page. /js/ui/cookie-
+         consent.js decides whether to render it (toggles `hidden`).
+-%>
+<aside
+    id="cookie-consent"
+    class="cookie-consent"
+    role="dialog"
+    aria-labelledby="cookie-consent-title"
+    aria-describedby="cookie-consent-message"
+    hidden
+>
+    <div class="cookie-consent__inner">
+
+        <%# Bright food-themed emoji — keeps the band cheerful, not
+            heavy. Decorative only (aria-hidden). %>
+        <span class="cookie-consent__icon" aria-hidden="true">🍪</span>
+
+        <div class="cookie-consent__copy">
+            <h2 id="cookie-consent-title" class="cookie-consent__title">Cookies make this site work</h2>
+            <p id="cookie-consent-message" class="cookie-consent__message">
+                We use cookies to remember your delivery location, keep you
+                signed in, and improve EatNDeal. Tap <strong>Accept</strong>
+                to continue, or read more in our
+                <a href="<%= brand.privacyUrl || '/privacy' %>">Privacy Policy</a>.
+            </p>
+        </div>
+
+        <div class="cookie-consent__actions">
+            <button
+                type="button"
+                class="btn btn--ghost btn--sm cookie-consent__reject"
+                data-action="reject-cookies"
+            >
+                Reject
+            </button>
+            <button
+                type="button"
+                class="btn btn--primary btn--sm cookie-consent__accept"
+                data-action="accept-cookies"
+            >
+                Accept
+            </button>
+        </div>
+    </div>
+</aside>

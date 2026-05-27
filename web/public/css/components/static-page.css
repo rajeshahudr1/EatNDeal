@@ -1,0 +1,291 @@
+/*
+ * components/static-page.css
+ *
+ * What:  Styles for the shared static-page template (About, Help,
+ *        Terms, Privacy, Contact, Partner, Ride, Business, Careers).
+ *        One layout, six section types (text / list / faq / steps /
+ *        perks / cta).
+ * Why:   DRY — all 9 marketing/info pages share the same hero +
+ *        section rhythm. Per-page tweaks (rare) target the
+ *        [data-page-slug="..."] body attribute.
+ * Used:  Loaded by views/_layout.ejs via its own <link> tag.
+ */
+
+.static-page {
+    color: var(--color-text);
+}
+
+/* ── Hero band ────────────────────────────────────────────────── */
+
+.static-page__hero {
+    background:
+        radial-gradient(circle at 80% 20%, rgba(229, 37, 42, 0.10), transparent 50%),
+        var(--color-primary-soft);
+    padding: var(--space-12) var(--space-4);
+    border-bottom: 1px solid var(--color-border-soft);
+}
+.static-page__hero-inner {
+    max-width: 880px;
+    margin: 0 auto;
+    text-align: center;
+}
+.static-page__title {
+    font-size: 2.4rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+    margin: 0 0 var(--space-3);
+    color: var(--color-text);
+}
+.static-page__lede {
+    font-size: 1.05rem;
+    color: var(--color-text-muted);
+    max-width: 640px;
+    margin: 0 auto;
+    line-height: 1.5;
+}
+
+/* ── Body container ───────────────────────────────────────────── */
+
+.static-page__body {
+    max-width: 880px;
+    margin: 0 auto;
+    padding: var(--space-10) var(--space-4) var(--space-16);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-10);
+}
+
+/* ── Section primitives ───────────────────────────────────────── */
+
+.static-section { display: block; }
+
+.static-section__heading {
+    font-size: 1.35rem;
+    font-weight: 700;
+    margin: 0 0 var(--space-4);
+    letter-spacing: -0.01em;
+}
+.static-section__heading--centered { text-align: center; }
+
+.static-section__body {
+    font-size: 1rem;
+    line-height: 1.65;
+    color: var(--color-text);
+    margin: 0 0 var(--space-3);
+}
+
+/* ── List section (checklist style) ───────────────────────────── */
+
+.static-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+}
+.static-list__item {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    background-color: var(--color-bg-soft);
+    border-radius: var(--radius-md);
+    font-size: 0.98rem;
+    line-height: 1.5;
+}
+.static-list__bullet {
+    flex: 0 0 auto;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background-color: var(--color-success);
+    color: #fff;
+    display: grid;
+    place-items: center;
+    font-weight: 700;
+    font-size: 0.8rem;
+}
+
+/* ── FAQ accordion (native <details>) ─────────────────────────── */
+
+.static-faq {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+}
+.static-faq__item {
+    background-color: #fff;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+.static-faq__item[open] {
+    border-color: var(--color-primary);
+    box-shadow: 0 4px 12px rgba(229, 37, 42, 0.06);
+}
+.static-faq__q {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    padding: var(--space-4) var(--space-5);
+    font-weight: 600;
+    font-size: 1rem;
+    cursor: pointer;
+    list-style: none;             /* hide default disclosure marker */
+}
+.static-faq__q::-webkit-details-marker { display: none; }   /* WebKit */
+.static-faq__chevron {
+    color: var(--color-text-soft);
+    flex: 0 0 auto;
+    transition: transform 200ms ease;
+}
+.static-faq__item[open] .static-faq__chevron {
+    transform: rotate(180deg);
+    color: var(--color-primary);
+}
+.static-faq__a {
+    margin: 0;
+    padding: 0 var(--space-5) var(--space-5);
+    color: var(--color-text-muted);
+    line-height: 1.6;
+    font-size: 0.95rem;
+}
+
+/* ── Steps (How it works) ─────────────────────────────────────── */
+
+.static-steps {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--space-5);
+    counter-reset: static-step;
+}
+.static-step {
+    position: relative;
+    counter-increment: static-step;
+    padding: var(--space-6) var(--space-5);
+    background-color: var(--color-bg-alt);
+    border-radius: var(--radius-lg);
+    text-align: center;
+}
+.static-step::before {
+    content: counter(static-step);
+    position: absolute;
+    top: var(--space-3);
+    right: var(--space-4);
+    background-color: var(--color-primary);
+    color: #fff;
+    border-radius: 50%;
+    width: 28px;
+    height: 28px;
+    display: grid;
+    place-items: center;
+    font-weight: 800;
+    font-size: 0.85rem;
+}
+.static-step__icon {
+    font-size: 2.2rem;
+    line-height: 1;
+    display: inline-block;
+    margin-bottom: var(--space-3);
+}
+.static-step__title {
+    font-size: 1.05rem;
+    font-weight: 700;
+    margin: 0 0 var(--space-2);
+}
+.static-step__body  { color: var(--color-text-muted); font-size: 0.92rem; line-height: 1.55; }
+
+/* ── Perks (3-up cards) ───────────────────────────────────────── */
+
+.static-perks {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--space-4);
+}
+.static-perk {
+    padding: var(--space-6) var(--space-5);
+    background-color: #fff;
+    border: 1px solid var(--color-border-soft);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-1);
+    transition: transform 120ms ease, box-shadow 120ms ease;
+}
+.static-perk:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-2);
+}
+.static-perk__icon {
+    font-size: 2rem;
+    line-height: 1;
+    display: inline-block;
+    margin-bottom: var(--space-3);
+}
+.static-perk__title { font-size: 1.05rem; font-weight: 700; margin: 0 0 var(--space-2); }
+.static-perk__body  { color: var(--color-text-muted); font-size: 0.92rem; line-height: 1.6; }
+
+/* ── CTA band ─────────────────────────────────────────────────── */
+
+.static-section--cta { margin-top: var(--space-4); }
+.static-cta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-6);
+    padding: var(--space-8) var(--space-8);
+    background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-dark) 100%);
+    color: #fff;
+    border-radius: var(--radius-xl);
+    box-shadow: 0 10px 24px rgba(229, 37, 42, 0.18);
+}
+.static-cta__heading { font-size: 1.4rem; font-weight: 700; margin: 0 0 var(--space-2); letter-spacing: -0.01em; }
+.static-cta__body    { margin: 0; color: rgba(255, 255, 255, 0.92); max-width: 520px; }
+.static-cta .btn--primary {
+    background-color: #fff;
+    color: var(--color-primary-dark);
+}
+.static-cta .btn--primary:hover {
+    background-color: var(--color-bg-alt);
+}
+
+/* ── Mobile (< 768 px) ────────────────────────────────────────── */
+
+@media (max-width: 767px) {
+    .static-page__hero {
+        padding: var(--space-8) var(--space-4);
+    }
+    .static-page__title { font-size: 1.7rem; }
+    .static-page__lede  { font-size: 0.95rem; }
+
+    .static-page__body {
+        padding: var(--space-8) var(--space-4) var(--space-12);
+        gap: var(--space-8);
+    }
+
+    .static-section__heading       { font-size: 1.15rem; }
+    .static-section__heading--centered { text-align: left; }
+
+    .static-steps,
+    .static-perks {
+        grid-template-columns: 1fr;
+    }
+    .static-step,
+    .static-perk { text-align: left; }
+
+    .static-cta {
+        flex-direction: column;
+        align-items: flex-start;
+        padding: var(--space-6);
+    }
+    .static-cta__heading { font-size: 1.2rem; }
+    .static-cta .btn--primary { width: 100%; justify-content: center; }
+}

@@ -1,0 +1,241 @@
+<%#
+  views/partials/header.ejs
+
+  What:  Top navigation bar shown on every page. Composition by viewport:
+           Mobile  → logo (compact) · two-line location · bell · hamburger
+           Desktop → logo · two-line location · primary nav · bell · auth
+  Why:   Matches the food-delivery convention seen in the user's mockup
+         (Zomato / Swiggy / Foodhub):
+           • Two-line location: bold label on top with a chevron-down +
+             smaller address underneath. Most prominent header element
+             since picking the area is the user's primary lever.
+           • Notification bell with red badge on the right.
+         Login is a quiet entry point in the top-right on desktop; on
+         mobile it lives inside the slide-out drawer (toggled by the
+         hamburger) — never a barrier to browsing.
+  Used:  Included from views/_layout.ejs.
+
+  Brand: logo + alt text are dynamic — pulled from res.locals.brand
+         (api/brand.config.js is the single source of truth).
+-%>
+<%
+    // Split the saved location label into a bold TITLE (the first
+    // comma-separated chunk) and a quieter SUB-line (everything else).
+    // Examples:
+    //   "London"                        → title "London",   sub ""
+    //   "Lonemore, IV21 2DB"            → title "Lonemore", sub "IV21 2DB"
+    //   "10 Downing Street, London"     → title "10 Downing Street",
+    //                                     sub "London"
+    // When no location is set yet the chip shows a single-line prompt.
+    var locTitle = '';
+    var locSub   = '';
+    if (user_location && user_location.label) {
+        var locParts = user_location.label.split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+        locTitle = locParts[0] || user_location.label;
+        locSub   = locParts.slice(1).join(', ');
+        if (!locSub && user_location.postcode) {
+            locSub = user_location.postcode;
+        }
+    }
+    // Placeholder unread-notifications count. Wire to a real backed
+    // count once the notifications API lands; for now a small static
+    // hint makes the badge visually meaningful.
+    var notifCount = 0;
+%>
+<header class="site-header" role="banner">
+    <div class="site-header__inner">
+
+        <%# Logo (hidden on mobile by CSS — the mockup uses the freed
+            space for the two-line location). Cache-busted via
+            ?v=ASSET_VERSION so a logo file swap propagates after a
+            server restart. %>
+        <a class="site-header__brand" href="/" aria-label="<%= brand.name %> home">
+            <img
+                class="site-header__logo"
+                src="<%= brand.logoUrl %>?v=<%= ASSET_VERSION %>"
+                alt="<%= brand.name %>"
+            >
+        </a>
+
+        <%# Two-line location chip. Click → opens the full-screen
+            location modal. If no location is set yet the modal also
+            opens automatically on DOM-ready (see /js/app.js +
+            data-has-location on <body>). %>
+        <button
+            type="button"
+            class="site-header__location <%= user_location ? 'has-location' : '' %>"
+            data-action="open-location-modal"
+            aria-label="Change delivery location"
+        >
+            <%# Pin icon — solid red drop-pin, brand red. %>
+            <svg class="site-header__location-pin" aria-hidden="true" width="20" height="20" viewBox="0 0 24 24">
+                <path d="M12 2C7.6 2 4 5.6 4 10c0 5.5 8 12 8 12s8-6.5 8-12c0-4.4-3.6-8-8-8z" fill="#E5252A"/>
+                <circle cx="12" cy="10" r="2.8" fill="#FFFFFF"/>
+            </svg>
+
+            <span class="site-header__location-stack">
+                <span class="site-header__location-title">
+                    <span class="site-header__location-name">
+                        <% if (locTitle) { %>
+                            <%= locTitle %>
+                        <% } else { %>
+                            Set your location
+                        <% } %>
+                    </span>
+                    <%# Chevron-down ▼ — matches the mockup; indicates
+                        "tap to change". %>
+                    <svg class="site-header__location-arrow" aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="6 9 12 15 18 9"/>
+                    </svg>
+                </span>
+                <% if (locSub) { %>
+                    <span class="site-header__location-sub"><%= locSub %></span>
+                <% } %>
+            </span>
+        </button>
+
+        <%# Search box — DESKTOP only (mobile renders its own full-width
+            search row below the header). Live-filters the cuisine row,
+            "For you" dishes and "Popular near you" restaurants as the
+            user types. The data-search-scope attribute lets us toggle
+            search behaviour later (page-filter vs results-overlay).
+            Removed from this slot earlier: Restaurants / Offers / Help
+            links — the user asked to drop them; same content is still
+            reachable from the mobile drawer + footer. %>
+        <form class="site-header__search" role="search" data-no-loader>
+            <svg class="site-header__search-icon" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="11" cy="11" r="7"/>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+            <input
+                type="search"
+                class="site-header__search-input"
+                id="site-search"
+                placeholder="Search for restaurants, dishes and cuisines"
+                autocomplete="off"
+                spellcheck="false"
+                data-search-scope="home"
+            >
+        </form>
+
+        <%# Notification bell. Yellow/gold bell SVG with a red badge in
+            the top-right showing the unread count. data-action wires it
+            to a toast handler in /js/app.js (real /notifications page
+            comes later). Badge is hidden when notifCount is 0. %>
+        <button
+            type="button"
+            class="site-header__bell"
+            data-action="open-notifications"
+            aria-label="Notifications<%= notifCount ? ' — ' + notifCount + ' unread' : '' %>"
+        >
+            <svg class="site-header__bell-icon" aria-hidden="true" width="22" height="22" viewBox="0 0 24 24">
+                <%# Bell body — gold fill, dark outline. %>
+                <path d="M12 3a5 5 0 0 0-5 5v3.5c0 1.3-.5 2.6-1.4 3.5L4 17h16l-1.6-2c-.9-.9-1.4-2.2-1.4-3.5V8a5 5 0 0 0-5-5z" fill="#FFC107" stroke="#5D4037" stroke-width="1.4" stroke-linejoin="round"/>
+                <%# Clapper at the bottom. %>
+                <path d="M10 18a2 2 0 0 0 4 0" fill="none" stroke="#5D4037" stroke-width="1.6" stroke-linecap="round"/>
+                <%# Top knob. %>
+                <circle cx="12" cy="3" r="1" fill="#5D4037"/>
+            </svg>
+            <% if (notifCount > 0) { %>
+                <span class="site-header__bell-badge" aria-hidden="true">
+                    <%= notifCount > 99 ? '99+' : notifCount %>
+                </span>
+            <% } %>
+        </button>
+
+        <%# Auth area — desktop only. Hidden on mobile (the drawer
+            below carries the same options).
+              • Logged out → single "Sign in" CTA (OTP flow handles both
+                new + returning so no separate Sign up button).
+              • Logged in  → click the name chip to open a dropdown with
+                "My profile" + "Log out". The dropdown is toggled by
+                /js/ui/account-menu.js — keyboard accessible, Esc closes,
+                outside-click closes. %>
+        <div class="site-header__auth">
+            <% if (user_session) { %>
+                <div class="account-menu" data-account-menu>
+                    <button
+                        type="button"
+                        class="account-menu__trigger"
+                        data-action="toggle-account-menu"
+                        aria-haspopup="menu"
+                        aria-expanded="false"
+                        aria-controls="account-menu-panel"
+                    >
+                        <span class="account-menu__avatar" aria-hidden="true">
+                            <%= (user_session.firstname || '?').charAt(0).toUpperCase() %>
+                        </span>
+                        <span class="account-menu__name">
+                            <%= user_session.firstname || 'Account' %>
+                        </span>
+                        <svg class="account-menu__caret" aria-hidden="true" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="6 9 12 15 18 9"/>
+                        </svg>
+                    </button>
+
+                    <div
+                        id="account-menu-panel"
+                        class="account-menu__panel"
+                        role="menu"
+                        aria-labelledby="account-menu-trigger"
+                        hidden
+                    >
+                        <%# Header inside the panel — name + masked phone
+                            so the user can confirm they're in the right
+                            account before tapping My profile. %>
+                        <div class="account-menu__head">
+                            <p class="account-menu__head-name">
+                                <%= [user_session.firstname, user_session.lastname].filter(Boolean).join(' ') || 'My account' %>
+                            </p>
+                            <% if (user_session.contact_no) { %>
+                                <p class="account-menu__head-phone">
+                                    +<%= user_session.country_code %> <%= user_session.contact_no %>
+                                </p>
+                            <% } %>
+                        </div>
+
+                        <a href="/account" class="account-menu__item" role="menuitem">
+                            <svg class="account-menu__item-icon" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                                <circle cx="12" cy="7" r="4"/>
+                            </svg>
+                            <span>My profile</span>
+                        </a>
+
+                        <%# Logout — POST so it can't be triggered by a
+                            crafted link / image / accidental hover. %>
+                        <form method="post" action="/logout" class="account-menu__logout-form">
+                            <button type="submit" class="account-menu__item account-menu__item--danger" role="menuitem">
+                                <svg class="account-menu__item-icon" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                                    <polyline points="16 17 21 12 16 7"/>
+                                    <line x1="21" y1="12" x2="9" y2="12"/>
+                                </svg>
+                                <span>Log out</span>
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            <% } else { %>
+                <a href="/signin" class="btn btn--primary btn--sm">Sign in</a>
+            <% } %>
+        </div>
+
+        <%# Mobile-only menu trigger. Opens the slide-out drawer
+            (handled in /js/app.js). %>
+        <button
+            type="button"
+            class="site-header__menu-btn"
+            data-action="toggle-mobile-menu"
+            aria-label="Open menu"
+            aria-expanded="false"
+        >
+            <svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="3"  y1="6"  x2="21" y2="6"/>
+                <line x1="3"  y1="12" x2="21" y2="12"/>
+                <line x1="3"  y1="18" x2="21" y2="18"/>
+            </svg>
+        </button>
+
+    </div>
+</header>

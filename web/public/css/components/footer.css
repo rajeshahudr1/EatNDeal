@@ -1,0 +1,74 @@
+/*
+ * components/footer.css
+ *
+ * What:  Visual styles for the site footer. Layout (column count) lives
+ *        in desktop.css + mobile.css.
+ * Why:   Footer reads as a single clean band — light background, generous
+ *        spacing, small text. Social icons sit inline under the brand.
+ * Used:  Imported by base.css.
+ */
+
+/* margin-top kept tight (space-6 = 24px) so the footer hugs the
+ * content end. Previous value (space-16 = 64px) created a visible
+ * dead-zone between the last section and the footer on every page. */
+.site-footer {
+    background-color: var(--color-bg-alt);
+    border-top: 1px solid var(--color-border-soft);
+    margin-top: var(--space-6);
+}
+
+.site-footer__brand {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-weight: 700;
+    color: var(--color-text);
+    margin-bottom: var(--space-3);
+}
+.site-footer__brand img { border-radius: var(--radius-sm); }
+
+.site-footer__tagline { color: var(--color-text-muted); font-size: 0.9rem; margin-bottom: var(--space-4); max-width: 320px; }
+
+.site-footer__social {
+    display: flex;
+    gap: var(--space-2);
+}
+.site-footer__social a {
+    display: inline-grid;
+    place-items: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background-color: #fff;
+    color: var(--color-text-muted);
+    transition: color 120ms ease, transform 80ms ease;
+}
+.site-footer__social a:hover { color: var(--color-primary); transform: translateY(-1px); }
+
+.site-footer__heading {
+    font-size: 0.95rem;
+    font-weight: 600;
+    margin-bottom: var(--space-3);
+    color: var(--color-text);
+}
+
+/* Scoped to <nav> columns ONLY — the brand column is a plain <div>
+ * so the social-icons <ul> inside it is NOT affected and stays
+ * horizontal (see .site-footer__social above). Bug history: an
+ * unscoped `.site-footer__col ul` rule was stacking the social icons
+ * vertically because it matched both the link-list columns AND the
+ * social list. */
+nav.site-footer__col ul { display: flex; flex-direction: column; gap: var(--space-2); }
+nav.site-footer__col li a {
+    color: var(--color-text-muted);
+    font-size: 0.9rem;
+    transition: color 120ms ease;
+}
+nav.site-footer__col li a:hover { color: var(--color-text); }
+
+.site-footer__bottom {
+    border-top: 1px solid var(--color-border-soft);
+    color: var(--color-text-soft);
+    font-size: 0.8rem;
+}
+.site-footer__copy, .site-footer__build { margin: 0; }

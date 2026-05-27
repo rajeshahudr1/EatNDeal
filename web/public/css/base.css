@@ -1,0 +1,372 @@
+/*
+ * base.css
+ *
+ * What:  Foundation styles loaded on every page UNCONDITIONALLY.
+ *        Includes: CSS reset, self-hosted Poppins @font-face, CSS variables
+ *        (the design tokens — colours, spacing, radius, shadow), base
+ *        typography, button + form primitives, then @imports of every
+ *        per-component stylesheet under components/.
+ * Why:   Single, predictable cascade. Component sheets here, layout in
+ *        desktop.css + mobile.css. Keeps the cascade reviewable.
+ * Used:  Linked from views/_layout.ejs (always).
+ */
+
+/* ── Self-hosted fonts (Coding-Conventions rule #5 — no CDN) ────────── */
+
+@font-face {
+    font-family: 'Poppins';
+    src: url('/fonts/Poppins-Regular.woff2') format('woff2'),
+         url('/fonts/Poppins-Regular.woff')  format('woff');
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+}
+@font-face {
+    font-family: 'Poppins';
+    src: url('/fonts/Poppins-Medium.woff2') format('woff2'),
+         url('/fonts/Poppins-Medium.woff')  format('woff');
+    font-weight: 500;
+    font-style: normal;
+    font-display: swap;
+}
+@font-face {
+    font-family: 'Poppins';
+    src: url('/fonts/Poppins-SemiBold.woff2') format('woff2'),
+         url('/fonts/Poppins-SemiBold.woff')  format('woff');
+    font-weight: 600;
+    font-style: normal;
+    font-display: swap;
+}
+@font-face {
+    font-family: 'Poppins';
+    src: url('/fonts/Poppins-Bold.woff2') format('woff2'),
+         url('/fonts/Poppins-Bold.woff')  format('woff');
+    font-weight: 700;
+    font-style: normal;
+    font-display: swap;
+}
+@font-face {
+    font-family: 'Poppins';
+    src: url('/fonts/Poppins-ExtraBold.woff2') format('woff2'),
+         url('/fonts/Poppins-ExtraBold.woff')  format('woff');
+    font-weight: 800;
+    font-style: normal;
+    font-display: swap;
+}
+
+/* ── Design tokens (CSS variables) ──────────────────────────────────── *
+ * SINGLE SOURCE OF TRUTH for the platform's visual design.
+ *
+ *   • Want to change a colour, spacing step, radius, or shadow? Edit
+ *     the values in the :root block below. Every component reads from
+ *     these variables.
+ *   • Want to rebrand (name, logo)? Edit api/brand.config.js instead —
+ *     that file owns IDENTITY; this file owns DESIGN.
+ *
+ * No JS overrides these tokens at runtime, no env vars, no api fetch —
+ * the design palette is fully owned here, in code, and bumps on the
+ * next browser refresh after a save. */
+
+:root {
+    /* Brand — RED-dominant per the EatNDeal mockups.
+     * Green appears ONLY on veg / success indicators (--color-success below).
+     * The "soft" variant is the pinkish tint used as hero / login background
+     * in the mockup (about 12% opacity of the primary red on white). */
+    --color-primary:       #E5252A;   /* signature red */
+    --color-primary-dark:  #C41E22;   /* hover / pressed state */
+    --color-primary-soft:  #FDE7E8;   /* pink tint — hero + splash background */
+    --color-accent:        #E5252A;   /* same red — one CTA colour throughout the app */
+    --color-accent-dark:   #C41E22;
+
+    /* Neutrals */
+    --color-text:          #1C1C1C;
+    --color-text-muted:    #6B6B6B;
+    --color-text-soft:     #9A9A9A;
+    --color-bg:            #FFFFFF;
+    --color-bg-alt:        #F7F7F8;
+    --color-bg-soft:       #FAFAFB;
+    --color-border:        #E5E7EB;
+    --color-border-soft:   #F1F1F1;
+
+    /* Status */
+    --color-success:       #14A35E;
+    --color-warn:          #F4A100;
+    --color-error:         #E03131;
+    --color-info:          #2E7CF6;
+
+    /* Spacing scale (4-pt) */
+    --space-1:  0.25rem;
+    --space-2:  0.5rem;
+    --space-3:  0.75rem;
+    --space-4:  1rem;
+    --space-5:  1.25rem;
+    --space-6:  1.5rem;
+    --space-8:  2rem;
+    --space-10: 2.5rem;
+    --space-12: 3rem;
+    --space-16: 4rem;
+    --space-20: 5rem;
+
+    /* Radius */
+    --radius-sm:    6px;
+    --radius-md:    10px;
+    --radius-lg:    14px;
+    --radius-xl:    20px;
+    --radius-pill:  999px;
+
+    /* Shadow */
+    --shadow-1: 0 1px 2px rgba(20, 20, 20, 0.04), 0 1px 3px rgba(20, 20, 20, 0.05);
+    --shadow-2: 0 4px 12px rgba(20, 20, 20, 0.06), 0 2px 4px rgba(20, 20, 20, 0.04);
+    --shadow-3: 0 10px 30px rgba(20, 20, 20, 0.10), 0 4px 10px rgba(20, 20, 20, 0.04);
+
+    /* Type */
+    --font-sans: 'Poppins', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+
+    /* Layout */
+    --header-height-desktop: 72px;
+    --header-height-mobile:  64px;
+    --container-max:         1200px;
+
+    /* z-index scale */
+    --z-header:       50;
+    --z-modal:        100;
+    /* Toast sits ABOVE everything — modals, drawers, loader, dialogs.
+     * Otherwise a "saved" / "error" message issued while a modal is
+     * open would render behind the modal and the user wouldn't see
+     * it. 200 leaves headroom for new layers without rearrange. */
+    --z-toast:        200;
+    --z-dialog:       110;
+}
+
+/* ── Reset ──────────────────────────────────────────────────────────── */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+    margin: 0;
+    font-family: var(--font-sans);
+    font-size: 16px;
+    line-height: 1.5;
+    color: var(--color-text);
+    background-color: var(--color-bg);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    /* Safety net — if any descendant element grows wider than the
+     * viewport (an overflowing flex item, a long unbreakable URL, an
+     * iframe), `overflow-x: hidden` clips it instead of letting the
+     * whole page scroll sideways. We pair this with explicit
+     * `width: 100%; box-sizing: border-box` on the elements that can
+     * grow (hero__search, promo-banner) so the content still
+     * displays correctly — this is defence against future regressions. */
+    overflow-x: hidden;
+}
+
+h1, h2, h3, h4, h5, h6, p, ul, ol, figure { margin: 0; padding: 0; }
+
+ul, ol { list-style: none; }
+
+a { color: inherit; text-decoration: none; }
+a:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; border-radius: 4px; }
+
+img, svg { display: block; max-width: 100%; }
+
+button {
+    font: inherit;
+    color: inherit;
+    background: none;
+    border: 0;
+    cursor: pointer;
+}
+
+input, select, textarea {
+    font: inherit;
+    color: inherit;
+}
+
+[hidden] { display: none !important; }
+
+/* ── Layout helpers ─────────────────────────────────────────────────── */
+
+.container {
+    width: 100%;
+    max-width: var(--container-max);
+    margin: 0 auto;
+    padding-left: var(--space-4);
+    padding-right: var(--space-4);
+}
+
+/* No min-height on #app-main — let it size naturally to its content.
+ * The previous calc() forced the page to be at least viewport-minus-
+ * overhead tall even on short pages (login, etc.), leaving a dead
+ * zone above the footer when content was modest. The footer's own
+ * margin-top + padding keeps spacing reasonable. */
+#app-main { }
+
+/* Body lock while the global loader is visible — applied/removed by
+ * /js/ui/loader.js. Prevents the page underneath from scrolling
+ * while the user is waiting on a request. */
+body.is-loading { overflow: hidden; }
+
+/* Live-filter hide class — set by /js/pages/home.js when an item's
+ * text doesn't match the active search query. Important so the
+ * cuisine-row's display:flex doesn't accidentally re-show it. */
+.is-search-hidden { display: none !important; }
+
+/* "No matches" line inside a section when the live filter zeroed
+ * out everything. Lazy-created by the search JS so sections that
+ * always have results never carry extra DOM. */
+.section__empty {
+    color: var(--color-text-soft);
+    font-size: 0.95rem;
+    font-style: italic;
+    margin: var(--space-4) 0 0;
+}
+
+/* Section primitive — used by every landing-page section */
+.section { padding: var(--space-12) var(--space-4); max-width: var(--container-max); margin: 0 auto; }
+.section__head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: var(--space-6); }
+.section__title { font-size: 1.5rem; font-weight: 700; }
+.section__title--centered { text-align: center; margin-bottom: var(--space-8); }
+.section__link { color: var(--color-primary-dark); font-weight: 600; font-size: 0.95rem; }
+.section__link:hover { color: var(--color-primary); }
+
+/* Section load-more block — rendered AFTER each paginated grid
+ * (restaurants + dishes) when the api signals more rows exist.
+ *
+ * Desktop:  centred "See more" button the user clicks to fetch the
+ *           next batch.
+ * Mobile:   button is HIDDEN by /css/mobile.css and replaced by an
+ *           IntersectionObserver in /js/pages/home.js that auto-loads
+ *           the next batch as the wrapper enters the viewport. The
+ *           wrapper itself stays in the DOM so the observer has
+ *           something to watch — it's just visually empty.
+ *
+ * .is-loading swaps the label out for "Loading…" while the fetch
+ * is in flight, preventing double-clicks.
+ */
+.section__loadmore {
+    display: flex;
+    justify-content: center;
+    margin-top: var(--space-6);
+}
+.section__loadmore-btn {
+    min-width: 200px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md, 12px);
+    background: #fff;
+    color: var(--color-text);
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+.section__loadmore-btn:hover {
+    background: var(--color-primary-soft, var(--color-bg-alt));
+    border-color: var(--color-primary);
+    color: var(--color-primary);
+}
+.section__loadmore-btn[disabled],
+.section__loadmore.is-loading .section__loadmore-btn {
+    opacity: 0.6;
+    cursor: progress;
+}
+
+/* ── Buttons ────────────────────────────────────────────────────────── */
+
+/* Buttons — rounded rectangle (~14 px corners) matching the mockup.
+ * The .btn--pill modifier brings back full-pill shape for places where
+ * we still want that (chips, the hero search bar, the bottom nav). */
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    padding: 0.85rem 1.4rem;
+    font-weight: 600;
+    font-size: 0.95rem;
+    line-height: 1;
+    border-radius: var(--radius-lg);
+    transition: background-color 120ms ease, color 120ms ease, transform 80ms ease, box-shadow 120ms ease;
+    cursor: pointer;
+    white-space: nowrap;
+    user-select: none;
+}
+.btn--pill { border-radius: var(--radius-pill); }
+.btn:active { transform: translateY(1px); }
+.btn:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+
+.btn--primary   { background-color: var(--color-primary); color: #fff; }
+.btn--primary:hover { background-color: var(--color-primary-dark); }
+
+.btn--accent    { background-color: var(--color-accent); color: #fff; }
+.btn--accent:hover { background-color: var(--color-accent-dark); }
+
+.btn--secondary { background-color: #fff; color: var(--color-text); border: 1px solid var(--color-border); }
+.btn--secondary:hover { background-color: var(--color-bg-alt); }
+
+.btn--ghost     { background: transparent; color: var(--color-text); }
+.btn--ghost:hover { background-color: var(--color-bg-alt); }
+
+.btn--sm    { padding: 0.45rem 0.9rem; font-size: 0.85rem; }
+.btn--lg    { padding: 0.95rem 1.6rem; font-size: 1rem; }
+.btn--block { width: 100%; }
+
+/* ── Chips ──────────────────────────────────────────────────────────── */
+
+.chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.5rem 0.9rem;
+    border-radius: var(--radius-pill);
+    border: 1px solid var(--color-border);
+    background-color: #fff;
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 120ms ease, border-color 120ms ease;
+}
+.chip:hover { background-color: var(--color-bg-alt); border-color: var(--color-text-soft); }
+
+/* ── Icons ──────────────────────────────────────────────────────────── */
+
+.icon       { width: 18px; height: 18px; flex: 0 0 auto; }
+.icon--sm   { width: 14px; height: 14px; }
+
+/* ── Empty state ────────────────────────────────────────────────────── */
+
+.empty-state {
+    text-align: center;
+    padding: var(--space-12) var(--space-4);
+    background-color: var(--color-bg-alt);
+    border-radius: var(--radius-lg);
+}
+.empty-state__icon {
+    width: 64px;
+    height: 64px;
+    margin: 0 auto var(--space-4);
+    color: var(--color-primary);
+    display: grid;
+    place-items: center;
+    background-color: var(--color-primary-soft);
+    border-radius: 50%;
+}
+.empty-state__title { font-size: 1.1rem; font-weight: 600; margin-bottom: var(--space-2); }
+.empty-state__body  { color: var(--color-text-muted); margin-bottom: var(--space-6); max-width: 480px; margin-left: auto; margin-right: auto; }
+
+/* ── Error pages ────────────────────────────────────────────────────── */
+
+.error-page { padding: var(--space-20) var(--space-4); }
+.error-page__inner { max-width: 560px; margin: 0 auto; text-align: center; }
+.error-page__code  { font-size: 4rem; font-weight: 800; color: var(--color-primary); margin-bottom: var(--space-2); line-height: 1; }
+.error-page__title { font-size: 1.5rem; font-weight: 700; margin-bottom: var(--space-3); }
+.error-page__body  { color: var(--color-text-muted); margin-bottom: var(--space-6); }
+.error-page__details { text-align: left; margin: var(--space-6) 0; padding: var(--space-4); background-color: var(--color-bg-alt); border-radius: var(--radius-md); font-size: 0.85rem; }
+.error-page__details pre { white-space: pre-wrap; word-break: break-word; }
+
+/* ── Component imports removed ─────────────────────────────────────── *
+ * Per-component sheets used to be loaded here via @import url(...).
+ * They are now loaded as separate <link> tags from views/_layout.ejs so
+ * each shows up as its own request in DevTools' Network tab — easier to
+ * debug when something doesn't apply. The load order in _layout.ejs is:
+ * base.css → all components/*.css → desktop.css / mobile.css. */

@@ -1,0 +1,17 @@
+<%#
+  Bullet-list section — optional heading + items array of strings.
+  Used for "What you need" / "Current openings" / similar checklists.
+-%>
+<section class="static-section static-section--list">
+    <% if (section.heading) { %>
+        <h2 class="static-section__heading"><%= section.heading %></h2>
+    <% } %>
+    <ul class="static-list">
+        <% (section.items || []).forEach(function (item) { %>
+            <li class="static-list__item">
+                <span class="static-list__bullet" aria-hidden="true">✓</span>
+                <span><%= item %></span>
+            </li>
+        <% }); %>
+    </ul>
+</section>

@@ -1,0 +1,210 @@
+<%#
+  views/_layout.ejs
+
+  What:  Master layout wrapping every public page. Renders <head> (with
+         brand-driven title + favicon + theme color), the header partial,
+         flash messages, the page body, the footer partial, and the
+         floating partials (location modal + toast container + custom
+         dialog mount point).
+  Why:   Single source of truth for the page shell. Every controller renders
+         a child view with this layout via the _layoutFile local.
+  Used:  ejs-locals picks this when a render call sets `_layoutFile`.
+
+  Notes (Coding-Conventions enforcement):
+   • NO inline <script> blocks      (rule #6)
+   • NO inline <style> blocks       (rule #6)
+   • External CSS only — base + desktop + mobile loaded with media queries (rule #4 + #5)
+   • Brand values come from res.locals.brand (rule "dynamic brand" — set once
+     in api/config/brand.js, reflects everywhere)
+   • Bootstrap config is passed via a single window.boot object built from
+     data-* attributes (no inline JS still — see /js/boot-reader.js)
+-%>
+<!doctype html>
+<html lang="<%= (brand.locale || 'en-GB').split('-')[0] %>">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="<%= brand.primaryColor %>">
+
+    <title><%= page_title ? page_title + ' · ' + brand.name : brand.name + ' — ' + brand.tagline %></title>
+    <meta name="description" content="<%= brand.tagline %>">
+
+    <%# Cache-bust the brand assets with ASSET_VERSION (boot timestamp).
+        Without this, the browser + service worker keep serving the old
+        logo/favicon even after the operator replaces the file on disk —
+        only a server restart is needed to invalidate. -%>
+    <link rel="icon"             href="<%= brand.faviconUrl %>?v=<%= ASSET_VERSION %>" type="image/png">
+    <link rel="apple-touch-icon" href="<%= brand.logoUrl %>?v=<%= ASSET_VERSION %>">
+
+    <%# PWA manifest — installable on Android + iOS (limited) %>
+    <link rel="manifest" href="/manifest.webmanifest">
+
+    <%#
+      External-only stylesheets (CSP rule #6 — no inline <style> blocks).
+      Each component CSS is loaded as its own <link> rather than via an
+      @import chain inside base.css — that way every file is visible in
+      DevTools' Network tab, easier to debug.
+
+      Load order:
+        base.css           → reset, CSS variables, fonts, base typography, buttons, chips
+        components/*.css   → one per component (header / footer / hero / ...)
+        desktop.css        → desktop-only layout (>= 768px) per CODING-CONVENTIONS rule #4
+        mobile.css         → mobile-only  layout (<  768px) per the same rule
+
+      ASSET_VERSION query busts the browser cache on every server restart.
+    -%>
+    <link rel="stylesheet" href="/css/base.css?v=<%= ASSET_VERSION %>">
+
+    <link rel="stylesheet" href="/css/components/header.css?v=<%= ASSET_VERSION %>">
+    <link rel="stylesheet" href="/css/components/mobile-search.css?v=<%= ASSET_VERSION %>">
+    <link rel="stylesheet" href="/css/components/promo-strip.css?v=<%= ASSET_VERSION %>">
+    <link rel="stylesheet" href="/css/components/footer.css?v=<%= ASSET_VERSION %>">
+    <link rel="stylesheet" href="/css/components/hero.css?v=<%= ASSET_VERSION %>">
+    <link rel="stylesheet" href="/css/components/cuisine.css?v=<%= ASSET_VERSION %>">
+    <link rel="stylesheet" href="/css/components/restaurant-card.css?v=<%= ASSET_VERSION %>">
+    <link rel="stylesheet" href="/css/components/dish-card.css?v=<%= ASSET_VERSION %>">
+    <link rel="stylesheet" href="/css/components/how-step.css?v=<%= ASSET_VERSION %>">
+    <link rel="stylesheet" href="/css/components/promo-banner.css?v=<%= ASSET_VERSION %>">
+    <link rel="stylesheet" href="/css/components/location-modal.css?v=<%= ASSET_VERSION %>">
+    <link rel="stylesheet" href="/css/components/toast.css?v=<%= ASSET_VERSION %>">
+    <link rel="stylesheet" href="/css/components/dialog.css?v=<%= ASSET_VERSION %>">
+    <link rel="stylesheet" href="/css/components/loader.css?v=<%= ASSET_VERSION %>">
+    <link rel="stylesheet" href="/css/components/search-overlay.css?v=<%= ASSET_VERSION %>">
+    <link rel="stylesheet" href="/css/components/bottom-nav.css?v=<%= ASSET_VERSION %>">
+    <link rel="stylesheet" href="/css/components/mobile-drawer.css?v=<%= ASSET_VERSION %>">
+    <link rel="stylesheet" href="/css/components/auth-page.css?v=<%= ASSET_VERSION %>">
+    <link rel="stylesheet" href="/css/components/account-menu.css?v=<%= ASSET_VERSION %>">
+    <link rel="stylesheet" href="/css/components/country-picker.css?v=<%= ASSET_VERSION %>">
+    <link rel="stylesheet" href="/css/components/static-page.css?v=<%= ASSET_VERSION %>">
+    <link rel="stylesheet" href="/css/components/cookie-consent.css?v=<%= ASSET_VERSION %>">
+
+    <link rel="stylesheet" href="/css/desktop.css?v=<%= ASSET_VERSION %>" media="(min-width: 768px)">
+    <link rel="stylesheet" href="/css/mobile.css?v=<%= ASSET_VERSION %>"  media="(max-width: 767px)">
+</head>
+<%#
+  <body> data-* attributes carry runtime CONFIG only — no colour fields.
+  Colours live in /css/base.css :root variables (CSS = source of truth
+  for design). Brand identity is rendered as plain text/img by the EJS
+  partials above using res.locals.brand from the api.
+-%>
+<body
+    data-brand-name="<%= brand.name %>"
+    data-currency="<%= brand.currency %>"
+    data-currency-symbol="<%= brand.currencySymbol %>"
+    data-api-url="<%= process.env.API_URL || 'http://localhost:4501' %>"
+    data-has-location="<%= user_location ? 'true' : 'false' %>"
+    data-lat="<%= (user_location && user_location.lat != null) ? user_location.lat : '' %>"
+    data-lng="<%= (user_location && user_location.lng != null) ? user_location.lng : '' %>"
+    data-active-nav="<%= active_nav %>"
+    class="<%= (user_session && !(typeof bare !== 'undefined' && bare)) ? 'has-bottom-nav' : '' %>"
+>
+
+    <%#
+      Page-chrome gate (`bare`).
+        false (default) → full app shell: header, promo strip, bottom-nav,
+                          mobile drawer, footer.
+        true            → focused-flow layout: NO header, NO footer, NO
+                          promo strip, NO bottom-nav, NO drawer.
+                          Used by the multi-step auth pages so the user
+                          sees only the verification card + back button
+                          (matches Zomato / Swiggy / Uber Eats style).
+      Floating partials (toast, dialog mount, cookie consent, location
+      modal) stay rendered in BOTH modes — they're surface-level helpers,
+      not page chrome.
+    -%>
+    <% var __bare = typeof bare !== 'undefined' && bare; %>
+    <% if (!__bare) { %>
+        <%- include('partials/header') -%>
+        <%- include('partials/mobile-search') -%>
+        <% if (typeof show_promo_strip === 'undefined' || show_promo_strip) { %>
+            <%- include('partials/promo-strip') -%>
+        <% } %>
+    <% } %>
+
+    <% if (flash_success || flash_error) { %>
+    <%# Flash messages flow to the toast helper instead of an inline alert div.
+        The toast container is rendered once at the bottom; /js/ui/toast.js
+        reads these data-* attrs on DOM-ready and pops the toast. %>
+    <div
+        id="server-flash"
+        hidden
+        data-flash-success="<%= flash_success || '' %>"
+        data-flash-error="<%= flash_error || '' %>"
+    ></div>
+    <% } %>
+
+    <main id="app-main" role="main">
+        <%#
+          Defensive read of the rendered child view.
+          ejs-locals passes the inner template's HTML as `body` on
+          options.locals. With EJS 3 it is safest to read via
+          `locals.body` (the `body` bare identifier can be undefined in
+          some scopes). The fallback handles the rare case where the
+          layout is rendered standalone with no inner content.
+        -%>
+        <%- locals.body || (typeof body !== 'undefined' ? body : '') -%>
+    </main>
+
+    <% if (!__bare) { %>
+        <%- include('partials/footer') -%>
+    <% } %>
+
+    <%# Floating partials — mount points for the location modal, toast stack
+        and custom confirm dialog (Coding-Conventions rule #8 — no native
+        alert/confirm/prompt). Toast + dialog + cookie-consent render in
+        BOTH normal + bare modes (flash messages, dialog mounts, GDPR
+        prompts are surface-level). Bottom-nav + mobile-drawer + location
+        modal are page chrome — hidden in bare mode. %>
+    <%- include('partials/toast') -%>
+    <%- include('partials/dialog') -%>
+    <%- include('partials/loader') -%>
+    <% if (!__bare) { %>
+        <%- include('partials/search-overlay') -%>
+    <% } %>
+    <%- include('partials/cookie-consent') -%>
+    <% if (!__bare) { %>
+        <%- include('partials/location-modal') -%>
+        <%# Bottom-nav is signed-in chrome only — Home / Search / Cart
+            / Orders / Profile only make sense once the user has an
+            account. Logged-out visitors get a clean home page; the
+            hamburger drawer carries the sign-in entry-point. %>
+        <% if (user_session) { %>
+            <%- include('partials/bottom-nav') -%>
+        <% } %>
+        <%- include('partials/mobile-drawer') -%>
+    <% } %>
+
+    <%#
+      External-only scripts (CSP rule #6). Load order matters:
+      1. boot-reader.js  → reads window-level data attributes into window.boot
+      2. api.js          → defines window.EatNDealApi (used by everything else)
+      3. brand.js        → applies CSS variables from data-brand-* attrs
+      4. ui/*            → toast / dialog / location-modal helpers
+      5. app.js          → orchestrates DOM-ready bindings (last)
+      6. pages/<page>.js → per-page bindings — added in the child view that
+                           needs it. Keep the layout free of page-specific JS.
+    -%>
+    <script defer src="/js/boot-reader.js?v=<%= ASSET_VERSION %>"></script>
+    <script defer src="/js/api.js?v=<%= ASSET_VERSION %>"></script>
+    <script defer src="/js/brand.js?v=<%= ASSET_VERSION %>"></script>
+    <script defer src="/js/ui/toast.js?v=<%= ASSET_VERSION %>"></script>
+    <script defer src="/js/ui/dialog.js?v=<%= ASSET_VERSION %>"></script>
+    <script defer src="/js/ui/loader.js?v=<%= ASSET_VERSION %>"></script>
+    <script defer src="/js/ui/search-overlay.js?v=<%= ASSET_VERSION %>"></script>
+    <script defer src="/js/ui/location-modal.js?v=<%= ASSET_VERSION %>"></script>
+    <script defer src="/js/ui/account-menu.js?v=<%= ASSET_VERSION %>"></script>
+    <script defer src="/js/ui/cookie-consent.js?v=<%= ASSET_VERSION %>"></script>
+    <script defer src="/js/app.js?v=<%= ASSET_VERSION %>"></script>
+
+    <%#
+      Per-page script. The CONTROLLER passes extra_js (string path) as a
+      render local. Do NOT assign extra_js inline from the child view
+      using a scriptlet — with EJS 3 + ejs-locals that assignment does not
+      reliably propagate up to the layout. Defensive typeof check so pages
+      that don't need an extra script simply omit the local.
+    -%>
+    <% if (typeof extra_js !== 'undefined' && extra_js) { %>
+    <script defer src="<%= extra_js %>?v=<%= ASSET_VERSION %>"></script>
+    <% } %>
+</body>
+</html>

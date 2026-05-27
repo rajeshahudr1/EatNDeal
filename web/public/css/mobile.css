@@ -1,0 +1,199 @@
+/*
+ * mobile.css
+ *
+ * What:  Layout + spacing rules for screens < 768px (phones). Loaded only
+ *        when the matchMedia condition is true via the <link media="...">
+ *        attribute in views/_layout.ejs.
+ * Why:   Coding-Conventions rule #4 — separate mobile/desktop CSS files.
+ *        Mobile = single column, horizontally scrolling rows, primary nav
+ *        hidden behind a hamburger, location modal full-screen.
+ * Used:  Linked from views/_layout.ejs with media="(max-width: 767px)".
+ */
+
+/* ── Header (mobile) ────────────────────────────────────────────────── */
+
+/* On mobile the header is NOT sticky. It scrolls away with the rest
+ * of the page so the search bar (which IS sticky, at top:0) and the
+ * cuisines row below it own the top of the screen as the user
+ * scrolls — giving more room for the actual feed. Tapping back at
+ * the top of the page brings the header (with the location chip)
+ * back into view. Desktop keeps its sticky header (it has more
+ * vertical room to spare). */
+.site-header { position: static; }
+
+/* Mobile header columns:
+ *   location (1fr, grows) | bell (auto) | hamburger (auto)
+ * Logo + primary nav + desktop auth-buttons are hidden — the mockup
+ * gives the freed space to the two-line location chip. */
+.site-header__inner {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    align-items: center;
+    gap: var(--space-2);
+    padding: 0 var(--space-3);
+    height: 68px;        /* slightly taller — two-line location needs the room */
+}
+
+.site-header__brand    { display: none; }
+.site-header__nav      { display: none; }
+.site-header__auth     { display: none; }
+.site-header__menu-btn { display: inline-flex; padding: var(--space-2); }
+
+/* The full footer is hidden on mobile per the project decision — all
+ * of its links live inside the mobile drawer instead (see
+ * views/partials/mobile-drawer.ejs). Desktop continues to render the
+ * footer as normal. */
+.site-footer { display: none; }
+
+/* Mobile location chip — slightly tighter than desktop so the bell +
+ * hamburger fit comfortably on narrow phones. */
+.site-header__location       { gap: var(--space-2); padding: 0.25rem 0; }
+.site-header__location-name  { max-width: 40vw; }
+.site-header__location-sub   { max-width: 50vw; font-size: 0.74rem; }
+.site-header__location-title { font-size: 0.95rem; }
+
+/* ── Hero (mobile) ──────────────────────────────────────────────────── */
+
+.hero {
+    padding: var(--space-10) var(--space-4) var(--space-8);
+    background: var(--color-primary-soft);
+    text-align: center;
+}
+.hero__title    { font-size: 1.9rem; line-height: 1.2; }
+.hero__subtitle { font-size: 1rem; color: var(--color-text-muted); margin-top: var(--space-3); }
+.hero__hint     { margin-top: var(--space-3); font-size: 0.8rem; color: var(--color-text-soft); }
+
+/* ── Section spacing (mobile) ───────────────────────────────────────── */
+
+.section { padding: var(--space-8) var(--space-4); }
+.section__title { font-size: 1.15rem; }
+
+/* Mobile auto-loads on scroll — the "See more" button is hidden but
+ * the wrapper stays in the DOM so the IntersectionObserver in
+ * /js/pages/home.js can observe it and trigger the fetch. Using
+ * `display: none` on the wrapper would remove it from layout and
+ * break the observer; we hide the BUTTON only. The wrapper keeps a
+ * small height so the observer can detect entry into the viewport
+ * smoothly as the user scrolls past the last card. */
+.section__loadmore { min-height: 1px; margin-top: var(--space-4); }
+.section__loadmore-btn { display: none; }
+/* While a mobile auto-load is in flight, surface a tiny "Loading…"
+ * line so the user sees that more content is coming. */
+.section__loadmore.is-loading::after {
+    content: 'Loading more…';
+    display: block;
+    text-align: center;
+    color: var(--color-text-muted);
+    font-size: 0.85rem;
+    padding: var(--space-2) 0;
+}
+
+/* ── Cuisines (mobile horizontal scroller) ──────────────────────────── *
+ * On mobile the "What's on your mind?" cuisine row is STICKY — it
+ * glues to the bottom of the site header so the user can flip
+ * between cuisines without scrolling back to the top. The fixed
+ * `top` value matches the mobile header height (the header itself
+ * is position:sticky at top:0); z-index sits one below the header
+ * so a long restaurant name in the scroll content can't visually
+ * cross over the header band.
+ *
+ * Bare-layout auth pages don't render the header AND don't render
+ * the cuisines section at all (it lives in views/site/index.ejs
+ * only), so we don't need a special case for those. */
+.section--cuisines {
+    /* Sticky on mobile — stacks directly under the mobile-search bar
+     * (~56 px) which itself sticks at top:0. So as the user scrolls,
+     * the header band scrolls away but the search bar + cuisines row
+     * stay glued to the top. z-index 40 < mobile-search 45 so the
+     * cuisines scroll cleanly UNDER the search bar at the boundary,
+     * not over it. */
+    position: sticky;
+    top: 56px;
+    z-index: 40;
+    background-color: #fff;
+    padding-top: var(--space-3);
+    padding-bottom: var(--space-2);
+}
+
+/* Hide ONLY the "What's on your mind?" heading + "See all" link on
+ * mobile. The pill row itself stays sticky (above). */
+.section--cuisines .section__head { display: none; }
+
+.cuisine-row {
+    display: flex;
+    gap: var(--space-3);
+    overflow-x: auto;
+    padding-bottom: var(--space-2);
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+}
+.cuisine-row::-webkit-scrollbar { display: none; }
+
+.cuisine-row__item { flex: 0 0 auto; scroll-snap-align: start; width: 56px; }
+
+/* Mobile cuisine pills — 30 % smaller than the desktop default so more
+ * options fit across the viewport and the sticky strip stays compact.
+ *   icon  76 → 54 px
+ *   label 0.85 → 0.72 rem
+ * The desktop sizes still come from components/cuisine.css; we only
+ * shrink them here under the mobile media query. */
+.cuisine-pill__icon { width: 54px; height: 54px; }
+.cuisine-pill__name { font-size: 0.72rem; }
+
+/* ── Restaurant grid (mobile single column) ─────────────────────────── */
+
+.restaurant-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: var(--space-4);
+}
+
+/* ── How it works (mobile stack) ────────────────────────────────────── */
+
+.how-steps {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-6);
+}
+
+/* ── Promo banner (mobile) ──────────────────────────────────────────── */
+
+.promo-banner__inner {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    padding: var(--space-6) var(--space-4);
+    text-align: center;
+}
+.promo-banner__title { font-size: 1.25rem; }
+
+/* ── Footer (mobile) ────────────────────────────────────────────────── */
+
+.site-footer__inner {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-8);
+    padding: var(--space-8) var(--space-4);
+}
+.site-footer__bottom {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    align-items: center;
+    text-align: center;
+    padding: var(--space-4);
+}
+
+/* ── Location modal (mobile = full-screen) ──────────────────────────── */
+
+.location-modal__panel {
+    width: 100vw;
+    height: 100dvh;
+    max-height: 100dvh;
+    margin: 0;
+    border-radius: 0;
+}
+.location-modal__header { padding: var(--space-6) var(--space-4) var(--space-3); }
+.location-modal__body   { padding: 0 var(--space-4) var(--space-8); }
+.location-modal__title  { font-size: 1.35rem; }

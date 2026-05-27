@@ -1,0 +1,210 @@
+/*
+ * components/dish-card.css
+ *
+ * What:  "For you" — horizontal-scrolling row of recommended dishes
+ *        between the cuisines row and the featured-restaurants grid.
+ *        Each card shows a placeholder photo, a small veg-marker on
+ *        veg items, the dish name, the source restaurant, and the
+ *        entry-level price.
+ * Why:   Mirrors the Zomato/Swiggy/Uber-Eats convention — surface
+ *        actual dishes (not just restaurants) on the home feed so
+ *        users can jump straight to "I want THAT" instead of having
+ *        to scan menus.
+ * Used:  Imported by base.css via the layout. Markup lives in
+ *        views/site/index.ejs under .section--for-you.
+ */
+
+.section--for-you .section__head { margin-bottom: var(--space-3); }
+
+/* Horizontal scroller — fits 4 cards comfortably on desktop, scrolls
+ * with snap on mobile so each card lands flush at the start. Hides
+ * the scrollbar but keeps the area scrollable (overflow-x: auto). */
+.dish-row {
+    display: flex;
+    gap: var(--space-4);
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: var(--space-2);
+    margin: 0;
+    list-style: none;
+}
+.dish-row::-webkit-scrollbar { display: none; }
+.dish-row { scrollbar-width: none; }
+
+.dish-row__item {
+    flex: 0 0 auto;
+    width: 180px;
+    scroll-snap-align: start;
+}
+@media (max-width: 767px) {
+    .dish-row__item { width: 150px; }
+}
+
+.dish-card {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    background-color: #fff;
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    box-shadow: var(--shadow-1);
+    color: var(--color-text);
+    text-decoration: none;
+    transition: transform 120ms ease, box-shadow 120ms ease;
+}
+.dish-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-2);
+}
+
+/* Placeholder image block — same data-tint trick as the restaurant
+ * cards (home.js reads data-tint and applies it as background). One
+ * giant initial sits centred behind so cards aren't visually empty. */
+.dish-card__image {
+    position: relative;
+    aspect-ratio: 1 / 1;
+    background-color: var(--color-bg-alt);
+    background-image: linear-gradient(135deg, rgba(255, 255, 255, 0.35), transparent 60%);
+    display: grid;
+    place-items: center;
+}
+.dish-card__initial {
+    font-size: 3rem;
+    font-weight: 800;
+    color: rgba(28, 28, 28, 0.28);
+    letter-spacing: -0.02em;
+    user-select: none;
+}
+
+/* Real product photo layered on top of the placeholder. Same
+ * approach as restaurant cards — absolute-positioned so a hidden
+ * (broken) image causes zero layout shift, letting the placeholder
+ * show through. */
+.dish-card__photo {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    background-color: var(--color-bg-alt);
+}
+
+/* Shared FSSAI-style veg / non-veg marker — a small white square
+ * with a colored border + symbol inside. Two variants:
+ *   .veg-marker--veg     → green border + green dot     (vegetarian)
+ *   .veg-marker--non-veg → red border   + red triangle  (non-vegetarian)
+ * Used by both dish-card images AND restaurant-card images. Pinned
+ * to the top-left of its absolutely-positioned parent. */
+.veg-marker {
+    position: absolute;
+    top: var(--space-2);
+    left: var(--space-2);
+    width: 16px;
+    height: 16px;
+    background-color: #fff;
+    border-width: 1.5px;
+    border-style: solid;
+    border-radius: 3px;
+    display: inline-block;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
+    z-index: 2;            /* sits above the photo overlay */
+}
+.veg-marker--veg          { border-color: var(--color-success); }
+.veg-marker--non-veg      { border-color: var(--color-primary);  }
+
+.veg-marker::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+}
+/* Green-dot fill for veg. */
+.veg-marker--veg::after {
+    width: 7px;
+    height: 7px;
+    background-color: var(--color-success);
+    border-radius: 50%;
+}
+/* Red triangle (point up) for non-veg — drawn via borders so we
+ * don't need an SVG asset just for this. */
+.veg-marker--non-veg::after {
+    width: 0;
+    height: 0;
+    border-left:   5px solid transparent;
+    border-right:  5px solid transparent;
+    border-bottom: 8px solid var(--color-primary);
+    transform: translate(-50%, -40%);
+}
+
+/* Back-compat alias — older calls (none now after this refactor)
+ * that still use .dish-card__veg-marker resolve to the veg variant. */
+.dish-card__veg-marker {
+    /* Inherits everything from .veg-marker; kept here in case any
+     * stale markup re-appears during a partial deploy. */
+}
+
+.dish-card__body {
+    padding: var(--space-3);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    flex: 1;
+}
+.dish-card__name {
+    font-size: 0.95rem;
+    font-weight: 600;
+    margin: 0;
+    /* Two-line clamp so cards stay the same height regardless of
+     * dish-name length. -webkit-line-clamp is the only widely-shipped
+     * cross-browser clamp; the `-webkit` prefix is the standard
+     * spelling now (CSS WG accepted it). */
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    line-height: 1.3;
+    min-height: 2.5em;
+}
+.dish-card__from {
+    font-size: 0.78rem;
+    color: var(--color-text-muted);
+    margin: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+/* Rating + time row — visually identical to the restaurant-card
+ * meta row so users read both surfaces the same way (gold pill
+ * with a star + dark text on the rating, muted minutes label on
+ * the right). Same paddings / sizes / colours / icon dimensions as
+ * .restaurant-card__rating + .restaurant-card__time. */
+.dish-card__meta {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    margin-top: var(--space-2);
+    font-size: 0.85rem;
+    color: var(--color-text-muted);
+}
+.dish-card__rating {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.2rem 0.55rem;
+    background-color: #FFB400;
+    color: #1C1C1C;
+    border-radius: var(--radius-sm);
+    font-weight: 700;
+    font-size: 0.8rem;
+}
+.dish-card__rating svg { color: #1C1C1C; }
+.dish-card__time { white-space: nowrap; }
+
+.dish-card__price {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--color-primary-dark);
+    margin: var(--space-2) 0 0;
+}

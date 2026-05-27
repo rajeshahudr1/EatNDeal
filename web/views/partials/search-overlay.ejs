@@ -1,0 +1,115 @@
+<%#
+  views/partials/search-overlay.ejs
+
+  What:  Zomato-style search overlay. Opens when the user focuses one
+         of the home-page search inputs (desktop header search or the
+         mobile sticky search bar). Mobile is full-screen; desktop
+         renders as a centred floating panel.
+
+         Three states inside the overlay:
+           1. EMPTY    — recent searches + a full grid of
+                          "What's on your mind?" categories
+           2. TYPING   — vertical list of matching categories +
+                          dishes + restaurants
+           3. SELECTED — overlay closes, home grid filters to the
+                          picked category (search-overlay.js handles
+                          the URL + filter handshake)
+
+         Everything inside the overlay is rendered by JS at runtime
+         from /api/v1/marketplace/categories (initial grid) and
+         /api/v1/marketplace/search (live results). This partial only
+         provides the empty mount points.
+  Why:   Matches the exact UX the user shared in the Zomato
+         screenshots — single tap on the search input expands to a
+         dedicated search surface so the user has the full screen
+         to scan results.
+  Used:  Included from views/_layout.ejs.
+-%>
+<div
+    id="search-overlay"
+    class="search-overlay"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="search-overlay-input"
+    aria-hidden="true"
+    hidden
+>
+    <div class="search-overlay__backdrop" data-action="close-search" aria-hidden="true"></div>
+
+    <div class="search-overlay__panel" role="document">
+        <%# Sticky head — back button + the active search input + clear button.
+            The input here is the SINGLE source of truth while the
+            overlay is open. /js/ui/search-overlay.js mirrors its value
+            to the home-page inputs (header / mobile sticky bar) when
+            the overlay closes, so the user sees what they searched
+            for sitting in the page input after dismissal. %>
+        <div class="search-overlay__head">
+            <button type="button" class="search-overlay__back" data-action="close-search" aria-label="Close search">
+                <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="19" y1="12" x2="5" y2="12"/>
+                    <polyline points="12 19 5 12 12 5"/>
+                </svg>
+            </button>
+            <div class="search-overlay__inputwrap">
+                <input
+                    type="search"
+                    id="search-overlay-input"
+                    class="search-overlay__input"
+                    placeholder="Restaurant name or a dish…"
+                    autocomplete="off"
+                    spellcheck="false"
+                >
+                <button type="button" class="search-overlay__clear" data-action="clear-search" aria-label="Clear search" hidden>
+                    <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="18" y1="6"  x2="6"  y2="18"/>
+                        <line x1="6"  y1="6"  x2="18" y2="18"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
+
+        <div class="search-overlay__body">
+
+            <%# EMPTY STATE — recent searches + full categories grid %>
+            <div class="search-overlay__empty" id="search-overlay-empty">
+
+                <%# Recent searches — list lives in localStorage. The
+                    "Clear" button wipes the list. Hidden when nothing
+                    has been searched yet. %>
+                <section class="search-overlay__section" id="search-overlay-recent" hidden>
+                    <div class="search-overlay__section-head">
+                        <h3 class="search-overlay__section-title">Your recent searches</h3>
+                        <button type="button" class="search-overlay__clear-recents" data-action="clear-recents">Clear</button>
+                    </div>
+                    <div class="search-overlay__recent-row" id="search-overlay-recent-list"></div>
+                </section>
+
+                <%# Categories grid — "What's on your mind?". Fetched
+                    once from /api/v1/marketplace/categories on first
+                    open and cached for the rest of the session. Item
+                    template (filled by JS):
+                        <a class="search-overlay__tile" data-search-name="…">
+                            <span class="search-overlay__tile-image"…><img / initial …></span>
+                            <span class="search-overlay__tile-name">Pizza</span>
+                        </a>
+                %>
+                <section class="search-overlay__section">
+                    <h3 class="search-overlay__section-title">What's on your mind?</h3>
+                    <div class="search-overlay__grid" id="search-overlay-grid"></div>
+                </section>
+
+            </div>
+
+            <%# TYPING STATE — vertical list of matching category /
+                dish / restaurant rows. Hidden until the user types
+                at least 2 characters. Rebuilt every keystroke. %>
+            <ul class="search-overlay__results" id="search-overlay-results" hidden></ul>
+
+            <%# NO-MATCH STATE — shown when the typed query returned
+                no categories, dishes, or restaurants at all. %>
+            <p class="search-overlay__nomatch" id="search-overlay-nomatch" hidden>
+                Nothing matches that search.
+            </p>
+        </div>
+    </div>
+</div>

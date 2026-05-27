@@ -1,0 +1,195 @@
+/*
+ * components/account-menu.css
+ *
+ * What:  Styles for the desktop header account dropdown (the name chip
+ *        in the top-right + the panel it opens). Hidden on mobile —
+ *        the mobile drawer carries the same options.
+ * Why:   Logged-in users need a one-click path to "My profile" and
+ *        "Log out" without leaving the page. A small dropdown beats
+ *        another visit to the drawer.
+ * Used:  Loaded by views/_layout.ejs via its own <link> tag. Rendered
+ *        by views/partials/header.ejs.
+ */
+
+.account-menu {
+    position: relative;
+}
+
+/* ── Trigger (the name chip) ─────────────────────────────────── */
+
+.account-menu__trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: 0.35rem 0.65rem 0.35rem 0.35rem;
+    background-color: #fff;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-pill);
+    color: var(--color-text);
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 0.9rem;
+    transition: border-color 120ms ease, box-shadow 120ms ease, background-color 120ms ease;
+}
+.account-menu__trigger:hover,
+.account-menu.is-open .account-menu__trigger {
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 2px rgba(229, 37, 42, 0.15);
+}
+.account-menu__trigger:focus { outline: none; }
+.account-menu__trigger:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 3px;
+}
+
+.account-menu__avatar {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background-color: var(--color-primary);
+    color: #fff;
+    font-size: 0.85rem;
+    font-weight: 700;
+    flex: 0 0 auto;
+}
+
+.account-menu__name {
+    max-width: 12ch;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.account-menu__caret {
+    color: var(--color-text-soft);
+    flex: 0 0 auto;
+    transition: transform 120ms ease;
+}
+.account-menu.is-open .account-menu__caret {
+    transform: rotate(180deg);
+}
+
+/* ── Panel ───────────────────────────────────────────────────── */
+
+.account-menu__panel {
+    position: absolute;
+    top: calc(100% + var(--space-2));
+    right: 0;
+    min-width: 240px;
+    background-color: #fff;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-3);
+    padding: var(--space-2);
+    z-index: 60;
+    /* Subtle entrance — slides down 4px while fading in. */
+    animation: account-menu-fade 140ms ease;
+}
+
+@keyframes account-menu-fade {
+    from { opacity: 0; transform: translateY(-4px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+.account-menu__head {
+    padding: var(--space-3) var(--space-3) var(--space-2);
+    border-bottom: 1px solid var(--color-border);
+    margin-bottom: var(--space-2);
+}
+.account-menu__head-name {
+    margin: 0;
+    font-weight: 700;
+    color: var(--color-text);
+    font-size: 0.95rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.account-menu__head-phone {
+    margin: 2px 0 0;
+    color: var(--color-text-soft);
+    font-size: 0.82rem;
+}
+
+/* ── Items ───────────────────────────────────────────────────── */
+
+/* Reset for the wrapped <form> so it doesn't add stray spacing. */
+.account-menu__logout-form {
+    margin: 0;
+    padding: 0;
+}
+
+.account-menu__item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    width: 100%;
+    padding: 0.65rem var(--space-3);
+    background: none;
+    border: 0;
+    border-radius: var(--radius-md);
+    text-align: left;
+    color: var(--color-text);
+    text-decoration: none;
+    font-size: 0.95rem;
+    cursor: pointer;
+    transition: background-color 100ms ease, color 100ms ease;
+}
+.account-menu__item:hover,
+.account-menu__item:focus-visible {
+    background-color: var(--color-primary-soft);
+    color: var(--color-primary-dark);
+    outline: none;
+}
+
+.account-menu__item-icon {
+    color: var(--color-text-soft);
+    flex: 0 0 auto;
+}
+.account-menu__item:hover .account-menu__item-icon,
+.account-menu__item:focus-visible .account-menu__item-icon {
+    color: var(--color-primary);
+}
+
+.account-menu__item--danger {
+    color: var(--color-primary);
+}
+.account-menu__item--danger .account-menu__item-icon {
+    color: var(--color-primary);
+}
+.account-menu__item--danger:hover,
+.account-menu__item--danger:focus-visible {
+    background-color: var(--color-primary);
+    color: #fff;
+}
+.account-menu__item--danger:hover .account-menu__item-icon,
+.account-menu__item--danger:focus-visible .account-menu__item-icon {
+    color: #fff;
+}
+
+/* ── Account-page phone display ──────────────────────────────── */
+/*  Used by views/account/index.ejs for the read-only mobile number.  */
+
+.account-phone {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--color-text);
+    letter-spacing: 0.01em;
+}
+
+.account-logout {
+    margin-top: var(--space-6);
+}
+
+/* ── Mobile: hide the trigger entirely ───────────────────────── */
+/* The mobile drawer already shows account + logout; we don't want two
+ * places at once.                                                    */
+@media (max-width: 767px) {
+    .account-menu {
+        display: none;
+    }
+}

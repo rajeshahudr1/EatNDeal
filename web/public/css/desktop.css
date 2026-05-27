@@ -1,0 +1,127 @@
+/*
+ * desktop.css
+ *
+ * What:  Layout + spacing rules for screens ≥ 768px (tablets + laptops +
+ *        desktops). Loaded only when the matchMedia condition is true via
+ *        the <link media="..."> attribute in views/_layout.ejs.
+ * Why:   Coding-Conventions rule #4 — separate mobile/desktop CSS files,
+ *        not one shrinking theme. Desktop = wide hero, multi-column grid,
+ *        full primary nav visible, footer in 4 columns.
+ * Used:  Linked from views/_layout.ejs with media="(min-width: 768px)".
+ */
+
+/* ── Header (desktop) ───────────────────────────────────────────────── */
+
+/* Desktop header columns:
+ *   logo │ location │ primary-nav (fills) │ bell │ auth-buttons
+ * The hamburger is hidden — desktop uses the inline nav. */
+.site-header__inner {
+    display: grid;
+    grid-template-columns: auto auto 1fr auto auto;
+    align-items: center;
+    gap: var(--space-5);
+    padding: 0 var(--space-6);
+    height: var(--header-height-desktop);
+    max-width: var(--container-max);
+    margin: 0 auto;
+}
+
+.site-header__nav      { display: flex; gap: var(--space-6); justify-content: flex-end; }
+.site-header__menu-btn { display: none; }
+
+/* ── Hero (desktop) ─────────────────────────────────────────────────── */
+
+.hero {
+    padding: var(--space-20) var(--space-4);
+    background:
+        radial-gradient(circle at 15% 20%, var(--color-primary-soft), transparent 50%),
+        radial-gradient(circle at 85% 80%, rgba(255, 107, 53, 0.10), transparent 50%);
+}
+.hero__inner    { max-width: 760px; margin: 0 auto; text-align: center; }
+.hero__title    { font-size: 3.2rem; font-weight: 800; line-height: 1.1; margin-bottom: var(--space-5); }
+.hero__subtitle { font-size: 1.15rem; color: var(--color-text-muted); max-width: 580px; margin-left: auto; margin-right: auto; }
+.hero__hint     { margin-top: var(--space-3); color: var(--color-text-soft); font-size: 0.85rem; }
+
+/* ── Cuisines (desktop) ─────────────────────────────────────────────── */
+
+/* Single horizontal-scroll row on desktop, just like mobile. The old
+ * 8-column grid wrapped to a second row once the merchant added a
+ * 9th category — switching to overflow-x:auto keeps everything on
+ * one line and gives the user a familiar swipe-style scroller. The
+ * scrollbar is hidden visually (still scrollable via wheel / drag /
+ * touchpad) — the cards themselves invite the gesture. */
+.cuisine-row {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: var(--space-5);
+    overflow-x: auto;
+    padding-bottom: var(--space-2);
+    scroll-snap-type: x mandatory;
+    scrollbar-width: none;
+}
+.cuisine-row::-webkit-scrollbar { display: none; }
+.cuisine-row__item {
+    flex: 0 0 auto;
+    scroll-snap-align: start;
+    width: 100px;
+}
+
+/* ── Restaurant grid (desktop) ──────────────────────────────────────── */
+
+.restaurant-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: var(--space-5);
+}
+
+/* ── How it works (desktop) ─────────────────────────────────────────── */
+
+.how-steps {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--space-6);
+    max-width: 1000px;
+    margin: 0 auto;
+}
+
+/* ── Promo banner (desktop) ─────────────────────────────────────────── */
+
+.promo-banner__inner {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: var(--space-8);
+    padding: var(--space-10) var(--space-12);
+}
+.promo-banner__title { font-size: 1.75rem; }
+
+/* ── Footer (desktop) ───────────────────────────────────────────────── */
+
+.site-footer__inner {
+    display: grid;
+    grid-template-columns: 1.5fr 1fr 1fr 1fr;
+    gap: var(--space-10);
+    padding: var(--space-12) var(--space-6);
+    max-width: var(--container-max);
+    margin: 0 auto;
+}
+.site-footer__bottom {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--space-4) var(--space-6);
+    max-width: var(--container-max);
+    margin: 0 auto;
+}
+
+/* ── Location modal (desktop) ───────────────────────────────────────── */
+
+.location-modal__panel {
+    width: min(560px, 92vw);
+    max-height: 88vh;
+    margin: 6vh auto;
+    border-radius: var(--radius-xl);
+}
+.location-modal__header { padding: var(--space-8) var(--space-8) var(--space-4); }
+.location-modal__body   { padding: 0 var(--space-8) var(--space-8); }
+.location-modal__title  { font-size: 1.6rem; }

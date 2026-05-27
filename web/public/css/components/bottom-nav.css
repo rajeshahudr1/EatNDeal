@@ -1,0 +1,99 @@
+/*
+ * components/bottom-nav.css
+ *
+ * What:  Mobile-only fixed bottom navigation. Five evenly-spaced tabs,
+ *        each with a 26 px multi-colour SVG icon and a tiny label.
+ *        Active tab is marked by the LABEL turning red — icons keep
+ *        their own palette to match the food-delivery reference mockup.
+ * Why:   Matches the Zomato / Swiggy / Foodhub mobile-app convention.
+ *        Lets users hop between primary destinations from any screen.
+ *        Desktop hides this nav (desktop uses the header nav instead).
+ * Used:  Loaded by views/_layout.ejs via its own <link> tag.
+ */
+
+.bottom-nav {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 60;
+    background-color: #fff;
+    border-top: 1px solid var(--color-border);
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    padding-bottom: env(safe-area-inset-bottom, 0);
+    box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.bottom-nav__item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding: 0.5rem var(--space-1) 0.4rem;
+    color: var(--color-text-muted);
+    text-decoration: none;
+    transition: color 100ms ease;
+}
+
+/* Icons are NATIVE EMOJI CHARACTERS (🏠 🔍 🛒 📋 👤 — exactly what the
+ * reference mockup uses). We force the OS colour-emoji font so the
+ * glyphs render in their native multi-colour form on every platform
+ * (iOS, Windows, Android). Sized 24 px so the icon reads cleanly on
+ * a phone without crowding the label below it. */
+.bottom-nav__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    flex: 0 0 auto;
+    font-size: 24px;
+    line-height: 1;
+    font-family:
+        'Apple Color Emoji',
+        'Segoe UI Emoji',
+        'Noto Color Emoji',
+        'Twemoji Mozilla',
+        sans-serif;
+    /* Lock the emoji to its colour presentation. Some Windows builds
+     * accidentally render certain emojis as monochrome text otherwise. */
+    font-variant-emoji: emoji;
+}
+
+.bottom-nav__label {
+    font-size: 0.7rem;
+    font-weight: 500;
+    line-height: 1;
+}
+
+/* Active tab — ONLY the label turns red (matches the reference: the
+ * Home icon stays its red-roof / green-door palette, the word "Home"
+ * underneath goes red + heavier). */
+.bottom-nav__item.is-active {
+    color: var(--color-primary);
+}
+.bottom-nav__item.is-active .bottom-nav__label {
+    color: var(--color-primary);
+    font-weight: 700;
+}
+
+/* Desktop hides the bottom nav — desktop layout uses the header nav. */
+@media (min-width: 768px) {
+    .bottom-nav { display: none; }
+}
+
+/* Reserve scroll-room at the bottom of the page on mobile so the
+ * fixed bottom-nav never overlaps the last line of content.
+ *
+ * History: this padding used to live on .site-footer because the
+ * last section visible on mobile was always the footer. Now that
+ * the mobile footer is hidden (links moved into the drawer), the
+ * clearance has to sit on #app-main instead. We gate it on
+ * `.has-bottom-nav` (set on <body> when the user is signed in) so
+ * logged-out pages don't carry an unnecessary 76 px void at the end
+ * of the feed. */
+@media (max-width: 767px) {
+    body.has-bottom-nav #app-main { padding-bottom: 76px; }
+}

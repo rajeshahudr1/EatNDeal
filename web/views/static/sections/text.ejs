@@ -1,0 +1,18 @@
+<%#
+  Text section — optional heading, then a single body paragraph OR an
+  array of paragraphs (`bodies`). Used for prose-heavy pages (About,
+  Terms, Privacy).
+-%>
+<section class="static-section static-section--text">
+    <% if (section.heading) { %>
+        <h2 class="static-section__heading"><%= section.heading %></h2>
+    <% } %>
+    <% if (section.body) { %>
+        <p class="static-section__body"><%= section.body %></p>
+    <% } %>
+    <% if (Array.isArray(section.bodies)) { %>
+        <% section.bodies.forEach(function (p) { %>
+            <p class="static-section__body"><%= p %></p>
+        <% }); %>
+    <% } %>
+</section>

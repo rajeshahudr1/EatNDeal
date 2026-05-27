@@ -1,0 +1,31 @@
+<%#
+  views/partials/dialog.ejs
+
+  What:  Mount point for the custom confirm / alert dialog component. Hidden
+         at first render; /js/ui/dialog.js fills the .dialog__title /
+         .dialog__message / .dialog__actions and toggles `hidden`.
+  Why:   Coding-Conventions rule #8 — never use window.confirm/prompt/alert.
+         Every confirmation in the app goes through this dialog.
+  Used:  Included from views/_layout.ejs (rendered once per page).
+-%>
+<div
+    id="dialog-root"
+    class="dialog"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="dialog-title"
+    aria-describedby="dialog-message"
+    aria-hidden="true"
+    hidden
+>
+    <div class="dialog__backdrop" data-action="cancel-dialog" aria-hidden="true"></div>
+
+    <div class="dialog__panel" role="document">
+        <h2 id="dialog-title"   class="dialog__title"></h2>
+        <p  id="dialog-message" class="dialog__message"></p>
+        <div class="dialog__actions">
+            <button type="button" class="btn btn--ghost"   data-action="cancel-dialog">Cancel</button>
+            <button type="button" class="btn btn--primary" data-action="confirm-dialog">Confirm</button>
+        </div>
+    </div>
+</div>

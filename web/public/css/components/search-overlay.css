@@ -1,0 +1,412 @@
+/*
+ * components/search-overlay.css
+ *
+ * What:  Styles for the Zomato-style search overlay. Two layouts:
+ *          • Mobile (<768)  → full-screen panel covering the page
+ *          • Desktop (≥768) → centred floating card with backdrop
+ *
+ *        Visual states inside the panel:
+ *          • Empty   — recent-searches chip row + categories grid
+ *          • Typing  — vertical list of result rows
+ *          • No-match — italic "nothing matches" line
+ *
+ * Why:   Single source of styles for the overlay so the partial markup
+ *        stays content-only.
+ * Used:  Loaded by views/_layout.ejs. Markup mount lives in
+ *        views/partials/search-overlay.ejs.
+ */
+
+/* ───────────────────────────────────────────────────────────────
+ * Container — fixed over everything, fades in/out via opacity.
+ * ─────────────────────────────────────────────────────────────── */
+
+.search-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 110;             /* above the loader (120 is loader), below toast (200) — wait, loader is 120. */
+    display: flex;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 160ms ease;
+}
+.search-overlay[aria-hidden="false"] {
+    pointer-events: auto;
+    opacity: 1;
+}
+
+/* Translucent backdrop — clicking it closes the overlay. */
+.search-overlay__backdrop {
+    position: absolute;
+    inset: 0;
+    background-color: rgba(20, 20, 20, 0.45);
+}
+
+/* Inner panel — mobile fills the screen, desktop floats. */
+.search-overlay__panel {
+    position: relative;
+    background-color: #fff;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    width: 100%;
+    height: 100dvh;
+    transform: translateY(8px);
+    transition: transform 200ms ease;
+    box-shadow: var(--shadow-3);
+}
+.search-overlay[aria-hidden="false"] .search-overlay__panel {
+    transform: translateY(0);
+}
+
+/* Desktop: NOT a full-screen popup any more — render as an inline
+ * autocomplete-style dropdown anchored just below the header. No
+ * backdrop, no centred card. The user keeps typing in the header
+ * search input above, and the results list appears below it. */
+@media (min-width: 768px) {
+    .search-overlay {
+        padding: 0;
+        pointer-events: none;     /* let clicks through the empty top area */
+    }
+    .search-overlay[aria-hidden="false"] {
+        pointer-events: none;     /* container stays click-through */
+    }
+    .search-overlay[aria-hidden="false"] .search-overlay__panel {
+        pointer-events: auto;     /* but the panel itself accepts clicks */
+    }
+    /* No dim on desktop — the dropdown shouldn't visually disconnect
+     * from the page underneath. */
+    .search-overlay__backdrop { display: none; }
+    /* Hide the overlay's own input row on desktop — typing happens in
+     * the HEADER search input instead. The overlay just shows results
+     * below. (Mobile keeps the head so the user has a back button +
+     * input ready to type into in the full-screen view.) !important
+     * because the partial markup may move + an earlier (cached) CSS
+     * version could re-show it without it. */
+    .search-overlay__head { display: none !important; }
+
+    /* True autocomplete behaviour: only the typed-results list shows
+     * — no categories grid, no recent searches. The JS refuses to
+     * open the dropdown until the user has typed at least 2 chars,
+     * so a focused-but-empty input doesn't pop a panel. */
+    .search-overlay__empty { display: none; }
+
+    /* On desktop the panel is anchored directly below the header
+     * search input via JS (/js/ui/search-overlay.js sets the
+     * left/top/width inline). We just declare the visual styles +
+     * `position: fixed`; the geometry is set at runtime so the panel
+     * always lines up with the input even after scroll / resize /
+     * a logo swap that shifts the header layout. */
+    .search-overlay__panel {
+        position: fixed;
+        height: auto;
+        max-height: calc(100dvh - 100px);
+        border-radius: var(--radius-lg);
+        box-shadow: var(--shadow-3);
+        border: 1px solid var(--color-border);
+        /* No transform — JS sets left/top in px directly. */
+        transform: none;
+    }
+    /* Body padding tightens slightly so the dropdown doesn't waste
+     * height on a desktop screen. */
+    .search-overlay__body {
+        padding: var(--space-2) var(--space-4) var(--space-3);
+    }
+}
+
+/* ───────────────────────────────────────────────────────────────
+ * Head — back button + input + clear
+ * ─────────────────────────────────────────────────────────────── */
+
+.search-overlay__head {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-3) var(--space-4);
+    border-bottom: 1px solid var(--color-border-soft);
+    background-color: #fff;
+    flex: 0 0 auto;
+}
+
+.search-overlay__back {
+    width: 40px;
+    height: 40px;
+    display: grid;
+    place-items: center;
+    color: var(--color-primary);
+    background-color: transparent;
+    border: 0;
+    border-radius: 50%;
+    cursor: pointer;
+    transition: background-color 120ms ease;
+}
+.search-overlay__back:hover { background-color: var(--color-primary-soft); }
+
+.search-overlay__inputwrap {
+    flex: 1;
+    min-width: 0;
+    position: relative;
+    display: flex;
+    align-items: center;
+    background-color: var(--color-bg-alt);
+    border-radius: var(--radius-pill);
+    padding: 0 var(--space-3);
+    border: 1px solid var(--color-border);
+    transition: border-color 120ms ease, background-color 120ms ease;
+}
+.search-overlay__inputwrap:focus-within {
+    background-color: #fff;
+    border-color: var(--color-primary);
+}
+
+.search-overlay__input {
+    flex: 1;
+    min-width: 0;
+    padding: 0.7rem 0;
+    border: 0;
+    background: transparent;
+    outline: none;
+    font-size: 1rem;
+    color: var(--color-text);
+}
+.search-overlay__input::placeholder { color: var(--color-text-soft); }
+.search-overlay__input::-webkit-search-cancel-button,
+.search-overlay__input::-webkit-search-decoration {
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+.search-overlay__clear {
+    width: 28px;
+    height: 28px;
+    display: grid;
+    place-items: center;
+    color: var(--color-text-soft);
+    background-color: transparent;
+    border: 0;
+    border-radius: 50%;
+    cursor: pointer;
+    transition: background-color 120ms ease, color 120ms ease;
+}
+.search-overlay__clear:hover {
+    background-color: var(--color-border);
+    color: var(--color-text);
+}
+
+/* ───────────────────────────────────────────────────────────────
+ * Body — scrollable region below the head
+ * ─────────────────────────────────────────────────────────────── */
+
+.search-overlay__body {
+    flex: 1;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: var(--space-3) var(--space-4) var(--space-6);
+}
+
+.search-overlay__section {
+    margin-top: var(--space-5);
+}
+.search-overlay__section:first-child { margin-top: 0; }
+
+.search-overlay__section-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: var(--space-3);
+}
+.search-overlay__section-title {
+    font-size: 0.85rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--color-text-soft);
+    margin: 0 0 var(--space-3);
+}
+.search-overlay__clear-recents {
+    color: var(--color-primary);
+    background: transparent;
+    border: 0;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 0;
+}
+
+/* ───────────────────────────────────────────────────────────────
+ * Recent searches — chip row
+ * ─────────────────────────────────────────────────────────────── */
+
+.search-overlay__recent-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+}
+.search-overlay__recent-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.45rem 0.9rem;
+    background-color: #fff;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-pill);
+    color: var(--color-text);
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: border-color 120ms ease, background-color 120ms ease;
+}
+.search-overlay__recent-chip:hover {
+    border-color: var(--color-primary);
+    background-color: var(--color-primary-soft);
+}
+.search-overlay__recent-chip svg { color: var(--color-text-soft); flex: 0 0 auto; }
+
+/* ───────────────────────────────────────────────────────────────
+ * Categories grid — three-up image cards
+ * ─────────────────────────────────────────────────────────────── */
+
+.search-overlay__grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--space-4);
+}
+@media (min-width: 768px) {
+    .search-overlay__grid { grid-template-columns: repeat(4, 1fr); }
+}
+
+.search-overlay__tile {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-2);
+    color: var(--color-text);
+    text-decoration: none;
+    text-align: center;
+    cursor: pointer;
+    transition: transform 120ms ease;
+}
+.search-overlay__tile:hover { transform: translateY(-2px); }
+
+.search-overlay__tile-image {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    background-color: var(--color-bg-alt);
+    background-image: linear-gradient(135deg, rgba(255, 255, 255, 0.45), transparent 60%);
+    border-radius: var(--radius-lg);
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+}
+.search-overlay__tile-image img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: var(--radius-lg);
+}
+.search-overlay__tile-initial {
+    font-size: 2rem;
+    font-weight: 800;
+    color: rgba(28, 28, 28, 0.35);
+    user-select: none;
+}
+.search-overlay__tile-name {
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: var(--color-text);
+    line-height: 1.2;
+    /* Two-line clamp so a long category doesn't push tile heights. */
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+/* ───────────────────────────────────────────────────────────────
+ * Results list — vertical rows while typing
+ * ─────────────────────────────────────────────────────────────── */
+
+.search-overlay__results {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+.search-overlay__row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-3) 0;
+    border-bottom: 1px solid var(--color-border-soft);
+    cursor: pointer;
+    color: var(--color-text);
+    text-decoration: none;
+}
+.search-overlay__row:last-child { border-bottom: 0; }
+.search-overlay__row:hover { background-color: var(--color-primary-soft); }
+
+.search-overlay__row-image {
+    flex: 0 0 auto;
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background-color: var(--color-bg-alt);
+    background-image: linear-gradient(135deg, rgba(255, 255, 255, 0.4), transparent 60%);
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+    position: relative;
+}
+.search-overlay__row-image img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 50%;
+}
+.search-overlay__row-initial {
+    font-size: 1.1rem;
+    font-weight: 800;
+    color: rgba(28, 28, 28, 0.4);
+}
+
+.search-overlay__row-body {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.search-overlay__row-name {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--color-text);
+    margin: 0;
+    /* Bold query highlights are added by JS as <strong>. */
+}
+.search-overlay__row-name strong { color: var(--color-text); }
+.search-overlay__row-sub {
+    margin: 0;
+    color: var(--color-text-soft);
+    font-size: 0.82rem;
+}
+.search-overlay__row-cta {
+    color: var(--color-primary);
+    font-weight: 600;
+    font-size: 0.9rem;
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.search-overlay__nomatch {
+    margin: var(--space-6) 0 0;
+    color: var(--color-text-soft);
+    font-style: italic;
+    text-align: center;
+}
+
+/* When the body is locked (overlay open), prevent the page underneath
+ * from scrolling. JS toggles this class on <body>. */
+body.is-search-open { overflow: hidden; }

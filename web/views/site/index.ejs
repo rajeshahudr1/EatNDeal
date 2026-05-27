@@ -1,0 +1,330 @@
+<%#
+  views/site/index.ejs
+
+  What:  Landing page body. Sits inside views/_layout.ejs. Sections:
+           1. Hero — big headline + tagline + location-trigger CTA
+           2. Cuisines — horizontal row of clickable food categories
+           3. Featured restaurants — grid of cards (placeholder until the
+              /restaurants endpoint lands)
+           4. How it works — three steps
+           5. Promo / offers banner (lightweight)
+  Why:   Public landing — browseable WITHOUT login. Login + sign-up sit in
+         the header instead of being forced as a gate (Zomato/Swiggy
+         pattern). On first visit the location modal opens automatically
+         (see views/_layout.ejs body[data-has-location]).
+  Used:  Rendered by Controllers/SiteController.index.
+
+  Note: Controllers/SiteController.js passes extra_js (string path) as a
+        render local — the layout picks it up and emits a deferred script
+        tag for the home-only behaviours. This view does NOT assign
+        extra_js inline. With EJS 3 + ejs-locals, view-level scriptlet
+        assignments do not reliably propagate up to the layout.
+-%>
+
+<% if (!user_location) { %>
+    <%# ────────────────────────────────────────────────────────────
+        HERO (no-location state) — big headline + search-as-CTA.
+        Shown only BEFORE the user picks a location. After a pick we
+        replace the entire hero with the compact "Delivering to …"
+        banner (else branch below) — that's per the user instruction
+        "page se location search hat jayega upar hi option aayega".
+    ──────────────────────────────────────────────────────────── %>
+    <section class="hero" aria-labelledby="hero-title">
+        <div class="hero__inner">
+            <h1 id="hero-title" class="hero__title">
+                Order from the best<br>
+                <span class="hero__title-accent">restaurants near you</span>
+            </h1>
+            <p class="hero__subtitle">
+                <%= brand.tagline %>. Pick a location, choose your meal — we'll handle the rest.
+            </p>
+
+            <%# Search-as-CTA. The whole bar is one big button that opens
+                the location modal — accessibility-friendly native
+                <button> (not a div role="button") so keyboard Enter /
+                Space work for free. %>
+            <button
+                type="button"
+                class="hero__search"
+                data-action="open-location-modal"
+                aria-label="Set delivery location"
+            >
+                <svg class="hero__search-icon" aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 22s7-7.5 7-13a7 7 0 0 0-14 0c0 5.5 7 13 7 13z"/>
+                    <circle cx="12" cy="9" r="2.5"/>
+                </svg>
+                <span class="hero__search-text">
+                    Enter your postcode or share your location
+                </span>
+                <span class="hero__search-cta">
+                    <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="11" cy="11" r="7"/>
+                        <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                    </svg>
+                    Find food
+                </span>
+            </button>
+
+            <p class="hero__hint">No account needed to browse.</p>
+        </div>
+    </section>
+<% } %>
+<%#
+    Location-set state intentionally renders NO replacement band here.
+    The header chip already shows the picked area + opens the modal on
+    click, so a second "Restaurants in <X>" banner was redundant. Skip
+    straight to the cuisines + restaurant feed below.
+-%>
+
+<%# ============================================================
+    CUISINES (horizontal scroller)
+============================================================ %>
+<%# Cuisines section — only renders when there's at least one
+    category to show. An empty row would just be the trailing All
+    pill on its own, which is meaningless without other options. %>
+<% if (cuisines && cuisines.length > 0) { %>
+<section class="section section--cuisines" aria-labelledby="cuisines-title">
+    <div class="section__head">
+        <h2 id="cuisines-title" class="section__title">What's on your mind?</h2>
+        <a href="/cuisines" class="section__link">See all</a>
+    </div>
+
+    <ul class="cuisine-row" role="list">
+        <% cuisines.forEach(function (c) { %>
+            <%# data-search-name carries the normalised key the search
+                endpoint also computes (Helpers/marketplace.normaliseName)
+                so the live filter can match this pill against the
+                api's returned categoryNames set in O(1).
+                `is-sub` modifier is set on sub-cuisines spliced in by
+                SiteController (children of the currently-picked main).
+                CSS uses it to render them slightly smaller / lighter
+                so the user sees the parent/child relationship at a
+                glance. %>
+            <li class="cuisine-row__item<%= c.isSub ? ' cuisine-row__item--sub' : '' %>" data-search-name="<%= c.searchName || (c.name || '').toLowerCase() %>">
+                <%# href points back at the home page with the cuisine
+                    as a URL param so the link is share-friendly +
+                    works without JS. /js/pages/home.js intercepts the
+                    click and does an in-place SPA swap — preventing
+                    the full page reload while still updating the
+                    address bar via pushState. %>
+                <a class="cuisine-pill" href="/?cuisine=<%= encodeURIComponent(c.searchName || (c.name || '').toLowerCase()) %>" data-cuisine-id="<%= c.id %>" data-action="pick-cuisine">
+                    <%# Placeholder layer ALWAYS renders (initial
+                        letter on a brand-tinted disc). When an icon
+                        URL is set we add an <img> on top via CSS;
+                        if it 404s, the home.js onerror handler hides
+                        it and the placeholder shows through. Same
+                        strategy as restaurant + dish cards. %>
+                    <span class="cuisine-pill__icon cuisine-pill__icon--placeholder" data-tint="<%= c.tint %>" aria-hidden="true">
+                        <span class="cuisine-pill__initial"><%= c.initial || '' %></span>
+                        <% if (c.icon) { %>
+                            <img class="cuisine-pill__photo" src="<%= c.icon %>" alt="" width="48" height="48" loading="lazy" data-img-fallback>
+                        <% } %>
+                    </span>
+                    <span class="cuisine-pill__name"><%= c.name %></span>
+                </a>
+            </li>
+        <% }); %>
+
+        <%# "All" pill at the END of the cuisine row — taps open the
+            search overlay so the user gets to the full categories
+            grid even after scrolling past this strip. Carries
+            data-action="open-categories" which /js/ui/search-overlay.js
+            picks up. Uses the placeholder shell + a 9-dot grid icon
+            instead of an image. %>
+        <li class="cuisine-row__item cuisine-row__item--all">
+            <a class="cuisine-pill" href="#" data-action="open-categories" aria-label="See all categories">
+                <span class="cuisine-pill__icon cuisine-pill__icon--all" aria-hidden="true">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="3"  y="3"  width="6" height="6" rx="1"/>
+                        <rect x="15" y="3"  width="6" height="6" rx="1"/>
+                        <rect x="3"  y="15" width="6" height="6" rx="1"/>
+                        <rect x="15" y="15" width="6" height="6" rx="1"/>
+                    </svg>
+                </span>
+                <span class="cuisine-pill__name">All</span>
+            </a>
+        </li>
+    </ul>
+</section>
+<% } %>
+
+<%# ============================================================
+    POPULAR NEAR YOU (restaurant grid).
+    Section order per the user request:
+       Cuisines  →  Popular near you  →  Join rewards  →  For you
+============================================================ %>
+<% if (featured && featured.length > 0) { %>
+<section class="section section--featured" aria-labelledby="featured-title" data-paginate-section="featured">
+    <div class="section__head">
+        <h2 id="featured-title" class="section__title">Popular near you</h2>
+        <%# "View all" only renders when there are MORE rows than the
+            page currently shows. featured_more is set by
+            SiteController (total > featured.length). %>
+        <% if (typeof featured_more !== 'undefined' && featured_more) { %>
+            <a href="/restaurants" class="section__link">View all</a>
+        <% } %>
+    </div>
+
+    <ul class="restaurant-grid" role="list" data-load-target>
+        <% featured.forEach(function (r) { %>
+            <%# data-search-id = restaurant (company) id, matched
+                against api's returned restaurantIds set. %>
+            <li data-search-id="<%= r.id %>">
+                <a class="restaurant-card<%= r.isOpen ? '' : ' is-closed' %>" href="/restaurant/<%= r.slug || r.id %>">
+                    <%# Image container — always renders the placeholder
+                        (tinted bg + initial letter) underneath. When the
+                        API returns an image URL we layer an <img> on top
+                        via CSS; broken images are hidden by
+                        /js/pages/home.js so the placeholder shows through. %>
+                    <div class="restaurant-card__image restaurant-card__image--placeholder" data-tint="<%= r.tint %>">
+                        <span class="restaurant-card__initial" aria-hidden="true"><%= r.initial %></span>
+                        <% if (r.image) { %>
+                            <img class="restaurant-card__photo" src="<%= r.image %>" alt="" loading="lazy" data-img-fallback>
+                        <% } %>
+                        <% if (r.vegType === 'pure-veg') { %>
+                            <span class="veg-marker veg-marker--veg restaurant-card__veg" aria-label="Pure vegetarian" title="Pure vegetarian"></span>
+                        <% } else if (r.vegType === 'non-veg') { %>
+                            <span class="veg-marker veg-marker--non-veg restaurant-card__veg" aria-label="Non-vegetarian" title="Non-vegetarian"></span>
+                        <% } %>
+                        <% if (r.offer) { %>
+                            <span class="restaurant-card__badge"><%= r.offer %></span>
+                        <% } %>
+                        <% if (!r.isOpen) { %>
+                            <span class="restaurant-card__closed-overlay">Closed</span>
+                        <% } %>
+                    </div>
+                    <div class="restaurant-card__body">
+                        <h3 class="restaurant-card__name"><%= r.name %></h3>
+                        <p  class="restaurant-card__cuisines"><%= (r.cuisines || []).join(' · ') %></p>
+                        <div class="restaurant-card__meta">
+                            <span class="restaurant-card__rating" aria-label="Rating <%= r.rating %> out of 5">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                                <%= r.rating %>
+                            </span>
+                            <% if (r.deliveryMinutes) { %>
+                                <span class="restaurant-card__time"><%= r.deliveryMinutes %></span>
+                            <% } %>
+                            <% if (typeof r.distanceKm === 'number' && r.distanceKm >= 0) { %>
+                                <span class="restaurant-card__distance" aria-label="<%= r.distanceKm %> kilometres away">
+                                    <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                                        <path d="M12 22s7-7.5 7-13a7 7 0 0 0-14 0c0 5.5 7 13 7 13z"/>
+                                        <circle cx="12" cy="9" r="2.5"/>
+                                    </svg>
+                                    <%= r.distanceKm.toFixed(1) %> km
+                                </span>
+                            <% } %>
+                        </div>
+                    </div>
+                </a>
+            </li>
+        <% }); %>
+    </ul>
+
+    <%# Load-more trigger — only renders when more restaurants exist.
+        On desktop, it's a visible "See more" button. On mobile, the
+        button is visually clipped but an IntersectionObserver
+        auto-loads the next batch when the user scrolls near it.
+        /js/pages/home.js wires both. data-offset is the next offset
+        to fetch from /api/v1/marketplace/restaurants. %>
+    <% if (typeof featured_more !== 'undefined' && featured_more) { %>
+        <div class="section__loadmore" data-load-more="featured" data-offset="<%= featured.length %>">
+            <button type="button" class="btn btn--ghost btn--lg section__loadmore-btn">See more</button>
+        </div>
+    <% } %>
+</section>
+<% } %>
+
+<%# ============================================================
+    PROMO BANNER (Join rewards) — sits BETWEEN restaurants and
+    For You per the user request. Visible only to logged-out
+    visitors (a signed-in user already has a rewards account).
+============================================================ %>
+<% if (!user_session) { %>
+    <section class="promo-banner" aria-labelledby="promo-title">
+        <div class="promo-banner__inner">
+            <div class="promo-banner__copy">
+                <h2 id="promo-title" class="promo-banner__title">Join <%= brand.name %> rewards</h2>
+                <p class="promo-banner__body">Earn points on every order, redeem for discounts, and unlock member-only deals.</p>
+            </div>
+            <a href="/signin" class="btn btn--accent btn--lg">Get started</a>
+        </div>
+    </section>
+<% } %>
+
+<%# ============================================================
+    FOR YOU — dish suggestions. Renders AFTER the rewards banner.
+============================================================ %>
+<% if (for_you && for_you.length > 0) { %>
+<section class="section section--for-you" aria-labelledby="for-you-title" data-paginate-section="for-you">
+    <div class="section__head">
+        <h2 id="for-you-title" class="section__title">For you</h2>
+        <% if (typeof for_you_more !== 'undefined' && for_you_more) { %>
+            <a href="/dishes" class="section__link">See all</a>
+        <% } %>
+    </div>
+
+    <ul class="dish-row" role="list" data-load-target>
+        <% for_you.forEach(function (d) { %>
+            <li class="dish-row__item" data-search-id="<%= d.id %>">
+                <a class="dish-card" href="/restaurant/<%= d.restaurantSlug %>">
+                    <div class="dish-card__image" data-tint="<%= d.tint %>">
+                        <span class="dish-card__initial" aria-hidden="true"><%= d.initial %></span>
+                        <% if (d.image) { %>
+                            <img class="dish-card__photo" src="<%= d.image %>" alt="" loading="lazy" data-img-fallback>
+                        <% } %>
+                        <% if (d.veg) { %>
+                            <span class="veg-marker veg-marker--veg" aria-label="Vegetarian" title="Vegetarian"></span>
+                        <% } else { %>
+                            <span class="veg-marker veg-marker--non-veg" aria-label="Non-vegetarian" title="Non-vegetarian"></span>
+                        <% } %>
+                    </div>
+                    <div class="dish-card__body">
+                        <h3 class="dish-card__name"><%= d.name %></h3>
+                        <p  class="dish-card__from">From <%= d.restaurant %></p>
+                        <div class="dish-card__meta">
+                            <span class="dish-card__rating" aria-label="Rating <%= d.rating %> out of 5">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                                <%= d.rating %>
+                            </span>
+                            <% if (d.deliveryMinutes) { %>
+                                <span class="dish-card__time"><%= d.deliveryMinutes %></span>
+                            <% } %>
+                        </div>
+                        <p  class="dish-card__price">
+                            <%= brand.currencySymbol %><%= (typeof d.priceFrom === 'number' ? d.priceFrom : 0).toFixed(2) %>
+                        </p>
+                    </div>
+                </a>
+            </li>
+        <% }); %>
+    </ul>
+
+    <% if (typeof for_you_more !== 'undefined' && for_you_more) { %>
+        <div class="section__loadmore" data-load-more="for-you" data-offset="<%= for_you.length %>">
+            <button type="button" class="btn btn--ghost btn--lg section__loadmore-btn">See more</button>
+        </div>
+    <% } %>
+</section>
+<% } %>
+
+<%# ============================================================
+    HOW IT WORKS — onboarding band, only when no location set.
+============================================================ %>
+<% if (!user_location) { %>
+    <section class="section section--how" aria-labelledby="how-title">
+        <h2 id="how-title" class="section__title section__title--centered">How it works</h2>
+
+        <ol class="how-steps" role="list">
+            <% how_it_works.forEach(function (s) { %>
+                <li class="how-step">
+                    <div class="how-step__num" aria-hidden="true"><%= s.step %></div>
+                    <div class="how-step__icon" aria-hidden="true">
+                        <img src="<%= s.icon %>" alt="" width="56" height="56" loading="lazy">
+                    </div>
+                    <h3 class="how-step__title"><%= s.title %></h3>
+                    <p  class="how-step__body"><%= s.body %></p>
+                </li>
+            <% }); %>
+        </ol>
+    </section>
+<% } %>

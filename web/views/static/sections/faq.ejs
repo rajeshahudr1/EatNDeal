@@ -1,0 +1,24 @@
+<%#
+  FAQ section — optional heading + array of {q, a}. Each Q+A renders
+  as a native <details> element (collapsible, accessible, CSP-safe).
+  No JS needed; the browser handles open/close.
+-%>
+<section class="static-section static-section--faq">
+    <% if (section.heading) { %>
+        <h2 class="static-section__heading"><%= section.heading %></h2>
+    <% } %>
+    <div class="static-faq">
+        <% (section.items || []).forEach(function (qa) { %>
+            <details class="static-faq__item">
+                <summary class="static-faq__q">
+                    <span><%= qa.q %></span>
+                    <%# Chevron rotates 180° when <details> is open (see CSS). %>
+                    <svg class="static-faq__chevron" aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="6 9 12 15 18 9"/>
+                    </svg>
+                </summary>
+                <p class="static-faq__a"><%= qa.a %></p>
+            </details>
+        <% }); %>
+    </div>
+</section>

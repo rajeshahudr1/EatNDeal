@@ -1,0 +1,177 @@
+/*
+ * components/country-picker.css
+ *
+ * What:  Overlay listing every country with flag + name + dial code.
+ *        Opens when the user taps the country chip on the sign-in
+ *        form. Mobile: full-screen sheet. Desktop: centred card.
+ * Why:   Reusable picker for any phone-number entry across the
+ *        marketplace (sign-in, sign-up, profile edit). Filterable by
+ *        typed text — matches name OR dial code.
+ * Used:  Loaded by views/_layout.ejs via its own <link> tag.
+ */
+
+.country-picker {
+    position: fixed;
+    inset: 0;
+    z-index: var(--z-modal);
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+}
+.country-picker[aria-hidden="false"] { display: flex; }
+.country-picker[aria-hidden="true"]  { display: none; }
+
+.country-picker[aria-hidden="false"] .country-picker__backdrop {
+    animation: country-picker-fade 180ms ease-out;
+}
+.country-picker[aria-hidden="false"] .country-picker__panel {
+    animation: country-picker-rise 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@keyframes country-picker-fade {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+@keyframes country-picker-rise {
+    from { transform: translateY(20px); opacity: 0; }
+    to   { transform: translateY(0);    opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .country-picker[aria-hidden="false"] .country-picker__backdrop,
+    .country-picker[aria-hidden="false"] .country-picker__panel {
+        animation: none;
+    }
+}
+
+.country-picker__backdrop {
+    position: absolute;
+    inset: 0;
+    background-color: rgba(20, 20, 20, 0.45);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+}
+
+.country-picker__panel {
+    position: relative;
+    background-color: #fff;
+    width: min(420px, 92vw);
+    max-height: 80vh;
+    margin: 6vh auto;
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-3);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.country-picker__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--space-5) var(--space-5) var(--space-3);
+}
+.country-picker__title { font-size: 1.1rem; font-weight: 700; margin: 0; }
+.country-picker__close {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background-color: var(--color-bg-alt);
+    color: var(--color-text);
+    display: grid;
+    place-items: center;
+    transition: background-color 120ms ease;
+}
+.country-picker__close:hover { background-color: var(--color-border); }
+
+/* ── Search field ─────────────────────────────────────────────── */
+
+.country-picker__searchwrap {
+    position: relative;
+    margin: 0 var(--space-5) var(--space-3);
+}
+.country-picker__searchicon {
+    position: absolute;
+    left: var(--space-3);
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--color-text-soft);
+    pointer-events: none;
+}
+.country-picker__search {
+    width: 100%;
+    padding: 0.7rem 1rem 0.7rem 2.4rem;
+    font-size: 0.95rem;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background-color: var(--color-bg-soft);
+    transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+.country-picker__search:focus {
+    outline: none;
+    background-color: #fff;
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 2px rgba(229, 37, 42, 0.18);
+}
+
+/* ── List ─────────────────────────────────────────────────────── */
+
+.country-picker__list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0;
+    margin: 0;
+    list-style: none;
+}
+.country-picker__item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-5);
+    cursor: pointer;
+    transition: background-color 100ms ease;
+    border-bottom: 1px solid var(--color-border-soft);
+}
+.country-picker__item:hover,
+.country-picker__item.is-focused { background-color: var(--color-bg-alt); }
+.country-picker__item.is-selected {
+    background-color: var(--color-primary-soft);
+    color: var(--color-primary-dark);
+    font-weight: 600;
+}
+.country-picker__flag {
+    font-size: 1.3rem;
+    line-height: 1;
+    flex: 0 0 auto;
+    font-family: 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', sans-serif;
+}
+.country-picker__name {
+    flex: 1;
+    font-size: 0.95rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.country-picker__dial {
+    color: var(--color-text-muted);
+    font-size: 0.9rem;
+    font-weight: 500;
+    flex: 0 0 auto;
+}
+.country-picker__item.is-selected .country-picker__dial { color: var(--color-primary-dark); }
+
+.country-picker__empty {
+    padding: var(--space-6) var(--space-5);
+    text-align: center;
+    color: var(--color-text-muted);
+    font-size: 0.9rem;
+}
+
+/* Mobile = full-screen sheet (no rounded corners). */
+@media (max-width: 767px) {
+    .country-picker__panel {
+        width: 100vw;
+        height: 100dvh;
+        max-height: 100dvh;
+        margin: 0;
+        border-radius: 0;
+    }
+}

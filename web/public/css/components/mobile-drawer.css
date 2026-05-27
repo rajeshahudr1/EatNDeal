@@ -1,0 +1,218 @@
+/*
+ * components/mobile-drawer.css
+ *
+ * What:  Slide-in side drawer for mobile. Off-canvas to the right; the
+ *        panel translates into view when .mobile-drawer[aria-hidden="false"].
+ *        Desktop never sees this — the @media (min-width: 768px) rule at
+ *        the bottom forces it hidden.
+ * Why:   Mobile header only has room for logo + location + hamburger. This
+ *        is what the hamburger opens — secondary nav + auth + legal.
+ * Used:  Loaded by views/_layout.ejs via its own <link> tag.
+ */
+
+.mobile-drawer {
+    position: fixed;
+    inset: 0;
+    z-index: 90;
+    display: flex;
+    justify-content: flex-end;
+    pointer-events: none;
+}
+.mobile-drawer[aria-hidden="false"] { pointer-events: auto; }
+.mobile-drawer[aria-hidden="true"]  { display: flex; }   /* keep in DOM for transition */
+
+.mobile-drawer__backdrop {
+    position: absolute;
+    inset: 0;
+    background-color: rgba(20, 20, 20, 0.45);
+    opacity: 0;
+    transition: opacity 180ms ease;
+}
+.mobile-drawer[aria-hidden="false"] .mobile-drawer__backdrop { opacity: 1; }
+
+.mobile-drawer__panel {
+    position: relative;
+    width: min(320px, 86vw);
+    height: 100dvh;
+    background-color: #fff;
+    box-shadow: var(--shadow-3);
+    overflow-y: auto;
+    transform: translateX(100%);
+    transition: transform 220ms ease;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-5);
+    padding: var(--space-5) var(--space-4) var(--space-8);
+}
+.mobile-drawer[aria-hidden="false"] .mobile-drawer__panel {
+    transform: translateX(0);
+}
+
+/* ── Head ──────────────────────────────────────────────────────── */
+
+.mobile-drawer__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+}
+
+.mobile-drawer__brand {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-weight: 700;
+    color: var(--color-text);
+}
+.mobile-drawer__brand img { border-radius: var(--radius-sm); }
+
+.mobile-drawer__close {
+    width: 40px;
+    height: 40px;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    background-color: var(--color-bg-alt);
+    color: var(--color-text);
+    transition: background-color 120ms ease;
+}
+.mobile-drawer__close:hover { background-color: var(--color-border); }
+
+/* ── Auth row ──────────────────────────────────────────────────── */
+
+.mobile-drawer__auth {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+}
+
+.mobile-drawer__account {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-3);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    color: var(--color-text);
+}
+.mobile-drawer__avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background-color: var(--color-primary);
+    color: #fff;
+    display: grid;
+    place-items: center;
+    font-weight: 700;
+}
+.mobile-drawer__account-name { font-weight: 600; }
+
+/* ── Nav links ─────────────────────────────────────────────────── */
+
+.mobile-drawer__nav {
+    display: flex;
+    flex-direction: column;
+}
+.mobile-drawer__link {
+    padding: var(--space-3) var(--space-2);
+    border-bottom: 1px solid var(--color-border-soft);
+    color: var(--color-text);
+    font-weight: 500;
+    transition: color 120ms ease, background-color 120ms ease;
+}
+.mobile-drawer__link:hover {
+    color: var(--color-primary);
+    background-color: var(--color-primary-soft);
+    border-radius: var(--radius-sm);
+}
+
+/* ── Footer band inside the drawer ─────────────────────────────── *
+ * The mobile site footer is hidden, so this band carries everything
+ * that used to live in views/partials/footer.ejs (link columns,
+ * social icons, copyright). Visually separated from the primary nav
+ * above with a hairline top border + extra top padding. */
+.mobile-drawer__footer {
+    margin-top: var(--space-3);
+    padding-top: var(--space-4);
+    border-top: 1px solid var(--color-border-soft);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+}
+
+/* Each link group ("Company", "For restaurants", "Help & legal") is
+ * a stacked column with a small uppercase heading and a tight list
+ * of sub-links underneath. */
+.mobile-drawer__group {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+.mobile-drawer__group-title {
+    margin: 0 0 var(--space-1);
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: var(--color-text-soft);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+/* `.mobile-drawer__link--sub` is the smaller variant for footer-band
+ * links — tighter row height + slightly muted colour so the primary
+ * nav above still reads as the main destinations. */
+.mobile-drawer__link--sub {
+    padding: 0.55rem var(--space-1);
+    font-size: 0.92rem;
+    font-weight: 500;
+    color: var(--color-text-muted);
+    border-bottom: 0;
+}
+.mobile-drawer__link--sub:hover {
+    color: var(--color-primary);
+    background: transparent;
+}
+
+/* Social row — three icons centred in a horizontal strip with a
+ * subtle ring on hover. Matches the desktop footer's icon set. */
+.mobile-drawer__social {
+    list-style: none;
+    margin: var(--space-2) 0 0;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+}
+.mobile-drawer__social a {
+    display: inline-grid;
+    place-items: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    color: var(--color-text-muted);
+    background-color: var(--color-bg-alt);
+    transition: background-color 120ms ease, color 120ms ease;
+}
+.mobile-drawer__social a:hover {
+    background-color: var(--color-primary-soft);
+    color: var(--color-primary);
+}
+
+.mobile-drawer__copy {
+    margin: var(--space-2) 0 0;
+    font-size: 0.75rem;
+    color: var(--color-text-soft);
+    line-height: 1.4;
+}
+.mobile-drawer__build { color: var(--color-text-soft); opacity: 0.7; }
+
+.mobile-drawer__logout { margin-top: var(--space-3); }
+
+/* Desktop hides the drawer entirely — the desktop header already has
+ * the secondary nav + auth buttons inline. */
+@media (min-width: 768px) {
+    .mobile-drawer { display: none !important; }
+}
+
+/* Body lock — when the drawer is open we kill page scroll. The class
+ * is toggled from /js/app.js to keep the source of truth in JS. */
+body.is-mobile-menu-open { overflow: hidden; }

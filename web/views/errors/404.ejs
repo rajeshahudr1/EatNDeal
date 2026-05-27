@@ -1,0 +1,18 @@
+<%#
+  views/errors/404.ejs
+
+  What:  Friendly "page not found" view rendered when an unknown route is
+         hit. Uses the same _layout.ejs so the header / footer / brand are
+         consistent.
+  Why:   Better UX than the default Express text 404. Also a recoverable
+         path back to the landing page.
+  Used:  Rendered from web/index.js 404 handler.
+-%>
+<section class="error-page">
+    <div class="error-page__inner">
+        <p class="error-page__code">404</p>
+        <h1 class="error-page__title">We couldn't find that page</h1>
+        <p  class="error-page__body">The link may be broken, or the page may have moved.</p>
+        <a class="btn btn--primary btn--lg" href="/">Go to home</a>
+    </div>
+</section>

@@ -232,44 +232,136 @@ body.is-loading { overflow: hidden; }
 .section__link { color: var(--color-primary-dark); font-weight: 600; font-size: 0.95rem; }
 .section__link:hover { color: var(--color-primary); }
 
-/* Section load-more block — rendered AFTER each paginated grid
- * (restaurants + dishes) when the api signals more rows exist.
- *
- * Desktop:  centred "See more" button the user clicks to fetch the
- *           next batch.
- * Mobile:   button is HIDDEN by /css/mobile.css and replaced by an
- *           IntersectionObserver in /js/pages/home.js that auto-loads
- *           the next batch as the wrapper enters the viewport. The
- *           wrapper itself stays in the DOM so the observer has
- *           something to watch — it's just visually empty.
- *
- * .is-loading swaps the label out for "Loading…" while the fetch
- * is in flight, preventing double-clicks.
- */
-.section__loadmore {
+/* ── View-mode bar ──────────────────────────────────────────────────── *
+ * Compact back-to-home strip rendered above the body content when the
+ * user is on /?view=… or /?restaurant=…. Sits inside the main column
+ * so it scrolls with the page (the header chrome stays sticky on top
+ * separately). */
+.view-mode-bar {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    max-width: var(--container-max);
+    margin: 0 auto;
+    padding: var(--space-4);
+}
+.view-mode-bar__back {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    color: var(--color-text-muted);
+    font-weight: 600;
+    font-size: 0.9rem;
+}
+.view-mode-bar__back:hover { color: var(--color-primary); }
+.view-mode-bar__title { font-size: 1.25rem; font-weight: 700; margin: 0; }
+
+/* ── Cuisine GRID (used on /?view=cuisines — full page) ─────────────── *
+ * Auto-fit so the grid adapts from 8 columns on a wide desktop down
+ * to 3 columns on the smallest phones, with consistent 110 px min
+ * cells so the pill artwork always reads cleanly. Each child reuses
+ * the same .cuisine-pill markup as the strip; only the wrapping
+ * `<li>` selector changes. */
+.cuisine-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+    gap: var(--space-4);
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+.cuisine-grid__item {
     display: flex;
     justify-content: center;
-    margin-top: var(--space-6);
+}
+
+/* ── Selected-restaurant detail card (used on /?restaurant=<slug>) ──── */
+.restaurant-detail {
+    display: flex;
+    gap: var(--space-6);
+    background-color: #fff;
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    box-shadow: var(--shadow-1);
+    max-width: 760px;
+    margin: 0 auto;
+}
+.restaurant-detail__image {
+    width: 260px;
+    flex: 0 0 260px;
+    aspect-ratio: 16 / 10;
+    position: relative;
+}
+.restaurant-detail__body {
+    padding: var(--space-5);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+}
+.restaurant-detail__name {
+    font-size: 1.5rem;
+    font-weight: 700;
+}
+.restaurant-detail__cuisines {
+    color: var(--color-text-muted);
+}
+.restaurant-detail__meta {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    margin-top: var(--space-2);
+}
+@media (max-width: 600px) {
+    .restaurant-detail {
+        flex-direction: column;
+    }
+    .restaurant-detail__image {
+        width: 100%;
+        flex: 0 0 auto;
+    }
+}
+
+/* Section load-more sentinel — rendered AFTER each paginated grid
+ * (For You) when the api signals more rows exist.
+ *
+ * UX on every breakpoint: scroll-based auto-load. The wrapper sits
+ * just below the grid as a small invisible sentinel. An
+ * IntersectionObserver in /js/pages/home.js fires when the sentinel
+ * enters the viewport and fetches the next batch. The "See more"
+ * button is intentionally hidden — we keep it in the DOM only as a
+ * progressive-enhancement fallback (it's still reachable by tab /
+ * screen reader, and a no-IO browser can click it).
+ *
+ * .is-loading paints a small "Loading more…" line via ::after while
+ * the fetch is in flight so the user knows another batch is coming.
+ */
+.section__loadmore {
+    display: block;
+    min-height: 1px;
+    margin-top: var(--space-4);
+    text-align: center;
 }
 .section__loadmore-btn {
-    min-width: 200px;
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md, 12px);
-    background: #fff;
-    color: var(--color-text);
-    font-weight: 600;
-    cursor: pointer;
-    transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+    /* Visually hidden but kept reachable by assistive tech / a
+     * legacy browser without IntersectionObserver. The IO triggers
+     * the fetch on entry into the viewport on every breakpoint —
+     * the user never needs to click. */
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
 }
-.section__loadmore-btn:hover {
-    background: var(--color-primary-soft, var(--color-bg-alt));
-    border-color: var(--color-primary);
-    color: var(--color-primary);
-}
-.section__loadmore-btn[disabled],
-.section__loadmore.is-loading .section__loadmore-btn {
-    opacity: 0.6;
-    cursor: progress;
+.section__loadmore.is-loading::after {
+    content: 'Loading more…';
+    display: block;
+    color: var(--color-text-muted);
+    font-size: 0.85rem;
+    padding: var(--space-2) 0;
 }
 
 /* ── Buttons ────────────────────────────────────────────────────────── */

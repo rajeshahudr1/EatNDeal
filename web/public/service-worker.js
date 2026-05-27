@@ -24,7 +24,7 @@
 // list or any precached file's contents. The activate handler purges
 // caches whose name doesn't match, so bumping the name flushes stale
 // entries cleanly.
-var CACHE_NAME = 'eatndeal-shell-v60';
+var CACHE_NAME = 'eatndeal-shell-v68';
 var SHELL = [
     '/',
 

@@ -142,6 +142,31 @@ async function index(req, res, next) {
     // sees the pill at its current spot and a jump would feel jarring).
     const fromSearch = String((req.query && req.query.from) || '').trim().toLowerCase() === 'search';
 
+    // ── View modes ────────────────────────────────────────────────
+    // The home page doubles as the entry point for two "browse all"
+    // surfaces accessed via the section heads' View all / See all
+    // links and via the restaurant-card href:
+    //
+    //   /?view=restaurants — full vertical grid of every restaurant
+    //                        (no cuisine strip / no For You). Used
+    //                        when the user taps the section-head
+    //                        "View all" on Popular near you.
+    //   /?view=cuisines   — full grid of every category
+    //                        (no restaurants / no For You). Used by
+    //                        the cuisine-row "See all" link.
+    //   /?restaurant=<slug> — single restaurant focus. The page
+    //                        shows that one card + every product
+    //                        from that restaurant underneath. Used
+    //                        when the user clicks a restaurant card.
+    //
+    // Mutually exclusive — the first one set wins. Empty / unknown
+    // values fall through to the default home layout.
+    const rawView   = String((req.query && req.query.view)       || '').trim().toLowerCase();
+    const restaurantSlug = String((req.query && req.query.restaurant) || '').trim().toLowerCase();
+    let viewMode = '';
+    if (restaurantSlug)                                            { viewMode = 'restaurant'; }
+    else if (rawView === 'restaurants' || rawView === 'cuisines')  { viewMode = rawView; }
+
     // ── Live marketplace data ───────────────────────────────────────
     // Both rails (Popular near you + For you) come from the api now.
     // The /static fallbacks below are kept ONLY for two cases:
@@ -149,23 +174,66 @@ async function index(req, res, next) {
     //     either rail anyway, so the arrays stay []
     //   • the api is unreachable / errored — we degrade to the
     //     hand-rolled list rather than rendering an empty page
-    let liveFeatured      = null;
-    let liveForYou        = null;
-    let liveCategories    = null;
-    let liveSubCategories = [];
-    let featuredMore      = false;
-    let forYouMore        = false;
+    let liveFeatured       = null;
+    let liveForYou         = null;
+    let liveCategories     = null;
+    let liveSubCategories  = [];
+    let liveRestaurant     = null;   // populated only when viewMode === 'restaurant'
+    let featuredMore       = false;
+    let forYouMore         = false;
     if (userLocation) {
         try {
             const lat = userLocation.lat != null ? Number(userLocation.lat) : null;
             const lng = userLocation.lng != null ? Number(userLocation.lng) : null;
-            const out = await fetchMarketplace(req, lat, lng, cuisine);
-            liveFeatured      = out.featured;
-            liveForYou        = out.for_you;
-            liveCategories    = out.categories;
-            liveSubCategories = out.sub_categories || [];
-            featuredMore      = !!out.featured_more;
-            forYouMore        = !!out.for_you_more;
+            const latLng = (Number.isFinite(lat) ? '&lat=' + lat : '')
+                         + (Number.isFinite(lng) ? '&lng=' + lng : '');
+
+            if (viewMode === 'restaurants') {
+                // Full restaurants grid — pull the largest page the
+                // api allows (50). The grid auto-loads more on scroll
+                // via the existing pagination helper.
+                const r = await callApi(req, 'GET',
+                    '/api/v1/marketplace/restaurants?limit=50' + latLng);
+                liveFeatured = (r.body && r.body.status === 200 && r.body.data && r.body.data.restaurants) || [];
+                featuredMore = !!(r.body && r.body.status === 200 && r.body.data && r.body.data.has_more);
+            } else if (viewMode === 'cuisines') {
+                // Full categories grid — `all=1` opens up the listing
+                // so sub-categories (Chicken Kebab, Donner Kebab,
+                // Margherita Pizza …) surface alongside top-level
+                // pills. The home strip omits this flag and stays
+                // top-level only. We pull 500 — far above the actual
+                // distinct count today, so we never paginate this
+                // surface.
+                const c = await callApi(req, 'GET',
+                    '/api/v1/marketplace/categories?all=1&limit=500');
+                liveCategories = (c.body && c.body.status === 200 && c.body.data && c.body.data.categories) || [];
+            } else if (viewMode === 'restaurant') {
+                // Single-restaurant focus — fetch ALL marketplace
+                // restaurants once, find the one whose slug matches,
+                // then ask the api for that restaurant's products.
+                // Two calls in parallel: restaurants list + a
+                // products call we'll only USE if the restaurant
+                // turns out to exist. Keeps latency to one round trip.
+                const r = await callApi(req, 'GET',
+                    '/api/v1/marketplace/restaurants?limit=200' + latLng);
+                const list = (r.body && r.body.status === 200 && r.body.data && r.body.data.restaurants) || [];
+                liveRestaurant = list.find(x => String(x.slug || '').toLowerCase() === restaurantSlug) || null;
+                if (liveRestaurant) {
+                    const p = await callApi(req, 'GET',
+                        '/api/v1/marketplace/products?limit=50&restaurant=' + encodeURIComponent(liveRestaurant.id) + latLng);
+                    liveForYou   = (p.body && p.body.status === 200 && p.body.data && p.body.data.products) || [];
+                    forYouMore   = !!(p.body && p.body.status === 200 && p.body.data && p.body.data.has_more);
+                }
+            } else {
+                // Default home (with optional ?cuisine= filter).
+                const out = await fetchMarketplace(req, lat, lng, cuisine);
+                liveFeatured      = out.featured;
+                liveForYou        = out.for_you;
+                liveCategories    = out.categories;
+                liveSubCategories = out.sub_categories || [];
+                featuredMore      = !!out.featured_more;
+                forYouMore        = !!out.for_you_more;
+            }
         } catch (err) {
             // Don't fail the whole page — fall through to the static
             // arrays declared further down.
@@ -416,7 +484,15 @@ async function index(req, res, next) {
         // value (no location yet, or api was down).
         featured_more:    featuredMore,
         for_you_more:     forYouMore,
-        how_it_works:     howItWorks,
+        // View mode + selected restaurant.
+        //   view_mode:           ''           default home
+        //                        'restaurants' full grid of all restaurants
+        //                        'cuisines'    full grid of all categories
+        //                        'restaurant'  single restaurant + its menu
+        //   selected_restaurant: the restaurant object (when viewMode='restaurant')
+        view_mode:           viewMode,
+        selected_restaurant: liveRestaurant,
+        how_it_works:        howItWorks,
     });
   } catch (err) {
     // Express 4 doesn't auto-route rejected promises from async

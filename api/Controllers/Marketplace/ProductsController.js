@@ -50,6 +50,12 @@ async function list(req, res) {
         const limit   = req.query.limit ? Math.min(50, Math.max(1, Number(req.query.limit))) : 12;
         const offset  = req.query.offset ? Math.max(0, Number(req.query.offset)) : 0;
         const cuisine = req.query.cuisine ? String(req.query.cuisine).trim().toLowerCase() : null;
+        // Restaurant filter — limits the results to a single
+        // company. Accepts an integer company id. The web side
+        // resolves slug → id before calling this endpoint.
+        const restaurantId = req.query.restaurant
+            ? Math.max(0, Number(req.query.restaurant)) || null
+            : null;
         const hasUserLocation = Number.isFinite(lat) && Number.isFinite(lng);
         // Same nearest-first strategy as the restaurants endpoint —
         // pull a larger candidate set when we're sorting by distance
@@ -137,6 +143,15 @@ async function list(req, res) {
                         .andWhere('ppc.status', '1')
                         .andWhereRaw('LOWER(cat.name) LIKE ?', ['%' + cuisine + '%']);
                 });
+            })
+            // ── Restaurant filter ─────────────────────────────────
+            // Single-restaurant focus page (/?restaurant=<slug> in
+            // the web). All other filters still apply (e.g. the
+            // user can also restrict by cuisine), so we just AND
+            // this in.
+            .modify(function (qb) {
+                if (!restaurantId) { return; }
+                qb.andWhere('c.id', restaurantId);
             })
             .orderBy([
                 { column: 'p.is_recommended', order: 'desc' },

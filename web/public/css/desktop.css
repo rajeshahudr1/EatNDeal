@@ -66,12 +66,34 @@
     width: 100px;
 }
 
-/* ── Restaurant grid (desktop) ──────────────────────────────────────── */
+/* ── Restaurant grid (desktop) — legacy, kept for back-compat ───────── */
 
 .restaurant-grid {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
     gap: var(--space-5);
+}
+
+/* ── Restaurant ROW (desktop — wider cards) ─────────────────────────── *
+ * Base flex/scroll behaviour lives in components/restaurant-card.css
+ * (loaded on every breakpoint). Here we only widen each card so
+ * roughly 4 fit across a 1280 px container — same density as the
+ * old 4-column grid the row replaced. */
+.restaurant-row { gap: var(--space-5); }
+.restaurant-row__item { width: 280px; }
+
+/* ── Dish GRID (desktop) — "For you" vertical grid ──────────────────── *
+ * Used to be a horizontal scroller; promoted to a 4-column grid so
+ * the user can browse the dish list one screen at a time and paginate
+ * via the "See more" button at the bottom.
+ */
+.dish-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: var(--space-5);
+    list-style: none;
+    margin: 0;
+    padding: 0;
 }
 
 /* ── How it works (desktop) ─────────────────────────────────────────── */

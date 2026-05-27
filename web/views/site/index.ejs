@@ -21,7 +21,38 @@
         assignments do not reliably propagate up to the layout.
 -%>
 
-<% if (!user_location) { %>
+<%#
+  View mode — drives which sections render and how:
+    ''            default home (everything)
+    'cuisines'    only the cuisines grid (full screen)
+    'restaurants' only the restaurants grid (full vertical list)
+    'restaurant'  selected-restaurant card + its product menu
+
+  SiteController sets `view_mode` from the URL (?view= or ?restaurant=);
+  the defaults handle any case where the local isn't passed.
+-%>
+<% var __viewMode = (typeof view_mode !== 'undefined' && view_mode) ? view_mode : ''; %>
+
+<%# Compact back-link rendered on every NON-default view mode so the
+    user has a one-click way out without relying on the browser back
+    button. Lives in the page body just below the header chrome. %>
+<% if (__viewMode) { %>
+    <nav class="view-mode-bar" aria-label="Back to home">
+        <a class="view-mode-bar__back" href="/" data-action="view-home">
+            <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="15 18 9 12 15 6"/>
+            </svg>
+            <span>Back to home</span>
+        </a>
+        <h1 class="view-mode-bar__title">
+            <% if (__viewMode === 'cuisines') { %>All cuisines<% } %>
+            <% if (__viewMode === 'restaurants') { %>All restaurants<% } %>
+            <% if (__viewMode === 'restaurant') { %><%= selected_restaurant ? selected_restaurant.name : 'Restaurant' %><% } %>
+        </h1>
+    </nav>
+<% } %>
+
+<% if (!user_location && !__viewMode) { %>
     <%# ────────────────────────────────────────────────────────────
         HERO (no-location state) — big headline + search-as-CTA.
         Shown only BEFORE the user picks a location. After a pick we
@@ -77,19 +108,22 @@
 -%>
 
 <%# ============================================================
-    CUISINES (horizontal scroller)
+    CUISINES — horizontal strip on default home, FULL grid in
+    view=cuisines. Hidden entirely in view=restaurants /
+    view=restaurant (those modes focus on one section).
 ============================================================ %>
-<%# Cuisines section — only renders when there's at least one
-    category to show. An empty row would just be the trailing All
-    pill on its own, which is meaningless without other options. %>
-<% if (cuisines && cuisines.length > 0) { %>
+<% if (cuisines && cuisines.length > 0 && __viewMode !== 'restaurants' && __viewMode !== 'restaurant') { %>
 <section class="section section--cuisines" aria-labelledby="cuisines-title">
-    <div class="section__head">
-        <h2 id="cuisines-title" class="section__title">What's on your mind?</h2>
-        <a href="/cuisines" class="section__link">See all</a>
-    </div>
+    <% if (!__viewMode) { %>
+        <div class="section__head">
+            <h2 id="cuisines-title" class="section__title">What's on your mind?</h2>
+            <%# "See all" → SPA-navigates to /?view=cuisines which renders
+                the full categories grid as the entire page body. %>
+            <a href="/?view=cuisines" class="section__link" data-action="view-all">See all</a>
+        </div>
+    <% } %>
 
-    <ul class="cuisine-row" role="list">
+    <ul class="<%= __viewMode === 'cuisines' ? 'cuisine-grid' : 'cuisine-row' %>" role="list">
         <% cuisines.forEach(function (c) { %>
             <%# data-search-name carries the normalised key the search
                 endpoint also computes (Helpers/marketplace.normaliseName)
@@ -100,7 +134,7 @@
                 CSS uses it to render them slightly smaller / lighter
                 so the user sees the parent/child relationship at a
                 glance. %>
-            <li class="cuisine-row__item<%= c.isSub ? ' cuisine-row__item--sub' : '' %>" data-search-name="<%= c.searchName || (c.name || '').toLowerCase() %>">
+            <li class="<%= __viewMode === 'cuisines' ? 'cuisine-grid__item' : 'cuisine-row__item' %><%= c.isSub ? ' cuisine-row__item--sub' : '' %>" data-search-name="<%= c.searchName || (c.name || '').toLowerCase() %>">
                 <%# href points back at the home page with the cuisine
                     as a URL param so the link is share-friendly +
                     works without JS. /js/pages/home.js intercepts the
@@ -130,7 +164,9 @@
             grid even after scrolling past this strip. Carries
             data-action="open-categories" which /js/ui/search-overlay.js
             picks up. Uses the placeholder shell + a 9-dot grid icon
-            instead of an image. %>
+            instead of an image. Suppressed in the full-grid view
+            (the entire page IS the all-categories listing there). %>
+        <% if (__viewMode !== 'cuisines') { %>
         <li class="cuisine-row__item cuisine-row__item--all">
             <a class="cuisine-pill" href="#" data-action="open-categories" aria-label="See all categories">
                 <span class="cuisine-pill__icon cuisine-pill__icon--all" aria-hidden="true">
@@ -144,33 +180,45 @@
                 <span class="cuisine-pill__name">All</span>
             </a>
         </li>
+        <% } %>
     </ul>
 </section>
 <% } %>
 
 <%# ============================================================
-    POPULAR NEAR YOU (restaurant grid).
-    Section order per the user request:
-       Cuisines  →  Popular near you  →  Join rewards  →  For you
+    POPULAR NEAR YOU (default home: horizontal scroller; view=restaurants:
+    full vertical grid with scroll pagination; view=restaurant: NOT
+    rendered here — the selected-restaurant detail block takes over).
 ============================================================ %>
-<% if (featured && featured.length > 0) { %>
-<section class="section section--featured" aria-labelledby="featured-title" data-paginate-section="featured">
-    <div class="section__head">
-        <h2 id="featured-title" class="section__title">Popular near you</h2>
-        <%# "View all" only renders when there are MORE rows than the
-            page currently shows. featured_more is set by
-            SiteController (total > featured.length). %>
-        <% if (typeof featured_more !== 'undefined' && featured_more) { %>
-            <a href="/restaurants" class="section__link">View all</a>
-        <% } %>
-    </div>
+<% if (featured && featured.length > 0 && __viewMode !== 'cuisines' && __viewMode !== 'restaurant') { %>
+<%
+   // Layout choice per view mode.
+   var isFullList    = (__viewMode === 'restaurants');
+   var listClass     = isFullList ? 'restaurant-grid' : 'restaurant-row';
+   var itemClass     = isFullList ? ''                : 'restaurant-row__item';
+   var paginateAttrs = isFullList ? ' data-paginate-section="featured"' : '';
+   var loadTargetAtt = isFullList ? ' data-load-target'                 : '';
+%>
+<section class="section section--featured" aria-labelledby="featured-title"<%- paginateAttrs %>>
+    <% if (!__viewMode) { %>
+        <div class="section__head">
+            <h2 id="featured-title" class="section__title">Popular near you</h2>
+            <%# "View all" → SPA-navigates to /?view=restaurants which
+                renders the full vertical restaurants grid. Always shown
+                (not gated on featured_more) — even when every
+                restaurant already fits in the slider, the link still
+                lets the user switch to the grid layout for easier
+                browsing. Cuisines' "See all" works the same way. %>
+            <a href="/?view=restaurants" class="section__link" data-action="view-all">View all</a>
+        </div>
+    <% } %>
 
-    <ul class="restaurant-grid" role="list" data-load-target>
+    <ul class="<%= listClass %>" role="list"<%- loadTargetAtt %>>
         <% featured.forEach(function (r) { %>
             <%# data-search-id = restaurant (company) id, matched
                 against api's returned restaurantIds set. %>
-            <li data-search-id="<%= r.id %>">
-                <a class="restaurant-card<%= r.isOpen ? '' : ' is-closed' %>" href="/restaurant/<%= r.slug || r.id %>">
+            <li class="<%= itemClass %>" data-search-id="<%= r.id %>">
+                <a class="restaurant-card<%= r.isOpen ? '' : ' is-closed' %>" href="/?restaurant=<%= encodeURIComponent(r.slug || r.id) %>" data-action="pick-restaurant">
                     <%# Image container — always renders the placeholder
                         (tinted bg + initial letter) underneath. When the
                         API returns an image URL we layer an <img> on top
@@ -220,13 +268,11 @@
         <% }); %>
     </ul>
 
-    <%# Load-more trigger — only renders when more restaurants exist.
-        On desktop, it's a visible "See more" button. On mobile, the
-        button is visually clipped but an IntersectionObserver
-        auto-loads the next batch when the user scrolls near it.
-        /js/pages/home.js wires both. data-offset is the next offset
-        to fetch from /api/v1/marketplace/restaurants. %>
-    <% if (typeof featured_more !== 'undefined' && featured_more) { %>
+    <%# Pagination trigger — only renders in view=restaurants when
+        more rows exist past the initial page. /js/pages/home.js
+        observes this with an IntersectionObserver and auto-loads
+        the next batch on scroll. %>
+    <% if (isFullList && typeof featured_more !== 'undefined' && featured_more) { %>
         <div class="section__loadmore" data-load-more="featured" data-offset="<%= featured.length %>">
             <button type="button" class="btn btn--ghost btn--lg section__loadmore-btn">See more</button>
         </div>
@@ -235,11 +281,70 @@
 <% } %>
 
 <%# ============================================================
+    SELECTED-RESTAURANT DETAIL — only renders when /?restaurant=<slug>
+    is set and the restaurant exists. Single hero card at the top
+    of the page; the For You block below it carries the restaurant's
+    menu (filtered by the api).
+============================================================ %>
+<% if (__viewMode === 'restaurant' && selected_restaurant) { %>
+    <% var r = selected_restaurant; %>
+    <section class="section section--restaurant-detail" aria-labelledby="restaurant-detail-title">
+        <article class="restaurant-detail<%= r.isOpen ? '' : ' is-closed' %>">
+            <div class="restaurant-detail__image restaurant-card__image restaurant-card__image--placeholder" data-tint="<%= r.tint %>">
+                <span class="restaurant-card__initial" aria-hidden="true"><%= r.initial %></span>
+                <% if (r.image) { %>
+                    <img class="restaurant-card__photo" src="<%= r.image %>" alt="" loading="lazy" data-img-fallback>
+                <% } %>
+                <% if (r.vegType === 'pure-veg') { %>
+                    <span class="veg-marker veg-marker--veg restaurant-card__veg" aria-label="Pure vegetarian" title="Pure vegetarian"></span>
+                <% } else if (r.vegType === 'non-veg') { %>
+                    <span class="veg-marker veg-marker--non-veg restaurant-card__veg" aria-label="Non-vegetarian" title="Non-vegetarian"></span>
+                <% } %>
+                <% if (!r.isOpen) { %>
+                    <span class="restaurant-card__closed-overlay">Closed</span>
+                <% } %>
+            </div>
+            <div class="restaurant-detail__body">
+                <h2 id="restaurant-detail-title" class="restaurant-detail__name"><%= r.name %></h2>
+                <p  class="restaurant-detail__cuisines"><%= (r.cuisines || []).join(' · ') %></p>
+                <div class="restaurant-detail__meta">
+                    <span class="restaurant-card__rating" aria-label="Rating <%= r.rating %> out of 5">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                        <%= r.rating %>
+                    </span>
+                    <% if (r.deliveryMinutes) { %>
+                        <span class="restaurant-card__time"><%= r.deliveryMinutes %></span>
+                    <% } %>
+                    <% if (typeof r.distanceKm === 'number' && r.distanceKm >= 0) { %>
+                        <span class="restaurant-card__distance" aria-label="<%= r.distanceKm %> kilometres away">
+                            <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M12 22s7-7.5 7-13a7 7 0 0 0-14 0c0 5.5 7 13 7 13z"/>
+                                <circle cx="12" cy="9" r="2.5"/>
+                            </svg>
+                            <%= r.distanceKm.toFixed(1) %> km
+                        </span>
+                    <% } %>
+                </div>
+            </div>
+        </article>
+    </section>
+<% } %>
+
+<%# Friendly fallback when the slug didn't resolve to a real
+    restaurant (typo, stale link, restaurant turned off marketplace
+    after the user bookmarked it). %>
+<% if (__viewMode === 'restaurant' && !selected_restaurant) { %>
+    <section class="section">
+        <p class="section__empty">We couldn't find that restaurant. <a href="/" data-action="view-home">Back to home</a>.</p>
+    </section>
+<% } %>
+
+<%# ============================================================
     PROMO BANNER (Join rewards) — sits BETWEEN restaurants and
     For You per the user request. Visible only to logged-out
-    visitors (a signed-in user already has a rewards account).
+    visitors AND on the default home (not in any view mode).
 ============================================================ %>
-<% if (!user_session) { %>
+<% if (!user_session && !__viewMode) { %>
     <section class="promo-banner" aria-labelledby="promo-title">
         <div class="promo-banner__inner">
             <div class="promo-banner__copy">
@@ -252,21 +357,25 @@
 <% } %>
 
 <%# ============================================================
-    FOR YOU — dish suggestions. Renders AFTER the rewards banner.
+    FOR YOU — dish suggestions. Renders on:
+      • default home — "For you" suggestions across restaurants
+      • view=restaurant — the SELECTED restaurant's menu (api
+        filtered the list to that one company already; we just
+        rename the heading to "Menu" so the framing fits).
+    Hidden on view=restaurants / view=cuisines.
 ============================================================ %>
-<% if (for_you && for_you.length > 0) { %>
+<% if (for_you && for_you.length > 0 && __viewMode !== 'restaurants' && __viewMode !== 'cuisines') { %>
 <section class="section section--for-you" aria-labelledby="for-you-title" data-paginate-section="for-you">
     <div class="section__head">
-        <h2 id="for-you-title" class="section__title">For you</h2>
-        <% if (typeof for_you_more !== 'undefined' && for_you_more) { %>
-            <a href="/dishes" class="section__link">See all</a>
-        <% } %>
+        <h2 id="for-you-title" class="section__title">
+            <%= __viewMode === 'restaurant' ? 'Menu' : 'For you' %>
+        </h2>
     </div>
 
-    <ul class="dish-row" role="list" data-load-target>
+    <ul class="dish-grid" role="list" data-load-target>
         <% for_you.forEach(function (d) { %>
-            <li class="dish-row__item" data-search-id="<%= d.id %>">
-                <a class="dish-card" href="/restaurant/<%= d.restaurantSlug %>">
+            <li data-search-id="<%= d.id %>">
+                <a class="dish-card" href="/?restaurant=<%= encodeURIComponent(d.restaurantSlug) %>" data-action="pick-restaurant">
                     <div class="dish-card__image" data-tint="<%= d.tint %>">
                         <span class="dish-card__initial" aria-hidden="true"><%= d.initial %></span>
                         <% if (d.image) { %>
@@ -308,9 +417,10 @@
 <% } %>
 
 <%# ============================================================
-    HOW IT WORKS — onboarding band, only when no location set.
+    HOW IT WORKS — onboarding band, only when no location set AND
+    on the default home (skipped in all view modes).
 ============================================================ %>
-<% if (!user_location) { %>
+<% if (!user_location && !__viewMode) { %>
     <section class="section section--how" aria-labelledby="how-title">
         <h2 id="how-title" class="section__title section__title--centered">How it works</h2>
 

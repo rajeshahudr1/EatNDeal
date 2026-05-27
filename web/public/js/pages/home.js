@@ -159,48 +159,48 @@
     }
 
     /**
-     * navigateToCuisine
+     * spaNavigate
      *
-     * What:   SPA-style filter switch. Instead of letting the browser
-     *         do a full reload when the user clicks a cuisine pill on
-     *         the home page, we fetch /?cuisine=<name> in the
-     *         background, swap the new #app-main HTML into the DOM,
-     *         and push the URL into history. Page chrome (header,
-     *         search bar, footer, sticky cuisines) stays untouched —
-     *         only the feed below repaints.
+     * What:   Generic in-page swap to ANY URL on this origin. Fetches
+     *         the target, parses its HTML, replaces #app-main with the
+     *         new body, and pushState's the URL. Powers every same-page
+     *         flow the home page exposes: cuisine pills, View all,
+     *         restaurant card picks, Back-to-home, and the popstate
+     *         handler for browser back/forward.
      *
-     * Why:    User asked for "page laod nhi hoga" — clicking a
-     *         category should change products + restaurants in place,
-     *         not navigate away. Same UX Zomato / Swiggy give.
+     * Why:    "ek hi page pe sare akama hoga" — every filter / view
+     *         switch happens without a full page reload. Header,
+     *         footer, drawer, search overlay all stay intact.
      *
      * Type:   READ (network) + WRITE (DOM).
      *
      * Inputs:
-     *   cuisine — string. Empty / null clears the filter back to /.
+     *   url — string. Path + query, e.g. '/?view=restaurants'.
+     *         Empty / '/' lands on the default home.
      *   opts.fromPopstate — true when called by the popstate handler;
      *                       skips the pushState so we don't loop.
+     *   opts.label        — loader label to show during the fetch.
      */
-    async function navigateToCuisine(cuisine, opts) {
+    async function spaNavigate(url, opts) {
         opts = opts || {};
-        var target = String(cuisine || '').trim();
-        var url    = target ? ('/?cuisine=' + encodeURIComponent(target.toLowerCase())) : '/';
+        var target = String(url || '/').trim() || '/';
 
         if (!opts.fromPopstate) {
-            try { window.history.pushState({ cuisine: target || null }, '', url); }
-            catch (e) { /* ignore in very old browsers — fall back to a real navigation */ window.location.href = url; return; }
+            try { window.history.pushState({}, '', target); }
+            catch (e) { /* very old browsers — degrade gracefully */ window.location.href = target; return; }
         }
 
         if (window.EatNDealUi && window.EatNDealUi.showLoader) {
-            window.EatNDealUi.showLoader({ label: 'Filtering…' });
+            window.EatNDealUi.showLoader({ label: opts.label || 'Loading…' });
         }
         try {
-            var res  = await fetch(url, { credentials: 'same-origin', headers: { 'Accept': 'text/html' } });
+            var res  = await fetch(target, { credentials: 'same-origin', headers: { 'Accept': 'text/html' } });
             var html = await res.text();
             var doc  = new DOMParser().parseFromString(html, 'text/html');
 
-            // Swap the entire <main> content — covers cuisines row,
-            // for-you, popular-near-you, promo banner, how-it-works.
-            // Header / footer / drawer / overlays stay in place.
+            // Swap the entire <main> content — every section in the
+            // body lives inside #app-main. Header / footer / drawer /
+            // overlays sit outside, so they stay untouched.
             var oldMain = document.getElementById('app-main');
             var newMain = doc.getElementById('app-main');
             if (oldMain && newMain) {
@@ -212,19 +212,32 @@
             markActiveCuisineFromUrl();
             bindPagination();
 
-            // Scroll to the top of the feed (just below the search +
-            // sticky cuisines) so the user sees the new content from
-            // its start.
+            // Scroll to the top of the new content so the user sees
+            // it from its start.
             window.scrollTo({ top: 0, behavior: 'smooth' });
         } catch (err) {
             // Fall back to a real navigation so the user is never
             // stranded with stale content.
-            window.location.href = url;
+            window.location.href = target;
         } finally {
             if (window.EatNDealUi && window.EatNDealUi.hideLoader) {
                 window.EatNDealUi.hideLoader();
             }
         }
+    }
+
+    /**
+     * navigateToCuisine
+     *
+     * What:   Thin wrapper around spaNavigate for cuisine-pill picks.
+     *         Empty / null cuisine returns to the unfiltered home.
+     * Why:    Keeps the cuisine call sites concise — they pass the
+     *         cuisine name, not the full URL.
+     */
+    function navigateToCuisine(cuisine, opts) {
+        var target = String(cuisine || '').trim();
+        var url    = target ? ('/?cuisine=' + encodeURIComponent(target.toLowerCase())) : '/';
+        return spaNavigate(url, Object.assign({ label: target ? 'Filtering…' : 'Loading…' }, opts || {}));
     }
 
     /**
@@ -247,7 +260,9 @@
             if (!a) { return; }
             ev.preventDefault();
 
-            var li      = a.closest('.cuisine-row__item');
+            // Match against EITHER the cuisine row item OR the
+            // cuisine grid item (full-screen /?view=cuisines view).
+            var li      = a.closest('.cuisine-row__item, .cuisine-grid__item');
             var cuisine = li ? (li.getAttribute('data-search-name') || '') : '';
             // Tapping the already-active pill clears the filter.
             var current = new URLSearchParams(window.location.search).get('cuisine') || '';
@@ -259,10 +274,45 @@
         });
 
         // Back / forward button → re-fetch the previous state's URL.
+        // We hand the full URL to spaNavigate (rather than reading
+        // cuisine only) so view-mode pages also rebuild on back/forward.
         window.addEventListener('popstate', function (ev) {
-            var params  = new URLSearchParams(window.location.search);
-            var cuisine = (params.get('cuisine') || '').trim();
-            navigateToCuisine(cuisine, { fromPopstate: true });
+            spaNavigate(window.location.pathname + window.location.search, { fromPopstate: true });
+        });
+    }
+
+    /**
+     * bindViewNavigation
+     *
+     * What:  Document-level delegated click handler for the
+     *        non-cuisine SPA links:
+     *          • [data-action="view-all"]        — section-head links
+     *                                              (/?view=restaurants
+     *                                               or /?view=cuisines)
+     *          • [data-action="pick-restaurant"] — restaurant cards
+     *                                              (/?restaurant=<slug>)
+     *          • [data-action="view-home"]       — back-to-home links
+     *                                              inside the view-mode
+     *                                              bar (/)
+     *        All three need exactly the same swap behaviour as the
+     *        cuisine pills; this handler just routes the href to
+     *        spaNavigate.
+     */
+    function bindViewNavigation() {
+        document.addEventListener('click', function (ev) {
+            if (ev.defaultPrevented || ev.button !== 0) { return; }
+            if (ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey) { return; }
+
+            var a = ev.target.closest && ev.target.closest(
+                'a[data-action="view-all"], a[data-action="pick-restaurant"], a[data-action="view-home"]'
+            );
+            if (!a) { return; }
+            var href = a.getAttribute('href') || '/';
+            // Skip pure-fragment or off-origin links — let the
+            // browser handle those normally.
+            if (href.charAt(0) === '#' || /^[a-z]+:/i.test(href)) { return; }
+            ev.preventDefault();
+            spaNavigate(href);
         });
     }
 
@@ -340,7 +390,7 @@
 
         return '' +
             '<li data-search-id="' + escHtml(r.id) + '">' +
-              '<a class="restaurant-card' + (r.isOpen ? '' : ' is-closed') + '" href="/restaurant/' + escHtml(r.slug || r.id) + '">' +
+              '<a class="restaurant-card' + (r.isOpen ? '' : ' is-closed') + '" href="/?restaurant=' + encodeURIComponent(r.slug || r.id) + '" data-action="pick-restaurant">' +
                 '<div class="restaurant-card__image restaurant-card__image--placeholder" data-tint="' + escHtml(r.tint) + '">' +
                   '<span class="restaurant-card__initial" aria-hidden="true">' + escHtml(r.initial) + '</span>' +
                   photo + veg + offer + closed +
@@ -375,8 +425,8 @@
         var price  = (typeof d.priceFrom === 'number' ? d.priceFrom : 0).toFixed(2);
 
         return '' +
-            '<li class="dish-row__item" data-search-id="' + escHtml(d.id) + '">' +
-              '<a class="dish-card" href="/restaurant/' + escHtml(d.restaurantSlug) + '">' +
+            '<li data-search-id="' + escHtml(d.id) + '">' +
+              '<a class="dish-card" href="/?restaurant=' + encodeURIComponent(d.restaurantSlug) + '" data-action="pick-restaurant">' +
                 '<div class="dish-card__image" data-tint="' + escHtml(d.tint) + '">' +
                   '<span class="dish-card__initial" aria-hidden="true">' + escHtml(d.initial) + '</span>' +
                   photo + vegMarkerHtml(d.veg) +
@@ -521,9 +571,11 @@
             try { paginationObserver.disconnect(); } catch (e) { /* noop */ }
             paginationObserver = null;
         }
+        // No IntersectionObserver (very old browser) → the hidden
+        // .section__loadmore-btn stays accessible as a fallback so
+        // power users can still tab to it and press Enter. Modern
+        // browsers (>= 99 % global) hit the IO path below.
         if (typeof window.IntersectionObserver !== 'function') { return; }
-        var isMobile = !window.matchMedia || !window.matchMedia('(min-width: 768px)').matches;
-        if (!isMobile) { return; }
 
         paginationObserver = new IntersectionObserver(function (entries) {
             entries.forEach(function (entry) {
@@ -582,6 +634,7 @@
         bindImageFallback();
         markActiveCuisineFromUrl();
         bindCuisinePicks();
+        bindViewNavigation();
         bindPagination();
         bindClearSearch();
     }

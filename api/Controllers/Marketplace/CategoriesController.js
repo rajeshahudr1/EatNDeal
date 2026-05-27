@@ -73,8 +73,17 @@ function titleCase(s) {
  */
 async function list(req, res) {
     try {
-        const limit  = req.query.limit ? Math.min(50, Math.max(1, Number(req.query.limit))) : 12;
+        // Limit caps higher for categories than restaurants/products
+        // because the View-all-cuisines page wants every distinct
+        // cuisine in one shot — there's no pagination on that surface.
+        const limit  = req.query.limit ? Math.min(500, Math.max(1, Number(req.query.limit))) : 12;
         const parent = req.query.parent ? String(req.query.parent).trim().toLowerCase() : null;
+        // `?all=1` opens up the listing so the View all cuisines page
+        // surfaces SUB-categories too (Chicken Kebab, Donner Kebab,
+        // Margherita Pizza …) — not just top-level pills. Without this
+        // flag the endpoint preserves the home-strip behaviour
+        // (top-level only) so the cuisine row doesn't bloat.
+        const includeAll = String(req.query.all || '').trim() === '1';
 
         // When ?parent=<name> is set, we return the CHILD categories
         // of every top-level row whose name matches. Example:
@@ -121,12 +130,14 @@ async function list(req, res) {
             .whereNull('c.deleted_at')
             .andWhere('cat.is_display_application_menu', 1)
             // When ?parent=<name> is set, look up children of THOSE
-            // matching top-level rows. Otherwise return top-level
-            // categories (parent = 0 / null) as before.
+            // matching top-level rows. When ?all=1 we skip the
+            // parent restriction entirely so sub-categories surface
+            // alongside top-level pills (used by View all cuisines).
+            // Otherwise (default home strip) we restrict to top-level.
             .modify(function (qb) {
                 if (parentIds) {
                     qb.whereIn('cat.parent', parentIds);
-                } else {
+                } else if (!includeAll) {
                     qb.andWhere(function () { this.where('cat.parent', 0).orWhereNull('cat.parent'); });
                 }
             })

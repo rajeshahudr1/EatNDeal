@@ -68,26 +68,6 @@
 .section { padding: var(--space-8) var(--space-4); }
 .section__title { font-size: 1.15rem; }
 
-/* Mobile auto-loads on scroll — the "See more" button is hidden but
- * the wrapper stays in the DOM so the IntersectionObserver in
- * /js/pages/home.js can observe it and trigger the fetch. Using
- * `display: none` on the wrapper would remove it from layout and
- * break the observer; we hide the BUTTON only. The wrapper keeps a
- * small height so the observer can detect entry into the viewport
- * smoothly as the user scrolls past the last card. */
-.section__loadmore { min-height: 1px; margin-top: var(--space-4); }
-.section__loadmore-btn { display: none; }
-/* While a mobile auto-load is in flight, surface a tiny "Loading…"
- * line so the user sees that more content is coming. */
-.section__loadmore.is-loading::after {
-    content: 'Loading more…';
-    display: block;
-    text-align: center;
-    color: var(--color-text-muted);
-    font-size: 0.85rem;
-    padding: var(--space-2) 0;
-}
-
 /* ── Cuisines (mobile horizontal scroller) ──────────────────────────── *
  * On mobile the "What's on your mind?" cuisine row is STICKY — it
  * glues to the bottom of the site header so the user can flip
@@ -141,12 +121,31 @@
 .cuisine-pill__icon { width: 54px; height: 54px; }
 .cuisine-pill__name { font-size: 0.72rem; }
 
-/* ── Restaurant grid (mobile single column) ─────────────────────────── */
+/* ── Restaurant grid (mobile single column) — legacy ─────────────────── */
 
 .restaurant-grid {
     display: grid;
     grid-template-columns: 1fr;
     gap: var(--space-4);
+}
+
+/* ── Restaurant ROW (mobile horizontal slider) ──────────────────────── *
+ * Same shape as desktop — strip the card a touch narrower so the
+ * "peek" of the next card is visible at the right edge, prompting
+ * the user to swipe. */
+.restaurant-row__item { width: 78vw; max-width: 280px; }
+
+/* ── Dish GRID (mobile single column) ───────────────────────────────── *
+ * For You stacks one dish per row on mobile and paginates via the
+ * IntersectionObserver — same vertical-feed UX the restaurant grid
+ * used to have. */
+.dish-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: var(--space-4);
+    list-style: none;
+    margin: 0;
+    padding: 0;
 }
 
 /* ── How it works (mobile stack) ────────────────────────────────────── */

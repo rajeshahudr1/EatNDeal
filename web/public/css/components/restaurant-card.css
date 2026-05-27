@@ -8,6 +8,37 @@
  * Used:  Imported by base.css.
  */
 
+/* ── Restaurant ROW (horizontal scroller — works on every screen) ─── *
+ * Same scroll-snap pattern the cuisine row uses, so the strip
+ * scrolls horizontally whenever the cards overflow the viewport
+ * width (regardless of breakpoint). Per-breakpoint card widths
+ * sit in desktop.css / mobile.css — only the strip behaviour
+ * lives here so the rules apply on every screen size.
+ */
+.restaurant-row {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: var(--space-4);
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: var(--space-2);
+    margin: 0;
+    padding-left: 0;
+    list-style: none;
+    scrollbar-width: none;
+}
+.restaurant-row::-webkit-scrollbar { display: none; }
+
+.restaurant-row__item {
+    flex: 0 0 auto;
+    scroll-snap-align: start;
+    /* Default width — fits ~4 cards across a 1280 px container. The
+     * mobile / narrow-screen override sits in mobile.css; the wider
+     * desktop override sits in desktop.css. */
+    width: 260px;
+}
+
 .restaurant-card {
     display: flex;
     flex-direction: column;

@@ -86,6 +86,48 @@ const listQuerySchema = Joi.object({
     // matches. Sub-cuisine drill-down (e.g. parent=kebab → Chicken
     // Kebab, Donner Kebab, …).
     parent: Joi.string().trim().max(120).messages({ 'string.max': 'Parent name is too long.' }),
+
+    // ── Phase-2 filter sidebar / bottom-sheet params ────────────
+    // Each is optional. They all map 1:1 onto the state object
+    // built by /js/ui/filter-sidebar.js + /js/ui/filter-sheet.js.
+
+    // Sort order. Default ('relevance') keeps the existing nearest-
+    // first behaviour; the others remap the application-side sort.
+    sort: Joi.string().valid('relevance', 'distance', 'rating', 'time', 'price-asc', 'price-desc'),
+
+    // Minimum restaurant rating (3.5 / 4.0 / 4.5). Average computed
+    // from the review_rating table in the controller.
+    rating: Joi.number().min(0).max(5),
+
+    // Maximum distance from the user, in kilometres. Restaurants
+    // outside this radius are filtered out application-side after
+    // the Haversine calc.
+    max_km: Joi.number().positive().max(500),
+
+    // Maximum delivery-time bucket, in minutes. Same idea — derived
+    // from km via Helpers/distance.estimateDeliveryMinutes; we
+    // filter on the numeric km equivalent.
+    max_min: Joi.number().integer().min(1).max(720),
+
+    // Open-now toggle. '1' = only restaurants whose branch is
+    // currently accepting orders.
+    open_now: Joi.string().valid('1'),
+
+    // Pure-veg toggle. '1' = only restaurants where every
+    // marketplace product is veg.
+    veg: Joi.string().valid('1'),
+
+    // Has-offer toggle. '1' = only restaurants with an active
+    // discount or a product carrying an offer label.
+    offer: Joi.string().valid('1'),
+
+    // Dish price bucket (products endpoint). low ≤ £6, mid £6-12,
+    // high > £12. Applies to the marketplace_price chain.
+    price: Joi.string().valid('low', 'mid', 'high'),
+
+    // Single-product flags — used by the restaurant detail page.
+    recommended: Joi.string().valid('1'),
+    featured:    Joi.string().valid('1'),
 });
 
 // /api/v1/marketplace/search — the home page live-filter.

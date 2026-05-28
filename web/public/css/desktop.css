@@ -15,16 +15,36 @@
 /* Desktop header columns:
  *   logo │ location │ primary-nav (fills) │ bell │ auth-buttons
  * The hamburger is hidden — desktop uses the inline nav. */
+/* Flex row (not grid) so the header never wraps regardless of how
+ * many controls sit in it — search flex-grows, everything else keeps
+ * its natural size on a single line. Full-width to align with the
+ * edge-to-edge content below. */
 .site-header__inner {
-    display: grid;
-    grid-template-columns: auto auto 1fr auto auto;
+    display: flex;
+    flex-wrap: nowrap;
     align-items: center;
-    gap: var(--space-5);
+    gap: var(--space-4);
     padding: 0 var(--space-6);
     height: var(--header-height-desktop);
-    max-width: var(--container-max);
+    width: 100%;
     margin: 0 auto;
 }
+/* Layout: [brand] [location] [search] ……… [mode-toggle][quick][auth]
+ * The search sits left-of-centre at a capped width (doesn't grow);
+ * `margin-left:auto` on the first right-cluster item (mode-toggle)
+ * eats the remaining space so Delivery/Pickup · Rewards · Orders ·
+ * Cart · Sign in all hug the RIGHT edge. */
+.site-header__brand,
+.site-header__location,
+.mode-toggle,
+.header-quick,
+.site-header__auth { flex: 0 0 auto; }
+.site-header__inner .site-header__search {
+    flex: 0 1 540px;
+    min-width: 120px;
+    margin: 0 var(--space-3);
+}
+.site-header__inner .mode-toggle { margin-left: auto; }
 
 .site-header__nav      { display: flex; gap: var(--space-6); justify-content: flex-end; }
 .site-header__menu-btn { display: none; }

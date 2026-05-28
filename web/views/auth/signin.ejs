@@ -1,164 +1,141 @@
 <%#
   views/auth/signin.ejs
 
-  What:  Single mobile-first auth entry page — pink brand band on top,
-         white form area below. Matches the mockup the user shared.
-  Layout:
-           ┌────────────────────────────┐
-           │   (light pink band)        │
-           │       [Logo]               │
-           │      Eats N Deals          │   ← bold red wordmark
-           ├────────────────────────────┤
-           │   (white form area)        │
-           │   Log in or sign up        │
-           │   Enter your mobile number │
-           │                            │
-           │  ┌─────┐  ┌──────────────┐ │   ← country chip + phone input
-           │  │MY+60│  │ Mobile number│ │     in TWO separate rounded
-           │  └─────┘  └──────────────┘ │     boxes (not joined)
-           │                            │
-           │  ┌────── Continue ─────┐   │
-           │  └─────────────────────┘   │
-           │                            │
-           │   ─── or continue with ─── │
-           │      ○   ○   ○             │   ← circular social icons
-           │   By continuing …          │
-           └────────────────────────────┘
-  Why:   Food-delivery convention — one mobile-number entry. OTP comes
-         next; the api decides whether this is a new signup or existing
-         sign-in. We don't ask the user to choose.
-  Used:  Rendered by Controllers/AuthController.signinPage.
+  Split auth page matching the mockup:
+    Web (≥ 900px): two columns —
+      LEFT  pink branding panel: logo · "Good food, great deals,
+            delivered fast!" · subtitle · 4 feature rows · food art.
+      RIGHT white card: "Welcome back! 👋" · Login/Sign up tabs ·
+            mobile-number entry · Continue · social buttons · 4 USP
+            icons · terms.
+    Mobile (< 900px): stacks — compact branding on top, card below.
+
+  One OTP flow handles BOTH login + sign-up (the api decides new vs
+  existing), so the Login/Sign up tabs are visual only — both show
+  the same mobile-number form. No separate sign-up form per the user.
+
+  Used: Controllers/AuthController.signinPage (bare layout).
 -%>
-<section class="auth-page">
+<section class="auth-split">
 
-    <%# Top bar — focused-flow style: only a back-to-home button
-        (the global header is hidden by the bare layout). Position
-        is absolute at the top-left of the card on desktop and
-        top-left of the viewport on mobile (styled in auth-page.css). %>
-    <a class="auth-back auth-back--top" href="/" aria-label="Back to home">
-        <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="19" y1="12" x2="5" y2="12"/>
-            <polyline points="12 19 5 12 12 5"/>
-        </svg>
-        <span>Back</span>
-    </a>
-
-    <%# Pink brand band — logo + wordmark centred. Tinted background
-        (`--color-primary-soft`) plus an ambient gradient for a soft
-        glow. Logo is cache-busted so a swap on disk + restart
-        propagates here too. %>
-    <header class="auth-brand-band">
-        <a class="auth-brand-band__link" href="/" aria-label="<%= brand.name %> home">
-            <img
-                class="auth-brand-band__logo"
-                src="<%= brand.logoUrl %>?v=<%= ASSET_VERSION %>"
-                alt=""
-            >
+    <%# ── LEFT: branding panel ─────────────────────────────────── %>
+    <aside class="auth-brand2">
+        <a class="auth-brand2__home" href="/" aria-label="<%= brand.name %> home">
+            <img class="auth-brand2__logo" src="<%= brand.logoUrl %>?v=<%= ASSET_VERSION %>" alt="<%= brand.name %>">
         </a>
-    </header>
 
-    <%# White form area. No card / shadow — full-bleed white surface
-        flowing straight from the pink band above. %>
-    <div class="auth-form" role="region" aria-labelledby="auth-title">
-        <h1 id="auth-title" class="auth-form__title">Log in or sign up</h1>
-        <p class="auth-form__subtitle">Enter your mobile number to continue</p>
+        <h1 class="auth-brand2__title">Good food,<br><em>great deals,</em><br>delivered fast!</h1>
+        <p class="auth-brand2__subtitle">Your favorite restaurants &amp; cuisines delivered to your doorstep in minutes.</p>
 
-        <%# Sign-in form. Real submit: POST /signin/start →
-            AuthController.startOtp → calls api/v1/auth/send-otp →
-            stashes phone in session → redirects to ?step=otp.
-            /js/pages/signin.js handles the digits-only filter + the
-            country-picker chip; submit is a plain form POST. %>
+        <ul class="auth-brand2__features">
+            <li class="auth-feat">
+                <span class="auth-feat__icon">🛵</span>
+                <span><span class="auth-feat__title">Fast Delivery</span><br><span class="auth-feat__sub">Quick &amp; reliable delivery</span></span>
+            </li>
+            <li class="auth-feat">
+                <span class="auth-feat__icon">🏷️</span>
+                <span><span class="auth-feat__title">Best Offers</span><br><span class="auth-feat__sub">Exclusive deals &amp; discounts</span></span>
+            </li>
+            <li class="auth-feat">
+                <span class="auth-feat__icon">🛡️</span>
+                <span><span class="auth-feat__title">Safe &amp; Secure</span><br><span class="auth-feat__sub">100% safe payment options</span></span>
+            </li>
+            <li class="auth-feat">
+                <span class="auth-feat__icon">📍</span>
+                <span><span class="auth-feat__title">Live Tracking</span><br><span class="auth-feat__sub">Track your order in real-time</span></span>
+            </li>
+        </ul>
+
+        <%# Compact feature pills — shown only on mobile (the rows
+            above are hidden there to keep the branding short). %>
+        <p class="auth-brand2__pills" aria-hidden="true">
+            <span>🛵 Fast Delivery</span> · <span>Best Offers</span> · <span>Safe &amp; Secure</span>
+        </p>
+
+        <%# Decorative food collage + 50% OFF badge — placeholder
+            food emoji discs (no photo pipeline yet) arranged like the
+            mockup's burger / pasta / drink cluster with a location
+            pin + dotted trail feel. Purely cosmetic. %>
+        <div class="auth-brand2__art" aria-hidden="true">
+            <span class="auth-brand2__badge"><strong>50% OFF</strong><span>On your first order</span></span>
+            <span class="auth-pin">📍</span>
+            <span class="af af--drink">🥤</span>
+            <span class="af af--burger">🍔</span>
+            <span class="af af--pasta">🍝</span>
+            <span class="af af--leaf af--leaf-1">🌿</span>
+            <span class="af af--leaf af--leaf-2">🌿</span>
+            <span class="af af--tomato">🍅</span>
+        </div>
+    </aside>
+
+    <%# ── RIGHT: form card ─────────────────────────────────────── %>
+    <div class="auth-card2" role="region" aria-labelledby="auth-title">
+        <a class="auth-card2__back" href="/" aria-label="Back to home">
+            <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+        </a>
+
+        <h2 id="auth-title" class="auth-card2__title">Welcome back! 👋</h2>
+        <p class="auth-card2__subtitle">Log in or sign up to continue</p>
+
+        <%# Login / Sign up tabs — visual only. Both lead to the same
+            mobile-number OTP flow (one flow handles new + existing). %>
+        <div class="auth-tabs" role="tablist" aria-label="Login or sign up">
+            <button type="button" class="auth-tab is-active" data-auth-tab role="tab" aria-selected="true">Login</button>
+            <button type="button" class="auth-tab" data-auth-tab role="tab" aria-selected="false">Sign up</button>
+        </div>
+
         <form id="signin-form" class="signin-form" method="post" action="/signin/start" novalidate>
-            <%# Forward the `next` URL through the POST so AuthController.startOtp
-                can stash it on req.session.pendingAuth — that's what
-                verifyOtp later reads when redirecting an *existing*
-                customer back to the page they came from. Without this
-                field every existing-user sign-in would land on "/" no
-                matter where they started. %>
-            <input type="hidden" name="next" value="<%= next %>">
             <input type="hidden" name="next" value="<%= next %>">
 
-            <%# Two separate rounded boxes — country chip on the left
-                and phone-number input on the right. The chip is a
-                button that opens the full-screen country picker. %>
+            <label class="signin-form__label" for="signin-mobile">Mobile number</label>
             <div class="signin-form__row">
-                <button
-                    type="button"
-                    id="country-picker-trigger"
-                    class="country-chip"
-                    data-action="open-country-picker"
-                    aria-haspopup="dialog"
-                    aria-controls="country-picker"
-                    aria-label="Choose country"
-                >
+                <button type="button" id="country-picker-trigger" class="country-chip"
+                    data-action="open-country-picker" aria-haspopup="dialog" aria-controls="country-picker" aria-label="Choose country">
                     <span class="country-chip__flag" id="country-chip-flag" aria-hidden="true">🇬🇧</span>
                     <span class="country-chip__code" id="country-chip-code">+44</span>
-                    <svg class="country-chip__arrow" aria-hidden="true" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
-                        <polyline points="6 9 12 15 18 9"/>
-                    </svg>
+                    <svg class="country-chip__arrow" aria-hidden="true" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
                 </button>
-
-                <%# inputmode="numeric" + pattern="[0-9]*" together:
-                    - on mobile, brings up the digits-only keypad
-                    - tells the form / a11y the value must be digits only
-                    The real "block non-digit keystrokes + strip pasted
-                    junk" rule lives in /js/pages/signin.js (a pattern
-                    attribute alone does NOT prevent typing letters in
-                    type="tel"). %>
-                <input
-                    id="signin-mobile"
-                    class="signin-form__input"
-                    type="tel"
-                    name="mobile"
-                    inputmode="numeric"
-                    pattern="[0-9]*"
-                    autocomplete="tel-national"
-                    placeholder="Mobile number"
-                    minlength="6"
-                    maxlength="15"
-                    required
-                >
+                <input id="signin-mobile" class="signin-form__input" type="tel" name="mobile"
+                    inputmode="numeric" pattern="[0-9]*" autocomplete="tel-national"
+                    placeholder="Enter your mobile number" minlength="6" maxlength="15" required>
                 <input type="hidden" name="country_iso"  id="signin-country-iso"  value="GB">
                 <input type="hidden" name="country_dial" id="signin-country-dial" value="+44">
             </div>
 
             <p class="signin-form__error" id="signin-error" hidden></p>
 
-            <button type="submit" class="btn btn--primary btn--lg btn--block signin-form__submit">
-                Continue
+            <button type="submit" class="auth-continue">
+                <span>Continue</span>
+                <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
             </button>
         </form>
 
         <div class="auth-divider"><span>or continue with</span></div>
 
-        <%# Social buttons — circular, icon-only (matches the mockup).
-            Real anchors that hit our OAuth redirect endpoint:
-              GET /signin/oauth/<provider>?next=<encoded next URL>
-            The web controller mints a CSRF `state`, stashes it in the
-            session, and bounces the browser to Google / Facebook. The
-            callback exchanges the code, calls /api/v1/auth/social-
-            signin, and sets the session.
-            The `next` value flows through so existing users land where
-            they came from after the round trip. %>
-        <div class="auth-socials">
-            <a href="/signin/oauth/google?next=<%= encodeURIComponent(next) %>"
-               class="auth-social"
-               aria-label="Continue with Google">
+        <%# Social buttons — full-width with icon + label (per mockup). %>
+        <div class="auth-socials2">
+            <a href="/signin/oauth/google?next=<%= encodeURIComponent(next) %>" class="auth-social2" aria-label="Continue with Google">
                 <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
                     <path fill="#4285F4" d="M21.6 12.227c0-.71-.064-1.392-.182-2.045H12v3.868h5.385a4.6 4.6 0 0 1-2 3.018v2.51h3.232c1.89-1.74 2.983-4.305 2.983-7.351z"/>
                     <path fill="#34A853" d="M12 22c2.7 0 4.964-.895 6.618-2.422l-3.232-2.51c-.896.6-2.04.955-3.386.955-2.605 0-4.81-1.76-5.595-4.123H3.064v2.59A9.997 9.997 0 0 0 12 22z"/>
                     <path fill="#FBBC05" d="M6.405 13.9a6.005 6.005 0 0 1 0-3.8V7.51H3.064a10 10 0 0 0 0 8.98l3.341-2.59z"/>
                     <path fill="#EA4335" d="M12 5.977c1.469 0 2.786.505 3.823 1.495l2.867-2.867C16.96 2.99 14.695 2 12 2A9.997 9.997 0 0 0 3.064 7.51l3.341 2.59C7.19 7.737 9.395 5.977 12 5.977z"/>
                 </svg>
+                <span>Continue with Google</span>
             </a>
-            <a href="/signin/oauth/facebook?next=<%= encodeURIComponent(next) %>"
-               class="auth-social"
-               aria-label="Continue with Facebook">
-                <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
-                    <path fill="#1877F2" d="M22 12.06C22 6.5 17.52 2 12 2S2 6.5 2 12.06c0 5.02 3.66 9.19 8.44 9.94v-7.03H7.9v-2.91h2.54V9.85c0-2.5 1.49-3.89 3.77-3.89 1.09 0 2.24.2 2.24.2v2.46h-1.26c-1.24 0-1.63.77-1.63 1.56v1.88h2.78l-.44 2.91h-2.34V22c4.78-.75 8.44-4.92 8.44-9.94z"/>
-                </svg>
+            <a href="/signin/oauth/facebook?next=<%= encodeURIComponent(next) %>" class="auth-social2" aria-label="Continue with Facebook">
+                <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="#1877F2" d="M22 12.06C22 6.5 17.52 2 12 2S2 6.5 2 12.06c0 5.02 3.66 9.19 8.44 9.94v-7.03H7.9v-2.91h2.54V9.85c0-2.5 1.49-3.89 3.77-3.89 1.09 0 2.24.2 2.24.2v2.46h-1.26c-1.24 0-1.63.77-1.63 1.56v1.88h2.78l-.44 2.91h-2.34V22c4.78-.75 8.44-4.92 8.44-9.94z"/></svg>
+                <span>Continue with Facebook</span>
             </a>
         </div>
+
+        <%# USP icons row. %>
+        <ul class="auth-usps">
+            <li><span class="auth-usps__icon">🛍️</span><span>No Minimum Order</span></li>
+            <li><span class="auth-usps__icon">📍</span><span>Live Tracking</span></li>
+            <li><span class="auth-usps__icon">🛡️</span><span>100% Secure Payment</span></li>
+            <li><span class="auth-usps__icon">↩️</span><span>Easy Returns</span></li>
+        </ul>
 
         <p class="auth-form__legal">
             By continuing, you agree to our

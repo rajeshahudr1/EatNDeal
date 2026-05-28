@@ -24,7 +24,7 @@
 // list or any precached file's contents. The activate handler purges
 // caches whose name doesn't match, so bumping the name flushes stale
 // entries cleanly.
-var CACHE_NAME = 'eatndeal-shell-v68';
+var CACHE_NAME = 'eatndeal-shell-v96';
 var SHELL = [
     '/',
 
@@ -48,6 +48,9 @@ var SHELL = [
     '/css/components/bottom-nav.css',
     '/css/components/mobile-drawer.css',
     '/css/components/account-menu.css',
+    '/css/components/filter-sidebar.css',
+    '/css/components/home-v2.css',
+    '/css/components/location-landing.css',
     '/css/desktop.css',
     '/css/mobile.css',
 
@@ -61,6 +64,7 @@ var SHELL = [
     '/js/ui/search-overlay.js',
     '/js/ui/location-modal.js',
     '/js/ui/account-menu.js',
+    '/js/ui/filter-sidebar.js',
     '/js/app.js',
 
     // Brand assets
@@ -127,7 +131,27 @@ self.addEventListener('fetch', function (event) {
         return;
     }
 
-    // Static assets — cache-first, populate on miss.
+    // CSS + JS — NETWORK-FIRST so the latest styles/scripts always
+    // load (no more stale-cache surprises during active development).
+    // Falls back to cache only when offline. This is the fix for the
+    // recurring "old CSS keeps showing" problem: previously these were
+    // cache-first, so a shipped change wouldn't appear until the cache
+    // name was bumped AND the SW reinstalled.
+    if (/\.(css|js)$/i.test(url.pathname)) {
+        event.respondWith(
+            fetch(req).then(function (resp) {
+                if (resp && resp.status === 200 && resp.type === 'basic') {
+                    var copy = resp.clone();
+                    caches.open(CACHE_NAME).then(function (c) { c.put(req, copy); });
+                }
+                return resp;
+            }).catch(function () { return caches.match(req); })
+        );
+        return;
+    }
+
+    // Other static assets (fonts, images, manifest) — cache-first,
+    // populate on miss. These rarely change so caching is a win.
     event.respondWith(
         caches.match(req).then(function (cached) {
             if (cached) { return cached; }

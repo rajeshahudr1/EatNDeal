@@ -40,21 +40,43 @@ const { callApi } = require('../Helpers/apiClient');
  *         On error any array can be null; the caller decides how to
  *         fall back.
  */
-async function fetchMarketplace(req, lat, lng, cuisine) {
-    const qs = new URLSearchParams();
-    if (Number.isFinite(lat)) qs.set('lat', String(lat));
-    if (Number.isFinite(lng)) qs.set('lng', String(lng));
-    if (cuisine)              qs.set('cuisine', cuisine);
-    const suffix = qs.toString() ? ('?' + qs.toString()) : '';
+async function fetchMarketplace(req, lat, lng, cuisine, filters) {
+    filters = filters || {};
 
-    // Categories fetch always pulls the full top-level list (no
-    // cuisine param). When a filter is active we additionally fetch
-    // the SUB-categories of the selected one so the row can expand
-    // inline: e.g. picking Kebab inserts Chicken Kebab / Donner Kebab
-    // / etc. right after the Kebab pill.
+    // Build per-endpoint query strings — the validator rejects
+    // unknown fields, so categories can't see e.g. ?rating= and
+    // products can't see ?max_km=. The base block (lat/lng/cuisine)
+    // is shared.
+    function baseQs() {
+        const qs = new URLSearchParams();
+        if (Number.isFinite(lat)) qs.set('lat', String(lat));
+        if (Number.isFinite(lng)) qs.set('lng', String(lng));
+        if (cuisine)              qs.set('cuisine', cuisine);
+        return qs;
+    }
+    // Restaurants: every restaurant-level filter.
+    const rqs = baseQs();
+    if (filters.sort)     rqs.set('sort',     filters.sort);
+    if (filters.rating)   rqs.set('rating',   String(filters.rating));
+    if (filters.max_km)   rqs.set('max_km',   String(filters.max_km));
+    if (filters.max_min)  rqs.set('max_min',  String(filters.max_min));
+    if (filters.open_now) rqs.set('open_now', '1');
+    if (filters.veg)      rqs.set('veg',      '1');
+    if (filters.offer)    rqs.set('offer',    '1');
+    // Products: dish-level filters only (veg / offer / price /
+    // recommended / featured). Sort + rating + km don't apply here.
+    const pqs = baseQs();
+    if (filters.veg)         pqs.set('veg',         '1');
+    if (filters.offer)       pqs.set('offer',       '1');
+    if (filters.price)       pqs.set('price',       filters.price);
+    if (filters.recommended) pqs.set('recommended', '1');
+    if (filters.featured)    pqs.set('featured',    '1');
+    // Categories: no filter params — the cuisine strip is the same
+    // regardless of which restaurant filters are active.
+
     const calls = [
-        callApi(req, 'GET', '/api/v1/marketplace/restaurants' + suffix),
-        callApi(req, 'GET', '/api/v1/marketplace/products'    + suffix),
+        callApi(req, 'GET', '/api/v1/marketplace/restaurants?' + rqs.toString()),
+        callApi(req, 'GET', '/api/v1/marketplace/products?'    + pqs.toString()),
         callApi(req, 'GET', '/api/v1/marketplace/categories'),
     ];
     if (cuisine) {
@@ -127,6 +149,24 @@ async function index(req, res, next) {
     // modal. When absent, the front-end JS opens the modal on DOM-ready.
     const userLocation = (req.session && req.session.userLocation) || null;
 
+    // ── Location gate ─────────────────────────────────────────────
+    // No saved location yet → render the dedicated location LANDING
+    // page (header + footer visible, no promo strip) instead of the
+    // restaurant feed. The user picks a postcode / city / shares
+    // their location; that saves + reloads into the feed. Matches the
+    // "Step 1 of 3 — where do you want to order from?" mockup.
+    if (!userLocation) {
+        return res.render('site/location', {
+            page_title:        'Choose your location',
+            _layoutFile:       '../_layout',
+            active_nav:        'home',
+            extra_js:          '/js/pages/location-page.js',
+            user_location:     null,
+            show_promo_strip:  false,   // remove the offer row on the gate
+            is_location_page:  true,    // layout skips the modal + auto-open
+        });
+    }
+
     // Active cuisine filter from the URL (?cuisine=burger). Empty
     // when the user is on the unfiltered home page. We forward this
     // to the api so the products + restaurants come back already
@@ -167,6 +207,28 @@ async function index(req, res, next) {
     if (restaurantSlug)                                            { viewMode = 'restaurant'; }
     else if (rawView === 'restaurants' || rawView === 'cuisines')  { viewMode = rawView; }
 
+    // ── Phase-2 filter params from the URL ────────────────────────
+    // Read each filter the sidebar/sheet can set. The whole object
+    // is forwarded as-is to fetchMarketplace and to the api.
+    // Empty/invalid values are coerced to falsy so they're dropped
+    // before hitting the api (keeps the url tidy + the Joi schema
+    // happy).
+    const q = req.query || {};
+    const allowedSort = ['relevance', 'distance', 'rating', 'time', 'price-asc', 'price-desc'];
+    const allowedPrice = ['low', 'mid', 'high'];
+    const filters = {
+        sort:        allowedSort.indexOf(String(q.sort || '')) !== -1 ? String(q.sort) : '',
+        rating:      q.rating  && !isNaN(Number(q.rating))  ? Number(q.rating)  : '',
+        max_km:      q.max_km  && !isNaN(Number(q.max_km))  ? Number(q.max_km)  : '',
+        max_min:     q.max_min && !isNaN(Number(q.max_min)) ? Number(q.max_min) : '',
+        open_now:    String(q.open_now || '') === '1',
+        veg:         String(q.veg      || '') === '1',
+        offer:       String(q.offer    || '') === '1',
+        price:       allowedPrice.indexOf(String(q.price || '').toLowerCase()) !== -1 ? String(q.price).toLowerCase() : '',
+        recommended: String(q.recommended || '') === '1',
+        featured:    String(q.featured    || '') === '1',
+    };
+
     // ── Live marketplace data ───────────────────────────────────────
     // Both rails (Popular near you + For you) come from the api now.
     // The /static fallbacks below are kept ONLY for two cases:
@@ -190,10 +252,20 @@ async function index(req, res, next) {
 
             if (viewMode === 'restaurants') {
                 // Full restaurants grid — pull the largest page the
-                // api allows (50). The grid auto-loads more on scroll
-                // via the existing pagination helper.
+                // api allows (50) and forward any active filters.
+                const fqs = new URLSearchParams();
+                fqs.set('limit', '50');
+                if (Number.isFinite(lat)) fqs.set('lat', String(lat));
+                if (Number.isFinite(lng)) fqs.set('lng', String(lng));
+                if (filters.sort)     fqs.set('sort',     filters.sort);
+                if (filters.rating)   fqs.set('rating',   String(filters.rating));
+                if (filters.max_km)   fqs.set('max_km',   String(filters.max_km));
+                if (filters.max_min)  fqs.set('max_min',  String(filters.max_min));
+                if (filters.open_now) fqs.set('open_now', '1');
+                if (filters.veg)      fqs.set('veg',      '1');
+                if (filters.offer)    fqs.set('offer',    '1');
                 const r = await callApi(req, 'GET',
-                    '/api/v1/marketplace/restaurants?limit=50' + latLng);
+                    '/api/v1/marketplace/restaurants?' + fqs.toString());
                 liveFeatured = (r.body && r.body.status === 200 && r.body.data && r.body.data.restaurants) || [];
                 featuredMore = !!(r.body && r.body.status === 200 && r.body.data && r.body.data.has_more);
             } else if (viewMode === 'cuisines') {
@@ -219,14 +291,28 @@ async function index(req, res, next) {
                 const list = (r.body && r.body.status === 200 && r.body.data && r.body.data.restaurants) || [];
                 liveRestaurant = list.find(x => String(x.slug || '').toLowerCase() === restaurantSlug) || null;
                 if (liveRestaurant) {
+                    // Forward product-level filters too (veg, price,
+                    // recommended/featured, offer) — they narrow the
+                    // restaurant's menu list.
+                    const pqs = new URLSearchParams();
+                    pqs.set('limit', '50');
+                    pqs.set('restaurant', String(liveRestaurant.id));
+                    if (Number.isFinite(lat)) pqs.set('lat', String(lat));
+                    if (Number.isFinite(lng)) pqs.set('lng', String(lng));
+                    if (filters.veg)         pqs.set('veg',         '1');
+                    if (filters.offer)       pqs.set('offer',       '1');
+                    if (filters.price)       pqs.set('price',       filters.price);
+                    if (filters.recommended) pqs.set('recommended', '1');
+                    if (filters.featured)    pqs.set('featured',    '1');
                     const p = await callApi(req, 'GET',
-                        '/api/v1/marketplace/products?limit=50&restaurant=' + encodeURIComponent(liveRestaurant.id) + latLng);
+                        '/api/v1/marketplace/products?' + pqs.toString());
                     liveForYou   = (p.body && p.body.status === 200 && p.body.data && p.body.data.products) || [];
                     forYouMore   = !!(p.body && p.body.status === 200 && p.body.data && p.body.data.has_more);
                 }
             } else {
-                // Default home (with optional ?cuisine= filter).
-                const out = await fetchMarketplace(req, lat, lng, cuisine);
+                // Default home (with optional ?cuisine= filter + any
+                // sidebar/sheet filters).
+                const out = await fetchMarketplace(req, lat, lng, cuisine, filters);
                 liveFeatured      = out.featured;
                 liveForYou        = out.for_you;
                 liveCategories    = out.categories;
@@ -473,6 +559,11 @@ async function index(req, res, next) {
         _layoutFile:   '../_layout',          // ejs-locals layout path (relative to this view)
         active_nav:    'home',                // header highlights "home" link
         extra_js:      '/js/pages/home.js',   // per-page script the layout will emit
+        // Suppress the layout's top promo strip on the home page —
+        // the home view renders it lower down, after "Best offers
+        // for you", per the user's layout request. Other pages keep
+        // the default top strip (they don't set this flag).
+        show_promo_strip: false,
         user_location:    userLocation,
         cuisines:         finalCuisines,
         selected_cuisine: cuisine || null,

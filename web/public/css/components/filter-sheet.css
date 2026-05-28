@@ -1,0 +1,270 @@
+/*
+ * components/filter-sheet.css
+ *
+ * What:  Swiggy-style bottom-sheet filters surface. Two-column body
+ *        (left rail of tabs + right pane of options for the active
+ *        tab) sandwiched between a header and a footer.
+ * Why:   The user supplied Swiggy screenshots showing this exact
+ *        layout and asked for the same pattern on mobile. Visually
+ *        anchored to the bottom of the viewport with a dimmed
+ *        backdrop so it reads as a focused modal task.
+ * Used:  Loaded from views/_layout.ejs via its own <link> tag.
+ *        Markup mount: views/partials/filter-sheet.ejs. JS controller:
+ *        /js/ui/filter-sheet.js (open/close + tab switching).
+ *
+ * Phase: Visual stub. Chips toggle visually but don't yet filter the
+ *        api response — wiring lives in the next iteration.
+ */
+
+/* Desktop hides the whole thing — filters will live in a dedicated
+ * left sidebar there (separate work). */
+@media (min-width: 768px) {
+    .filter-sheet { display: none !important; }
+}
+
+/* Container — `hidden` attribute removes it from the layout when
+ * closed; we keep the markup mounted so opening / closing is
+ * instant (no rebuild). */
+.filter-sheet {
+    position: fixed;
+    inset: 0;
+    z-index: 90;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    pointer-events: none;
+}
+.filter-sheet[aria-hidden="false"] { pointer-events: auto; }
+
+/* Backdrop — fades in/out via opacity. Tap to close. */
+.filter-sheet__backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(15, 17, 21, 0.5);
+    opacity: 0;
+    transition: opacity 180ms ease;
+}
+.filter-sheet[aria-hidden="false"] .filter-sheet__backdrop { opacity: 1; }
+
+/* Panel — slides up from the bottom. Translate3d for hardware
+ * acceleration on mid-range Android. Max-height locked so very tall
+ * panes always leave a backdrop strip visible (so the user can tell
+ * it's a sheet, not a full page). */
+.filter-sheet__panel {
+    position: relative;
+    z-index: 1;
+    background-color: #fff;
+    border-top-left-radius: var(--radius-xl);
+    border-top-right-radius: var(--radius-xl);
+    box-shadow: 0 -16px 40px rgba(0, 0, 0, 0.18);
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+    transform: translate3d(0, 100%, 0);
+    transition: transform 220ms cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.filter-sheet[aria-hidden="false"] .filter-sheet__panel { transform: translate3d(0, 0, 0); }
+
+/* Header — title + Clear all + close X. Border at the bottom marks
+ * the start of the scrollable body. */
+.filter-sheet__head {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-4);
+    border-bottom: 1px solid var(--color-border-soft);
+    flex: 0 0 auto;
+}
+.filter-sheet__title {
+    flex: 1;
+    margin: 0;
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--color-text);
+}
+.filter-sheet__clear {
+    flex: 0 0 auto;
+    border: 0;
+    background: transparent;
+    color: var(--color-text-soft);
+    font-weight: 600;
+    font-size: 0.95rem;
+    cursor: pointer;
+    padding: var(--space-1) var(--space-2);
+}
+.filter-sheet__clear:hover { color: var(--color-primary); }
+.filter-sheet__close {
+    flex: 0 0 auto;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    border: 0;
+    background-color: var(--color-bg-alt);
+    color: var(--color-text);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.filter-sheet__close:hover { background-color: rgba(0, 0, 0, 0.08); }
+
+/* Body — two-column layout. Left tabs vertical-scroll if they
+ * overflow; right pane vertical-scrolls independently. */
+.filter-sheet__body {
+    flex: 1 1 auto;
+    display: grid;
+    grid-template-columns: 110px 1fr;
+    min-height: 0;
+    overflow: hidden;
+}
+.filter-sheet__tabs {
+    background-color: #fafafa;
+    border-right: 1px solid var(--color-border-soft);
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: var(--space-2) 0;
+}
+.filter-sheet__tab {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-1);
+    width: 100%;
+    padding: var(--space-3) var(--space-2);
+    border: 0;
+    border-left: 3px solid transparent;
+    background: transparent;
+    color: var(--color-text-soft);
+    font-size: 0.85rem;
+    cursor: pointer;
+    text-align: center;
+}
+.filter-sheet__tab-icon {
+    width: 28px;
+    height: 28px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--color-text-soft);
+}
+.filter-sheet__tab:hover { background-color: rgba(0, 0, 0, 0.03); }
+.filter-sheet__tab.is-active {
+    background-color: #fff;
+    border-left-color: var(--color-primary);
+    color: var(--color-primary);
+    font-weight: 600;
+}
+.filter-sheet__tab.is-active .filter-sheet__tab-icon { color: var(--color-primary); }
+
+.filter-sheet__pane {
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: var(--space-4);
+    background-color: var(--color-bg-alt);
+}
+.filter-sheet__section[hidden] { display: none; }
+.filter-sheet__section-title {
+    font-size: 1rem;
+    font-weight: 700;
+    margin: 0 0 var(--space-3);
+    color: var(--color-text);
+}
+
+/* Radio list — Sort By tab uses these. Custom-styled radio so the
+ * active row reads as a coloured pill, not a native dot. */
+.filter-sheet__radio { list-style: none; margin: 0; padding: 0; background-color: #fff; border-radius: var(--radius-md); overflow: hidden; }
+.filter-sheet__radio-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    border-bottom: 1px solid var(--color-border-soft);
+    color: var(--color-text);
+    cursor: pointer;
+}
+.filter-sheet__radio-item:last-child { border-bottom: 0; }
+.filter-sheet__radio-item input { accent-color: var(--color-primary); }
+.filter-sheet__radio-item.is-active {
+    background-color: rgba(229, 37, 42, 0.06);
+    color: var(--color-primary);
+    font-weight: 600;
+}
+
+/* Chip grid — generic 2-col grid used by Time / Rating / Offers /
+ * Price / Trust / Collections. Each chip is a tap-target with icon
+ * + label. is-active flips it to the brand colour. */
+.filter-sheet__chip-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--space-3);
+}
+.filter-sheet__chip {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-1);
+    background-color: #fff;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    padding: var(--space-3);
+    font-size: 0.9rem;
+    color: var(--color-text);
+    cursor: pointer;
+    transition: border-color 120ms ease, background-color 120ms ease, color 120ms ease;
+    min-height: 80px;
+}
+.filter-sheet__chip:hover { border-color: var(--color-primary); }
+.filter-sheet__chip.is-active {
+    border-color: var(--color-primary);
+    background-color: rgba(229, 37, 42, 0.06);
+    color: var(--color-primary);
+    font-weight: 600;
+}
+.filter-sheet__chip-mark {
+    color: #22c55e;
+    font-weight: 700;
+}
+
+/* Footer — primary action goes right (Show results) per the user
+ * screenshots; Close sits left. Inset padding so the buttons read
+ * as comfortably tappable. */
+.filter-sheet__foot {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    border-top: 1px solid var(--color-border-soft);
+    flex: 0 0 auto;
+    background-color: #fff;
+}
+.filter-sheet__btn {
+    flex: 1;
+    padding: 0.85rem 1.1rem;
+    border-radius: var(--radius-md);
+    font-weight: 700;
+    cursor: pointer;
+    border: 0;
+    font-size: 0.95rem;
+}
+.filter-sheet__btn--secondary {
+    background-color: transparent;
+    color: var(--color-text);
+}
+.filter-sheet__btn--primary {
+    background-color: var(--color-bg-alt);
+    color: var(--color-text-soft);
+}
+/* Primary lights up brand-red ONLY when at least one filter is
+ * active (the JS adds .has-filters on the foot block). */
+.filter-sheet__foot.has-filters .filter-sheet__btn--primary {
+    background-color: var(--color-primary);
+    color: #fff;
+}
+
+/* Body scroll lock — applied by the JS while the sheet is open so
+ * the page underneath doesn't scroll when the user swipes inside
+ * the sheet. */
+body.is-filter-sheet-open { overflow: hidden; }

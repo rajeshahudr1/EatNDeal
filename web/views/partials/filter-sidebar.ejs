@@ -1,0 +1,118 @@
+<%#
+  views/partials/filter-sidebar.ejs
+
+  What:  Web-only left filter panel, rebuilt to the mockup:
+           Sort by (radio) · Delivery Time · Offers · Rating ·
+           Price for one · Cuisines (searchable) · Dietary Preference ·
+           More filters (toggles) · Apply Filters + Reset.
+  Why:   The user supplied a mockup with a full left filter rail and
+         asked for an exact match. Functional filters (sort / rating /
+         delivery-time / price / veg / open-now / offer) map onto the
+         api query via /js/ui/filter-sidebar.js → home.js. The numeric
+         counts beside each row are static placeholders (we have no
+         per-facet counts endpoint yet) per the user's "static-HTML
+         what we don't have" instruction.
+  Used:  Included from views/site/index.ejs inside .home-shell.
+         Hidden < 1024 px (mobile uses the bottom sheet).
+-%>
+<aside class="fsb" aria-label="Filters">
+    <header class="fsb__head">
+        <h2 class="fsb__title">Filters</h2>
+        <button type="button" class="fsb__clear" data-action="filters-clear-all">Clear all</button>
+        <%# Hide / close control. Desktop: collapses the sidebar (a
+            small Filters pill reappears to reopen). Mobile: closes the
+            full-screen overlay. Rendered as an X (close) icon. %>
+        <button type="button" class="fsb__hide" data-action="toggle-filters" aria-label="Close filters" title="Close filters">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>
+        </button>
+    </header>
+
+    <div class="fsb__scroll">
+
+        <%# ── Sort by ── %>
+        <section class="fsb__group">
+            <h3 class="fsb__group-title">Sort by</h3>
+            <label class="fsb__radio"><input type="radio" name="sort-web" value="relevance" checked><span>Recommended</span></label>
+            <label class="fsb__radio"><input type="radio" name="sort-web" value="rating"><span>Rating: High to Low</span></label>
+            <label class="fsb__radio"><input type="radio" name="sort-web" value="time"><span>Delivery Time: Low to High</span></label>
+            <label class="fsb__radio"><input type="radio" name="sort-web" value="distance"><span>Distance: Low to High</span></label>
+        </section>
+
+        <%# ── Delivery time ── (single-select feel; JS takes the cap) %>
+        <section class="fsb__group">
+            <h3 class="fsb__group-title">Delivery Time</h3>
+            <label class="fsb__check"><input type="checkbox" data-filter="time-15"><span>Up to 15 min</span><b class="fsb__count">142</b></label>
+            <label class="fsb__check"><input type="checkbox" data-filter="time-30"><span>15 – 30 min</span><b class="fsb__count">320</b></label>
+            <label class="fsb__check"><input type="checkbox" data-filter="time-45"><span>30 – 45 min</span><b class="fsb__count">215</b></label>
+            <label class="fsb__check"><input type="checkbox" data-filter="time-60"><span>45+ min</span><b class="fsb__count">85</b></label>
+        </section>
+
+        <%# ── Offers ── %>
+        <section class="fsb__group">
+            <h3 class="fsb__group-title">Offers</h3>
+            <label class="fsb__check"><input type="checkbox" data-filter="offer-discount"><span>Offers near you</span><b class="fsb__count">236</b></label>
+            <label class="fsb__check"><input type="checkbox" data-filter="offer-discount"><span>50% OFF or more</span><b class="fsb__count">128</b></label>
+            <label class="fsb__check"><input type="checkbox" data-filter="offer-free"><span>Free delivery</span><b class="fsb__count">189</b></label>
+            <label class="fsb__check"><input type="checkbox" data-filter="offer-bogo"><span>Buy 1 Get 1</span><b class="fsb__count">72</b></label>
+            <label class="fsb__check"><input type="checkbox" data-filter="offer-combo"><span>Combo offers</span><b class="fsb__count">95</b></label>
+        </section>
+
+        <%# ── Rating ── (single threshold) %>
+        <section class="fsb__group">
+            <h3 class="fsb__group-title">Rating</h3>
+            <label class="fsb__radio fsb__rating"><input type="radio" name="rating-web" data-filter="rating-4.5"><span class="fsb__stars">★</span><span>4.5 &amp; above</span><b class="fsb__count">245</b></label>
+            <label class="fsb__radio fsb__rating"><input type="radio" name="rating-web" data-filter="rating-4.0"><span class="fsb__stars">★</span><span>4.0 &amp; above</span><b class="fsb__count">325</b></label>
+            <label class="fsb__radio fsb__rating"><input type="radio" name="rating-web" data-filter="rating-3.5"><span class="fsb__stars">★</span><span>3.5 &amp; above</span><b class="fsb__count">412</b></label>
+            <label class="fsb__radio fsb__rating"><input type="radio" name="rating-web" data-filter="rating-3.0"><span class="fsb__stars">★</span><span>3.0 &amp; above</span><b class="fsb__count">470</b></label>
+        </section>
+
+        <%# ── Price for one ── %>
+        <section class="fsb__group">
+            <h3 class="fsb__group-title">Price for one</h3>
+            <label class="fsb__check"><input type="checkbox" data-filter="price-low"><span><%= brand.currencySymbol %> &ndash; 6</span><b class="fsb__count">125</b></label>
+            <label class="fsb__check"><input type="checkbox" data-filter="price-mid"><span><%= brand.currencySymbol %><%= brand.currencySymbol %> 6 &ndash; 12</span><b class="fsb__count">328</b></label>
+            <label class="fsb__check"><input type="checkbox" data-filter="price-high"><span><%= brand.currencySymbol %><%= brand.currencySymbol %><%= brand.currencySymbol %> 12+</span><b class="fsb__count">145</b></label>
+        </section>
+
+        <%# ── Cuisines ── (dynamic list from the api categories) %>
+        <% if (typeof cuisines !== 'undefined' && cuisines && cuisines.length) { %>
+        <section class="fsb__group">
+            <h3 class="fsb__group-title">Cuisines</h3>
+            <div class="fsb__search">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <input type="search" class="fsb__search-input" placeholder="Search cuisines" data-fsb-cuisine-search aria-label="Search cuisines">
+            </div>
+            <div class="fsb__cuisine-list">
+                <% cuisines.slice(0, 8).forEach(function (c) { %>
+                    <label class="fsb__check" data-cuisine-name="<%= (c.name||'').toLowerCase() %>">
+                        <input type="checkbox" data-filter="cuisine-<%= c.searchName || (c.name||'').toLowerCase() %>">
+                        <span><%= c.name %></span>
+                    </label>
+                <% }); %>
+            </div>
+        </section>
+        <% } %>
+
+        <%# ── Dietary Preference ── %>
+        <section class="fsb__group">
+            <h3 class="fsb__group-title">Dietary Preference</h3>
+            <label class="fsb__check"><input type="checkbox" data-filter="trust-pure-veg"><span>Veg Only</span><b class="fsb__count">210</b></label>
+            <label class="fsb__check"><input type="checkbox" data-filter="diet-jain"><span>Jain</span><b class="fsb__count">95</b></label>
+            <label class="fsb__check"><input type="checkbox" data-filter="diet-vegan"><span>Vegan</span><b class="fsb__count">75</b></label>
+            <label class="fsb__check"><input type="checkbox" data-filter="diet-gf"><span>Gluten Free</span><b class="fsb__count">45</b></label>
+        </section>
+
+        <%# ── More filters (toggles) ── %>
+        <section class="fsb__group">
+            <h3 class="fsb__group-title">More filters</h3>
+            <label class="fsb__toggle"><span>Open Now</span><input type="checkbox" data-filter="avail-open-now"><i class="fsb__switch" aria-hidden="true"></i></label>
+            <label class="fsb__toggle"><span>Top Rated</span><input type="checkbox" data-filter="rating-4.0"><i class="fsb__switch" aria-hidden="true"></i></label>
+            <label class="fsb__toggle"><span>Restaurants near me</span><input type="checkbox" data-filter="dist-5"><i class="fsb__switch" aria-hidden="true"></i></label>
+        </section>
+    </div>
+
+    <footer class="fsb__foot">
+        <button type="button" class="fsb__apply" data-action="filters-apply">Apply Filters</button>
+        <button type="button" class="fsb__reset" data-action="filters-clear-all">Reset</button>
+    </footer>
+</aside>

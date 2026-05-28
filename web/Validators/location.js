@@ -123,6 +123,15 @@ function validateLocation(input) {
         }
     }
 
+    // ── mode (optional) — delivery | pickup. Defaults to delivery.
+    // Carries the Delivery/Pickup choice the user made on the location
+    // page so the feed header can show the same selection. ───────────
+    let mode = 'delivery';
+    if (typeof input.mode === 'string') {
+        const m = input.mode.trim().toLowerCase();
+        if (m === 'pickup' || m === 'delivery') { mode = m; }
+    }
+
     // ── raw (optional) — pass-through; capped at 5 KB stringified ──
     let raw = null;
     if (input.raw && typeof input.raw === 'object') {
@@ -163,6 +172,7 @@ function validateLocation(input) {
             postcode,
             lat,
             lng,
+            mode,
             raw,
             savedAt: new Date().toISOString(),
         },

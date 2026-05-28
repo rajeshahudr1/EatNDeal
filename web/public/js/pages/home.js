@@ -211,6 +211,8 @@
             applyCardTints();
             markActiveCuisineFromUrl();
             bindPagination();
+            bindFilterToggle();
+            bindRailArrows();
 
             // Scroll to the top of the new content so the user sees
             // it from its start.
@@ -629,6 +631,207 @@
         });
     }
 
+    /**
+     * filtersToQuery
+     *
+     * What:  Translates a filter state object (the shape the sidebar
+     *        and bottom-sheet build) into the URL query parameters
+     *        SiteController + the api expect.
+     *
+     *        State shape (subset, only the entries we forward):
+     *          { sort, rating, time, distance, price,
+     *            trust:[], offers:[], availability:[], collections:[] }
+     *
+     *        Mapping:
+     *          sort                            → ?sort=
+     *          rating ('rating-3.5')           → ?rating=3.5
+     *          time   ('time-30')              → ?max_min=30
+     *          distance ('dist-5')             → ?max_km=5
+     *          price ('price-low')             → ?price=low
+     *          trust ['trust-pure-veg']        → ?veg=1
+     *          offers contains 'offer-discount'→ ?offer=1
+     *          availability contains 'avail-open-now' → ?open_now=1
+     *          collections contains 'col-recommended' → ?recommended=1
+     *          collections contains 'col-featured'    → ?featured=1
+     * Why:   Single source of truth for the state→URL mapping so the
+     *        sidebar (web) and sheet (mobile) stay in lockstep.
+     */
+    function filtersToQuery(state) {
+        state = state || {};
+        var qs = new URLSearchParams();
+        if (state.sort && state.sort !== 'relevance') { qs.set('sort', state.sort); }
+        if (state.rating) {
+            var num = parseFloat(String(state.rating).replace(/^rating-/, ''));
+            if (isFinite(num) && num > 0) { qs.set('rating', String(num)); }
+        }
+        if (state.time) {
+            var mins = parseInt(String(state.time).replace(/^time-/, ''), 10);
+            if (isFinite(mins) && mins > 0) { qs.set('max_min', String(mins)); }
+        }
+        if (state.distance) {
+            var km = parseInt(String(state.distance).replace(/^dist-/, ''), 10);
+            if (isFinite(km) && km > 0) { qs.set('max_km', String(km)); }
+        }
+        if (state.price) {
+            var bucket = String(state.price).replace(/^price-/, '');
+            if (bucket === 'low' || bucket === 'mid' || bucket === 'high') {
+                qs.set('price', bucket);
+            }
+        }
+        var trust = state.trust || [];
+        if (trust.indexOf('trust-pure-veg') !== -1) { qs.set('veg', '1'); }
+        var offers = state.offers || [];
+        if (offers.indexOf('offer-discount') !== -1 || offers.indexOf('offer-bogo') !== -1) {
+            qs.set('offer', '1');
+        }
+        var avail = state.availability || [];
+        if (avail.indexOf('avail-open-now') !== -1) { qs.set('open_now', '1'); }
+        var cols = state.collections || [];
+        if (cols.indexOf('col-recommended') !== -1) { qs.set('recommended', '1'); }
+        if (cols.indexOf('col-featured')    !== -1) { qs.set('featured',    '1'); }
+        return qs;
+    }
+
+    /**
+     * bindFilterEvents
+     *
+     * What:  Listens for the `eatndeal:filters-changed` CustomEvent
+     *        the filter sidebar + bottom sheet dispatch when the user
+     *        taps Show results. Builds the URL from the state +
+     *        preserves the existing cuisine/restaurant/view params,
+     *        then SPA-navigates to it. SiteController re-reads the
+     *        URL on the next render and forwards the filters into
+     *        the api call.
+     */
+    function bindFilterEvents() {
+        document.addEventListener('eatndeal:filters-changed', function (ev) {
+            var detail = ev.detail || {};
+            // Preserve the existing non-filter params from the URL
+            // (cuisine / view / restaurant / from) so applying a
+            // filter on /?cuisine=burger doesn't strip the cuisine.
+            var current = new URLSearchParams(window.location.search);
+            var keep    = ['cuisine', 'view', 'restaurant', 'from'];
+            var next    = filtersToQuery(detail);
+            keep.forEach(function (k) {
+                var v = current.get(k);
+                if (v) { next.set(k, v); }
+            });
+            var url = '/' + (next.toString() ? '?' + next.toString() : '');
+            spaNavigate(url, { label: 'Applying filters…' });
+        });
+    }
+
+    // localStorage key for the collapsed preference — shared by the
+    // initial paint + the delegated click handler.
+    var FILTERS_KEY = 'eatndeal_filters_collapsed';
+
+    /**
+     * applyFilterCollapsed
+     *
+     * What:   Reflects the saved collapsed preference onto the current
+     *         .home-shell (called on load + after every SPA swap so the
+     *         freshly-painted shell starts in the right state).
+     */
+    function applyFilterCollapsed() {
+        var shell = document.querySelector('.home-shell');
+        if (!shell) { return; }
+        var collapsed = false;
+        try { collapsed = window.localStorage.getItem(FILTERS_KEY) === '1'; } catch (e) { /* ignore */ }
+        shell.classList.toggle('is-filters-collapsed', collapsed);
+    }
+
+    /**
+     * bindFilterToggle
+     *
+     * What:   Document-delegated handler for BOTH toggle controls —
+     *         the chevron inside the sidebar header (hide) and the
+     *         compact "Filters" pill in the content (show). Either
+     *         flips .is-filters-collapsed on .home-shell and persists
+     *         the choice. Bound once (guarded) since it's delegated.
+     */
+    function isDesktopFilters() {
+        return window.matchMedia && window.matchMedia('(min-width: 1024px)').matches;
+    }
+
+    function bindFilterToggle() {
+        applyFilterCollapsed();
+        if (document.__filterToggleBound) { return; }
+        document.addEventListener('click', function (ev) {
+            var t = ev.target;
+            if (!t || !t.closest) { return; }
+
+            // Mobile: the search-row Filters button opens the sidebar
+            // as a full-screen overlay.
+            if (t.closest('[data-action="open-filters"]')) {
+                ev.preventDefault();
+                document.body.classList.add('is-mobile-filters-open');
+                return;
+            }
+
+            // The hide chevron (sidebar header) / "Filters" pill.
+            if (t.closest('[data-action="toggle-filters"]')) {
+                ev.preventDefault();
+                if (!isDesktopFilters()) {
+                    // Mobile → just close the overlay.
+                    document.body.classList.remove('is-mobile-filters-open');
+                    return;
+                }
+                var shell = document.querySelector('.home-shell');
+                if (!shell) { return; }
+                var collapsed = !shell.classList.contains('is-filters-collapsed');
+                shell.classList.toggle('is-filters-collapsed', collapsed);
+                try { window.localStorage.setItem(FILTERS_KEY, collapsed ? '1' : '0'); } catch (e) { /* ignore */ }
+                window.dispatchEvent(new Event('resize'));
+                return;
+            }
+
+            // Mobile: Apply Filters closes the overlay too (after the
+            // filter-sidebar.js broadcast navigates the page).
+            if (!isDesktopFilters() && t.closest('[data-action="filters-apply"]')) {
+                document.body.classList.remove('is-mobile-filters-open');
+            }
+        });
+        document.__filterToggleBound = true;
+    }
+
+    /**
+     * bindRailArrows
+     *
+     * What:   Wires the prev/next arrows on every [data-rail-wrap] so
+     *         clicking them scrolls the inner [data-rail] horizontally
+     *         by ~80% of its visible width. Hides an arrow when the
+     *         rail is at that end. Re-checks on scroll + resize.
+     */
+    function bindRailArrows() {
+        document.querySelectorAll('[data-rail-wrap]').forEach(function (wrap) {
+            var rail = wrap.querySelector('[data-rail]');
+            var prev = wrap.querySelector('[data-rail-prev]');
+            var next = wrap.querySelector('[data-rail-next]');
+            if (!rail) { return; }
+
+            function refresh() {
+                // Overflow only exists when the content is wider than
+                // the visible rail. No overflow → BOTH arrows hidden.
+                var hasOverflow = rail.scrollWidth - rail.clientWidth > 4;
+                var maxScroll   = rail.scrollWidth - rail.clientWidth - 2;
+                if (prev) { prev.hidden = !hasOverflow || rail.scrollLeft <= 2; }
+                if (next) { next.hidden = !hasOverflow || rail.scrollLeft >= maxScroll; }
+            }
+            function nudge(dir) {
+                var amount = Math.max(200, Math.round(rail.clientWidth * 0.8)) * dir;
+                rail.scrollBy({ left: amount, behavior: 'smooth' });
+            }
+            if (prev) { prev.addEventListener('click', function () { nudge(-1); }); }
+            if (next) { next.addEventListener('click', function () { nudge(1); }); }
+            rail.addEventListener('scroll', refresh, { passive: true });
+            window.addEventListener('resize', refresh);
+            // Run now + after layout settles (images/fonts can change
+            // the rail's scrollWidth a beat later).
+            refresh();
+            window.setTimeout(refresh, 250);
+        });
+    }
+
     function onReady() {
         applyCardTints();
         bindImageFallback();
@@ -637,6 +840,9 @@
         bindViewNavigation();
         bindPagination();
         bindClearSearch();
+        bindFilterEvents();
+        bindFilterToggle();
+        bindRailArrows();
     }
 
     if (document.readyState === 'loading') {

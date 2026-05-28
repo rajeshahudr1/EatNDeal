@@ -61,6 +61,16 @@ async function list(req, res) {
         const limit   = req.query.limit ? Math.min(50, Math.max(1, Number(req.query.limit))) : 24;
         const offset  = req.query.offset ? Math.max(0, Number(req.query.offset)) : 0;
         const cuisine = req.query.cuisine ? String(req.query.cuisine).trim().toLowerCase() : null;
+        // ── Phase-2 filter params (all optional) ───────────────────
+        // Each maps 1:1 onto the chip / radio in the filter sidebar
+        // and bottom sheet. Joi already enforced the value range.
+        const sort        = req.query.sort   ? String(req.query.sort)         : 'relevance';
+        const minRating   = req.query.rating ? Number(req.query.rating)       : null;
+        const maxKm       = req.query.max_km ? Number(req.query.max_km)       : null;
+        const maxMin      = req.query.max_min? Number(req.query.max_min)      : null;
+        const openNow     = String(req.query.open_now || '') === '1';
+        const vegOnly     = String(req.query.veg      || '') === '1';
+        const hasOffer    = String(req.query.offer    || '') === '1';
         const hasUserLocation = Number.isFinite(lat) && Number.isFinite(lng);
         // When we're going to sort by distance application-side, pull
         // a larger candidate set so the nearest rows aren't trimmed by
@@ -111,6 +121,37 @@ async function list(req, res) {
             ) AS has_non_veg`
         );
 
+        // Average rating per company. Correlated subquery so we keep
+        // the main query a single round trip. NULL when the company
+        // has no published rating row yet (still appears in the list;
+        // a rating filter excludes it).
+        const avgRatingSubq = db.raw(
+            `(SELECT ROUND(AVG(rr.rating)::numeric, 1)
+                FROM review_rating rr
+               WHERE rr.company_id = c.id
+                 AND rr.publish_online = 1) AS avg_rating`
+        );
+
+        // "Has active offer" — true when either a published discount
+        // is in date range OR at least one marketplace product carries
+        // an `offer` label. EXISTS short-circuits so this stays cheap.
+        const hasOfferSubq = db.raw(
+            `(EXISTS (
+                SELECT 1 FROM discounts d
+                 WHERE d.company_id = c.id
+                   AND d.status = 1
+                   AND (d.start_date IS NULL OR d.start_date <= CURRENT_DATE)
+                   AND (d.end_date   IS NULL OR d.end_date   >= CURRENT_DATE)
+              ) OR EXISTS (
+                SELECT 1 FROM products op
+                 WHERE op.company_id = c.id
+                   AND op.show_marketplace = 1
+                   AND op.status = '1'
+                   AND op.offer IS NOT NULL
+                   AND op.offer <> ''
+              )) AS has_offer`
+        );
+
         const rows = await db
             .from('company as c')
             .innerJoin('branch as b', 'b.company_id', 'c.id')
@@ -136,6 +177,8 @@ async function list(req, res) {
                 'b.branch_description',
                 hasVegSubq,
                 hasNonVegSubq,
+                avgRatingSubq,
+                hasOfferSubq,
             )
             .where('c.is_marketplace', 1)
             .andWhere('c.is_active', 1)
@@ -159,6 +202,89 @@ async function list(req, res) {
                         .andWhere('ppc.status', '1')
                         .andWhere('p2.show_marketplace', 1)
                         .andWhere('p2.status', '1');
+                });
+            })
+            // ── Open Now ──────────────────────────────────────────
+            // Branch is currently accepting orders when:
+            //   • open_as_usual = 1   AND
+            //   • the closed flag is not set, OR a closed_until
+            //     timestamp has already passed.
+            .modify(function (qb) {
+                if (!openNow) { return; }
+                qb.andWhere('b.open_as_usual', 1);
+                qb.andWhere(function () {
+                    this.where('b.closed', '<>', 1).orWhereNull('b.closed');
+                });
+                qb.andWhere(function () {
+                    this.whereNull('b.closed_reopen_date')
+                        .orWhereRaw('b.closed_reopen_date <= NOW()');
+                });
+            })
+            // ── Pure veg ─────────────────────────────────────────
+            // Has at least one veg product AND no non-veg products.
+            // Combine the two existing EXISTS subqueries.
+            .modify(function (qb) {
+                if (!vegOnly) { return; }
+                qb.whereExists(function () {
+                    this.select(db.raw('1'))
+                        .from('products as vp')
+                        .whereRaw('vp.company_id = c.id')
+                        .andWhere('vp.status', '1')
+                        .andWhere('vp.show_marketplace', 1)
+                        .andWhere('vp.veg_non_veg', 1);
+                });
+                qb.whereNotExists(function () {
+                    this.select(db.raw('1'))
+                        .from('products as vp2')
+                        .whereRaw('vp2.company_id = c.id')
+                        .andWhere('vp2.status', '1')
+                        .andWhere('vp2.show_marketplace', 1)
+                        .andWhere(function () {
+                            this.whereNull('vp2.veg_non_veg').orWhere('vp2.veg_non_veg', '<>', 1);
+                        });
+                });
+            })
+            // ── Rating threshold ─────────────────────────────────
+            // Restaurants without any published rating are EXCLUDED
+            // when the user explicitly asked for "3.5+ rated" — a
+            // null rating can't pass a numeric floor.
+            .modify(function (qb) {
+                if (!minRating) { return; }
+                qb.whereExists(function () {
+                    this.select(db.raw('1'))
+                        .from('review_rating as rr2')
+                        .whereRaw('rr2.company_id = c.id')
+                        .andWhere('rr2.publish_online', 1)
+                        .groupBy('rr2.company_id')
+                        .havingRaw('AVG(rr2.rating) >= ?', [minRating]);
+                });
+            })
+            // ── Has offer ────────────────────────────────────────
+            // Mirror the boolean we already computed in hasOfferSubq —
+            // restrict to rows where it would have been true.
+            .modify(function (qb) {
+                if (!hasOffer) { return; }
+                qb.where(function () {
+                    this.whereExists(function () {
+                        this.select(db.raw('1'))
+                            .from('discounts as d')
+                            .whereRaw('d.company_id = c.id')
+                            .andWhere('d.status', 1)
+                            .andWhere(function () {
+                                this.whereNull('d.start_date').orWhereRaw('d.start_date <= CURRENT_DATE');
+                            })
+                            .andWhere(function () {
+                                this.whereNull('d.end_date').orWhereRaw('d.end_date >= CURRENT_DATE');
+                            });
+                    }).orWhereExists(function () {
+                        this.select(db.raw('1'))
+                            .from('products as op')
+                            .whereRaw('op.company_id = c.id')
+                            .andWhere('op.show_marketplace', 1)
+                            .andWhere('op.status', '1')
+                            .whereNotNull('op.offer')
+                            .andWhere('op.offer', '<>', '');
+                    });
                 });
             })
             .orderBy([{ column: 'c.id', order: 'asc' }, { column: 'b.id', order: 'asc' }])
@@ -190,14 +316,19 @@ async function list(req, res) {
             let vegType = null;
             if (r.has_veg && !r.has_non_veg)       { vegType = 'pure-veg'; }
             else if (r.has_non_veg)                { vegType = 'non-veg';  }
+            // avg_rating comes back as a string from Postgres NUMERIC.
+            // Coerce to a Number so the comparator below works
+            // numerically (string compare would treat "10.0" < "4.0").
+            const avgRating = r.avg_rating != null ? Number(r.avg_rating) : null;
             return {
                 id:              String(r.company_id),
                 slug:            r.domain_name ? M.slugify(r.domain_name) : M.slugify(name, r.company_id),
                 name,
                 cuisines:        M.cuisinesFor({ business_category: r.business_category }),
-                // Real rating + offer are TODO (no rating table yet).
-                rating:          4.4,
-                offer:           null,
+                // Show the real average when we have one; fall back
+                // to a friendly default until enough customers rate.
+                rating:          avgRating != null ? avgRating : 4.4,
+                offer:           r.has_offer ? 'Offer' : null,
                 isOpen:          M.isBranchOpen(r),
                 tint:            M.tintFor(r.company_id),
                 initial:         M.initialFor(name),
@@ -215,24 +346,60 @@ async function list(req, res) {
             };
         });
 
-        // Nearest first. Rows whose distance we couldn't compute
-        // (user has no location, or branch has no coords) sink to the
-        // bottom rather than being injected mid-list. Stable secondary
-        // by company id so ties don't reshuffle between requests.
-        if (hasUserLocation) {
-            restaurants.sort((a, b) => {
-                const da = a.distanceKm == null ? Infinity : a.distanceKm;
-                const db = b.distanceKm == null ? Infinity : b.distanceKm;
-                if (da !== db) { return da - db; }
-                return Number(a.id) - Number(b.id);
+        // ── Application-side distance / time filters ───────────────
+        // SQL can't do Haversine without an extension. We've already
+        // computed km in JS, so apply max_km here — and let max_min
+        // ride on the same bucket (estimateDeliveryMinutes is a pure
+        // function of km, so we invert: max_min == 30 ≈ km ≤ 3, etc).
+        let filtered = restaurants;
+        if (Number.isFinite(maxKm) && maxKm > 0) {
+            filtered = filtered.filter(r => r.distanceKm != null && r.distanceKm <= maxKm);
+        }
+        if (Number.isFinite(maxMin) && maxMin > 0) {
+            // Use the helper to compute minutes from km, then test
+            // the LOW end of the bucket against the user's cap.
+            filtered = filtered.filter(r => {
+                if (r.distanceKm == null) { return false; }
+                const mins = distance.estimateDeliveryMinutesNumeric
+                    ? distance.estimateDeliveryMinutesNumeric(r.distanceKm)
+                    : null;
+                if (mins != null) { return mins <= maxMin; }
+                // Fallback: approximate — ~3 km ≈ 30 min as a rough
+                // city-traffic estimate. Same shape Helpers/distance
+                // uses internally.
+                return (r.distanceKm * 10) <= maxMin;
             });
+        }
+
+        // ── Sort ──────────────────────────────────────────────────
+        // Default ('relevance' / unset) keeps the existing nearest-
+        // first ordering when we have a user location, else stable
+        // by id.
+        const byDistance = (a, b) => {
+            const da = a.distanceKm == null ? Infinity : a.distanceKm;
+            const db = b.distanceKm == null ? Infinity : b.distanceKm;
+            if (da !== db) { return da - db; }
+            return Number(a.id) - Number(b.id);
+        };
+        const byRatingDesc = (a, b) => {
+            const ra = a.rating || 0;
+            const rb = b.rating || 0;
+            if (rb !== ra) { return rb - ra; }
+            return byDistance(a, b);
+        };
+        if (sort === 'rating') {
+            filtered.sort(byRatingDesc);
+        } else if (sort === 'time' || sort === 'distance') {
+            filtered.sort(byDistance);
+        } else if (hasUserLocation) {
+            filtered.sort(byDistance);
         }
 
         // Pagination slice [offset, offset+limit). has_more says
         // whether at least one row exists beyond this slice — the
         // home page renders the "See more" button only when true.
-        const sliced  = restaurants.slice(offset, offset + limit);
-        const hasMore = restaurants.length > offset + limit;
+        const sliced  = filtered.slice(offset, offset + limit);
+        const hasMore = filtered.length > offset + limit;
         return H.successResponse(res, { restaurants: sliced, has_more: hasMore });
     } catch (err) {
         H.log.error('marketplace.restaurants.list', err && err.message);

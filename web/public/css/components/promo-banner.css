@@ -35,3 +35,12 @@
 .promo-banner__title { font-weight: 700; margin-bottom: var(--space-2); }
 .promo-banner__body  { color: rgba(255, 255, 255, 0.92); max-width: 520px; }
 .promo-banner .btn--accent { box-shadow: var(--shadow-2); }
+
+/* On web the rewards CTA lives inline in the promo strip at the
+ * top of the page (see components/promo-strip.css). Hiding the
+ * standalone banner here avoids showing the same offer twice.
+ * Mobile keeps the standalone banner because the strip has no
+ * room for the inline CTA. */
+@media (min-width: 768px) {
+    .promo-banner { display: none; }
+}

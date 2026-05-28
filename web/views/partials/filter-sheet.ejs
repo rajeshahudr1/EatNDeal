@@ -1,0 +1,233 @@
+<%#
+  views/partials/filter-sheet.ejs
+
+  What:  Mobile-only "Filters and sorting" bottom sheet, modelled on
+         the Swiggy app pattern from the user-supplied screenshots.
+         Two-column layout inside the sheet:
+            • Left rail   — filter category tabs (Sort By, Time,
+                            Rating, Offers, Dish Price, Trust Markers,
+                            Collections).
+            • Right pane  — the chip / option set for the currently-
+                            selected tab.
+         Sheet slides up from the bottom over a dimmed backdrop. A
+         sticky footer carries Close + Show results.
+
+  Why:   The strip search input now has a Filters button next to it
+         (views/partials/mobile-search.ejs). Tapping it opens this
+         sheet so the user can narrow / sort the feed without
+         leaving the page.
+
+  Used:  Included from views/_layout.ejs after the cookie consent
+         partial. Hidden on desktop via /css/components/filter-sheet.css
+         (the desktop redesign will surface filters in a left
+         sidebar — separate work).
+
+  Phase: Visual stub only. Tapping a chip toggles its `is-active`
+         class via /js/ui/filter-sheet.js but does NOT yet apply
+         the filter to the api call — the wiring to ?sort=, ?rating=,
+         etc. is the next iteration.
+-%>
+<div class="filter-sheet" id="filter-sheet" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="filter-sheet-title">
+    <div class="filter-sheet__backdrop" data-action="close-filters" aria-hidden="true"></div>
+    <div class="filter-sheet__panel" role="document">
+        <header class="filter-sheet__head">
+            <h2 id="filter-sheet-title" class="filter-sheet__title">Filters and sorting</h2>
+            <button type="button" class="filter-sheet__clear" data-action="filters-clear-all">Clear all</button>
+            <button type="button" class="filter-sheet__close" data-action="close-filters" aria-label="Close filters">
+                <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="6" y1="6"  x2="18" y2="18"/>
+                    <line x1="18" y1="6" x2="6"  y2="18"/>
+                </svg>
+            </button>
+        </header>
+
+        <div class="filter-sheet__body">
+            <%# Left rail — tabs. The `is-active` class is moved
+                between tabs by /js/ui/filter-sheet.js; the right
+                pane reads the active tab's data-tab and shows the
+                matching section. %>
+            <nav class="filter-sheet__tabs" aria-label="Filter categories">
+                <button type="button" class="filter-sheet__tab is-active" data-tab="sort">
+                    <span class="filter-sheet__tab-icon" aria-hidden="true">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="6" y1="3" x2="6" y2="21"/>
+                            <polyline points="3 18 6 21 9 18"/>
+                            <line x1="13" y1="6" x2="20" y2="6"/>
+                            <line x1="13" y1="12" x2="18" y2="12"/>
+                            <line x1="13" y1="18" x2="16" y2="18"/>
+                        </svg>
+                    </span>
+                    <span>Sort By</span>
+                </button>
+                <button type="button" class="filter-sheet__tab" data-tab="time">
+                    <span class="filter-sheet__tab-icon" aria-hidden="true">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="9"/>
+                            <polyline points="12 7 12 12 15 14"/>
+                        </svg>
+                    </span>
+                    <span>Time</span>
+                </button>
+                <button type="button" class="filter-sheet__tab" data-tab="rating">
+                    <span class="filter-sheet__tab-icon" aria-hidden="true">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+                        </svg>
+                    </span>
+                    <span>Rating</span>
+                </button>
+                <button type="button" class="filter-sheet__tab" data-tab="offers">
+                    <span class="filter-sheet__tab-icon" aria-hidden="true">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M20.59 13.41 13.42 20.58a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/>
+                            <line x1="7" y1="7" x2="7" y2="7.01"/>
+                        </svg>
+                    </span>
+                    <span>Offers</span>
+                </button>
+                <button type="button" class="filter-sheet__tab" data-tab="price">
+                    <span class="filter-sheet__tab-icon" aria-hidden="true">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="12" y1="1"  x2="12" y2="23"/>
+                            <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+                        </svg>
+                    </span>
+                    <span>Dish Price</span>
+                </button>
+                <button type="button" class="filter-sheet__tab" data-tab="trust">
+                    <span class="filter-sheet__tab-icon" aria-hidden="true">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                        </svg>
+                    </span>
+                    <span>Trust Markers</span>
+                </button>
+                <button type="button" class="filter-sheet__tab" data-tab="collections">
+                    <span class="filter-sheet__tab-icon" aria-hidden="true">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                            <polyline points="14 2 14 8 20 8"/>
+                        </svg>
+                    </span>
+                    <span>Collections</span>
+                </button>
+            </nav>
+
+            <%# Right pane — each section is one tab's content. JS
+                shows / hides them based on which tab is active. %>
+            <div class="filter-sheet__pane">
+                <section class="filter-sheet__section is-active" data-pane="sort" aria-label="Sort by">
+                    <h3 class="filter-sheet__section-title">Sort by</h3>
+                    <ul class="filter-sheet__radio" role="radiogroup">
+                        <li><label class="filter-sheet__radio-item is-active"><input type="radio" name="sort" value="relevance" checked> <span>Relevance</span></label></li>
+                        <li><label class="filter-sheet__radio-item"><input type="radio" name="sort" value="distance"> <span>Distance: Low to High</span></label></li>
+                        <li><label class="filter-sheet__radio-item"><input type="radio" name="sort" value="rating"> <span>Rating: High to Low</span></label></li>
+                        <li><label class="filter-sheet__radio-item"><input type="radio" name="sort" value="time"> <span>Delivery Time: Low to High</span></label></li>
+                        <li><label class="filter-sheet__radio-item"><input type="radio" name="sort" value="price-asc"> <span>Cost for one: Low to High</span></label></li>
+                        <li><label class="filter-sheet__radio-item"><input type="radio" name="sort" value="price-desc"> <span>Cost for one: High to Low</span></label></li>
+                    </ul>
+                </section>
+
+                <section class="filter-sheet__section" data-pane="time" aria-label="Time" hidden>
+                    <h3 class="filter-sheet__section-title">Time</h3>
+                    <div class="filter-sheet__chip-grid">
+                        <button type="button" class="filter-sheet__chip" data-filter="time-schedule">
+                            <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+                                <line x1="16" y1="2" x2="16" y2="6"/>
+                                <line x1="8"  y1="2" x2="8"  y2="6"/>
+                                <line x1="3"  y1="10" x2="21" y2="10"/>
+                            </svg>
+                            <span>Schedule</span>
+                        </button>
+                        <button type="button" class="filter-sheet__chip" data-filter="time-fast">
+                            <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="#22c55e" stroke="#22c55e" stroke-width="0" stroke-linejoin="round">
+                                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+                            </svg>
+                            <span>Near &amp; Fast</span>
+                        </button>
+                    </div>
+                </section>
+
+                <section class="filter-sheet__section" data-pane="rating" aria-label="Restaurant rating" hidden>
+                    <h3 class="filter-sheet__section-title">Restaurant Rating</h3>
+                    <div class="filter-sheet__chip-grid">
+                        <button type="button" class="filter-sheet__chip" data-filter="rating-3.5">
+                            <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="#22c55e" stroke="#22c55e" stroke-linejoin="round">
+                                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+                            </svg>
+                            <span>Rated 3.5+</span>
+                        </button>
+                        <button type="button" class="filter-sheet__chip" data-filter="rating-4.0">
+                            <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="#22c55e" stroke="#22c55e" stroke-linejoin="round">
+                                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+                            </svg>
+                            <span>Rated 4.0+</span>
+                        </button>
+                    </div>
+                </section>
+
+                <section class="filter-sheet__section" data-pane="offers" aria-label="Offers" hidden>
+                    <h3 class="filter-sheet__section-title">Offers</h3>
+                    <div class="filter-sheet__chip-grid">
+                        <button type="button" class="filter-sheet__chip" data-filter="offer-bogo">Buy 1 Get 1 and more</button>
+                        <button type="button" class="filter-sheet__chip" data-filter="offer-deals">Deals of the Day</button>
+                    </div>
+                </section>
+
+                <section class="filter-sheet__section" data-pane="price" aria-label="Dish price" hidden>
+                    <h3 class="filter-sheet__section-title">Dish Price</h3>
+                    <div class="filter-sheet__chip-grid">
+                        <button type="button" class="filter-sheet__chip" data-filter="price-low">
+                            <span class="filter-sheet__chip-mark">£</span>
+                            <span>Under £6</span>
+                        </button>
+                        <button type="button" class="filter-sheet__chip" data-filter="price-mid">
+                            <span class="filter-sheet__chip-mark">££</span>
+                            <span>£6 – £12</span>
+                        </button>
+                        <button type="button" class="filter-sheet__chip" data-filter="price-high">
+                            <span class="filter-sheet__chip-mark">£££</span>
+                            <span>Above £12</span>
+                        </button>
+                    </div>
+                </section>
+
+                <section class="filter-sheet__section" data-pane="trust" aria-label="Trust markers" hidden>
+                    <h3 class="filter-sheet__section-title">Trust Markers</h3>
+                    <div class="filter-sheet__chip-grid">
+                        <button type="button" class="filter-sheet__chip" data-filter="trust-pure-veg">
+                            <span class="veg-marker veg-marker--veg" aria-hidden="true"></span>
+                            <span>Pure Veg</span>
+                        </button>
+                        <button type="button" class="filter-sheet__chip" data-filter="trust-friends">
+                            <span aria-hidden="true">🫶</span>
+                            <span>Loved by friends</span>
+                        </button>
+                        <button type="button" class="filter-sheet__chip" data-filter="trust-no-pkg">
+                            <span aria-hidden="true">💵</span>
+                            <span>No packaging charges</span>
+                        </button>
+                        <button type="button" class="filter-sheet__chip" data-filter="trust-low-plastic">
+                            <span aria-hidden="true">🛍️</span>
+                            <span>Low plastic packaging</span>
+                        </button>
+                    </div>
+                </section>
+
+                <section class="filter-sheet__section" data-pane="collections" aria-label="Collections" hidden>
+                    <h3 class="filter-sheet__section-title">Collections</h3>
+                    <div class="filter-sheet__chip-grid">
+                        <button type="button" class="filter-sheet__chip" data-filter="col-previously">Previously ordered</button>
+                        <button type="button" class="filter-sheet__chip" data-filter="col-gourmet">Gourmet</button>
+                    </div>
+                </section>
+            </div>
+        </div>
+
+        <footer class="filter-sheet__foot">
+            <button type="button" class="filter-sheet__btn filter-sheet__btn--secondary" data-action="close-filters">Close</button>
+            <button type="button" class="filter-sheet__btn filter-sheet__btn--primary"   data-action="filters-apply">Show results</button>
+        </footer>
+    </div>
+</div>

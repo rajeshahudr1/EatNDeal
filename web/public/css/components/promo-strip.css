@@ -15,6 +15,12 @@
     color: #fff;
 }
 
+/* Inline variant — when the strip lives inside the home content
+ * column (moved below "Best offers") rather than full-bleed under
+ * the header. Rounded corners so it reads as a banner card. */
+.promo-strip--inline { border-radius: var(--radius-lg); overflow: hidden; }
+.promo-strip--inline .promo-strip__inner { max-width: none; }
+
 .promo-strip__inner {
     max-width: var(--container-max);
     margin: 0 auto;
@@ -73,6 +79,39 @@
 }
 .promo-strip__cta:active { transform: translateY(0); }
 
+/* Inline rewards CTA — sits to the right of the Welcome-50 block on
+ * web. Vertical divider + ghost-style CTA so the eye reads it as a
+ * separate offer without breaking the strip into two visual rows.
+ * Hidden on mobile (the standalone rewards banner reappears on the
+ * home page there). */
+.promo-strip__divider {
+    flex: 0 0 auto;
+    width: 1px;
+    align-self: stretch;
+    margin: 0 var(--space-2);
+    background: rgba(255, 255, 255, 0.35);
+}
+.promo-strip__rewards-copy {
+    flex: 0 0 auto;
+    font-size: 0.95rem;
+    line-height: 1.4;
+    color: rgba(255, 255, 255, 0.95);
+}
+.promo-strip__rewards-copy strong { font-weight: 700; }
+
+/* Ghost variant — transparent background, white border, white text.
+ * Visual contrast against the filled Order-now button so the two
+ * CTAs read as different priorities (filled = primary, ghost =
+ * secondary). */
+.promo-strip__cta--ghost {
+    background-color: transparent;
+    color: #fff;
+    border: 1px solid rgba(255, 255, 255, 0.7);
+}
+.promo-strip__cta--ghost:hover {
+    background-color: rgba(255, 255, 255, 0.12);
+}
+
 /* Mobile — compact single-line strip. Was wrapping to 2 rows which
  * ate ~80 px of viewport for what's only an upsell. Now:
  *   icon · short copy (truncated)               CTA
@@ -108,4 +147,10 @@
         font-size: 0.78rem;
         margin-left: 0;
     }
+    /* Inline rewards block hides on mobile — the standalone rewards
+     * banner takes over there (rendered between Popular near you
+     * and For You in views/site/index.ejs). */
+    .promo-strip__divider,
+    .promo-strip__rewards-copy,
+    .promo-strip__cta--ghost { display: none; }
 }

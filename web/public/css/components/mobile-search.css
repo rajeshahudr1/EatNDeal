@@ -39,6 +39,39 @@
     background-color: #fff;
     border-bottom: 1px solid var(--color-border-soft);
     padding: var(--space-2) var(--space-3);
+    /* Flex row so the search form stretches and the filter button
+     * pins to the right. */
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+/* Search form fills the available width; filter button takes its
+ * natural square size to the right of it. */
+.mobile-search__form { flex: 1; min-width: 0; }
+
+/* Filter trigger — opens the bottom sheet at /partials/filter-sheet.
+ * Visually a circular icon button matching the search input height
+ * for vertical alignment. Brand-red icon so the user spots it.  */
+.mobile-search__filter {
+    flex: 0 0 auto;
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    background-color: var(--color-bg-alt);
+    border: 1px solid var(--color-border);
+    color: var(--color-primary);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background-color 120ms ease, border-color 120ms ease;
+}
+.mobile-search__filter:hover,
+.mobile-search__filter:focus-visible {
+    background-color: #fff;
+    border-color: var(--color-primary);
+    outline: none;
 }
 
 .mobile-search__form {

@@ -26,13 +26,20 @@
  * Logo + primary nav + desktop auth-buttons are hidden — the mockup
  * gives the freed space to the two-line location chip. */
 .site-header__inner {
-    display: grid;
-    grid-template-columns: 1fr auto auto;
+    display: flex;
+    flex-wrap: nowrap;
     align-items: center;
     gap: var(--space-2);
     padding: 0 var(--space-3);
     height: 68px;        /* slightly taller — two-line location needs the room */
 }
+/* Location takes the remaining space; the Delivery/Pickup toggle,
+ * cart and hamburger sit compactly to its right on one line. */
+.site-header__location { flex: 1 1 auto; min-width: 0; }
+.site-header__inner .mode-toggle,
+.site-header__inner .header-quick,
+.site-header__inner .site-header__menu-btn { flex: 0 0 auto; }
+.site-header__location-name { max-width: 32vw; }
 
 .site-header__brand    { display: none; }
 .site-header__nav      { display: none; }

@@ -56,6 +56,12 @@ async function list(req, res) {
         const restaurantId = req.query.restaurant
             ? Math.max(0, Number(req.query.restaurant)) || null
             : null;
+        // ── Phase-2 filter params (all optional) ───────────────────
+        const vegOnly     = String(req.query.veg         || '') === '1';
+        const recOnly     = String(req.query.recommended || '') === '1';
+        const featOnly    = String(req.query.featured    || '') === '1';
+        const hasOffer    = String(req.query.offer       || '') === '1';
+        const priceBucket = req.query.price ? String(req.query.price).toLowerCase() : null;
         const hasUserLocation = Number.isFinite(lat) && Number.isFinite(lng);
         // Same nearest-first strategy as the restaurants endpoint —
         // pull a larger candidate set when we're sorting by distance
@@ -152,6 +158,36 @@ async function list(req, res) {
             .modify(function (qb) {
                 if (!restaurantId) { return; }
                 qb.andWhere('c.id', restaurantId);
+            })
+            // ── Diet (veg only) ───────────────────────────────────
+            // veg_non_veg = 1 → veg. Excludes null + non-veg.
+            .modify(function (qb) { if (vegOnly) { qb.andWhere('p.veg_non_veg', 1); } })
+            // ── Recommended / Featured ───────────────────────────
+            .modify(function (qb) { if (recOnly)  { qb.andWhere('p.is_recommended', 1); } })
+            .modify(function (qb) { if (featOnly) { qb.andWhere('p.is_featured',    1); } })
+            // ── Has offer ────────────────────────────────────────
+            // Product-level: a non-empty `offer` label OR a positive
+            // `discount_value`.
+            .modify(function (qb) {
+                if (!hasOffer) { return; }
+                qb.where(function () {
+                    this.where('p.discount_value', '>', 0)
+                        .orWhere(function () { this.whereNotNull('p.offer').andWhere('p.offer', '<>', ''); });
+                });
+            })
+            // ── Price bucket ─────────────────────────────────────
+            // Picks the first non-null price in the same chain
+            // Helpers/marketplace.pickPrice uses, so the filter
+            // matches what the customer sees on the card.
+            .modify(function (qb) {
+                if (!priceBucket) { return; }
+                // COALESCE order mirrors pickPrice():
+                //   marketplace_price → online_platform_price →
+                //   price_after_tax → 0
+                const expr = `COALESCE(p.marketplace_price, p.online_platform_price, p.price_after_tax, 0)`;
+                if (priceBucket === 'low')      { qb.andWhereRaw(expr + ' <= ?',  [6]); }
+                else if (priceBucket === 'mid') { qb.andWhereRaw(expr + ' > ? AND ' + expr + ' <= ?', [6, 12]); }
+                else if (priceBucket === 'high'){ qb.andWhereRaw(expr + ' > ?',   [12]); }
             })
             .orderBy([
                 { column: 'p.is_recommended', order: 'desc' },

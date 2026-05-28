@@ -118,6 +118,12 @@ app.use(express.static(path.join(__dirname, 'public'), {
         if (filePath.endsWith(path.sep + 'service-worker.js')) {
             res.setHeader('Service-Worker-Allowed', '/');
             res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+        } else if (ENV !== 'production') {
+            // DEV: never let the browser cache CSS / JS / images. Combined
+            // with the SW being disabled on localhost (see app.js), this
+            // means a code change shows on a plain refresh — no "clear
+            // cache" dance. In production these get normal caching.
+            res.setHeader('Cache-Control', 'no-store, must-revalidate');
         }
     },
 }));

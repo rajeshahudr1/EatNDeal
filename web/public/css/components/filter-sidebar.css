@@ -1,0 +1,142 @@
+/*
+ * components/filter-sidebar.css
+ *
+ * What:  Web-only left filter rail (.fsb) matching the mockup —
+ *        sticky white card with grouped Sort / Delivery time / Offers
+ *        / Rating / Price / Cuisines / Dietary / toggles + an Apply
+ *        Filters button and Reset link.
+ * Why:   The user asked for a left-side filter panel exactly like the
+ *        supplied EatNDeal mockup. Mobile (< 1024 px) hides this and
+ *        uses the bottom sheet instead.
+ * Used:  Loaded from views/_layout.ejs. Markup: views/partials/
+ *        filter-sidebar.ejs. Controller: /js/ui/filter-sidebar.js.
+ */
+
+.fsb {
+    position: sticky;
+    top: var(--space-4);
+    align-self: start;
+    display: flex;
+    flex-direction: column;
+    background: #fff;
+    border: 1px solid var(--color-border-soft);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-1);
+    max-height: calc(100vh - 2 * var(--space-4));
+    overflow: hidden;
+}
+
+.fsb__head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: var(--space-4); border-bottom: 1px solid var(--color-border-soft);
+    flex: 0 0 auto;
+}
+.fsb__title { margin: 0; font-size: 1.1rem; font-weight: 800; }
+.fsb__clear { border: 0; background: transparent; color: var(--color-primary); font-weight: 600; font-size: 0.85rem; cursor: pointer; }
+.fsb__clear:hover { text-decoration: underline; }
+
+/* min-height:0 is REQUIRED — without it a flex item's implicit
+ * min-height:auto keeps it at content height, so overflow-y:auto
+ * never kicks in and the panel can't scroll (and the footer gets
+ * pushed off-screen). This is what made the mobile filter overlay
+ * un-scrollable. */
+.fsb__scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: var(--space-3) var(--space-4); }
+
+.fsb__group + .fsb__group { margin-top: var(--space-4); padding-top: var(--space-4); border-top: 1px solid var(--color-border-soft); }
+.fsb__group-title { font-size: 0.95rem; font-weight: 700; margin: 0 0 var(--space-2); }
+
+/* Radio + checkbox rows — same shape: control · label · count.
+ * `display:flex` + `width:100%` force each label onto its own full-
+ * width row (defeats the inline default of <label>); the count is
+ * pushed to the far right with margin-left:auto. */
+.fsb__radio, .fsb__check, .fsb__toggle {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    width: 100%;
+    padding: 0.4rem 0;
+    cursor: pointer;
+    font-size: 0.9rem;
+    color: var(--color-text);
+    line-height: 1.3;
+}
+.fsb__radio input, .fsb__check input { accent-color: var(--color-primary); flex: 0 0 auto; width: 16px; height: 16px; margin: 0; }
+.fsb__radio > span:not(.fsb__stars), .fsb__check > span { flex: 1 1 auto; min-width: 0; }
+.fsb__count { flex: 0 0 auto; margin-left: auto; padding-left: var(--space-2); color: var(--color-text-soft); font-weight: 600; font-size: 0.8rem; }
+.fsb__radio.is-active > span, .fsb__check.is-active > span { color: var(--color-primary); font-weight: 600; }
+
+/* Rating rows — gold star before the label. */
+.fsb__stars { color: #FFB400; font-size: 1rem; flex: 0 0 auto; }
+
+/* Cuisine search box. */
+.fsb__search {
+    display: flex; align-items: center; gap: var(--space-2);
+    background: var(--color-bg-alt); border: 1px solid var(--color-border);
+    border-radius: var(--radius-md); padding: 0.45rem 0.65rem; margin-bottom: var(--space-2);
+    color: var(--color-text-soft);
+}
+.fsb__search-input { border: 0; background: transparent; outline: none; font-size: 0.85rem; width: 100%; color: var(--color-text); }
+.fsb__cuisine-list { max-height: 180px; overflow-y: auto; }
+.fsb__check[hidden] { display: none; }
+
+/* Toggle switch. */
+.fsb__toggle { justify-content: space-between; }
+.fsb__toggle span { flex: 1; }
+.fsb__toggle input { position: absolute; opacity: 0; width: 0; height: 0; }
+.fsb__switch {
+    flex: 0 0 auto; width: 38px; height: 22px; border-radius: 11px;
+    background: var(--color-border); position: relative; transition: background-color 140ms ease;
+}
+.fsb__switch::after {
+    content: ''; position: absolute; top: 2px; left: 2px;
+    width: 18px; height: 18px; border-radius: 50%; background: #fff;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.25); transition: transform 140ms ease;
+}
+.fsb__toggle input:checked + .fsb__switch { background: var(--color-primary); }
+.fsb__toggle input:checked + .fsb__switch::after { transform: translateX(16px); }
+
+/* Footer — Apply (filled) + Reset (text). */
+.fsb__foot { flex: 0 0 auto; padding: var(--space-3) var(--space-4); border-top: 1px solid var(--color-border-soft); display: flex; flex-direction: column; gap: var(--space-2); }
+.fsb__apply { width: 100%; border: 0; border-radius: var(--radius-md); padding: 0.8rem; background: var(--color-primary); color: #fff; font-weight: 700; cursor: pointer; }
+.fsb__apply:hover { background: var(--color-primary-dark); }
+.fsb__reset { border: 0; background: transparent; color: var(--color-primary); font-weight: 600; cursor: pointer; }
+.fsb__reset:hover { text-decoration: underline; }
+
+/* ── Mobile (≤ 1023 px) ───────────────────────────────────────────── *
+ * MUST come AFTER the base .fsb rule above — equal specificity means
+ * source order decides, so `display:none` here has to win over the
+ * base `display:flex`. (This was the bug: when it lived at the top of
+ * the file the later base rule re-showed the sidebar on mobile.)
+ *
+ * Default: hidden. When the mobile Filters button is tapped the body
+ * gets .is-mobile-filters-open and the sidebar becomes a full-screen
+ * overlay — the SAME single-column pill content as desktop. */
+@media (max-width: 1023px) {
+    .fsb { display: none; }
+    body.is-mobile-filters-open .fsb {
+        display: flex !important;
+        flex-direction: column;
+        position: fixed;
+        /* Explicit edges + height — `inset:0` alone didn't force the
+         * height in some mobile webviews, so the panel grew to content
+         * height and the inner scroll never engaged. Pin all four
+         * edges AND set an explicit height (dvh handles the mobile
+         * URL-bar resize; vh is the fallback). */
+        top: 0; left: 0; right: 0; bottom: 0;
+        width: 100%;
+        height: 100vh;
+        height: 100dvh;
+        z-index: 95;
+        max-width: none;
+        max-height: none;
+        border: 0;
+        border-radius: 0;
+        box-shadow: none;
+    }
+    body.is-mobile-filters-open { overflow: hidden; }
+    /* Belt-and-braces: the scroll region must be allowed to shrink
+     * (min-height:0) AND own the overflow so head + foot stay pinned. */
+    body.is-mobile-filters-open .fsb__scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+    body.is-mobile-filters-open .fsb__head,
+    body.is-mobile-filters-open .fsb__foot { flex: 0 0 auto; }
+}

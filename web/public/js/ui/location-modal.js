@@ -168,6 +168,12 @@
      */
     function close() {
         if (!modal) { return; }
+        // Location gate: when no location is set yet the modal is a
+        // mandatory full-screen step — ignore close requests (backdrop
+        // tap, Esc). The only way forward is to pick a location, which
+        // saves + reloads the page. Once a location exists this guard
+        // is inert and the modal closes normally.
+        if (document.body.getAttribute('data-has-location') === 'false') { return; }
         moveFocusOut();
         modal.hidden = true;
         modal.setAttribute('aria-hidden', 'true');

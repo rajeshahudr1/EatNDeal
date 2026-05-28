@@ -20,6 +20,12 @@
 .location-modal[aria-hidden="false"] { display: flex; }
 .location-modal[aria-hidden="true"]  { display: none; }
 
+/* The no-location gate is now a dedicated landing PAGE
+ * (views/site/location.ejs), not a forced modal — so the old
+ * "hide everything + force the modal open" rules were removed. The
+ * modal here is used only for the CHANGE-location flow once a
+ * location already exists. */
+
 /* Backdrop fades in over 200ms; panel slides up + fades in over 240ms
  * with an ease-out curve so the first-visit modal lands smoothly
  * instead of popping abruptly. Animation runs each time `display`

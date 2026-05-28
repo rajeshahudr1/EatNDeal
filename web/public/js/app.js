@@ -49,8 +49,28 @@
      */
     function registerServiceWorker() {
         if (!('serviceWorker' in navigator)) { return; }
-        // Don't register on http: localhost; browsers allow it on
-        // http://localhost so we don't guard for protocol here.
+
+        // ── Dev mode: NO service worker ──────────────────────────────
+        // On localhost / 127.* the SW only causes grief — it caches the
+        // shell so CSS/JS changes don't show until you clear storage.
+        // So in dev we DON'T register it AND actively UNREGISTER any
+        // SW left over from a previous visit + wipe its caches. Result:
+        // every code change shows on a plain refresh, no cache-clearing.
+        var host = window.location.hostname;
+        var isDev = host === 'localhost' || host === '127.0.0.1' || host === '0.0.0.0' || host === '[::1]';
+        if (isDev) {
+            navigator.serviceWorker.getRegistrations().then(function (regs) {
+                regs.forEach(function (r) { r.unregister(); });
+            }).catch(function () { /* noop */ });
+            if (window.caches && caches.keys) {
+                caches.keys().then(function (names) {
+                    names.forEach(function (n) { caches.delete(n); });
+                }).catch(function () { /* noop */ });
+            }
+            return;   // never register the SW in dev
+        }
+
+        // ── Production: register the PWA service worker ──────────────
         navigator.serviceWorker.register('/service-worker.js').catch(function (err) {
             if (window.console) { window.console.warn('[sw] register failed', err && err.message); }
         });

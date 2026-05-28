@@ -1,0 +1,507 @@
+/*
+ * components/home-v2.css
+ *
+ * What:  Full landing-page redesign to match the supplied EatNDeal
+ *        mockup, top to bottom:
+ *          • home shell  — left filter sidebar + right content column
+ *          • hero        — headline + deliver-to + feature pills +
+ *                          food collage + order-tracking card
+ *          • cuisine rail— circular tiles with "N+ places" labels
+ *          • resto rail  — restaurant cards (badge / heart / rating /
+ *                          delivery / price / add button)
+ *          • offers rail — 3 gradient promo banners
+ *          • popular     — 4 dark "Explore" cuisine cards
+ *          • features    — Fast Delivery / Live Tracking / Safe
+ *                          Payments / Best Offers strip
+ *          • app cta     — phone mockup + store badges + checklist
+ * Why:   The user asked for an exact rebuild of the mockup. Dynamic
+ *        sections (cuisines, restaurants) bind to live api data; the
+ *        rest is static markup until the matching endpoints land.
+ * Used:  Loaded by views/_layout.ejs. Markup lives in
+ *        views/site/index.ejs + the home partials.
+ *
+ * Responsive: desktop ≥ 1024 px shows the sidebar; below that the
+ *        sidebar collapses (mobile uses the bottom-sheet) and every
+ *        rail/grid reflows to a single column or horizontal scroller.
+ */
+
+/* ── Delivery / Pickup segmented toggle ───────────────────────────── *
+ * Two radios + labels rendered as a pill switch. The real radios are
+ * visually hidden; the label that follows a :checked radio paints
+ * brand-red. Keyboard accessible (focus ring on the active label). */
+.mode-toggle {
+    display: inline-flex;
+    background: var(--color-bg-alt);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-pill);
+    padding: 3px;
+    flex: 0 0 auto;
+}
+.mode-toggle input { position: absolute; opacity: 0; width: 0; height: 0; }
+.mode-toggle label {
+    padding: 0.4rem 1rem;
+    border-radius: var(--radius-pill);
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--color-text-muted);
+    cursor: pointer;
+    transition: background-color 120ms ease, color 120ms ease;
+    user-select: none;
+}
+.mode-toggle input:checked + label {
+    background: var(--color-primary);
+    color: #fff;
+    box-shadow: var(--shadow-1);
+}
+.mode-toggle input:focus-visible + label { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+@media (max-width: 767px) {
+    /* Mobile: KEEP the Delivery/Pickup toggle visible in the top
+     * header (per user), just more compact so it fits next to the
+     * location + cart. */
+    .mode-toggle { padding: 2px; }
+    .mode-toggle label { padding: 0.3rem 0.6rem; font-size: 0.75rem; }
+}
+
+/* ── Header quick-links (Rewards / Orders / Cart) ─────────────────── */
+.header-quick { display: flex; align-items: center; gap: var(--space-4); }
+.header-quick__item {
+    display: inline-flex; flex-direction: column; align-items: center; gap: 2px;
+    color: var(--color-text); font-size: 0.7rem; font-weight: 600;
+    position: relative;
+}
+.header-quick__item:hover { color: var(--color-primary); }
+.header-quick__badge {
+    position: absolute; top: -6px; right: 4px;
+    min-width: 16px; height: 16px; padding: 0 4px;
+    background: var(--color-primary); color: #fff;
+    border-radius: 8px; font-size: 0.65rem; font-weight: 700;
+    display: grid; place-items: center;
+}
+.site-header__ordernow { white-space: nowrap; }
+/* Mobile: keep ONLY the Cart icon from the quick cluster in the top
+ * header (Rewards / Orders move to the drawer + bottom-nav). Order
+ * Now + Sign in are hidden (drawer carries auth). The cart label is
+ * dropped so it's a compact icon. */
+@media (max-width: 767px) {
+    .site-header__ordernow, .site-header__signin { display: none; }
+    .header-quick { display: flex; gap: var(--space-2); }
+    .header-quick__item:not(.header-quick__cart) { display: none; }
+    .header-quick__cart span:not(.header-quick__badge) { display: none; }   /* icon only */
+}
+
+/* ── Shell: sidebar + content ─────────────────────────────────────── *
+ * Full-bleed: the content uses the whole viewport width (minus side
+ * padding) so the right side never shows empty space — matching the
+ * Uber-Eats-style edge-to-edge feed the user asked for. No centered
+ * max-width cap. minmax(0,1fr) on the content track lets its inner
+ * horizontal sliders scroll instead of forcing the grid wider. */
+.home-shell {
+    width: 100%;
+    padding: var(--space-3) var(--space-6) var(--space-10);
+}
+@media (min-width: 1024px) {
+    .home-shell {
+        display: grid;
+        grid-template-columns: 280px minmax(0, 1fr);
+        gap: var(--space-6);
+        align-items: start;
+    }
+}
+/* Flex column + gap (not margin) so the FIRST VISIBLE child never
+ * carries dead top space — when the filters pill is display:none
+ * (sidebar expanded) it's removed from the flex flow entirely, so
+ * the hero sits flush at the top with no gap. */
+.home-shell__content {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-8);
+}
+
+/* Compact "Filters" control that reopens the sidebar — hidden by
+ * default, shown only when the sidebar is collapsed. Rendered as a
+ * small STICKY circular icon at the top-left so it stays reachable
+ * on scroll WITHOUT taking a full content row (keeps the top space
+ * tight). The negative margin pulls the hero up to cancel most of
+ * the flex gap. */
+.filters-show {
+    display: none;
+    align-self: flex-start;
+    align-items: center; gap: var(--space-2);
+    background: #fff; border: 1px solid var(--color-border);
+    border-radius: var(--radius-pill); padding: 0.45rem 0.9rem;
+    font-weight: 700; font-size: 0.85rem; color: var(--color-primary);
+    cursor: pointer;
+}
+.filters-show:hover { border-color: var(--color-primary); background: var(--color-bg-alt); }
+@media (min-width: 1024px) {
+    /* The reopen icon floats ABSOLUTELY over the hero's top-left
+     * corner (next to the FAST DELIVERY badge) instead of taking its
+     * own row — so collapsing the sidebar reclaims the top space.
+     * Out of flow ⇒ the hero sits flush at the content top. */
+    .home-shell.is-filters-collapsed .home-shell__content { position: relative; }
+    .home-shell.is-filters-collapsed .filters-show {
+        position: absolute;
+        top: var(--space-4);
+        left: var(--space-4);
+        z-index: 30;
+        width: 42px; height: 42px; padding: 0;
+        border-radius: 50%; justify-content: center;
+        box-shadow: var(--shadow-2);
+        margin: 0;
+    }
+    .home-shell.is-filters-collapsed .filters-show span { display: none; }  /* icon only */
+    /* Shift the FAST DELIVERY badge right so the floating icon sits
+     * beside it rather than over it. */
+    .home-shell.is-filters-collapsed .hero-v2__badge { margin-left: 52px; }
+}
+
+/* Sidebar hide button (chevron in the .fsb header). */
+.fsb__hide {
+    flex: 0 0 auto; width: 30px; height: 30px; border-radius: 50%;
+    border: 0; background: var(--color-bg-alt); color: var(--color-text);
+    display: grid; place-items: center; cursor: pointer; margin-left: var(--space-1);
+}
+.fsb__hide:hover { background: rgba(0,0,0,0.08); color: var(--color-primary); }
+
+/* Collapsed state — sidebar hidden, content fills the row, the
+ * compact Filters pill appears. Toggled by /js/pages/home.js adding
+ * .is-filters-collapsed on .home-shell. */
+@media (min-width: 1024px) {
+    .home-shell.is-filters-collapsed { grid-template-columns: 1fr; }
+    .home-shell.is-filters-collapsed .fsb { display: none; }
+    .home-shell.is-filters-collapsed .filters-show { display: inline-flex; }
+}
+/* On mobile the sidebar is already hidden (bottom sheet is used), so
+ * never show the reopen pill there. */
+/* Mobile: the reopen pill is hidden (the search-row Filters button
+ * opens the overlay), but the .fsb__hide close X MUST stay visible —
+ * it's the only way to close the full-screen filter overlay. */
+@media (max-width: 1023px) { .filters-show { display: none; } }
+
+/* Section heading row shared by every content rail. */
+.hv2-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: var(--space-4);
+    gap: var(--space-3);
+}
+.hv2-head__title { font-size: 1.4rem; font-weight: 800; color: var(--color-text); }
+.hv2-head__link  { color: var(--color-primary); font-weight: 600; font-size: 0.9rem; white-space: nowrap; }
+.hv2-head__link:hover { text-decoration: underline; }
+
+/* Small round arrow nav buttons (top-right of rails). Decorative on
+ * touch; functional scroll nudge on desktop via home.js (optional). */
+.hv2-nav { display: inline-flex; gap: var(--space-2); }
+.hv2-nav__btn {
+    width: 34px; height: 34px; border-radius: 50%;
+    border: 1px solid var(--color-border);
+    background: #fff; color: var(--color-text);
+    display: inline-flex; align-items: center; justify-content: center;
+    cursor: pointer;
+}
+.hv2-nav__btn:hover { background: var(--color-bg-alt); border-color: var(--color-primary); color: var(--color-primary); }
+
+/* ── Hero ─────────────────────────────────────────────────────────── */
+.hero-v2 {
+    position: relative;
+    background: linear-gradient(120deg, #FFF1EC 0%, #FFE6DE 100%);
+    border-radius: 24px;
+    padding: var(--space-8);
+    overflow: hidden;
+    display: grid;
+    grid-template-columns: 1.1fr 0.9fr;
+    gap: var(--space-6);
+    align-items: center;
+}
+.hero-v2__badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: #E8F8EE; color: #15893f;
+    font-weight: 700; font-size: 0.78rem;
+    padding: 0.3rem 0.7rem; border-radius: var(--radius-pill);
+    margin-bottom: var(--space-4);
+}
+.hero-v2__title { font-size: 2.6rem; line-height: 1.08; font-weight: 800; letter-spacing: -0.02em; }
+.hero-v2__title em { color: var(--color-primary); font-style: normal; }
+.hero-v2__subtitle { margin-top: var(--space-3); color: var(--color-text-muted); font-size: 1.05rem; max-width: 30ch; }
+
+.hero-v2__actions { display: flex; gap: var(--space-3); margin-top: var(--space-5); flex-wrap: wrap; }
+.hero-v2__deliver {
+    display: flex; align-items: center; gap: var(--space-2);
+    background: #fff; border: 1px solid var(--color-border);
+    border-radius: var(--radius-md); padding: 0.7rem 0.9rem;
+    min-width: 240px; cursor: pointer; text-align: left;
+}
+.hero-v2__deliver-label { font-size: 0.7rem; color: var(--color-text-soft); display: block; }
+.hero-v2__deliver-value { font-size: 0.95rem; font-weight: 600; color: var(--color-text); display: block; }
+.hero-v2__locate {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: var(--color-primary); color: #fff;
+    padding: 0.7rem 1.3rem; border-radius: var(--radius-md);
+    font-weight: 700; border: 0; cursor: pointer;
+}
+.hero-v2__locate:hover { background: var(--color-primary-dark); }
+
+.hero-v2__usps { display: flex; flex-wrap: wrap; gap: var(--space-4); margin-top: var(--space-5); }
+.hero-v2__usp { display: inline-flex; align-items: center; gap: 6px; font-size: 0.82rem; color: var(--color-text-muted); }
+.hero-v2__usp svg { color: var(--color-primary); flex: 0 0 auto; }
+
+/* Hero art — food collage built from tinted discs (placeholder for
+ * real photography). Each disc carries an emoji so the hero isn't
+ * empty before any photo asset lands. */
+.hero-v2__art { position: relative; min-height: 280px; }
+.hero-v2__disc {
+    position: absolute; border-radius: 50%;
+    display: grid; place-items: center;
+    box-shadow: var(--shadow-2);
+    font-size: 2.6rem;
+}
+.hero-v2__disc--a { width: 180px; height: 180px; background: #2b2b2b; top: 0;   right: 60px; font-size: 4rem; }
+.hero-v2__disc--b { width: 120px; height: 120px; background: #f6c945; bottom: 30px; right: 10px; }
+.hero-v2__disc--c { width: 140px; height: 140px; background: #e6502e; bottom: 0;  right: 140px; }
+.hero-v2__disc--d { width: 70px;  height: 70px;  background: #d83a52; top: 30px;  right: 0; font-size: 1.8rem; }
+.hero-v2__pin {
+    position: absolute; top: 20px; right: 40px;
+    width: 34px; height: 34px; color: var(--color-primary);
+}
+.hero-v2__track {
+    position: absolute; bottom: -6px; left: 0;
+    background: #fff; border-radius: var(--radius-md);
+    box-shadow: var(--shadow-2); padding: 0.6rem 0.9rem;
+    display: flex; align-items: center; gap: var(--space-2);
+    font-size: 0.8rem;
+}
+.hero-v2__track-dot { width: 26px; height: 26px; border-radius: 50%; background: var(--color-primary); display: grid; place-items: center; color: #fff; }
+.hero-v2__track-title { font-weight: 700; }
+.hero-v2__track-sub { color: var(--color-text-soft); }
+.hero-v2__track-link { color: var(--color-primary); font-weight: 600; }
+
+/* ── Rail wrapper + prev/next arrows ──────────────────────────────── */
+.rail-wrap { position: relative; }
+.rail-arrow {
+    position: absolute; top: 50%; transform: translateY(-50%);
+    z-index: 3; width: 40px; height: 40px; border-radius: 50%;
+    background: #fff; border: 1px solid var(--color-border);
+    box-shadow: var(--shadow-2); color: var(--color-text);
+    display: grid; place-items: center; cursor: pointer;
+}
+.rail-arrow:hover { color: var(--color-primary); border-color: var(--color-primary); }
+.rail-arrow--prev { left: -8px; }
+.rail-arrow--next { right: -8px; }
+.rail-arrow[hidden] { display: none; }
+@media (max-width: 767px) { .rail-arrow { display: none; } }   /* touch-scroll on mobile */
+
+/* ── Cuisine rail ─────────────────────────────────────────────────── */
+.cuisine-rail {
+    display: flex; gap: var(--space-4);
+    overflow-x: auto; scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch; scrollbar-width: none;
+    padding-bottom: var(--space-2); margin: 0; list-style: none;
+    scroll-behavior: smooth;
+}
+.cuisine-rail::-webkit-scrollbar { display: none; }
+.cuisine-rail__item { flex: 0 0 auto; width: 116px; scroll-snap-align: start; text-align: center; }
+.cuisine-rail__disc {
+    width: 116px; height: 116px; border-radius: var(--radius-lg);
+    background: var(--color-bg-alt);
+    display: grid; place-items: center; overflow: hidden;
+    position: relative; font-size: 3rem;
+    transition: transform 120ms ease, box-shadow 120ms ease;
+}
+.cuisine-rail__item:hover .cuisine-rail__disc { transform: translateY(-3px); box-shadow: var(--shadow-2); }
+.cuisine-rail__disc img { width: 100%; height: 100%; object-fit: cover; }
+.cuisine-rail__name { display: block; font-weight: 700; margin-top: var(--space-2); font-size: 0.95rem; }
+.cuisine-rail__count { display: block; font-size: 0.78rem; color: var(--color-text-soft); }
+
+/* ── Restaurant rail ──────────────────────────────────────────────── */
+.resto-rail {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--space-4);
+    margin: 0; padding: 0; list-style: none;
+}
+.resto-card {
+    position: relative; background: #fff;
+    border: 1px solid var(--color-border-soft);
+    border-radius: var(--radius-lg); overflow: hidden;
+    display: flex; flex-direction: column;
+    transition: transform 120ms ease, box-shadow 120ms ease;
+}
+.resto-card:hover { transform: translateY(-3px); box-shadow: var(--shadow-2); }
+.resto-card__media {
+    position: relative; aspect-ratio: 16 / 11;
+    background: linear-gradient(135deg, rgba(255,255,255,0.35), transparent 60%), var(--color-bg-alt);
+    display: grid; place-items: center; font-size: 3.2rem;
+}
+.resto-card__media img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.resto-card__badge {
+    position: absolute; top: 10px; left: 10px; z-index: 2;
+    padding: 0.25rem 0.6rem; border-radius: var(--radius-sm);
+    font-size: 0.72rem; font-weight: 700; color: #fff;
+    background: var(--color-success);
+}
+.resto-card__badge--trending { background: var(--color-primary); }
+.resto-card__badge--popular  { background: #f59e0b; }
+.resto-card__badge--new      { background: #15893f; }
+.resto-card__fav {
+    position: absolute; top: 8px; right: 8px; z-index: 2;
+    width: 32px; height: 32px; border-radius: 50%;
+    background: rgba(255,255,255,0.92); border: 0; cursor: pointer;
+    display: grid; place-items: center; color: var(--color-text-soft);
+}
+.resto-card__fav:hover { color: var(--color-primary); }
+.resto-card__body { padding: var(--space-3); display: flex; flex-direction: column; gap: 4px; }
+.resto-card__name { font-weight: 700; font-size: 1rem; display: flex; align-items: center; gap: 4px; }
+.resto-card__verified { color: #2563eb; flex: 0 0 auto; }
+.resto-card__cuisines {
+    font-size: 0.82rem; color: var(--color-text-muted);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin: 0;
+}
+.resto-card__meta { display: flex; align-items: center; gap: var(--space-2); font-size: 0.82rem; color: var(--color-text-muted); }
+.resto-card__rating {
+    display: inline-flex; align-items: center; gap: 3px;
+    background: #15893f; color: #fff; font-weight: 700;
+    padding: 0.05rem 0.4rem; border-radius: var(--radius-sm); font-size: 0.78rem;
+}
+.resto-card__time, .resto-card__dist { display: inline-flex; align-items: center; gap: 3px; }
+.resto-card__dist svg { color: var(--color-primary); }
+.resto-card__delivery { color: var(--color-success); font-size: 0.8rem; font-weight: 600; }
+.resto-card__foot { display: flex; align-items: center; justify-content: space-between; margin-top: 2px; }
+.resto-card__price { font-size: 0.82rem; color: var(--color-text-muted); }
+.resto-card__add {
+    width: 30px; height: 30px; border-radius: 50%;
+    border: 1px solid var(--color-primary); background: #fff;
+    color: var(--color-primary); font-size: 1.2rem; line-height: 1;
+    cursor: pointer; display: grid; place-items: center;
+}
+.resto-card__add:hover { background: var(--color-primary); color: #fff; }
+
+/* ── Offers rail ──────────────────────────────────────────────────── */
+.offers-rail { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-4); }
+.offer-banner {
+    position: relative; border-radius: var(--radius-lg);
+    padding: var(--space-5); min-height: 150px; color: #fff;
+    display: flex; flex-direction: column; justify-content: center;
+    overflow: hidden;
+}
+.offer-banner--red    { background: linear-gradient(135deg, #e5252a, #b3161b); }
+.offer-banner--orange { background: linear-gradient(135deg, #f9a825, #f57f17); }
+.offer-banner--purple { background: linear-gradient(135deg, #7e3ff2, #5b2bc4); }
+.offer-banner__title { font-size: 1.5rem; font-weight: 800; line-height: 1.1; }
+.offer-banner__sub   { font-size: 0.9rem; opacity: 0.95; margin-top: 4px; }
+.offer-banner__cta   { margin-top: var(--space-3); font-weight: 700; font-size: 0.85rem; display: inline-flex; align-items: center; gap: 4px; }
+.offer-banner__code  { display: inline-block; margin-top: var(--space-3); background: rgba(255,255,255,0.22); border: 1px dashed rgba(255,255,255,0.65); border-radius: var(--radius-sm); padding: 0.15rem 0.5rem; font-weight: 700; letter-spacing: 0.04em; font-size: 0.8rem; }
+
+/* ── Popular cuisines (dark cards) ───────────────────────────────── */
+.popcuisine-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--space-4); }
+.popcuisine-card {
+    position: relative; border-radius: var(--radius-lg); overflow: hidden;
+    background: #1d1d1d; color: #fff; min-height: 96px;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: var(--space-4); gap: var(--space-2);
+}
+.popcuisine-card__copy { z-index: 1; }
+.popcuisine-card__name { font-weight: 800; font-size: 1.15rem; }
+.popcuisine-card__explore { color: var(--color-primary); font-weight: 700; font-size: 0.82rem; display: inline-flex; align-items: center; gap: 4px; margin-top: 4px; }
+.popcuisine-card__art { width: 84px; height: 84px; border-radius: var(--radius-md); background: var(--color-bg-alt); display: grid; place-items: center; font-size: 2.4rem; flex: 0 0 auto; overflow: hidden; }
+.popcuisine-card__art img { width: 100%; height: 100%; object-fit: cover; }
+
+/* ── Feature strip ────────────────────────────────────────────────── */
+.feature-strip { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--space-4); }
+.feature-item {
+    border-radius: var(--radius-lg); padding: var(--space-4);
+    display: flex; align-items: center; gap: var(--space-3);
+}
+.feature-item--a { background: #FFF1EC; }
+.feature-item--b { background: #ECFBF1; }
+.feature-item--c { background: #F1EEFF; }
+.feature-item--d { background: #FFF8E8; }
+.feature-item__icon { width: 44px; height: 44px; border-radius: 50%; background: #fff; display: grid; place-items: center; flex: 0 0 auto; font-size: 1.4rem; }
+.feature-item__title { font-weight: 700; font-size: 0.95rem; }
+.feature-item__sub   { font-size: 0.8rem; color: var(--color-text-muted); }
+
+/* ── App CTA ──────────────────────────────────────────────────────── */
+.appcta {
+    background: linear-gradient(120deg, #FFF1EC 0%, #FFE6DE 100%);
+    border-radius: 24px; padding: var(--space-8);
+    display: grid; grid-template-columns: 1fr auto 1fr; gap: var(--space-6);
+    align-items: center;
+}
+.appcta__title { font-size: 2rem; font-weight: 800; line-height: 1.1; }
+.appcta__sub { color: var(--color-text-muted); margin-top: var(--space-2); }
+.appcta__badges { display: flex; gap: var(--space-3); margin-top: var(--space-4); align-items: center; flex-wrap: wrap; }
+.appcta__badge { height: 44px; border-radius: 8px; background: #111; color: #fff; display: inline-flex; align-items: center; gap: 8px; padding: 0 14px; font-weight: 600; font-size: 0.85rem; }
+.appcta__qr { width: 76px; height: 76px; border-radius: 8px; background: #fff; display: grid; place-items: center; border: 1px solid var(--color-border); }
+.appcta__phone { width: 200px; height: 360px; border-radius: 28px; background: #111; border: 6px solid #111; box-shadow: var(--shadow-2); overflow: hidden; justify-self: center; display: grid; place-items: center; color: #fff; font-size: 2.4rem; }
+.appcta__checks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-3); }
+.appcta__check { display: flex; align-items: center; gap: var(--space-2); font-weight: 600; }
+.appcta__check svg { color: #15893f; flex: 0 0 auto; }
+
+/* ── Responsive ───────────────────────────────────────────────────── */
+@media (max-width: 1023px) {
+    .resto-rail      { grid-template-columns: repeat(2, 1fr); }
+    .offers-rail     { grid-template-columns: 1fr; }
+    .popcuisine-grid { grid-template-columns: repeat(2, 1fr); }
+    .feature-strip   { grid-template-columns: repeat(2, 1fr); }
+    .appcta          { grid-template-columns: 1fr; text-align: center; }
+    .appcta__phone   { display: none; }
+}
+@media (max-width: 767px) {
+    .home-shell { padding: var(--space-2) var(--space-3) var(--space-10); }
+    .home-shell__content { gap: var(--space-6); }
+
+    /* Hero banner hidden on mobile per the user — the feed starts
+     * straight at the cuisine grid. Location is still settable from
+     * the header chip + the mobile search row. */
+    .hero-v2 { display: none; }
+
+    .hv2-head__title { font-size: 1.15rem; }
+
+    /* Cuisines — single horizontal scrolling row, STICKY just below
+     * the (also sticky) search bar so both stay pinned to the top
+     * while the feed scrolls underneath. Full-bleed white strip. */
+    .rail-wrap {
+        position: sticky;
+        top: 56px;                              /* below the sticky mobile search row */
+        z-index: 40;
+        background: #fff;
+        margin: 0 calc(-1 * var(--space-3));    /* extend to the viewport edges */
+        padding: var(--space-2) var(--space-3);
+        border-bottom: 1px solid var(--color-border-soft);
+    }
+    .cuisine-rail {
+        display: flex; gap: var(--space-3);
+        overflow-x: auto; -webkit-overflow-scrolling: touch;
+        scrollbar-width: none; scroll-snap-type: x proximity;
+    }
+    .cuisine-rail::-webkit-scrollbar { display: none; }
+    .cuisine-rail__item { flex: 0 0 auto; width: 72px; scroll-snap-align: start; }
+    .cuisine-rail__disc { width: 72px; height: 72px; border-radius: 16px; font-size: 1.9rem; }
+    .cuisine-rail__name { font-size: 0.72rem; margin-top: var(--space-1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .rail-arrow { display: none; }
+
+    /* Restaurant rail — horizontal swipe, peek of the next card. */
+    .resto-rail {
+        display: flex; overflow-x: auto; scroll-snap-type: x mandatory;
+        -webkit-overflow-scrolling: touch; scrollbar-width: none;
+    }
+    .resto-rail::-webkit-scrollbar { display: none; }
+    .resto-rail > li { flex: 0 0 auto; width: 72vw; max-width: 280px; scroll-snap-align: start; }
+
+    /* Offers — horizontal swipe. */
+    .offers-rail {
+        display: flex; overflow-x: auto; scroll-snap-type: x mandatory;
+        -webkit-overflow-scrolling: touch; scrollbar-width: none; gap: var(--space-3);
+    }
+    .offers-rail::-webkit-scrollbar { display: none; }
+    .offers-rail > * { flex: 0 0 80%; max-width: 320px; scroll-snap-align: start; }
+
+    /* Popular cuisines + features — 2-up grids. */
+    .popcuisine-grid { grid-template-columns: 1fr 1fr; }
+    .feature-strip   { grid-template-columns: 1fr 1fr; }
+    .feature-item    { flex-direction: column; align-items: flex-start; gap: var(--space-2); }
+
+    /* App CTA — stack, hide the phone mock. */
+    .appcta { grid-template-columns: 1fr; text-align: left; padding: var(--space-5); }
+    .appcta__phone { display: none; }
+    .appcta__title { font-size: 1.5rem; }
+}

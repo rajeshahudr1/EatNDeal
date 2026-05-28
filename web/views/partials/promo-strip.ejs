@@ -24,6 +24,19 @@
                        going to anyway, and the browser does a normal
                        full reload of the page.
 -%>
+<%#
+  The strip carries TWO pieces of UX on web (logged-out only):
+   1. Welcome-50 offer  → headline + Order now CTA
+   2. Rewards CTA       → "Join rewards" → sign-in page
+  They used to live as separate sections (promo-strip + a standalone
+  promo-banner between Popular near you and For You). On web that
+  ate roughly 220 px of vertical space for what's a single upsell;
+  per the user request both now fit in one compact row.
+
+  Mobile keeps just (1) — the rewards CTA is hidden via CSS to keep
+  the strip a single line. The rewards banner reappears as its own
+  section on the home page in mobile so users still see the prompt.
+-%>
 <div class="promo-strip" role="region" aria-label="Welcome offer">
     <div class="promo-strip__inner">
         <span class="promo-strip__icon" aria-hidden="true">🎉</span>
@@ -42,6 +55,17 @@
             >
                 Order now
             </button>
+        <% } %>
+
+        <%# Inline rewards CTA — shown to logged-out visitors only,
+            web-only (hidden on mobile via promo-strip.css). %>
+        <% if (!user_session) { %>
+            <span class="promo-strip__divider" aria-hidden="true"></span>
+            <span class="promo-strip__rewards-copy">
+                <strong>Join <%= brand.name %> rewards</strong>
+                — points on every order
+            </span>
+            <a href="/signin" class="promo-strip__cta promo-strip__cta--ghost">Get started</a>
         <% } %>
     </div>
 </div>

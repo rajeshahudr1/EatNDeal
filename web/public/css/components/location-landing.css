@@ -1,0 +1,138 @@
+/*
+ * components/location-landing.css
+ *
+ * What:  The dedicated no-location landing page (views/site/location.ejs)
+ *        matching the mockup: split hero (copy + picker left, phone/map
+ *        illustration right), popular-cities grid, "why love us" row.
+ * Why:   User asked for this exact location screen as the gate before
+ *        the restaurant feed. Header + footer come from the layout;
+ *        no promo strip.
+ * Used:  Loaded by views/_layout.ejs. Controller: /js/pages/location-page.js.
+ */
+
+.locpage {
+    background: linear-gradient(180deg, #FFF1EC 0%, #FFF6F2 60%, #fff 100%);
+}
+
+/* ── Hero ─────────────────────────────────────────────────────────── */
+.locpage__hero {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: var(--space-12) var(--space-6) var(--space-10);
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-8);
+    align-items: center;
+}
+.locpage__step {
+    display: inline-flex; align-items: center; gap: 6px;
+    color: var(--color-primary); font-weight: 800; font-size: 0.78rem;
+    letter-spacing: 0.06em; margin-bottom: var(--space-3);
+}
+.locpage__title { font-size: 3rem; line-height: 1.06; font-weight: 800; letter-spacing: -0.02em; }
+.locpage__title em { color: var(--color-primary); font-style: normal; }
+.locpage__subtitle { margin-top: var(--space-4); color: var(--color-text-muted); font-size: 1.05rem; max-width: 42ch; }
+
+/* Delivery / Pickup tabs. */
+.locpage__tabs { display: flex; gap: var(--space-6); margin: var(--space-6) 0 var(--space-4); border-bottom: 1px solid var(--color-border-soft); }
+.locpage__tab {
+    appearance: none; border: 0; background: transparent; cursor: pointer;
+    padding: var(--space-3) 0; font-size: 1rem; font-weight: 700;
+    color: var(--color-text-muted); position: relative;
+}
+.locpage__tab.is-active { color: var(--color-primary); }
+.locpage__tab.is-active::after { content: ''; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; background: var(--color-primary); border-radius: 2px; }
+
+/* Search field (reuses .location-search* shape from the modal). */
+.locpage__search { max-width: 460px; position: relative; }
+.locpage__search .location-search__field {
+    display: flex; align-items: center; gap: var(--space-2);
+    background: #fff; border: 1px solid var(--color-border);
+    border-radius: var(--radius-md); padding: 0 var(--space-3); height: 56px;
+}
+.locpage__search .location-search__field:focus-within { border-color: var(--color-primary); box-shadow: 0 0 0 3px rgba(229,37,42,0.12); }
+/* The icon is absolutely-positioned by location-modal.css — pin it
+ * back into the flex flow here so it sits beside the input cleanly. */
+.locpage__search .location-search__icon { position: static; left: auto; color: var(--color-text-soft); flex: 0 0 auto; }
+/* Strip the input's OWN border / background / focus-ring (those come
+ * from location-modal.css). On this page only the FIELD wrapper draws
+ * the border + focus ring — otherwise you get a doubled border. */
+.locpage__search .location-search__input,
+.locpage__search .location-search__input:focus {
+    flex: 1; min-width: 0;
+    border: 0; outline: none; box-shadow: none;
+    background: transparent;
+    padding: 0; font-size: 1rem;
+}
+.locpage__search .location-search__suggestions {
+    list-style: none; margin: var(--space-1) 0 0; padding: var(--space-1);
+    position: absolute; left: 0; right: 0; z-index: 5;
+    background: #fff; border: 1px solid var(--color-border); border-radius: var(--radius-md);
+    box-shadow: var(--shadow-2); max-height: 280px; overflow-y: auto;
+}
+.locpage__search .location-search__suggestions li { padding: var(--space-3); border-radius: var(--radius-sm); cursor: pointer; }
+.locpage__search .location-search__suggestions li:hover { background: var(--color-bg-alt); }
+.locpage__search .location-search__status { margin: var(--space-2) 0 0; font-size: 0.85rem; color: var(--color-text-muted); }
+
+.locpage__or { display: flex; align-items: center; gap: var(--space-3); margin: var(--space-4) 0; max-width: 460px; color: var(--color-text-soft); font-size: 0.85rem; }
+.locpage__or::before, .locpage__or::after { content: ''; flex: 1; height: 1px; background: var(--color-border-soft); }
+
+.locpage__locate {
+    display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2);
+    width: 100%; max-width: 460px; height: 56px;
+    border: 1.5px solid var(--color-primary); border-radius: var(--radius-md);
+    background: #fff; color: var(--color-primary); font-weight: 700; font-size: 1rem; cursor: pointer;
+}
+.locpage__locate:hover { background: var(--color-primary); color: #fff; }
+
+/* ── Phone + map illustration (emoji placeholders) ────────────────── */
+.locpage__art { position: relative; min-height: 460px; display: grid; place-items: center; }
+.locpage__phone {
+    position: relative; width: 260px; height: 420px;
+    background: #111; border: 8px solid #111; border-radius: 36px;
+    box-shadow: var(--shadow-2); overflow: hidden;
+}
+.locpage__map { position: absolute; inset: 0; background:
+    repeating-linear-gradient(0deg, #efe7df 0 38px, #f6f0ea 38px 40px),
+    repeating-linear-gradient(90deg, #efe7df 0 38px, #f6f0ea 38px 40px); }
+.locpage__map-pin { position: absolute; top: 38%; left: 50%; transform: translate(-50%,-50%); font-size: 3rem; filter: drop-shadow(0 6px 8px rgba(0,0,0,0.25)); }
+.locpage__locate-btn { position: absolute; bottom: 24px; right: -18px; width: 52px; height: 52px; border-radius: 50%; background: #fff; box-shadow: var(--shadow-2); display: grid; place-items: center; color: var(--color-primary); font-size: 1.4rem; }
+.la { position: absolute; font-size: 3rem; filter: drop-shadow(0 6px 10px rgba(0,0,0,0.12)); }
+.la--scooter { bottom: 18%; left: 2%;  font-size: 4rem; }
+.la--burger  { top: 14%;   right: 2%; }
+.la--pizza   { top: 34%;   left: 4%; }
+.la--drink   { top: 12%;   left: 18%; font-size: 2.4rem; }
+.la--pasta   { bottom: 8%; right: 4%; font-size: 4rem; }
+
+/* ── Popular cities ───────────────────────────────────────────────── */
+.locpage__cities { max-width: 1180px; margin: 0 auto; padding: 0 var(--space-6) var(--space-10); }
+.locpage__cities-title { font-size: 1.4rem; font-weight: 800; margin-bottom: var(--space-5); }
+.city-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(6, 1fr); gap: var(--space-4); }
+.city-card {
+    width: 100%; background: #fff; border: 1px solid var(--color-border-soft);
+    border-radius: var(--radius-lg); padding: var(--space-5) var(--space-3);
+    display: flex; flex-direction: column; align-items: center; gap: var(--space-1);
+    cursor: pointer; transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
+}
+.city-card:hover { transform: translateY(-3px); box-shadow: var(--shadow-2); border-color: var(--color-primary); }
+.city-card__art { font-size: 2.6rem; color: var(--color-primary); margin-bottom: var(--space-2); }
+.city-card__name { font-weight: 700; }
+.city-card__count { font-size: 0.78rem; color: var(--color-text-soft); }
+
+/* ── Why love us ──────────────────────────────────────────────────── */
+.locpage__why { max-width: 1180px; margin: 0 auto; padding: 0 var(--space-6) var(--space-12); }
+.locpage__why-title { font-size: 1.3rem; font-weight: 800; margin-bottom: var(--space-5); }
+
+/* ── Responsive ───────────────────────────────────────────────────── */
+@media (max-width: 899px) {
+    .locpage__hero { grid-template-columns: 1fr; padding: var(--space-8) var(--space-4); gap: var(--space-6); }
+    .locpage__art { display: none; }
+    .locpage__title { font-size: 2.1rem; }
+    .locpage__search, .locpage__or, .locpage__locate { max-width: none; }
+    .city-grid { grid-template-columns: repeat(3, 1fr); }
+    .feature-strip { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 520px) {
+    .city-grid { grid-template-columns: repeat(2, 1fr); }
+    .feature-strip { grid-template-columns: 1fr; }
+}

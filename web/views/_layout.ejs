@@ -77,6 +77,9 @@
     <link rel="stylesheet" href="/css/components/country-picker.css?v=<%= ASSET_VERSION %>">
     <link rel="stylesheet" href="/css/components/static-page.css?v=<%= ASSET_VERSION %>">
     <link rel="stylesheet" href="/css/components/cookie-consent.css?v=<%= ASSET_VERSION %>">
+    <link rel="stylesheet" href="/css/components/filter-sidebar.css?v=<%= ASSET_VERSION %>">
+    <link rel="stylesheet" href="/css/components/home-v2.css?v=<%= ASSET_VERSION %>">
+    <link rel="stylesheet" href="/css/components/location-landing.css?v=<%= ASSET_VERSION %>">
 
     <link rel="stylesheet" href="/css/desktop.css?v=<%= ASSET_VERSION %>" media="(min-width: 768px)">
     <link rel="stylesheet" href="/css/mobile.css?v=<%= ASSET_VERSION %>"  media="(max-width: 767px)">
@@ -162,8 +165,17 @@
         <%- include('partials/search-overlay') -%>
     <% } %>
     <%- include('partials/cookie-consent') -%>
+    <%# Old two-column filter-sheet removed — mobile now opens the
+        single-column .fsb sidebar as a full-screen overlay (one
+        unified filter surface across web + mobile). %>
     <% if (!__bare) { %>
-        <%- include('partials/location-modal') -%>
+        <%# Skip the location modal on the dedicated location landing
+            page — that page has its own inline picker, so the modal
+            (used elsewhere for the change-location flow) would be
+            redundant + would auto-open over it. %>
+        <% if (!(typeof is_location_page !== 'undefined' && is_location_page)) { %>
+            <%- include('partials/location-modal') -%>
+        <% } %>
         <%# Bottom-nav is signed-in chrome only — Home / Search / Cart
             / Orders / Profile only make sense once the user has an
             account. Logged-out visitors get a clean home page; the
@@ -194,6 +206,7 @@
     <script defer src="/js/ui/location-modal.js?v=<%= ASSET_VERSION %>"></script>
     <script defer src="/js/ui/account-menu.js?v=<%= ASSET_VERSION %>"></script>
     <script defer src="/js/ui/cookie-consent.js?v=<%= ASSET_VERSION %>"></script>
+    <script defer src="/js/ui/filter-sidebar.js?v=<%= ASSET_VERSION %>"></script>
     <script defer src="/js/app.js?v=<%= ASSET_VERSION %>"></script>
 
     <%#

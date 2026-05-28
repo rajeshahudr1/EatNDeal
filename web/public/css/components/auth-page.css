@@ -1,533 +1,184 @@
 /*
  * components/auth-page.css
  *
- * What:  Sign-in page styling. Two visual zones stacked vertically:
- *           1. Pink brand band on top  (.auth-brand-band)
- *           2. White form area below   (.auth-form)
- *        Matches the mockup the user shared: light-red wash with the
- *        knife-and-fork logo + bold red wordmark, then a clean white
- *        surface with the phone-number form.
- * Used:  Loaded by views/_layout.ejs via its own <link> tag.
+ * What:  Split sign-in / sign-up page matching the mockup.
+ *          Web (≥ 900px): branding panel (left) + form card (right).
+ *          Mobile (< 900px): branding stacks on top of the card.
+ * Why:   The user supplied a two-panel auth mockup and asked for an
+ *        exact match on web + the stacked mobile variant.
+ * Used:  Loaded by views/_layout.ejs; markup in views/auth/signin.ejs.
+ *        Country picker + OTP/profile steps reuse the shared bits.
  */
 
-.auth-page {
-    background-color: #fff;   /* white below the pink band */
-    color: var(--color-text);
+.auth-split {
+    min-height: 100vh;
+    display: grid;
+    grid-template-columns: 1.05fr 0.95fr;
+    background: #fff;
+}
+
+/* ── Branding panel ───────────────────────────────────────────────── */
+.auth-brand2 {
+    position: relative;
+    background:
+        radial-gradient(120% 80% at 80% 0%, #FFE0D8 0%, transparent 60%),
+        linear-gradient(160deg, #FFF1EC 0%, #FFE6DE 100%);
+    padding: var(--space-12) var(--space-12) var(--space-10);
     display: flex;
     flex-direction: column;
-    align-items: stretch;
-    /* Anchor for `.auth-back--top` which is absolutely positioned at the
-     * top-left corner. Has no visual effect on the card itself. */
+    justify-content: center;
+    overflow: hidden;
+}
+.auth-brand2__home { display: inline-block; margin-bottom: var(--space-8); }
+.auth-brand2__logo { height: 48px; width: auto; display: block; }
+.auth-brand2__title { font-size: 3rem; line-height: 1.08; font-weight: 800; letter-spacing: -0.02em; color: var(--color-text); }
+.auth-brand2__title em { color: var(--color-primary); font-style: normal; }
+.auth-brand2__subtitle { margin-top: var(--space-4); color: var(--color-text-muted); font-size: 1.05rem; max-width: 34ch; }
+.auth-brand2__features { list-style: none; margin: var(--space-8) 0 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-5); }
+.auth-feat { display: flex; align-items: center; gap: var(--space-3); }
+.auth-feat__icon {
+    width: 46px; height: 46px; border-radius: 50%; background: #fff;
+    display: grid; place-items: center; font-size: 1.3rem; flex: 0 0 auto;
+    box-shadow: var(--shadow-1); color: var(--color-primary);
+}
+.auth-feat__title { font-weight: 700; }
+.auth-feat__sub { color: var(--color-text-muted); font-size: 0.85rem; }
+.auth-brand2__pills { display: none; }   /* mobile only */
+
+/* ── Decorative food collage on the branding panel ────────────────── *
+ * Placeholder food emoji on tinted discs (no photo assets yet),
+ * arranged in the lower-right like the mockup's burger/pasta/drink
+ * cluster, with a 50% OFF speech bubble + a location pin. Absolutely
+ * positioned so it never pushes the title/features around. */
+.auth-brand2__art { position: absolute; inset: 0; pointer-events: none; z-index: 0; }
+.auth-brand2 > *:not(.auth-brand2__art) { position: relative; z-index: 1; }   /* text above art */
+
+.auth-brand2__badge {
+    position: absolute; top: 30%; right: 20%;
+    background: var(--color-primary); color: #fff;
+    border-radius: 16px 16px 16px 4px; padding: 0.55rem 0.9rem;
+    box-shadow: 0 8px 20px rgba(229,37,42,0.35);
+    transform: rotate(-6deg); text-align: center; line-height: 1.1;
+}
+.auth-brand2__badge strong { display: block; font-size: 1.25rem; font-weight: 800; }
+.auth-brand2__badge span { font-size: 0.7rem; opacity: 0.95; }
+
+.af {
+    position: absolute; border-radius: 50%;
+    display: grid; place-items: center;
+    box-shadow: var(--shadow-2);
+}
+.af--burger { width: 150px; height: 150px; background: #fff; bottom: 10%;  right: 8%;  font-size: 4.5rem; }
+.af--pasta  { width: 180px; height: 180px; background: #fff; bottom: -4%;  right: 30%; font-size: 5.5rem; }
+.af--drink  { width: 86px;  height: 86px;  background: #fff; bottom: 34%;  right: 6%;  font-size: 2.6rem; }
+/* leaves + tomato — small accents, no disc */
+.af--leaf, .af--tomato { box-shadow: none; background: transparent; }
+.af--leaf-1 { font-size: 1.6rem; bottom: 46%; right: 34%; transform: rotate(20deg); }
+.af--leaf-2 { font-size: 1.4rem; bottom: 18%; right: 52%; transform: rotate(-30deg); }
+.af--tomato { font-size: 1.8rem; bottom: 40%; right: 44%; }
+.auth-pin { position: absolute; top: 22%; right: 30%; font-size: 1.8rem; }
+
+/* ── Form card ────────────────────────────────────────────────────── */
+.auth-card2 {
     position: relative;
-}
-
-/* ── Pink brand band (top) ─────────────────────────────────────── */
-
-.auth-brand-band {
-    background:
-        radial-gradient(circle at 50% 100%, rgba(229, 37, 42, 0.10), transparent 65%),
-        var(--color-primary-soft);
-    padding: var(--space-12) var(--space-4) var(--space-10);
-    text-align: center;
-}
-
-.auth-brand-band__link {
-    display: inline-flex;
-    flex-direction: column;
-    align-items: center;
-    gap: var(--space-3);
-    text-decoration: none;
-    color: var(--color-primary);
-}
-
-.auth-brand-band__logo {
-    height: 78px;
-    width: auto;
-    display: block;
-    filter: drop-shadow(0 4px 10px rgba(229, 37, 42, 0.18));
-}
-
-.auth-brand-band__name {
-    font-size: 2rem;
-    font-weight: 800;
-    color: var(--color-primary);
-    letter-spacing: -0.02em;
-    line-height: 1;
-}
-
-/* ── White form area ───────────────────────────────────────────── */
-
-.auth-form {
+    align-self: center;
     width: 100%;
     max-width: 460px;
     margin: 0 auto;
-    padding: var(--space-8) var(--space-5) var(--space-10);
-    display: flex;
-    flex-direction: column;
-    align-items: stretch;
-    text-align: left;
+    padding: var(--space-10) var(--space-8);
+}
+.auth-card2__back {
+    position: absolute; top: var(--space-5); left: var(--space-5);
+    width: 38px; height: 38px; border-radius: 50%;
+    background: var(--color-bg-alt); color: var(--color-text);
+    display: grid; place-items: center;
+}
+.auth-card2__back:hover { background: rgba(0,0,0,0.08); color: var(--color-primary); }
+.auth-card2__title { text-align: center; font-size: 1.7rem; font-weight: 800; }
+.auth-card2__subtitle { text-align: center; color: var(--color-text-muted); margin-top: var(--space-1); }
+
+/* Tabs — Login / Sign up. Underline marks the active one. Both lead
+ * to the same OTP flow (visual only). */
+.auth-tabs { display: grid; grid-template-columns: 1fr 1fr; margin: var(--space-6) 0 var(--space-5); border-bottom: 1px solid var(--color-border-soft); }
+.auth-tab {
+    appearance: none; border: 0; background: transparent; cursor: pointer;
+    padding: var(--space-3) 0; font-size: 1rem; font-weight: 700;
+    color: var(--color-text-muted); position: relative;
+}
+.auth-tab.is-active { color: var(--color-primary); }
+.auth-tab.is-active::after {
+    content: ''; position: absolute; left: 0; right: 0; bottom: -1px;
+    height: 2px; background: var(--color-primary); border-radius: 2px;
 }
 
-.auth-form__title {
-    font-size: 1.6rem;
-    font-weight: 800;
-    margin: 0 0 var(--space-1);
-    letter-spacing: -0.01em;
-    color: var(--color-text);
-}
-
-.auth-form__subtitle {
-    color: var(--color-text-muted);
-    margin: 0 0 var(--space-6);
-    font-size: 0.95rem;
-}
-
-/* ── Phone row — country chip + input, SEPARATED ──────────────── */
-
-.signin-form {
-    width: 100%;
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-4);
-}
-
-.signin-form__row {
-    display: flex;
-    align-items: stretch;
-    gap: var(--space-2);
-}
-
-.signin-form__input {
-    flex: 1;
-    min-width: 0;
-    padding: 0.85rem 1rem;
-    font-size: 1rem;
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
-    background-color: #fff;
-    outline: none;
-    color: var(--color-text);
-    transition: border-color 120ms ease, box-shadow 120ms ease;
-}
-.signin-form__input::placeholder { color: var(--color-text-soft); }
-.signin-form__input:focus {
-    border-color: var(--color-primary);
-    box-shadow: 0 0 0 2px rgba(229, 37, 42, 0.18);
-}
-
-.signin-form__error {
-    margin: 0;
-    color: var(--color-error);
-    font-size: 0.85rem;
-}
-
-.signin-form__submit {
-    margin-top: var(--space-2);
-    height: 52px;
-    font-size: 1rem;
-}
-
-/* ── Country chip (standalone box) ─────────────────────────────── */
-
+/* Mobile-number block. */
+.signin-form__label { display: block; font-weight: 700; margin-bottom: var(--space-2); }
+.signin-form__row { display: flex; gap: var(--space-2); }
 .country-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-    padding: 0.7rem 0.8rem;
-    background-color: #fff;
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
-    color: var(--color-text);
-    font-weight: 600;
-    font-size: 0.95rem;
-    cursor: pointer;
-    transition: background-color 120ms ease, border-color 120ms ease;
-    flex: 0 0 auto;
-    line-height: 1;
+    display: inline-flex; align-items: center; gap: var(--space-1);
+    background: #fff; border: 1px solid var(--color-border);
+    border-radius: var(--radius-md); padding: 0 var(--space-3);
+    height: 52px; cursor: pointer; flex: 0 0 auto; font-weight: 600;
 }
-.country-chip:hover { background-color: var(--color-bg-alt); border-color: var(--color-text-soft); }
-
-.country-chip__flag {
-    font-size: 1.05rem;
-    line-height: 1;
-    font-family: 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', sans-serif;
-}
-.country-chip__code  { font-size: 0.92rem; }
-.country-chip__arrow { color: var(--color-text-soft); flex: 0 0 auto; }
-
-/* ── "or continue with" divider ───────────────────────────────── */
-
-.auth-divider {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-    margin: var(--space-6) 0 var(--space-4);
-    color: var(--color-text-soft);
-    font-size: 0.8rem;
-}
-.auth-divider::before,
-.auth-divider::after {
-    content: '';
-    flex: 1;
-    height: 1px;
-    background-color: var(--color-border);
-}
-
-/* ── Circular social buttons (icon-only) ──────────────────────── */
-
-.auth-socials {
-    display: flex;
-    justify-content: center;
-    gap: var(--space-4);
-    margin-bottom: var(--space-6);
-}
-.auth-social {
-    width: 48px;
-    height: 48px;
-    border-radius: 50%;
-    background-color: #fff;
-    border: 1px solid var(--color-border);
-    display: inline-grid;
-    place-items: center;
-    cursor: pointer;
-    transition: background-color 120ms ease, border-color 120ms ease, transform 80ms ease;
-    flex: 0 0 auto;
-}
-.auth-social:hover  { background-color: var(--color-bg-alt); border-color: var(--color-text-soft); }
-.auth-social:active { transform: scale(0.96); }
-.auth-social svg    { display: block; }
-
-/* ── Plain auth pages (OTP + Profile) ─────────────────────────── *
- * The OTP + Personal Details screens don't have the pink brand band;
- * they're white-only. The `.auth-page--plain` modifier keeps the
- * desktop "soft-grey background" override OFF so the page stays
- * white throughout — matching the mockup. */
-.auth-page--plain { background-color: #fff !important; }
-.auth-form--centered { text-align: center; }
-
-/* ── Back link (used by OTP screen) ───────────────────────────── */
-
-.auth-back {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-    color: var(--color-primary);
-    font-weight: 600;
-    font-size: 0.95rem;
-    text-decoration: none;
-    align-self: flex-start;
-    padding: 0.5rem 0;
-    margin-bottom: var(--space-4);
-}
-.auth-back:hover { color: var(--color-primary-dark); }
-
-/* `.auth-back--top` is the standalone back button shown on the sign-in
- * page (which has the pink brand band rather than a card title). It's
- * absolutely positioned at the top-left of the viewport so the brand
- * band and form below stay vertically centred without the back link
- * affecting that math. Pulled forward (z-index) over the band gradient
- * so the icon stays readable on the pink wash. */
-.auth-back--top {
-    position: absolute;
-    top:  var(--space-4);
-    left: var(--space-4);
-    margin: 0;
-    z-index: 2;
-}
-@media (min-width: 768px) {
-    .auth-back--top {
-        top:  var(--space-6);
-        left: var(--space-6);
-    }
-}
-
-/* Centred title variant used by OTP + Profile (sign-in title is left-
- * aligned because the rest of its form is too). */
-.auth-form__title--centered    { text-align: center; }
-.auth-form__subtitle--centered { text-align: center; }
-
-/* The phone number shown in red bold inside the OTP subtitle. */
-.otp-phone {
-    color: var(--color-primary);
-    font-weight: 800;
-    font-size: 1.05rem;
-}
-
-/* ── OTP digit boxes ──────────────────────────────────────────── */
-
-.otp-form {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: var(--space-5);
-    margin-top: var(--space-4);
-}
-
-.otp-row {
-    display: flex;
-    gap: var(--space-2);
-    justify-content: center;
-    width: 100%;
-}
-
-.otp-box {
-    width: 48px;
-    height: 56px;
-    text-align: center;
-    font-size: 1.6rem;
-    font-weight: 700;
-    color: var(--color-text);
-    background-color: #fff;
-    border: 1.5px solid var(--color-border);
-    border-radius: var(--radius-md);
-    outline: none;
-    transition: border-color 120ms ease, box-shadow 120ms ease, transform 80ms ease;
-    /* Hide the spinner arrows on number inputs in any browser that
-     * resolves type=text via inputmode=numeric. */
-    -moz-appearance: textfield;
-}
-.otp-box::-webkit-outer-spin-button,
-.otp-box::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-
-.otp-box:focus {
-    border-color: var(--color-primary);
-    box-shadow: 0 0 0 2px rgba(229, 37, 42, 0.18);
-}
-.otp-box:not(:placeholder-shown),
-.otp-box[value]:not([value=""]) {
-    border-color: var(--color-primary);
-}
-
-.otp-timer {
-    color: var(--color-text-muted);
-    font-size: 0.9rem;
-    margin: 0;
-}
-.otp-timer__countdown {
-    color: var(--color-primary);
-    font-weight: 700;
-}
-.otp-timer__resend {
-    color: var(--color-primary);
-    background: transparent;
-    border: 0;
-    padding: 0;
-    font-weight: 700;
-    font-size: 0.9rem;
-    cursor: pointer;
-    text-decoration: none;
-}
-.otp-timer__resend:hover { text-decoration: underline; }
-
-.otp-submit {
-    height: 52px;
-    font-size: 1rem;
-    width: 100%;
-    margin-top: var(--space-2);
-}
-
-/* Slightly tighter OTP boxes on mobile so 6 fit comfortably across. */
-@media (max-width: 380px) {
-    .otp-box { width: 42px; height: 52px; font-size: 1.4rem; }
-}
-
-/* ── Profile fields (Step 3) ──────────────────────────────────── */
-
-.profile-form {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-4);
-    width: 100%;
-    text-align: left;
-    margin-top: var(--space-4);
-}
-
-.profile-field {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-}
-
-.profile-field__label {
-    font-weight: 600;
-    font-size: 0.9rem;
-    color: var(--color-text);
-    margin: 0;
-}
-.profile-field__hint {
-    font-weight: 400;
-    color: var(--color-text-soft);
-}
-
-.profile-field__input {
-    width: 100%;
-    padding: 0.9rem 1rem;
-    font-size: 1rem;
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
-    background-color: #fff;
-    outline: none;
-    color: var(--color-text);
+.country-chip__flag { font-size: 1.1rem; }
+.country-chip__arrow { color: var(--color-text-soft); }
+.signin-form__input {
+    flex: 1 1 auto; min-width: 0; height: 52px;
+    border: 1px solid var(--color-border); border-radius: var(--radius-md);
+    padding: 0 var(--space-4); font-size: 1rem; outline: none;
     transition: border-color 120ms ease, box-shadow 120ms ease;
 }
-.profile-field__input:focus {
-    border-color: var(--color-primary);
-    box-shadow: 0 0 0 2px rgba(229, 37, 42, 0.18);
-}
+.signin-form__input:focus { border-color: var(--color-primary); box-shadow: 0 0 0 3px rgba(229,37,42,0.12); }
+.signin-form__error { color: var(--color-primary); font-size: 0.85rem; margin: var(--space-2) 0 0; }
 
-/* ── Diet + Show-me chip groups ───────────────────────────────── */
+.auth-continue {
+    width: 100%; height: 54px; margin-top: var(--space-4);
+    border: 0; border-radius: var(--radius-md); cursor: pointer;
+    background: var(--color-primary); color: #fff; font-weight: 700; font-size: 1.05rem;
+    display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2);
+    transition: background-color 120ms ease;
+}
+.auth-continue:hover { background: var(--color-primary-dark); }
 
-.diet-row,
-.filter-row {
-    display: flex;
-    gap: var(--space-3);
-    flex-wrap: wrap;
-}
-.filter-row {
-    flex-direction: column;
-    gap: var(--space-2);
-}
+/* Divider. */
+.auth-divider { display: flex; align-items: center; gap: var(--space-3); margin: var(--space-5) 0; color: var(--color-text-soft); font-size: 0.85rem; }
+.auth-divider::before, .auth-divider::after { content: ''; flex: 1; height: 1px; background: var(--color-border-soft); }
 
-.diet-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.55rem 1rem;
-    background-color: #fff;
-    border: 1.5px solid var(--color-border);
-    border-radius: var(--radius-pill);
-    color: var(--color-text);
-    font-weight: 600;
-    font-size: 0.92rem;
-    cursor: pointer;
-    transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+/* Social buttons — full width, icon + label. */
+.auth-socials2 { display: flex; flex-direction: column; gap: var(--space-3); }
+.auth-social2 {
+    display: flex; align-items: center; justify-content: center; gap: var(--space-2);
+    height: 50px; border: 1px solid var(--color-border); border-radius: var(--radius-md);
+    background: #fff; color: var(--color-text); font-weight: 600;
 }
-.diet-chip:hover { border-color: var(--color-text-soft); }
-.diet-chip.is-selected {
-    border-color: var(--color-primary);
-    background-color: var(--color-primary-soft);
-    color: var(--color-primary-dark);
-}
-.diet-chip__icon { font-size: 1rem; line-height: 1; font-family: 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', sans-serif; }
+.auth-social2:hover { background: var(--color-bg-alt); border-color: var(--color-text-soft); }
 
-.filter-chip {
-    padding: 0.7rem 1rem;
-    background-color: #fff;
-    border: 1.5px solid var(--color-border);
-    border-radius: var(--radius-pill);
-    color: var(--color-text);
-    font-weight: 500;
-    font-size: 0.92rem;
-    cursor: pointer;
-    text-align: center;
-    transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
-}
-.filter-chip:hover { border-color: var(--color-text-soft); }
-.filter-chip.is-selected {
-    /* Mockup uses GREEN for the selected Pure-Veg filter — that's the
-     * one veg-marker convention we keep. */
-    border-color: var(--color-success);
-    color: var(--color-success);
-    font-weight: 600;
-}
+/* USP icons row. */
+.auth-usps { list-style: none; margin: var(--space-6) 0 0; padding: var(--space-4) 0 0; border-top: 1px solid var(--color-border-soft); display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--space-2); }
+.auth-usps li { display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center; font-size: 0.72rem; font-weight: 600; color: var(--color-text); }
+.auth-usps__icon { font-size: 1.2rem; }
 
-.profile-submit {
-    height: 52px;
-    font-size: 1rem;
-    margin-top: var(--space-3);
-}
+.auth-form__legal { margin-top: var(--space-5); text-align: center; font-size: 0.82rem; color: var(--color-text-muted); }
+.auth-form__legal a { color: var(--color-primary); font-weight: 700; }
 
-.profile-caption {
-    text-align: center;
-    color: var(--color-text-muted);
-    font-size: 0.85rem;
-    margin: var(--space-3) 0 0;
-}
+/* ── Mobile (< 900px) — form card only, no branding panel ─────────── *
+ * Per the user: drop the top branding band on mobile, show just the
+ * login form full-screen. */
+@media (max-width: 899px) {
+    .auth-split { grid-template-columns: 1fr; min-height: 100vh; background: #fff; }
+    .auth-brand2 { display: none; }
 
-/* ── Legal footer text ────────────────────────────────────────── */
-
-.auth-form__legal {
-    text-align: center;
-    color: var(--color-text-soft);
-    font-size: 0.8rem;
-    line-height: 1.5;
-    margin: 0;
-}
-.auth-form__legal a {
-    color: var(--color-primary);
-    text-decoration: none;
-    font-weight: 600;
-}
-.auth-form__legal a:hover { text-decoration: underline; }
-
-/* ── Mobile tweaks (< 768 px) ─────────────────────────────────── */
-
-@media (max-width: 767px) {
-    .auth-brand-band {
-        padding: var(--space-10) var(--space-4) var(--space-8);
+    .auth-card2 {
+        max-width: 560px;
+        margin: 0 auto;
+        background: #fff;
+        border-radius: 0;
+        box-shadow: none;
+        padding: var(--space-10) var(--space-5) var(--space-10);
     }
-    .auth-brand-band__logo  { height: 70px; }
-    .auth-brand-band__name  { font-size: 1.75rem; }
-
-    .auth-form {
-        padding: var(--space-6) var(--space-4) var(--space-8);
-    }
-    .auth-form__title       { font-size: 1.5rem; }
-
-    .country-chip   { padding: 0.7rem 0.7rem; }
-    .country-chip__code { font-size: 0.88rem; }
+    .auth-card2__back { top: var(--space-4); left: var(--space-4); }
 }
-
-/* ── Desktop tweaks (≥ 768 px) ────────────────────────────────── */
-
-@media (min-width: 768px) {
-    /* On desktop the auth page sits on a soft-grey background with the
-     * pink band + white form together looking like a single floating
-     * card. Bumps the visual hierarchy on big screens without changing
-     * the mobile layout.
-     *
-     * The page is also vertically CENTRED inside the available viewport
-     * so the card doesn't stick to the top of the page with a huge
-     * empty area underneath (which is what it does without min-height
-     * because the form only takes ~500 px and the body keeps stretching
-     * to the footer). 78 px is the rough header height — keeps the card
-     * out from under the fixed top bar. */
-    .auth-page {
-        background-color: var(--color-bg-soft);
-        min-height: 100vh;
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        align-items: center;
-        padding: var(--space-8) var(--space-4);
-    }
-    .auth-brand-band,
-    .auth-form {
-        max-width: 460px;
-        width: 100%;
-        margin-left: auto;
-        margin-right: auto;
-    }
-    .auth-brand-band {
-        border-top-left-radius: var(--radius-xl);
-        border-top-right-radius: var(--radius-xl);
-        /* Reset the mobile-only top margin — the flex container now
-         * handles vertical positioning. */
-        margin-top: 0;
-    }
-    .auth-form {
-        background-color: #fff;
-        border-bottom-left-radius: var(--radius-xl);
-        border-bottom-right-radius: var(--radius-xl);
-        box-shadow: var(--shadow-2);
-        margin-bottom: 0;
-    }
-
-    /* `.auth-page--plain` is used by OTP / Profile / Account — pages with
-     * NO pink brand band on top. The form is the whole card, so it needs
-     * all four corners rounded (not just bottom-only like the sign-in
-     * page where the brand band rounds the top). */
-    .auth-page--plain .auth-form {
-        border-radius: var(--radius-xl);
-    }
+@media (max-width: 420px) {
+    .auth-usps { gap: var(--space-1); }
+    .auth-usps li { font-size: 0.66rem; }
 }

@@ -338,8 +338,32 @@
      *
      * What:  DOM-ready entry. Caches refs + wires every listener.
      */
+    /**
+     * bindAuthTabs
+     *
+     * What:  Visual Login / Sign up tab toggle. Both tabs lead to the
+     *        same mobile-number OTP flow (the api decides new vs
+     *        existing), so this only moves the active underline +
+     *        aria-selected — no form swap. Honours the user's "sign-in
+     *        and sign-up are one flow" requirement.
+     */
+    function bindAuthTabs() {
+        var tabs = Array.prototype.slice.call(document.querySelectorAll('.auth-tab'));
+        if (!tabs.length) { return; }
+        tabs.forEach(function (tab) {
+            tab.addEventListener('click', function () {
+                tabs.forEach(function (t) {
+                    var on = (t === tab);
+                    t.classList.toggle('is-active', on);
+                    t.setAttribute('aria-selected', on ? 'true' : 'false');
+                });
+            });
+        });
+    }
+
     function onReady() {
         cacheRefs();
+        bindAuthTabs();
         if (!form) { return; }   // not on the sign-in page
 
         // Phone input — digits-only enforcement on every entry path:

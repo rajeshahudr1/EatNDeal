@@ -1,0 +1,209 @@
+<%#
+  views/partials/restaurant-detail.ejs
+
+  What:  Full single-restaurant page, built to the supplied mockup.
+         Direct children of .rd (hero, info-bar, left menu, main, right
+         rail) are placed by CSS grid-areas on desktop and re-ordered by
+         flex `order` on mobile, so the reading order is always:
+           hero → order info → category menu → dishes → side info.
+  Why:   The user supplied this layout and asked for it on every
+         restaurant open, fully responsive (proper mobile PWA), with the
+         data driven from what we actually have.
+  Data:  SiteController passes selected_restaurant + menu_categories +
+         menu_sections (from GET /api/v1/marketplace/restaurant). Panels
+         we have no data for (tiered offers, popular times, a real cart)
+         are omitted rather than faked.
+  JS:    /js/pages/restaurant.js (jump-links, scroll-spy, +Add, tabs).
+-%>
+<% if (!selected_restaurant) { %>
+<section class="section"><p class="section__empty">We couldn't find that restaurant. <a href="/" data-action="view-home">Back to home</a>.</p></section>
+<% } else { %>
+<% var r = selected_restaurant; %>
+<% var cats = (typeof menu_categories !== 'undefined' && menu_categories) ? menu_categories : []; %>
+<% var secs = (typeof menu_sections   !== 'undefined' && menu_sections)   ? menu_sections   : []; %>
+<% var sym  = brand.currencySymbol; %>
+<div class="rd" data-restaurant data-rslug="<%= r.slug %>">
+
+    <%# ── Hero ───────────────────────────────────────────────────── %>
+    <section class="rd-hero">
+        <div class="rd-hero__media" data-tint="<%= r.tint %>">
+            <% if (r.image) { %><img class="rd-hero__bg" src="<%= r.image %>" alt="" loading="lazy" data-img-fallback><% } %>
+            <span class="rd-hero__logo" data-tint="<%= r.tint %>">
+                <% if (r.logo) { %><img src="<%= r.logo %>" alt="<%= r.name %>" loading="lazy" data-img-fallback><% } else { %><span class="rd-hero__logo-initial"><%= r.initial %></span><% } %>
+            </span>
+            <div class="rd-hero__overlay">
+                <h1 class="rd-hero__name">
+                    <%= r.name %>
+                    <svg class="rd-hero__verified" width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2 4 5v6c0 5 8 11 8 11s8-6 8-11V5l-8-3z" fill="none" stroke="currentColor" stroke-width="2"/><path d="m9 12 2 2 4-4" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+                </h1>
+                <p class="rd-hero__meta">
+                    <span class="rd-hero__rating"><svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg> <%= r.rating %><% if (r.ratingCount) { %> <span class="rd-hero__rating-count">(<%= r.ratingCount %>+)</span><% } %></span>
+                    <% if ((r.cuisines || []).length) { %><span class="rd-hero__dot">·</span><span><%= (r.cuisines || []).slice(0, 3).join(', ') %></span><% } %>
+                </p>
+                <% if (r.address) { %><p class="rd-hero__address"><%= r.address %></p><% } %>
+            </div>
+        </div>
+    </section>
+
+    <%# ── Info bar — fulfilment tabs + delivery details + mini map ── %>
+    <section class="rd-info-bar">
+        <div class="rd-tabs" role="tablist" aria-label="Order type">
+            <button type="button" class="rd-tab is-active" data-rd-tab="delivery" role="tab" aria-selected="true">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="19" r="2"/><circle cx="18" cy="19" r="2"/><path d="M3 5h2l2 10h10l2-7H7"/></svg>
+                Delivery
+            </button>
+        </div>
+        <div class="rd-info">
+            <div class="rd-info__cell">
+                <span class="rd-info__label">Deliver to</span>
+                <span class="rd-info__value"><%= (user_location && user_location.label) ? user_location.label : 'Set your location' %></span>
+                <button type="button" class="rd-info__change" data-action="open-location-modal">Change</button>
+            </div>
+            <% if (r.deliveryMinutes) { %>
+            <div class="rd-info__cell">
+                <span class="rd-info__label">Delivery time</span>
+                <span class="rd-info__value rd-info__value--strong"><%= r.deliveryMinutes %></span>
+            </div>
+            <% } %>
+            <% if (typeof r.distanceKm === 'number' && r.distanceKm >= 0) { %>
+            <div class="rd-info__cell">
+                <span class="rd-info__label">Distance</span>
+                <span class="rd-info__value rd-info__value--strong"><%= r.distanceKm.toFixed(1) %> km</span>
+            </div>
+            <% } %>
+            <% if (typeof r.minOrder === 'number' && r.minOrder > 0) { %>
+            <div class="rd-info__cell">
+                <span class="rd-info__label">Min order</span>
+                <span class="rd-info__value rd-info__value--strong"><%= brand.currencySymbol %><%= r.minOrder.toFixed(2) %></span>
+            </div>
+            <% } %>
+            <% if (typeof r.deliveryFee === 'number') { %>
+            <div class="rd-info__cell">
+                <span class="rd-info__label">Delivery fee</span>
+                <span class="rd-info__value rd-info__value--strong"><% if (r.deliveryFee === 0) { %>Free<% } else { %><%= brand.currencySymbol %><%= r.deliveryFee.toFixed(2) %><% } %></span>
+            </div>
+            <% } %>
+            <% if (r.deliverable === false) { %>
+            <div class="rd-info__cell rd-info__warn">Doesn't deliver to your area</div>
+            <% } %>
+            <div class="rd-map" aria-hidden="true">
+                <span class="rd-map__home"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12 12 3l9 9"/><path d="M5 10v10h14V10"/></svg></span>
+                <span class="rd-map__pin"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C7.6 2 4 5.6 4 10c0 5.5 8 12 8 12s8-6.5 8-12c0-4.4-3.6-8-8-8z"/></svg></span>
+                <% if (typeof r.distanceKm === 'number' && r.distanceKm >= 0) { %>
+                <span class="rd-map__pill"><%= r.distanceKm.toFixed(1) %> km<% if (r.deliveryMinutes) { %> · <%= r.deliveryMinutes %><% } %></span>
+                <% } %>
+            </div>
+        </div>
+    </section>
+
+    <%# ── Left rail: back + category menu ────────────────────────── %>
+    <aside class="rd__left">
+        <a class="rd__back" href="/" data-action="view-home">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+            <span>Back to all restaurants</span>
+        </a>
+        <% if (cats.length) { %>
+        <nav class="rd-menu" aria-label="Menu categories" data-rd-menu>
+            <% cats.forEach(function (c, i) { %>
+                <a class="rd-menu__item<%= i === 0 ? ' is-active' : '' %>" href="#sec-<%= c.id %>" data-rd-jump="<%= c.id %>">
+                    <% if (c.featured) { %><svg class="rd-menu__icon" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2c.4 3.2 2.8 4.6 2.8 7.2A2.8 2.8 0 0 1 12 12a2.8 2.8 0 0 1-2.8-2.8C9.2 6.6 11.6 5.2 12 2zM7 13c-2 1.5-3 3.3-3 5.2A5 5 0 0 0 12 22a5 5 0 0 0 5-3.8c0-1.9-1-3.7-3-5.2.3 1.6-.7 2.8-2 2.8-1.6 0-2-1.6-1-3-1.3.4-2.4 1.4-4 .4z"/></svg><% } %>
+                    <span><%= c.name %></span>
+                </a>
+            <% }); %>
+        </nav>
+        <% } %>
+    </aside>
+
+    <%# ── Main: product sections ─────────────────────────────────── %>
+    <div class="rd__main">
+        <% if (secs.length) { %>
+            <% secs.forEach(function (s) { %>
+            <section class="rd-section" id="sec-<%= s.id %>" data-rd-section="<%= s.id %>">
+                <div class="rd-section__head">
+                    <h2 class="rd-section__title"><%= s.name %></h2>
+                </div>
+                <ul class="rd-products" role="list">
+                    <% s.products.forEach(function (p) { %>
+                        <li class="rd-product<%= p.inStock === false ? ' is-soldout' : '' %>" data-slug="<%= p.slug %>">
+                            <div class="rd-product__media" data-tint="<%= p.tint %>">
+                                <% if (p.inStock === false) { %><span class="rd-product__soldout">Out of stock</span><% } %>
+                                <% if (p.image) { %><img src="<%= p.image %>" alt="" loading="lazy" data-img-fallback><% } else { %><span class="rd-product__initial" aria-hidden="true"><%= p.initial %></span><% } %>
+                                <% if (p.veg) { %><span class="veg-marker veg-marker--veg" aria-label="Vegetarian"></span><% } else { %><span class="veg-marker veg-marker--non-veg" aria-label="Non-vegetarian"></span><% } %>
+                                <% if (p.isFeatured) { %><span class="rd-product__badge">Bestseller</span><% } %>
+                            </div>
+                            <div class="rd-product__body">
+                                <h3 class="rd-product__name"><%= p.name %></h3>
+                                <p class="rd-product__meta">
+                                    <span class="rd-product__rating"><svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg> <%= p.rating %></span>
+                                    <% if (typeof p.stockQty === 'number' && p.stockQty > 0 && p.stockQty <= 5) { %><span class="rd-product__stock">Only <%= p.stockQty %> left</span><% } %>
+                                </p>
+                                <div class="rd-product__foot">
+                                    <span class="rd-product__price"><%= sym %><%= (typeof p.price === 'number' ? p.price : 0).toFixed(2) %></span>
+                                    <% if (p.inStock === false) { %>
+                                        <span class="rd-product__oos">Sold out</span>
+                                    <% } else { %>
+                                        <button type="button" class="rd-product__add" data-action="rd-add" data-id="<%= p.id %>" data-name="<%= p.name %>">
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                                            Add
+                                        </button>
+                                    <% } %>
+                                </div>
+                            </div>
+                        </li>
+                    <% }); %>
+                </ul>
+            </section>
+            <% }); %>
+        <% } else { %>
+            <section class="rd-section"><p class="section__empty">This restaurant hasn't published a marketplace menu yet.</p></section>
+        <% } %>
+    </div>
+
+    <%# ── Right rail: cart · delivery to · restaurant info ───────── %>
+    <aside class="rd__right" id="rd-info">
+        <div class="rd-card rd-order">
+            <h2 class="rd-card__title"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg> Your Order</h2>
+            <div class="rd-order__empty">
+                <span class="rd-order__bag" aria-hidden="true">🛍️</span>
+                <p class="rd-order__title">Your cart is empty</p>
+                <p class="rd-order__sub">Add items to get started</p>
+            </div>
+        </div>
+
+        <div class="rd-card rd-deliver">
+            <h3 class="rd-card__subtitle"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s7-7.5 7-13a7 7 0 0 0-14 0c0 5.5 7 13 7 13z"/><circle cx="12" cy="9" r="2.5"/></svg> <%= (order_mode === 'pickup') ? 'Pickup from' : 'Delivery to' %></h3>
+            <p class="rd-deliver__addr"><%= (user_location && user_location.label) ? user_location.label : 'Set your location' %></p>
+            <button type="button" class="rd-deliver__change" data-action="open-location-modal">Change</button>
+        </div>
+
+        <div class="rd-card rd-rinfo">
+            <h3 class="rd-card__subtitle">Restaurant info</h3>
+            <ul class="rd-rinfo__list">
+                <li class="rd-rinfo__row">
+                    <span class="rd-rinfo__dot <%= r.isOpen ? 'is-open' : 'is-closed' %>"></span>
+                    <span class="rd-rinfo__text">
+                        <span class="rd-rinfo__label"><%= r.isOpen ? 'Open now' : 'Closed' %></span>
+                        <% if (r.hours) { %><span class="rd-rinfo__sub"><%= r.hours %></span><% } %>
+                    </span>
+                </li>
+                <% if (r.phone) { %>
+                <li class="rd-rinfo__row">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+                    <a class="rd-rinfo__text rd-rinfo__link" href="tel:<%= r.phone %>"><%= r.phone %></a>
+                </li>
+                <% } %>
+                <% if (r.website) { %>
+                <li class="rd-rinfo__row">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+                    <a class="rd-rinfo__text rd-rinfo__link" href="<%= /^https?:/i.test(r.website) ? r.website : 'http://' + r.website %>" target="_blank" rel="noopener noreferrer"><%= r.website %></a>
+                </li>
+                <% } %>
+                <li class="rd-rinfo__row">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                    <button type="button" class="rd-rinfo__text rd-rinfo__link" data-action="rd-report">Report a problem</button>
+                </li>
+            </ul>
+        </div>
+    </aside>
+</div>
+<% } %>

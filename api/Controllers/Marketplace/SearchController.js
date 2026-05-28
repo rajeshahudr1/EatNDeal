@@ -347,6 +347,7 @@ async function search(req, res) {
                 return {
                     id:             String(r.id),
                     name:           String(r.name || '').trim(),
+                    slug:           M.slugify(r.name),
                     restaurant:     String(r.business_name || '').trim(),
                     restaurantSlug: r.domain_name ? M.slugify(r.domain_name) : M.slugify(r.business_name, r.company_id),
                     image:          M.yiiImageUrl('product', r.company_id, r.image_url),

@@ -11,14 +11,15 @@
  *        this reads inputs directly. Functional filters map to:
  *          sort-web radio            → ?sort=
  *          rating-web radio (4.5..)  → ?rating=
- *          time-NN checkbox (cap)    → ?max_min=
+ *          time-NN checkboxes        → ?delivery= (union of bands)
  *          price-low/mid/high check  → ?price=
  *          trust-pure-veg check      → ?veg=1
  *          offer-* check             → ?offer=1
  *          avail-open-now toggle     → ?open_now=1
  *          dist-5 toggle             → ?max_km=5
- *        Cuisine + jain/vegan/gf + combo are visual-only for now
- *        (no api column yet) — they tick but don't change the query.
+ *          cuisine-X checkbox        → ?cuisine=X (first ticked wins)
+ *        jain / gluten-free remain visual-only (no api column yet) —
+ *        they tick but don't change the query.
  * Used:  Loaded by views/_layout.ejs. Sidebar renders on default home.
  */
 
@@ -41,8 +42,8 @@
      */
     function collectState() {
         var state = {
-            sort: 'relevance', rating: null, time: null, distance: null,
-            price: null, trust: [], offers: [], availability: [], collections: [],
+            sort: 'relevance', rating: null, deliveryBuckets: [], distance: null,
+            price: null, cuisine: null, trust: [], offers: [], availability: [], collections: [],
         };
         if (!root) { return state; }
 
@@ -58,13 +59,16 @@
         root.querySelectorAll('input[type="checkbox"]:checked').forEach(function (cb) {
             var id = cb.getAttribute('data-filter') || '';
             if (id.indexOf('time-') === 0) {
-                // Take the LARGEST checked bucket as the max-minutes cap.
-                var mins = parseInt(id.replace('time-', ''), 10);
-                if (!state.time || mins > parseInt(String(state.time).replace('time-', ''), 10)) {
-                    state.time = id;
-                }
+                // Collect EVERY checked delivery band — they form a
+                // union of ranges (e.g. "15-30" + "30-45"), not a cap.
+                var key = id.replace('time-', '');
+                if (state.deliveryBuckets.indexOf(key) === -1) { state.deliveryBuckets.push(key); }
             } else if (id.indexOf('price-') === 0) {
                 if (!state.price) { state.price = id; }       // first wins
+            } else if (id.indexOf('cuisine-') === 0) {
+                // First ticked cuisine wins — the api filters by a
+                // single category, so we forward one ?cuisine=.
+                if (!state.cuisine) { state.cuisine = id.replace('cuisine-', ''); }
             } else if (id.indexOf('dist-') === 0) {
                 state.distance = id;
             } else if (id === 'trust-pure-veg') {
@@ -121,8 +125,13 @@
 
         if (q.get('sort')) { check('input[name="sort-web"][value="' + q.get('sort') + '"]'); }
         if (q.get('rating')) { check('input[name="rating-web"][data-filter="rating-' + q.get('rating') + '"]'); }
-        if (q.get('max_min')) { check('input[data-filter="time-' + q.get('max_min') + '"]'); }
+        if (q.get('delivery')) {
+            q.get('delivery').split(',').forEach(function (k) {
+                check('input[data-filter="time-' + k.trim() + '"]');
+            });
+        }
         if (q.get('price')) { check('input[data-filter="price-' + q.get('price') + '"]'); }
+        if (q.get('cuisine')) { check('input[data-filter="cuisine-' + q.get('cuisine') + '"]'); }
         if (q.get('veg') === '1') { check('input[data-filter="trust-pure-veg"]'); }
         if (q.get('offer') === '1') { check('input[data-filter="offer-discount"]'); }
         if (q.get('open_now') === '1') { check('input[data-filter="avail-open-now"]'); }

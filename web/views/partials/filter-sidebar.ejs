@@ -15,6 +15,16 @@
   Used:  Included from views/site/index.ejs inside .home-shell.
          Hidden < 1024 px (mobile uses the bottom sheet).
 -%>
+<%#
+  fc   — dynamic facet counts from the api (SiteController → facet_counts).
+  badge(v) — renders the count chip ONLY when we have a real number for
+  that option; null/undefined (api down, or a facet we don't compute)
+  renders nothing rather than a fake placeholder.
+-%>
+<%
+  var fc = (typeof facet_counts !== 'undefined' && facet_counts) ? facet_counts : null;
+  function badge(v) { return (v === 0 || v) ? ('<b class="fsb__count">' + v + '</b>') : ''; }
+%>
 <aside class="fsb" aria-label="Filters">
     <header class="fsb__head">
         <h2 class="fsb__title">Filters</h2>
@@ -38,40 +48,36 @@
             <label class="fsb__radio"><input type="radio" name="sort-web" value="distance"><span>Distance: Low to High</span></label>
         </section>
 
-        <%# ── Delivery time ── (single-select feel; JS takes the cap) %>
+        <%# ── Delivery time ── (multi-select union of bands) %>
         <section class="fsb__group">
             <h3 class="fsb__group-title">Delivery Time</h3>
-            <label class="fsb__check"><input type="checkbox" data-filter="time-15"><span>Up to 15 min</span><b class="fsb__count">142</b></label>
-            <label class="fsb__check"><input type="checkbox" data-filter="time-30"><span>15 – 30 min</span><b class="fsb__count">320</b></label>
-            <label class="fsb__check"><input type="checkbox" data-filter="time-45"><span>30 – 45 min</span><b class="fsb__count">215</b></label>
-            <label class="fsb__check"><input type="checkbox" data-filter="time-60"><span>45+ min</span><b class="fsb__count">85</b></label>
+            <label class="fsb__check"><input type="checkbox" data-filter="time-15"><span>Up to 15 min</span><%- badge(fc && fc.delivery ? fc.delivery['15'] : null) %></label>
+            <label class="fsb__check"><input type="checkbox" data-filter="time-30"><span>15 – 30 min</span><%- badge(fc && fc.delivery ? fc.delivery['30'] : null) %></label>
+            <label class="fsb__check"><input type="checkbox" data-filter="time-45"><span>30 – 45 min</span><%- badge(fc && fc.delivery ? fc.delivery['45'] : null) %></label>
+            <label class="fsb__check"><input type="checkbox" data-filter="time-60"><span>45+ min</span><%- badge(fc && fc.delivery ? fc.delivery['60'] : null) %></label>
         </section>
 
-        <%# ── Offers ── %>
+        <%# ── Offers ── (single data-backed option) %>
         <section class="fsb__group">
             <h3 class="fsb__group-title">Offers</h3>
-            <label class="fsb__check"><input type="checkbox" data-filter="offer-discount"><span>Offers near you</span><b class="fsb__count">236</b></label>
-            <label class="fsb__check"><input type="checkbox" data-filter="offer-discount"><span>50% OFF or more</span><b class="fsb__count">128</b></label>
-            <label class="fsb__check"><input type="checkbox" data-filter="offer-free"><span>Free delivery</span><b class="fsb__count">189</b></label>
-            <label class="fsb__check"><input type="checkbox" data-filter="offer-bogo"><span>Buy 1 Get 1</span><b class="fsb__count">72</b></label>
-            <label class="fsb__check"><input type="checkbox" data-filter="offer-combo"><span>Combo offers</span><b class="fsb__count">95</b></label>
+            <label class="fsb__check"><input type="checkbox" data-filter="offer-discount"><span>Offers near you</span><%- badge(fc ? fc.offer : null) %></label>
         </section>
 
         <%# ── Rating ── (single threshold) %>
         <section class="fsb__group">
             <h3 class="fsb__group-title">Rating</h3>
-            <label class="fsb__radio fsb__rating"><input type="radio" name="rating-web" data-filter="rating-4.5"><span class="fsb__stars">★</span><span>4.5 &amp; above</span><b class="fsb__count">245</b></label>
-            <label class="fsb__radio fsb__rating"><input type="radio" name="rating-web" data-filter="rating-4.0"><span class="fsb__stars">★</span><span>4.0 &amp; above</span><b class="fsb__count">325</b></label>
-            <label class="fsb__radio fsb__rating"><input type="radio" name="rating-web" data-filter="rating-3.5"><span class="fsb__stars">★</span><span>3.5 &amp; above</span><b class="fsb__count">412</b></label>
-            <label class="fsb__radio fsb__rating"><input type="radio" name="rating-web" data-filter="rating-3.0"><span class="fsb__stars">★</span><span>3.0 &amp; above</span><b class="fsb__count">470</b></label>
+            <label class="fsb__radio fsb__rating"><input type="radio" name="rating-web" data-filter="rating-4.5"><span class="fsb__stars">★</span><span>4.5 &amp; above</span><%- badge(fc && fc.rating ? fc.rating['4.5'] : null) %></label>
+            <label class="fsb__radio fsb__rating"><input type="radio" name="rating-web" data-filter="rating-4.0"><span class="fsb__stars">★</span><span>4.0 &amp; above</span><%- badge(fc && fc.rating ? fc.rating['4.0'] : null) %></label>
+            <label class="fsb__radio fsb__rating"><input type="radio" name="rating-web" data-filter="rating-3.5"><span class="fsb__stars">★</span><span>3.5 &amp; above</span><%- badge(fc && fc.rating ? fc.rating['3.5'] : null) %></label>
+            <label class="fsb__radio fsb__rating"><input type="radio" name="rating-web" data-filter="rating-3.0"><span class="fsb__stars">★</span><span>3.0 &amp; above</span><%- badge(fc && fc.rating ? fc.rating['3.0'] : null) %></label>
         </section>
 
         <%# ── Price for one ── %>
         <section class="fsb__group">
             <h3 class="fsb__group-title">Price for one</h3>
-            <label class="fsb__check"><input type="checkbox" data-filter="price-low"><span><%= brand.currencySymbol %> &ndash; 6</span><b class="fsb__count">125</b></label>
-            <label class="fsb__check"><input type="checkbox" data-filter="price-mid"><span><%= brand.currencySymbol %><%= brand.currencySymbol %> 6 &ndash; 12</span><b class="fsb__count">328</b></label>
-            <label class="fsb__check"><input type="checkbox" data-filter="price-high"><span><%= brand.currencySymbol %><%= brand.currencySymbol %><%= brand.currencySymbol %> 12+</span><b class="fsb__count">145</b></label>
+            <label class="fsb__check"><input type="checkbox" data-filter="price-low"><span><%= brand.currencySymbol %> &ndash; 6</span><%- badge(fc && fc.price ? fc.price.low : null) %></label>
+            <label class="fsb__check"><input type="checkbox" data-filter="price-mid"><span><%= brand.currencySymbol %><%= brand.currencySymbol %> 6 &ndash; 12</span><%- badge(fc && fc.price ? fc.price.mid : null) %></label>
+            <label class="fsb__check"><input type="checkbox" data-filter="price-high"><span><%= brand.currencySymbol %><%= brand.currencySymbol %><%= brand.currencySymbol %> 12+</span><%- badge(fc && fc.price ? fc.price.high : null) %></label>
         </section>
 
         <%# ── Cuisines ── (dynamic list from the api categories) %>
@@ -93,13 +99,10 @@
         </section>
         <% } %>
 
-        <%# ── Dietary Preference ── %>
+        <%# ── Dietary Preference ── (only the data-backed option) %>
         <section class="fsb__group">
             <h3 class="fsb__group-title">Dietary Preference</h3>
-            <label class="fsb__check"><input type="checkbox" data-filter="trust-pure-veg"><span>Veg Only</span><b class="fsb__count">210</b></label>
-            <label class="fsb__check"><input type="checkbox" data-filter="diet-jain"><span>Jain</span><b class="fsb__count">95</b></label>
-            <label class="fsb__check"><input type="checkbox" data-filter="diet-vegan"><span>Vegan</span><b class="fsb__count">75</b></label>
-            <label class="fsb__check"><input type="checkbox" data-filter="diet-gf"><span>Gluten Free</span><b class="fsb__count">45</b></label>
+            <label class="fsb__check"><input type="checkbox" data-filter="trust-pure-veg"><span>Veg Only</span><%- badge(fc ? fc.veg : null) %></label>
         </section>
 
         <%# ── More filters (toggles) ── %>

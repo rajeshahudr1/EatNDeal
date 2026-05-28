@@ -116,6 +116,27 @@
      *        is visual — the cards themselves are already filtered.
      * Type:  WRITE (DOM class + scrollIntoView).
      */
+    /**
+     * syncSidebarCuisine
+     *
+     * What:  Reflects the active cuisine onto the sidebar's Cuisines
+     *        checklist — ticks the box whose key matches, unticks every
+     *        other (and clears all when cuisine is empty). Keeps the
+     *        sidebar state authoritative + in step with the rail so
+     *        Apply behaves predictably (re-applies a checked cuisine,
+     *        drops an unchecked one).
+     * Type:  WRITE (DOM checked state + .is-active row class).
+     */
+    function syncSidebarCuisine(cuisine) {
+        var target = String(cuisine || '').trim().toLowerCase();
+        document.querySelectorAll('.fsb input[data-filter^="cuisine-"]').forEach(function (box) {
+            var key = (box.getAttribute('data-filter') || '').replace(/^cuisine-/, '').toLowerCase();
+            box.checked = !!target && key === target;
+            var row = box.closest('.fsb__check, .fsb__radio');
+            if (row) { row.classList.toggle('is-active', box.checked); }
+        });
+    }
+
     function markActiveCuisineFromUrl() {
         var params  = new URLSearchParams(window.location.search);
         var cuisine = (params.get('cuisine') || '').trim();
@@ -129,11 +150,27 @@
             inp.value = pretty;
         });
 
-        if (!cuisine) { return; }
+        // Keep the sidebar's Cuisines checklist in sync with the active
+        // cuisine — tick the matching box, untick the rest (and clear
+        // all when the filter is removed). Without this the sidebar
+        // checkbox drifts out of step with a rail-selected cuisine, so
+        // applying another filter would wrongly drop the cuisine.
+        syncSidebarCuisine(cuisine);
+
+        if (!cuisine) {
+            // Filter cleared — drop any lingering active ring so no pill
+            // stays highlighted once the feed returns to unfiltered.
+            // (Matters for the feed-only partial swap, where the rail
+            // DOM is NOT replaced and would otherwise keep the old mark.)
+            document.querySelectorAll(
+                '.cuisine-rail__item.is-active-filter, .cuisine-row__item.is-active-filter, .cuisine-grid__item.is-active-filter'
+            ).forEach(function (li) { li.classList.remove('is-active-filter'); });
+            return;
+        }
 
         var target = cuisine.toLowerCase();
         var active = null;
-        document.querySelectorAll('.cuisine-row__item').forEach(function (li) {
+        document.querySelectorAll('.cuisine-rail__item, .cuisine-row__item, .cuisine-grid__item').forEach(function (li) {
             var name = (li.getAttribute('data-search-name') || '').toLowerCase();
             // Match by exact key OR substring — same fuzziness the
             // server's reorderCuisinesByPick uses, so the pill we
@@ -148,14 +185,13 @@
             else if (!active)    { active = li; }
         });
 
-        // Scroll the active pill into view inside the horizontally-
-        // scrolling cuisine row (it was already at position 0 from
-        // the server reorder, but a long word-of-mouth name could
-        // still sit partially off-screen on a narrow phone).
-        if (active && active.scrollIntoView) {
-            try { active.scrollIntoView({ block: 'nearest', inline: 'start', behavior: 'smooth' }); }
-            catch (e) { active.scrollIntoView(); }
-        }
+        // Deliberately DO NOT move the rail. The selected pill must
+        // stay in its own position — a middle category gets the active
+        // ring right where it sits, and only the restaurant list below
+        // reloads. (An earlier version scrolled the active pill to the
+        // rail's left edge, which yanked middle categories to the front
+        // and parked them under the prev-arrow — both wrong.)
+        void active;
     }
 
     /**
@@ -185,12 +221,28 @@
         opts = opts || {};
         var target = String(url || '/').trim() || '/';
 
+        // Remember where the user is so an in-place filter (cuisine
+        // tap) can restore it after the swap — they should stay put
+        // while only the restaurant list below them reloads.
+        var prevScrollY = window.pageYOffset || document.documentElement.scrollTop || 0;
+
         if (!opts.fromPopstate) {
             try { window.history.pushState({}, '', target); }
             catch (e) { /* very old browsers — degrade gracefully */ window.location.href = target; return; }
         }
 
-        if (window.EatNDealUi && window.EatNDealUi.showLoader) {
+        // The full-screen loader is for full-page swaps. A feed-only
+        // filter must NOT dim the whole screen — that dim/undim IS the
+        // flicker. Instead it shows a loader SCOPED to the feed region:
+        // the rail + filters above stay still, and the restaurant list
+        // dims with a spinner while the next batch loads.
+        var showGlobalLoader = !opts.feedOnly;
+        var feedLoadingEl    = null;
+        if (opts.feedOnly) {
+            feedLoadingEl = document.querySelector('[data-home-feed]');
+            if (feedLoadingEl) { feedLoadingEl.classList.add('is-loading'); }
+        }
+        if (showGlobalLoader && window.EatNDealUi && window.EatNDealUi.showLoader) {
             window.EatNDealUi.showLoader({ label: opts.label || 'Loading…' });
         }
         try {
@@ -203,26 +255,88 @@
             // overlays sit outside, so they stay untouched.
             var oldMain = document.getElementById('app-main');
             var newMain = doc.getElementById('app-main');
-            if (oldMain && newMain) {
-                oldMain.innerHTML = newMain.innerHTML;
+
+            // ── Feed-only swap (in-place cuisine filter) ───────────
+            // Replace ONLY the restaurant feed region. The header,
+            // cuisine rail and filter sidebar above it are never
+            // touched — nothing above the feed flickers, the rail keeps
+            // its horizontal position, and the active pill is re-marked
+            // in place. This is the no-flicker path the user asked for
+            // ("uper wala section vesa hi rehna chahiye, niche ka hi
+            // load ho").
+            var didPartial = false;
+            if (opts.feedOnly && oldMain && newMain) {
+                var oldFeed = oldMain.querySelector('[data-home-feed]');
+                var newFeed = newMain.querySelector('[data-home-feed]');
+                if (oldFeed && newFeed) {
+                    oldFeed.innerHTML = newFeed.innerHTML;
+                    // Rail + filters keep their existing (delegated /
+                    // direct) listeners since their DOM survived. We
+                    // only re-mark the active pill on the untouched
+                    // rail, tint the new cards, and rebind the new
+                    // feed's load-more trigger.
+                    markActiveCuisineFromUrl();
+                    applyCardTints(oldFeed);
+                    bindPagination();
+                    didPartial = true;
+                }
             }
 
-            // Re-run per-page bindings on the freshly-painted DOM.
-            applyCardTints();
-            markActiveCuisineFromUrl();
-            bindPagination();
-            bindFilterToggle();
-            bindRailArrows();
+            if (!didPartial) {
+                // ── Full swap (view-all / restaurant / back-home, or a
+                //    fallback when the feed region wasn't found) ──────
+                // Preserve the cuisine rail's horizontal scroll across
+                // the swap — the fresh rail markup starts at scrollLeft
+                // 0, which would otherwise snap a 2nd-page selection
+                // back to the first pill.
+                var oldRail  = oldMain ? oldMain.querySelector('[data-rail]') : null;
+                var railLeft = oldRail ? oldRail.scrollLeft : 0;
 
-            // Scroll to the top of the new content so the user sees
-            // it from its start.
-            window.scrollTo({ top: 0, behavior: 'smooth' });
+                if (oldMain && newMain) {
+                    oldMain.innerHTML = newMain.innerHTML;
+                }
+
+                if (railLeft) {
+                    var newRail = document.querySelector('[data-rail]');
+                    if (newRail) {
+                        // behavior:'auto' overrides the rail's CSS
+                        // scroll-behavior:smooth so it lands instantly.
+                        if (newRail.scrollTo) { newRail.scrollTo({ left: railLeft, behavior: 'auto' }); }
+                        else { newRail.scrollLeft = railLeft; }
+                    }
+                }
+
+                // Re-run per-page bindings on the freshly-painted DOM.
+                applyCardTints();
+                markActiveCuisineFromUrl();
+                bindPagination();
+                bindFilterToggle();
+                bindRailArrows();
+            }
+
+            // Scroll handling:
+            //   • keepScroll (cuisine filter) → restore the exact
+            //     position so the rail stays put and only the
+            //     restaurant list below visibly reloads. The browser
+            //     clamps automatically when the filtered (shorter)
+            //     feed can't reach the old offset.
+            //   • otherwise (view-all / restaurant / back-home) →
+            //     jump to the top so the new surface reads from start.
+            if (opts.keepScroll) {
+                window.scrollTo({ top: prevScrollY });
+            } else {
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            }
         } catch (err) {
             // Fall back to a real navigation so the user is never
             // stranded with stale content.
             window.location.href = target;
         } finally {
-            if (window.EatNDealUi && window.EatNDealUi.hideLoader) {
+            // Drop the feed spinner. The class sits on the feed element
+            // itself (not its innerHTML), so it survived the swap and we
+            // clear it here once the new cards are in place.
+            if (feedLoadingEl) { feedLoadingEl.classList.remove('is-loading'); }
+            if (showGlobalLoader && window.EatNDealUi && window.EatNDealUi.hideLoader) {
                 window.EatNDealUi.hideLoader();
             }
         }
@@ -239,7 +353,10 @@
     function navigateToCuisine(cuisine, opts) {
         var target = String(cuisine || '').trim();
         var url    = target ? ('/?cuisine=' + encodeURIComponent(target.toLowerCase())) : '/';
-        return spaNavigate(url, Object.assign({ label: target ? 'Filtering…' : 'Loading…' }, opts || {}));
+        // keepScroll: don't yank the user to the top.
+        // feedOnly: swap ONLY the restaurant list, leaving the rail +
+        // filters + header untouched — no flicker, no rail reset.
+        return spaNavigate(url, Object.assign({ label: target ? 'Filtering…' : 'Loading…', keepScroll: true, feedOnly: true }, opts || {}));
     }
 
     /**
@@ -262,10 +379,22 @@
             if (!a) { return; }
             ev.preventDefault();
 
-            // Match against EITHER the cuisine row item OR the
-            // cuisine grid item (full-screen /?view=cuisines view).
-            var li      = a.closest('.cuisine-row__item, .cuisine-grid__item');
-            var cuisine = li ? (li.getAttribute('data-search-name') || '') : '';
+            // Resolve the picked cuisine. Prefer the ?cuisine= already
+            // baked into the link's href — EVERY pick-cuisine link
+            // carries it: the top rail pills (.cuisine-rail__item), the
+            // full-grid pills (.cuisine-grid__item) AND the dark
+            // popular-cuisine cards (no <li> wrapper at all). Reading
+            // the href is the one path that covers all three; the
+            // dataset fallback only kicks in for a malformed href.
+            var cuisine = '';
+            try {
+                var hrefUrl = new URL(a.getAttribute('href') || '', window.location.origin);
+                cuisine = (hrefUrl.searchParams.get('cuisine') || '').trim();
+            } catch (e) { /* malformed href — fall through to dataset */ }
+            if (!cuisine) {
+                var li = a.closest('.cuisine-rail__item, .cuisine-row__item, .cuisine-grid__item');
+                cuisine = li ? (li.getAttribute('data-search-name') || '') : '';
+            }
             // Tapping the already-active pill clears the filter.
             var current = new URLSearchParams(window.location.search).get('cuisine') || '';
             if (cuisine && cuisine.toLowerCase() === current.trim().toLowerCase()) {
@@ -313,6 +442,13 @@
             // Skip pure-fragment or off-origin links — let the
             // browser handle those normally.
             if (href.charAt(0) === '#' || /^[a-z]+:/i.test(href)) { return; }
+            // Restaurant pages are a DIFFERENT layout with their own
+            // script + styles (restaurant.js / restaurant-detail.css).
+            // An SPA swap would inject the markup without loading those,
+            // so the page would render unstyled + inert. Let the browser
+            // do a full navigation (don't preventDefault) so its assets
+            // load.
+            if (a.getAttribute('data-action') === 'pick-restaurant') { return; }
             ev.preventDefault();
             spaNavigate(href);
         });
@@ -659,12 +795,22 @@
     function filtersToQuery(state) {
         state = state || {};
         var qs = new URLSearchParams();
+        // Cuisine picked from the sidebar's Cuisines checklist (the
+        // first ticked one wins — the api filters by a single category).
+        if (state.cuisine) { qs.set('cuisine', String(state.cuisine).toLowerCase()); }
         if (state.sort && state.sort !== 'relevance') { qs.set('sort', state.sort); }
         if (state.rating) {
             var num = parseFloat(String(state.rating).replace(/^rating-/, ''));
             if (isFinite(num) && num > 0) { qs.set('rating', String(num)); }
         }
-        if (state.time) {
+        // Delivery-time bands — union of selected buckets → ?delivery=
+        // (e.g. "15,30"). The api keeps a restaurant if its estimate
+        // falls in ANY of them.
+        if (state.deliveryBuckets && state.deliveryBuckets.length) {
+            var keys = state.deliveryBuckets.filter(function (k) { return /^(15|30|45|60)$/.test(k); });
+            if (keys.length) { qs.set('delivery', keys.join(',')); }
+        } else if (state.time) {
+            // Back-compat: a single time-NN value (older callers).
             var mins = parseInt(String(state.time).replace(/^time-/, ''), 10);
             if (isFinite(mins) && mins > 0) { qs.set('max_min', String(mins)); }
         }
@@ -710,14 +856,41 @@
             // (cuisine / view / restaurant / from) so applying a
             // filter on /?cuisine=burger doesn't strip the cuisine.
             var current = new URLSearchParams(window.location.search);
-            var keep    = ['cuisine', 'view', 'restaurant', 'from'];
+            // view / restaurant / from are non-filter context — always
+            // preserve them. Cuisine is handled specially below because
+            // the sidebar OWNS it: unchecking the cuisine must remove it.
+            var keep    = ['view', 'restaurant', 'from'];
             var next    = filtersToQuery(detail);
             keep.forEach(function (k) {
+                if (next.has(k)) { return; }
                 var v = current.get(k);
                 if (v) { next.set(k, v); }
             });
+            // ── Cuisine ────────────────────────────────────────────
+            // The sidebar's Cuisines checklist is authoritative: if a
+            // box is ticked, filtersToQuery already put it in `next`. If
+            // NOT, only fall back to the URL's cuisine when it ISN'T
+            // representable as a sidebar checkbox (a rail-only cuisine
+            // beyond the sidebar's short list). When it IS representable,
+            // an empty state means the user UNCHECKED it → drop it. This
+            // is what lets "uncheck + Apply" actually clear the cuisine.
+            if (!next.has('cuisine')) {
+                var urlCuisine = current.get('cuisine');
+                if (urlCuisine) {
+                    var representable = false;
+                    document.querySelectorAll('.fsb input[data-filter^="cuisine-"]').forEach(function (box) {
+                        var key = (box.getAttribute('data-filter') || '').replace(/^cuisine-/, '').toLowerCase();
+                        if (key === String(urlCuisine).toLowerCase()) { representable = true; }
+                    });
+                    if (!representable) { next.set('cuisine', urlCuisine); }
+                }
+            }
             var url = '/' + (next.toString() ? '?' + next.toString() : '');
-            spaNavigate(url, { label: 'Applying filters…' });
+            // feedOnly + keepScroll: reload ONLY the restaurant list,
+            // leaving the sidebar (and its checked state + listeners)
+            // intact. A full swap would replace the sidebar DOM and the
+            // filters would die after the first Apply.
+            spaNavigate(url, { label: 'Applying filters…', keepScroll: true, feedOnly: true });
         });
     }
 

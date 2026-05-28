@@ -73,159 +73,66 @@ function titleCase(s) {
  */
 async function list(req, res) {
     try {
-        // Limit caps higher for categories than restaurants/products
-        // because the View-all-cuisines page wants every distinct
-        // cuisine in one shot — there's no pagination on that surface.
-        const limit  = req.query.limit ? Math.min(500, Math.max(1, Number(req.query.limit))) : 12;
+        const limit  = req.query.limit ? Math.min(500, Math.max(1, Number(req.query.limit))) : 50;
         const parent = req.query.parent ? String(req.query.parent).trim().toLowerCase() : null;
-        // `?all=1` opens up the listing so the View all cuisines page
-        // surfaces SUB-categories too (Chicken Kebab, Donner Kebab,
-        // Margherita Pizza …) — not just top-level pills. Without this
-        // flag the endpoint preserves the home-strip behaviour
-        // (top-level only) so the cuisine row doesn't bloat.
-        const includeAll = String(req.query.all || '').trim() === '1';
 
-        // When ?parent=<name> is set, we return the CHILD categories
-        // of every top-level row whose name matches. Example:
-        //   /api/v1/marketplace/categories?parent=kebab
-        //   → Chicken Kebab, Mixed Grill Kebab, Donner Kebab, …
-        // Without the param the endpoint behaves as before (top-level
-        // marketplace pills only).
-        let parentIds = null;
-        if (parent) {
-            const rows = await db('categories as pcat')
-                .innerJoin('company as pc', 'pc.id', 'pcat.company_id')
-                .select('pcat.id')
-                .where('pc.is_marketplace', 1)
-                .andWhere('pc.is_active', 1)
-                .whereNull('pc.deleted_at')
-                .andWhere(function () { this.where('pcat.parent', 0).orWhereNull('pcat.parent'); })
-                .andWhereRaw('LOWER(pcat.name) = ?', [parent]);
-            parentIds = rows.map(r => r.id);
-            // No matching top-level parent → no children to return.
-            if (!parentIds.length) {
-                return H.successResponse(res, { categories: [] });
-            }
-        }
+        // The marketplace category model is now a flat GLOBAL list
+        // (mp_marketplace_category) — there are no sub-categories, so
+        // a ?parent= drill-down has nothing to return.
+        if (parent) { return H.successResponse(res, { categories: [] }); }
 
-        // A category qualifies only when it currently has at least
-        // ONE active product that's also flagged for marketplace
-        // display. The EXISTS subquery walks product_product_category
-        // (the M2M join) → products and short-circuits as soon as one
-        // match is found, so it stays cheap even with hundreds of
-        // categories.
-        const rows = await db('categories as cat')
-            .innerJoin('company as c', 'c.id', 'cat.company_id')
-            .select(
-                'cat.id',
-                'cat.name',
-                'cat.category_image',
-                'cat.is_featured',
-                'cat.parent',
-                'cat.company_id',
-            )
-            .where('c.is_marketplace', 1)
-            .andWhere('c.is_active', 1)
-            .andWhere(function () { this.where('c.is_maintenance', 0).orWhereNull('c.is_maintenance'); })
-            .whereNull('c.deleted_at')
-            .andWhere('cat.is_display_application_menu', 1)
-            // When ?parent=<name> is set, look up children of THOSE
-            // matching top-level rows. When ?all=1 we skip the
-            // parent restriction entirely so sub-categories surface
-            // alongside top-level pills (used by View all cuisines).
-            // Otherwise (default home strip) we restrict to top-level.
-            .modify(function (qb) {
-                if (parentIds) {
-                    qb.whereIn('cat.parent', parentIds);
-                } else if (!includeAll) {
-                    qb.andWhere(function () { this.where('cat.parent', 0).orWhereNull('cat.parent'); });
-                }
-            })
-            // ── Has-marketplace-product filter ─────────────────────
+        // Read the global marketplace category master. Active rows
+        // only, ordered by the admin-set sort_order.
+        //
+        // Restaurants-only gate: a category surfaces on the home rail
+        // ONLY when at least one LIVE marketplace company is assigned
+        // to it (mp_marketplace_category_assign → company). An empty
+        // category would tap through to a blank feed, so we hide it —
+        // "category aayegi usper jis me restaurant ho > 0".
+        const rows = await db('mp_marketplace_category as mc')
+            .select('mc.id', 'mc.name', 'mc.slug', 'mc.icon', 'mc.image', 'mc.sort_order')
+            .where('mc.status', 1)
             .whereExists(function () {
                 this.select(db.raw('1'))
-                    .from('product_product_category as ppc')
-                    .innerJoin('products as p', 'p.id', 'ppc.product_id')
-                    .whereRaw('ppc.category_id = cat.id')
-                    .andWhere('ppc.status', '1')
-                    .andWhere('p.show_marketplace', 1)
-                    .andWhere('p.status', '1')
-                    // Safety belt — keep the product within the
-                    // same company that owns the category, even if
-                    // the join table somehow holds a cross-tenant
-                    // row (shouldn't, but bilingual data is messy).
-                    .andWhereRaw('p.company_id = cat.company_id');
-            });
+                    .from('mp_marketplace_category_assign as mca')
+                    .innerJoin('company as co', 'co.id', 'mca.company_id')
+                    .whereRaw('mca.category_id = mc.id')
+                    .andWhere('co.is_marketplace', 1)
+                    .andWhere('co.is_active', 1)
+                    .whereNull('co.deleted_at');
+            })
+            .orderBy([{ column: 'mc.sort_order', order: 'asc' }, { column: 'mc.id', order: 'asc' }])
+            .limit(limit);
 
-        // Dedupe by a *normalised* key (Burger + Burgers + "Burger /
-        // برغر" all collapse to "burger"). Shared with the search
-        // endpoint so the cuisine pill's data-search-name attribute
-        // matches the keys SearchController returns. See
-        // api/Helpers/marketplace.normaliseName for the full pipeline.
-        const normaliseName = M.normaliseName;
+        // Treat a value as an image/icon PATH (→ render as <img>) when
+        // it looks like a URL, an absolute path, or a filename with an
+        // extension. An emoji ("🍕") matches none of these → it's
+        // rendered as text in the initial slot instead.
+        const isPath = (s) => !!s && (s.indexOf('/') !== -1 || /\.[a-z0-9]{2,5}$/i.test(s) || s.indexOf('http') === 0);
 
-        // Picks per normalised key with this preference:
-        //   1. Row that HAS a category_image  (real artwork beats no
-        //      artwork, regardless of which row Postgres returned first).
-        //   2. First-encountered row otherwise.
-        // Earlier code kept the FIRST row blindly — and Postgres
-        // happened to return image-less duplicates first for many
-        // pills, so even though e.g. "Garlic Bread" had an image on
-        // id=29, the api was serving the empty id=48 row. Result:
-        // every pill on the homepage showed a letter placeholder.
-        const seen = new Map();
-        for (const r of rows) {
-            const name = String(r.name || '').trim();
-            if (!name) { continue; }
-            const key = normaliseName(name);
-            if (!key) { continue; }              // pure-punctuation rows
-            const hasImg = !!String(r.category_image || '').trim();
-            const existing = seen.get(key);
-            if (!existing) {
-                seen.set(key, r);
-                continue;
-            }
-            // Replace ONLY when the incoming row has an image and
-            // the kept one doesn't — never demote a kept-with-image
-            // back to an imageless duplicate.
-            const existingHasImg = !!String(existing.category_image || '').trim();
-            if (hasImg && !existingHasImg) {
-                seen.set(key, r);
-            }
-        }
+        const categories = rows.map(r => {
+            const name  = String(r.name  || '').trim();
+            const image = String(r.image || '').trim();
+            const icon  = String(r.icon  || '').trim();
 
-        // Sort: featured first, then alphabetical, then by id for stability.
-        const sorted = Array.from(seen.values()).sort((a, b) => {
-            const af = Number(a.is_featured) || 0;
-            const bf = Number(b.is_featured) || 0;
-            if (af !== bf) { return bf - af; }
-            const an = String(a.name || '').toLowerCase();
-            const bn = String(b.name || '').toLowerCase();
-            if (an !== bn) { return an < bn ? -1 : 1; }
-            return Number(a.id) - Number(b.id);
-        });
+            // ── Condition: IMAGE first, then ICON ──────────────────
+            //   1. image present (a real path)  → show the image
+            //   2. else icon is a path          → show the icon image
+            //   3. else icon is an emoji        → show it as text
+            //   4. else                         → first-letter fallback
+            let viewIcon    = null;                 // non-null → view renders <img src>
+            let viewInitial = M.initialFor(name);   // shown when viewIcon is null
+            if (isPath(image))      { viewIcon = image; }
+            else if (isPath(icon))  { viewIcon = icon; }
+            else if (icon)          { viewInitial = icon; }   // emoji → text
 
-        const categories = sorted.slice(0, limit).map(r => {
-            // Display the cleaned-up canonical form (singular, no
-            // trailing translation) so the pill reads tidily even
-            // when the merchant stored "Burger / برغر" or "BURGERS".
-            const norm    = normaliseName(r.name);
-            const cleaned = titleCase(norm);
             return {
                 id:         String(r.id),
-                name:       cleaned,
-                // The KEY the search endpoint also uses to match this
-                // pill. Stamped on the rendered <a> as data-search-name
-                // so the home-page search filter doesn't need a name
-                // round-trip — it just checks "is my data-search-name
-                // in the api's returned categoryNames set?".
-                searchName: norm,
-                slug:       M.slugify(cleaned, r.id),
-                // icon === null  → view renders the initial-letter
-                //                  placeholder over the brand tint.
-                // icon === url   → view renders <img src>.
-                icon:       mapIcon(r.category_image, r.company_id),
-                initial:    M.initialFor(cleaned),
+                name,
+                searchName: M.normaliseName(name),
+                slug:       r.slug || M.slugify(name, r.id),
+                icon:       viewIcon,
+                initial:    viewInitial,
                 tint:       M.tintFor(r.id),
             };
         });

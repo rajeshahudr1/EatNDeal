@@ -67,6 +67,10 @@ const listQuerySchema = Joi.object({
         .max(120)
         .allow('')
         .messages({ 'string.max': 'Cuisine name is too long.' }),
+    // Customer postcode — matched against each branch's delivery zones
+    // (store_delivery_charge_setup) to resolve real fee / min-order /
+    // deliverability.
+    postcode: Joi.string().trim().max(12).allow(''),
     // Optional restaurant filter — restricts the products endpoint
     // to a single restaurant. Used by the home page's
     // /?restaurant=<slug> view which shows one restaurant's full
@@ -104,10 +108,15 @@ const listQuerySchema = Joi.object({
     // the Haversine calc.
     max_km: Joi.number().positive().max(500),
 
-    // Maximum delivery-time bucket, in minutes. Same idea — derived
-    // from km via Helpers/distance.estimateDeliveryMinutes; we
-    // filter on the numeric km equivalent.
+    // Maximum delivery-time bucket, in minutes. Single-cap form still
+    // used by the mobile bottom sheet.
     max_min: Joi.number().integer().min(1).max(720),
+
+    // Delivery-time buckets — comma list of bucket keys (15,30,45,60).
+    // Multi-select union of time bands. Used by the web sidebar.
+    delivery: Joi.string().trim().max(40)
+        .pattern(/^(15|30|45|60)(,(15|30|45|60))*$/)
+        .messages({ 'string.pattern.base': 'Delivery filter is invalid.' }),
 
     // Open-now toggle. '1' = only restaurants whose branch is
     // currently accepting orders.
@@ -130,6 +139,21 @@ const listQuerySchema = Joi.object({
     featured:    Joi.string().valid('1'),
 });
 
+// /api/v1/marketplace/restaurant — single restaurant detail page.
+//   id?   — company id (preferred when known)
+//   slug? — domain/name slug (resolved server-side when id is absent)
+//   lat/lng — for distance + delivery-time estimate
+const detailQuerySchema = Joi.object({
+    id:   Joi.number().integer().min(1),
+    slug: Joi.string().trim().max(160),
+    // Product page (clean URL): rest = restaurant slug, item = product slug.
+    rest: Joi.string().trim().max(160),
+    item: Joi.string().trim().max(200),
+    lat:  Joi.number().min(-90).max(90),
+    lng:  Joi.number().min(-180).max(180),
+    postcode: Joi.string().trim().max(12).allow(''),
+});
+
 // /api/v1/marketplace/search — the home page live-filter.
 //   q  — typed query. Capped at 120 chars (bigger than any realistic
 //        search; defends against URL bombing).
@@ -143,4 +167,4 @@ const searchQuerySchema = Joi.object({
         }),
 });
 
-module.exports = { listQuerySchema, searchQuerySchema };
+module.exports = { listQuerySchema, searchQuerySchema, detailQuerySchema };

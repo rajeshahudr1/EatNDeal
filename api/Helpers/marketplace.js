@@ -267,11 +267,107 @@ function normaliseName(raw) {
         .replace(/(es|s)$/, '');
 }
 
+/**
+ * clockMinutes
+ *
+ * What:   "HH:MM[:SS]" → minutes-of-day (0..1439), or null when there's
+ *         no parseable HH:MM. Used for the open/closed clock check.
+ * Type:   READ (pure).
+ */
+function clockMinutes(t) {
+    if (!t) { return null; }
+    const m = String(t).match(/(\d{1,2}):(\d{2})/);
+    if (!m) { return null; }
+    return (parseInt(m[1], 10) % 24) * 60 + parseInt(m[2], 10);
+}
+
+/**
+ * isOpenNow
+ *
+ * What:   True when the branch is accepting orders RIGHT NOW: the
+ *         closed-flag check (isBranchOpen) passes AND the current time
+ *         falls inside the branch's daily window (start_time–end_time).
+ *         Handles overnight windows (e.g. 18:00–02:00). When no usable
+ *         hours are stored, falls back to the flag result (open).
+ * Type:   READ (clock).
+ */
+function isOpenNow(branch) {
+    if (!isBranchOpen(branch)) { return false; }
+    const open  = clockMinutes(branch && branch.start_time);
+    const close = clockMinutes(branch && branch.end_time);
+    if (open == null || close == null || open === close) { return true; }
+    const now = new Date();
+    const mins = now.getHours() * 60 + now.getMinutes();
+    return close > open ? (mins >= open && mins < close)   // same-day window
+                        : (mins >= open || mins < close);  // crosses midnight
+}
+
+/**
+ * normalisePostcode
+ *
+ * What:   Uppercase + strip everything except A-Z0-9 so "ab56 1ah" and
+ *         "AB561AH" compare equal. Used to match a customer postcode
+ *         against a branch's configured delivery zones.
+ * Type:   READ (pure).
+ */
+function normalisePostcode(pc) {
+    return String(pc || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+}
+
+/**
+ * matchDeliveryZone
+ *
+ * What:   Given a customer postcode and a branch's delivery zones
+ *         (rows from store_delivery_charge_setup), returns the BEST
+ *         matching zone or null. A zone matches when the (normalised)
+ *         customer postcode starts with the (normalised) zone postcode
+ *         — UK zones are configured as prefixes ("BB2"), outward+sector
+ *         ("SE1 6") or full codes ("B126AA"). When several match, the
+ *         most specific (longest zone string) wins.
+ * Type:   READ (pure).
+ */
+function matchDeliveryZone(customerPostcode, zones) {
+    const cust = normalisePostcode(customerPostcode);
+    if (!cust || !Array.isArray(zones) || !zones.length) { return null; }
+    let best = null, bestLen = -1;
+    for (const z of zones) {
+        const zp = normalisePostcode(z.postcode);
+        if (zp && cust.indexOf(zp) === 0 && zp.length > bestLen) { best = z; bestLen = zp.length; }
+    }
+    return best;
+}
+
+/**
+ * deliveryMinutesFromWaiting
+ *
+ * What:   Parses a branch.delivery_waiting_time value into whole
+ *         minutes. Accepts "HH:MM:SS" / "H:M" / a plain number. Returns
+ *         null when it can't yield a sensible (> 0) minute value — the
+ *         caller then falls back to the distance estimate.
+ * Type:   READ (pure).
+ */
+function deliveryMinutesFromWaiting(val) {
+    if (val == null || val === '') { return null; }
+    const s = String(val).trim();
+    if (/^\d+$/.test(s)) { const n = parseInt(s, 10); return n > 0 ? n : null; }
+    const parts = s.split(':').map(n => parseInt(n, 10));
+    if (parts.some(isNaN)) { return null; }
+    let mins = 0;
+    if (parts.length === 3)      { mins = parts[0] * 60 + parts[1]; }   // H:M:S → ignore seconds
+    else if (parts.length === 2) { mins = parts[0] * 60 + parts[1]; }   // H:M
+    else                         { mins = parts[0]; }
+    return mins > 0 ? mins : null;
+}
+
 module.exports = {
     pickPrice,
     tintFor,
     initialFor,
     isBranchOpen,
+    isOpenNow,
+    normalisePostcode,
+    matchDeliveryZone,
+    deliveryMinutesFromWaiting,
     cuisinesFor,
     slugify,
     isVegProduct,

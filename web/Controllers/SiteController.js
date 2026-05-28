@@ -40,7 +40,7 @@ const { callApi } = require('../Helpers/apiClient');
  *         On error any array can be null; the caller decides how to
  *         fall back.
  */
-async function fetchMarketplace(req, lat, lng, cuisine, filters) {
+async function fetchMarketplace(req, lat, lng, cuisine, filters, postcode) {
     filters = filters || {};
 
     // Build per-endpoint query strings — the validator rejects
@@ -52,6 +52,7 @@ async function fetchMarketplace(req, lat, lng, cuisine, filters) {
         if (Number.isFinite(lat)) qs.set('lat', String(lat));
         if (Number.isFinite(lng)) qs.set('lng', String(lng));
         if (cuisine)              qs.set('cuisine', cuisine);
+        if (postcode)             qs.set('postcode', postcode);
         return qs;
     }
     // Restaurants: every restaurant-level filter.
@@ -63,6 +64,8 @@ async function fetchMarketplace(req, lat, lng, cuisine, filters) {
     if (filters.open_now) rqs.set('open_now', '1');
     if (filters.veg)      rqs.set('veg',      '1');
     if (filters.offer)    rqs.set('offer',    '1');
+    if (filters.price)    rqs.set('price',    filters.price);
+    if (filters.delivery) rqs.set('delivery', filters.delivery);
     // Products: dish-level filters only (veg / offer / price /
     // recommended / featured). Sort + rating + km don't apply here.
     const pqs = baseQs();
@@ -94,6 +97,10 @@ async function fetchMarketplace(req, lat, lng, cuisine, filters) {
     // the field (older api, error path).
     const featuredMore = !!(rRes.body && rRes.body.status === 200 && rRes.body.data && rRes.body.data.has_more);
     const forYouMore   = !!(pRes.body && pRes.body.status === 200 && pRes.body.data && pRes.body.data.has_more);
+    // Dynamic filter facet counts (delivery/price/rating/veg/open/offer)
+    // computed by the restaurants endpoint over the candidate set. The
+    // sidebar renders its badge numbers from these.
+    const facets = (rRes.body && rRes.body.status === 200 && rRes.body.data && rRes.body.data.facets) || null;
     return {
         featured,
         for_you:        forYou,
@@ -101,6 +108,7 @@ async function fetchMarketplace(req, lat, lng, cuisine, filters) {
         sub_categories: subCategories,
         featured_more:  featuredMore,
         for_you_more:   forYouMore,
+        facets,
     };
 }
 
@@ -203,9 +211,31 @@ async function index(req, res, next) {
     // values fall through to the default home layout.
     const rawView   = String((req.query && req.query.view)       || '').trim().toLowerCase();
     const restaurantSlug = String((req.query && req.query.restaurant) || '').trim().toLowerCase();
+    const productId      = String((req.query && req.query.product)    || '').trim();
+    // Clean product URL: ?rest=<restaurant-slug>&item=<product-slug>
+    // (no numeric id in the URL). `product` id kept as a fallback.
+    const itemSlug       = String((req.query && req.query.item)       || '').trim();
+    const restScopeSlug  = String((req.query && req.query.rest)       || '').trim();
     let viewMode = '';
     if (restaurantSlug)                                            { viewMode = 'restaurant'; }
+    else if (itemSlug || productId)                                { viewMode = 'product'; }
     else if (rawView === 'restaurants' || rawView === 'cuisines')  { viewMode = rawView; }
+
+    // ── Delivery vs Pickup ────────────────────────────────────────
+    // The header toggle navigates with ?mode=pickup / no param. Query
+    // wins; else fall back to the saved mode; default delivery. We
+    // persist the choice onto the saved location so the toggle stays
+    // in sync across navigations. Pickup swaps the default home feed
+    // for the map+list view (handled below + in the template); it does
+    // NOT affect the focused view modes (?view= / ?restaurant=).
+    let orderMode = String((req.query && req.query.mode) || '').trim().toLowerCase();
+    if (orderMode !== 'pickup' && orderMode !== 'delivery') {
+        orderMode = (userLocation && userLocation.mode === 'pickup') ? 'pickup' : 'delivery';
+    }
+    if (req.session && req.session.userLocation && req.session.userLocation.mode !== orderMode) {
+        req.session.userLocation.mode = orderMode;
+    }
+    const isPickup = orderMode === 'pickup' && !viewMode;
 
     // ── Phase-2 filter params from the URL ────────────────────────
     // Read each filter the sidebar/sheet can set. The whole object
@@ -225,6 +255,8 @@ async function index(req, res, next) {
         veg:         String(q.veg      || '') === '1',
         offer:       String(q.offer    || '') === '1',
         price:       allowedPrice.indexOf(String(q.price || '').toLowerCase()) !== -1 ? String(q.price).toLowerCase() : '',
+        // Delivery-time buckets — comma list of valid keys (15,30,45,60).
+        delivery:    /^(15|30|45|60)(,(15|30|45|60))*$/.test(String(q.delivery || '')) ? String(q.delivery) : '',
         recommended: String(q.recommended || '') === '1',
         featured:    String(q.featured    || '') === '1',
     };
@@ -241,12 +273,21 @@ async function index(req, res, next) {
     let liveCategories     = null;
     let liveSubCategories  = [];
     let liveRestaurant     = null;   // populated only when viewMode === 'restaurant'
+    let liveMenuCategories = [];     // restaurant page: left-rail menu
+    let liveSections       = [];     // restaurant page: products grouped by category
+    let liveProduct        = null;   // product page: the product
+    let liveProductGroups  = [];     // product page: selectable option groups
+    let liveProductRelated = [];     // product page: "you may also like"
     let featuredMore       = false;
     let forYouMore         = false;
+    let liveFacets         = null;   // dynamic filter counts for the sidebar
     if (userLocation) {
         try {
             const lat = userLocation.lat != null ? Number(userLocation.lat) : null;
             const lng = userLocation.lng != null ? Number(userLocation.lng) : null;
+            // Customer postcode → real delivery-zone (fee / min-order /
+            // deliverability) matching in the api.
+            const custPostcode = userLocation.postcode ? String(userLocation.postcode) : '';
             const latLng = (Number.isFinite(lat) ? '&lat=' + lat : '')
                          + (Number.isFinite(lng) ? '&lng=' + lng : '');
 
@@ -257,6 +298,7 @@ async function index(req, res, next) {
                 fqs.set('limit', '50');
                 if (Number.isFinite(lat)) fqs.set('lat', String(lat));
                 if (Number.isFinite(lng)) fqs.set('lng', String(lng));
+                if (custPostcode)         fqs.set('postcode', custPostcode);
                 if (filters.sort)     fqs.set('sort',     filters.sort);
                 if (filters.rating)   fqs.set('rating',   String(filters.rating));
                 if (filters.max_km)   fqs.set('max_km',   String(filters.max_km));
@@ -264,10 +306,13 @@ async function index(req, res, next) {
                 if (filters.open_now) fqs.set('open_now', '1');
                 if (filters.veg)      fqs.set('veg',      '1');
                 if (filters.offer)    fqs.set('offer',    '1');
+                if (filters.price)    fqs.set('price',    filters.price);
+                if (filters.delivery) fqs.set('delivery', filters.delivery);
                 const r = await callApi(req, 'GET',
                     '/api/v1/marketplace/restaurants?' + fqs.toString());
                 liveFeatured = (r.body && r.body.status === 200 && r.body.data && r.body.data.restaurants) || [];
                 featuredMore = !!(r.body && r.body.status === 200 && r.body.data && r.body.data.has_more);
+                liveFacets   = (r.body && r.body.status === 200 && r.body.data && r.body.data.facets) || null;
             } else if (viewMode === 'cuisines') {
                 // Full categories grid — `all=1` opens up the listing
                 // so sub-categories (Chicken Kebab, Donner Kebab,
@@ -280,45 +325,62 @@ async function index(req, res, next) {
                     '/api/v1/marketplace/categories?all=1&limit=500');
                 liveCategories = (c.body && c.body.status === 200 && c.body.data && c.body.data.categories) || [];
             } else if (viewMode === 'restaurant') {
-                // Single-restaurant focus — fetch ALL marketplace
-                // restaurants once, find the one whose slug matches,
-                // then ask the api for that restaurant's products.
-                // Two calls in parallel: restaurants list + a
-                // products call we'll only USE if the restaurant
-                // turns out to exist. Keeps latency to one round trip.
-                const r = await callApi(req, 'GET',
-                    '/api/v1/marketplace/restaurants?limit=200' + latLng);
-                const list = (r.body && r.body.status === 200 && r.body.data && r.body.data.restaurants) || [];
-                liveRestaurant = list.find(x => String(x.slug || '').toLowerCase() === restaurantSlug) || null;
-                if (liveRestaurant) {
-                    // Forward product-level filters too (veg, price,
-                    // recommended/featured, offer) — they narrow the
-                    // restaurant's menu list.
-                    const pqs = new URLSearchParams();
-                    pqs.set('limit', '50');
-                    pqs.set('restaurant', String(liveRestaurant.id));
-                    if (Number.isFinite(lat)) pqs.set('lat', String(lat));
-                    if (Number.isFinite(lng)) pqs.set('lng', String(lng));
-                    if (filters.veg)         pqs.set('veg',         '1');
-                    if (filters.offer)       pqs.set('offer',       '1');
-                    if (filters.price)       pqs.set('price',       filters.price);
-                    if (filters.recommended) pqs.set('recommended', '1');
-                    if (filters.featured)    pqs.set('featured',    '1');
-                    const p = await callApi(req, 'GET',
-                        '/api/v1/marketplace/products?' + pqs.toString());
-                    liveForYou   = (p.body && p.body.status === 200 && p.body.data && p.body.data.products) || [];
-                    forYouMore   = !!(p.body && p.body.status === 200 && p.body.data && p.body.data.has_more);
-                }
+                // Single-restaurant page — ONE detail call returns the
+                // restaurant header/info, its menu categories, and the
+                // products grouped into sections. The api resolves the
+                // slug → company id itself.
+                const dqs = new URLSearchParams();
+                dqs.set('slug', restaurantSlug);
+                if (Number.isFinite(lat)) dqs.set('lat', String(lat));
+                if (Number.isFinite(lng)) dqs.set('lng', String(lng));
+                if (custPostcode)         dqs.set('postcode', custPostcode);
+                const d = await callApi(req, 'GET', '/api/v1/marketplace/restaurant?' + dqs.toString());
+                const dd = (d.body && d.body.status === 200 && d.body.data) || null;
+                liveRestaurant     = dd ? dd.restaurant : null;
+                liveMenuCategories = dd ? (dd.categories || []) : [];
+                liveSections       = dd ? (dd.sections   || []) : [];
+            } else if (viewMode === 'product') {
+                // Single-product page — product + its selectable option
+                // groups (sizes / toppings / add-ons) from the api.
+                const pdq = new URLSearchParams();
+                if (itemSlug && restScopeSlug) { pdq.set('item', itemSlug); pdq.set('rest', restScopeSlug); }
+                else if (productId)            { pdq.set('id', productId); }
+                if (Number.isFinite(lat)) pdq.set('lat', String(lat));
+                if (Number.isFinite(lng)) pdq.set('lng', String(lng));
+                const d = await callApi(req, 'GET', '/api/v1/marketplace/product?' + pdq.toString());
+                const dd = (d.body && d.body.status === 200 && d.body.data) || null;
+                liveProduct        = dd ? dd.product : null;
+                liveProductGroups  = dd ? (dd.groups || []) : [];
+                liveProductRelated = dd ? (dd.related || []) : [];
+            } else if (isPickup) {
+                // ── Pickup ─────────────────────────────────────────
+                // Fetch a wider set of restaurants WITH coords for the
+                // map, plus the cuisine rail. The cuisine filter still
+                // applies so a rail tap narrows the map; sidebar filters
+                // are not part of the pickup surface.
+                const pqs = new URLSearchParams();
+                pqs.set('limit', '50');
+                if (Number.isFinite(lat)) pqs.set('lat', String(lat));
+                if (Number.isFinite(lng)) pqs.set('lng', String(lng));
+                if (cuisine)              pqs.set('cuisine', cuisine);
+                const [rRes, cRes] = await Promise.all([
+                    callApi(req, 'GET', '/api/v1/marketplace/restaurants?' + pqs.toString()),
+                    callApi(req, 'GET', '/api/v1/marketplace/categories'),
+                ]);
+                liveFeatured   = (rRes.body && rRes.body.status === 200 && rRes.body.data && rRes.body.data.restaurants) || [];
+                featuredMore   = !!(rRes.body && rRes.body.status === 200 && rRes.body.data && rRes.body.data.has_more);
+                liveCategories = (cRes.body && cRes.body.status === 200 && cRes.body.data && cRes.body.data.categories) || [];
             } else {
                 // Default home (with optional ?cuisine= filter + any
                 // sidebar/sheet filters).
-                const out = await fetchMarketplace(req, lat, lng, cuisine, filters);
+                const out = await fetchMarketplace(req, lat, lng, cuisine, filters, custPostcode);
                 liveFeatured      = out.featured;
                 liveForYou        = out.for_you;
                 liveCategories    = out.categories;
                 liveSubCategories = out.sub_categories || [];
                 featuredMore      = !!out.featured_more;
                 forYouMore        = !!out.for_you_more;
+                liveFacets        = out.facets || null;
             }
         } catch (err) {
             // Don't fail the whole page — fall through to the static
@@ -535,12 +597,14 @@ async function index(req, res, next) {
     //                    clicked pill stays in place; it just gets
     //                    the active underline (added by home.js) and
     //                    its sub-pills are spliced in right after.
-    if (fromSearch) {
-        finalCuisines = finalCuisines.filter(c => {
-            const key = String(c.searchName || c.name || '').toLowerCase();
-            return key === cuisine;
-        });
-    }
+    // NOTE: a search-driven category pick used to NARROW the rail to
+    // just the chosen pill — that left a single isolated pill (with a
+    // stray active ring) and a broken-looking gap. We now ALWAYS keep
+    // the full rail; the chosen category is simply marked active in
+    // place (home.js) and the restaurants below are filtered to it —
+    // exactly like a direct pill tap. `fromSearch` is no longer used to
+    // filter the row.
+    void fromSearch;
     if (cuisine && liveSubCategories.length) {
         const target = cuisine.toLowerCase();
         const idx = finalCuisines.findIndex(c =>
@@ -558,7 +622,15 @@ async function index(req, res, next) {
         page_title:    null,                  // null → use brand.name as the title
         _layoutFile:   '../_layout',          // ejs-locals layout path (relative to this view)
         active_nav:    'home',                // header highlights "home" link
-        extra_js:      '/js/pages/home.js',   // per-page script the layout will emit
+        // Per-view script: pickup map, restaurant detail, product
+        // detail, or the home page bindings.
+        extra_js:      isPickup ? '/js/pages/pickup.js'
+                       : (viewMode === 'restaurant' ? '/js/pages/restaurant.js'
+                       : (viewMode === 'product'    ? '/js/pages/product.js'
+                       : '/js/pages/home.js')),
+        // Delivery (default) vs Pickup — drives the layout branch in
+        // views/site/index.ejs.
+        order_mode:    orderMode,
         // Suppress the layout's top promo strip on the home page —
         // the home view renders it lower down, after "Best offers
         // for you", per the user's layout request. Other pages keep
@@ -567,6 +639,9 @@ async function index(req, res, next) {
         user_location:    userLocation,
         cuisines:         finalCuisines,
         selected_cuisine: cuisine || null,
+        // Dynamic filter facet counts for the sidebar badges (null when
+        // the api was unreachable — the sidebar then hides the numbers).
+        facet_counts:     liveFacets,
         featured:         finalFeatured,
         for_you:          finalForYou,
         // has_more flags from the api → drive both the "View all"
@@ -583,6 +658,13 @@ async function index(req, res, next) {
         //   selected_restaurant: the restaurant object (when viewMode='restaurant')
         view_mode:           viewMode,
         selected_restaurant: liveRestaurant,
+        // Restaurant page: left-rail menu categories + product sections.
+        menu_categories:     liveMenuCategories,
+        menu_sections:       liveSections,
+        // Product page: the product + its selectable option groups + related.
+        product:             liveProduct,
+        product_groups:      liveProductGroups,
+        product_related:     liveProductRelated,
         how_it_works:        howItWorks,
     });
   } catch (err) {

@@ -138,7 +138,24 @@ function estimateDeliveryMinutes(km) {
     return months + '-' + (months + 1) + ' months';
 }
 
+/**
+ * estimateDeliveryMinutesNumeric
+ *
+ * What:  The numeric "centre" minutes behind estimateDeliveryMinutes —
+ *        PREP_MIN + km * KM_TO_MIN. Used to bucket a restaurant into a
+ *        delivery-time band (Up to 15 / 15-30 / 30-45 / 45+) for the
+ *        sidebar filter + its dynamic facet counts. Returns null for a
+ *        missing / negative distance.
+ * Type:  READ (pure).
+ */
+function estimateDeliveryMinutesNumeric(km) {
+    const d = Number(km);
+    if (!Number.isFinite(d) || d < 0) { return null; }
+    return PREP_MIN + d * KM_TO_MIN;
+}
+
 module.exports = {
     kmBetween,
     estimateDeliveryMinutes,
+    estimateDeliveryMinutesNumeric,
 };

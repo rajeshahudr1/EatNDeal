@@ -38,6 +38,63 @@ const distance       = require('../../Helpers/distance');
 const M              = require('../../Helpers/marketplace');
 
 /**
+ * resolveMpCategoryId
+ *
+ * What:  Maps a cuisine URL param (slug or normalised name, e.g.
+ *        "italian" / "bubble-tea" / "bubble tea") to a marketplace
+ *        category id in `mp_marketplace_category`. Comparison strips
+ *        spaces + hyphens + case so any of those forms match.
+ * Why:   The home cuisine pills now come from the global mp category
+ *        master; tapping one filters restaurants by which companies
+ *        are assigned to that mp category (mp_marketplace_category_assign).
+ * Type:  READ. Returns the id or null when nothing matches.
+ */
+// Delivery-time buckets keyed by the sidebar's data-filter suffix.
+// Each bound is on the numeric "centre" minutes from
+// distance.estimateDeliveryMinutesNumeric. Lower bound is exclusive
+// (except the first bucket, which starts at 0); upper is inclusive.
+// '60' is the open-ended 45+ band.
+const DELIVERY_BUCKETS = {
+    '15': [0,  15],
+    '30': [15, 30],
+    '45': [30, 45],
+    '60': [45, Infinity],
+};
+
+/**
+ * deliveryMinsInBucket
+ *
+ * What:  True when a restaurant's centre-minutes estimate falls in the
+ *        named bucket. Null minutes (no location / no coords) never
+ *        match — a time filter can't apply without a distance.
+ * Type:  READ (pure).
+ */
+function deliveryMinsInBucket(mins, key) {
+    const b = DELIVERY_BUCKETS[key];
+    if (!b || mins == null) { return false; }
+    const lower = b[0] === 0 ? -Infinity : b[0];
+    return mins > lower && mins <= b[1];
+}
+
+async function resolveMpCategoryId(cuisine) {
+    if (!cuisine) { return null; }
+    // Build a comparison key: lowercase, drop spaces + hyphens, then
+    // strip ONE trailing plural ("es"/"s"). The home pill carries the
+    // SINGULARISED searchName ("burger"), while the master stores the
+    // display name/slug as a plural ("Burgers"/"burgers"); collapsing
+    // both sides the same way makes them line up. Handles slug
+    // ("bubble-tea") and spaced name ("Bubble Tea") forms too.
+    const keyify = (s) => String(s || '').toLowerCase().replace(/[\s\-]+/g, '').replace(/(es|s)$/, '');
+    const want = keyify(cuisine);
+    if (!want) { return null; }
+    const rows = await db('mp_marketplace_category')
+        .where('status', 1)
+        .select('id', 'name', 'slug');
+    const hit = rows.find(r => keyify(r.slug) === want || keyify(r.name) === want);
+    return hit ? hit.id : null;
+}
+
+/**
  * list
  *
  * What:  Fetches eligible (company, branch) pairs, then maps each one
@@ -61,6 +118,10 @@ async function list(req, res) {
         const limit   = req.query.limit ? Math.min(50, Math.max(1, Number(req.query.limit))) : 24;
         const offset  = req.query.offset ? Math.max(0, Number(req.query.offset)) : 0;
         const cuisine = req.query.cuisine ? String(req.query.cuisine).trim().toLowerCase() : null;
+        const postcode = req.query.postcode ? String(req.query.postcode).trim() : null;
+        // Resolve the cuisine to a global marketplace-category id so we
+        // can filter by the company↔category assignment table.
+        const mpCategoryId = await resolveMpCategoryId(cuisine);
         // ── Phase-2 filter params (all optional) ───────────────────
         // Each maps 1:1 onto the chip / radio in the filter sidebar
         // and bottom sheet. Joi already enforced the value range.
@@ -71,19 +132,24 @@ async function list(req, res) {
         const openNow     = String(req.query.open_now || '') === '1';
         const vegOnly     = String(req.query.veg      || '') === '1';
         const hasOffer    = String(req.query.offer    || '') === '1';
+        // Price-for-one bucket (low ≤£6 / mid £6-12 / high >£12). A
+        // restaurant matches when it has a live marketplace product in
+        // that band — see the has_price_* flags below.
+        const priceBucket = req.query.price ? String(req.query.price).toLowerCase() : null;
+        // Delivery-time buckets — a comma list of bucket keys
+        // ("15,30,45,60"). A restaurant matches if its time estimate
+        // falls in ANY selected band (multi-select union). Replaces the
+        // old single max_min cap; max_min is still honoured for the
+        // mobile sheet which sends a single cap.
+        const deliveryBuckets = String(req.query.delivery || '')
+            .split(',').map(s => s.trim()).filter(s => DELIVERY_BUCKETS[s]);
         const hasUserLocation = Number.isFinite(lat) && Number.isFinite(lng);
-        // When we're going to sort by distance application-side, pull
-        // a larger candidate set so the nearest rows aren't trimmed by
-        // the SQL LIMIT before the sort runs. With ~6 companies in the
-        // marketplace today the upper cap is irrelevant; the bound
-        // future-proofs the endpoint at <= 200 rows / request. We also
-        // make sure the candidate pool covers the requested page —
-        // offset + limit + a small over-fetch so has_more can be set
-        // reliably (we need to know if at least one row exists past
-        // the slice we return).
-        const fetchLimit = hasUserLocation
-            ? Math.max(200, offset + limit + 1)
-            : (offset + limit + 1);
+        // We now apply the sidebar filters application-side (so we can
+        // also compute dynamic facet counts over the UNfiltered set),
+        // which means we need the full candidate set in one go. The set
+        // is bounded (marketplace companies near the user) so a single
+        // generous cap is safe and keeps the query a single round trip.
+        const CANDIDATE_CAP = 2000;
 
         // SELECT DISTINCT ON company.id keeps one row per company even
         // if Yii ever inserts more than one branch for the same brand.
@@ -152,6 +218,16 @@ async function list(req, res) {
               )) AS has_offer`
         );
 
+        // Price-bucket presence per company. Three correlated EXISTS
+        // flags (≤£6 / £6-12 / >£12) over live marketplace products,
+        // using the same COALESCE chain as Helpers/marketplace.pickPrice.
+        // They drive BOTH the "Price for one" filter and its dynamic
+        // facet counts.
+        const priceExpr = 'COALESCE(pb.marketplace_price, pb.online_platform_price, pb.price_after_tax, 0)';
+        const priceLowSubq  = db.raw(`EXISTS (SELECT 1 FROM products pb WHERE pb.company_id = c.id AND pb.show_marketplace = 1 AND pb.status = '1' AND ${priceExpr} <= 6) AS has_price_low`);
+        const priceMidSubq  = db.raw(`EXISTS (SELECT 1 FROM products pb WHERE pb.company_id = c.id AND pb.show_marketplace = 1 AND pb.status = '1' AND ${priceExpr} > 6 AND ${priceExpr} <= 12) AS has_price_mid`);
+        const priceHighSubq = db.raw(`EXISTS (SELECT 1 FROM products pb WHERE pb.company_id = c.id AND pb.show_marketplace = 1 AND pb.status = '1' AND ${priceExpr} > 12) AS has_price_high`);
+
         const rows = await db
             .from('company as c')
             .innerJoin('branch as b', 'b.company_id', 'c.id')
@@ -174,11 +250,17 @@ async function list(req, res) {
                 'b.postcode',
                 'b.closed_until',
                 'b.open_as_usual',
+                'b.start_time',
+                'b.end_time',
+                'b.delivery_waiting_time',
                 'b.branch_description',
                 hasVegSubq,
                 hasNonVegSubq,
                 avgRatingSubq,
                 hasOfferSubq,
+                priceLowSubq,
+                priceMidSubq,
+                priceHighSubq,
             )
             .where('c.is_marketplace', 1)
             .andWhere('c.is_active', 1)
@@ -186,109 +268,42 @@ async function list(req, res) {
             .whereNull('c.deleted_at')
             .andWhere('b.status', '<>', '2')
             // ── Cuisine filter ────────────────────────────────────
-            // When the home page is loaded with ?cuisine=<name>, only
-            // surface restaurants that actually have at least one
-            // marketplace-on product in a matching category. Keeps
-            // the row consistent with the products list below it.
+            // Primary path: the cuisine resolved to a global
+            // marketplace category → keep only companies ASSIGNED to
+            // it in mp_marketplace_category_assign.
+            // Fallback: the cuisine didn't match an mp category (e.g.
+            // an old per-company name) → match companies that have a
+            // marketplace product in a like-named per-company category.
             .modify(function (qb) {
                 if (!cuisine) { return; }
-                qb.whereExists(function () {
-                    this.select(db.raw('1'))
-                        .from('categories as cat')
-                        .innerJoin('product_product_category as ppc', 'ppc.category_id', 'cat.id')
-                        .innerJoin('products as p2', 'p2.id', 'ppc.product_id')
-                        .whereRaw('cat.company_id = c.id')
-                        .andWhereRaw('LOWER(cat.name) LIKE ?', ['%' + cuisine + '%'])
-                        .andWhere('ppc.status', '1')
-                        .andWhere('p2.show_marketplace', 1)
-                        .andWhere('p2.status', '1');
-                });
-            })
-            // ── Open Now ──────────────────────────────────────────
-            // Branch is currently accepting orders when:
-            //   • open_as_usual = 1   AND
-            //   • the closed flag is not set, OR a closed_until
-            //     timestamp has already passed.
-            .modify(function (qb) {
-                if (!openNow) { return; }
-                qb.andWhere('b.open_as_usual', 1);
-                qb.andWhere(function () {
-                    this.where('b.closed', '<>', 1).orWhereNull('b.closed');
-                });
-                qb.andWhere(function () {
-                    this.whereNull('b.closed_reopen_date')
-                        .orWhereRaw('b.closed_reopen_date <= NOW()');
-                });
-            })
-            // ── Pure veg ─────────────────────────────────────────
-            // Has at least one veg product AND no non-veg products.
-            // Combine the two existing EXISTS subqueries.
-            .modify(function (qb) {
-                if (!vegOnly) { return; }
-                qb.whereExists(function () {
-                    this.select(db.raw('1'))
-                        .from('products as vp')
-                        .whereRaw('vp.company_id = c.id')
-                        .andWhere('vp.status', '1')
-                        .andWhere('vp.show_marketplace', 1)
-                        .andWhere('vp.veg_non_veg', 1);
-                });
-                qb.whereNotExists(function () {
-                    this.select(db.raw('1'))
-                        .from('products as vp2')
-                        .whereRaw('vp2.company_id = c.id')
-                        .andWhere('vp2.status', '1')
-                        .andWhere('vp2.show_marketplace', 1)
-                        .andWhere(function () {
-                            this.whereNull('vp2.veg_non_veg').orWhere('vp2.veg_non_veg', '<>', 1);
-                        });
-                });
-            })
-            // ── Rating threshold ─────────────────────────────────
-            // Restaurants without any published rating are EXCLUDED
-            // when the user explicitly asked for "3.5+ rated" — a
-            // null rating can't pass a numeric floor.
-            .modify(function (qb) {
-                if (!minRating) { return; }
-                qb.whereExists(function () {
-                    this.select(db.raw('1'))
-                        .from('review_rating as rr2')
-                        .whereRaw('rr2.company_id = c.id')
-                        .andWhere('rr2.publish_online', 1)
-                        .groupBy('rr2.company_id')
-                        .havingRaw('AVG(rr2.rating) >= ?', [minRating]);
-                });
-            })
-            // ── Has offer ────────────────────────────────────────
-            // Mirror the boolean we already computed in hasOfferSubq —
-            // restrict to rows where it would have been true.
-            .modify(function (qb) {
-                if (!hasOffer) { return; }
-                qb.where(function () {
-                    this.whereExists(function () {
+                if (mpCategoryId) {
+                    qb.whereExists(function () {
                         this.select(db.raw('1'))
-                            .from('discounts as d')
-                            .whereRaw('d.company_id = c.id')
-                            .andWhere('d.status', 1)
-                            .andWhere(function () {
-                                this.whereNull('d.start_date').orWhereRaw('d.start_date <= CURRENT_DATE');
-                            })
-                            .andWhere(function () {
-                                this.whereNull('d.end_date').orWhereRaw('d.end_date >= CURRENT_DATE');
-                            });
-                    }).orWhereExists(function () {
-                        this.select(db.raw('1'))
-                            .from('products as op')
-                            .whereRaw('op.company_id = c.id')
-                            .andWhere('op.show_marketplace', 1)
-                            .andWhere('op.status', '1')
-                            .whereNotNull('op.offer')
-                            .andWhere('op.offer', '<>', '');
+                            .from('mp_marketplace_category_assign as mca')
+                            .whereRaw('mca.company_id = c.id')
+                            .andWhere('mca.category_id', mpCategoryId);
                     });
-                });
+                } else {
+                    qb.whereExists(function () {
+                        this.select(db.raw('1'))
+                            .from('categories as cat')
+                            .innerJoin('product_product_category as ppc', 'ppc.category_id', 'cat.id')
+                            .innerJoin('products as p2', 'p2.id', 'ppc.product_id')
+                            .whereRaw('cat.company_id = c.id')
+                            .andWhereRaw('LOWER(cat.name) LIKE ?', ['%' + cuisine + '%'])
+                            .andWhere('ppc.status', '1')
+                            .andWhere('p2.show_marketplace', 1)
+                            .andWhere('p2.status', '1');
+                    });
+                }
             })
+            // NOTE: the sidebar filters (open-now / veg / rating /
+            // offer / price / delivery-time / distance) are applied
+            // application-side further down — NOT here — so we can also
+            // compute dynamic facet counts over the unfiltered set.
+            // Only the cuisine narrowing happens in SQL (above).
             .orderBy([{ column: 'c.id', order: 'asc' }, { column: 'b.id', order: 'asc' }])
-            .limit(fetchLimit);
+            .limit(CANDIDATE_CAP);
 
         // De-dupe to one branch per company (in case JS array still has
         // multiple after the SQL — defensive).
@@ -299,6 +314,23 @@ async function list(req, res) {
             seen.add(r.company_id);
             return true;
         });
+
+        // ── Real delivery zones (store_delivery_charge_setup) ──────
+        // When the customer gave a postcode, load each branch's
+        // configured zones so we can resolve the REAL fee / min-order /
+        // deliverability per restaurant (not a distance guess).
+        const zonesByBranch = new Map();
+        if (postcode && uniq.length) {
+            const zoneRows = await db('store_delivery_charge_setup')
+                .whereIn('branch_id', uniq.map(r => r.branch_id))
+                .andWhere('status', 1)
+                .select('branch_id', 'postcode', 'charge', 'minimum_order', 'free_delivery_above');
+            zoneRows.forEach(z => {
+                const k = String(z.branch_id);
+                if (!zonesByBranch.has(k)) { zonesByBranch.set(k, []); }
+                zonesByBranch.get(k).push(z);
+            });
+        }
 
         const restaurants = uniq.map(r => {
             const name = String(r.company_name || r.branch_name || r.branch_trading_name || '').trim();
@@ -320,6 +352,10 @@ async function list(req, res) {
             // Coerce to a Number so the comparator below works
             // numerically (string compare would treat "10.0" < "4.0").
             const avgRating = r.avg_rating != null ? Number(r.avg_rating) : null;
+            // Real delivery info from the matched postcode zone.
+            const zones = zonesByBranch.get(String(r.branch_id)) || [];
+            const zone  = postcode ? M.matchDeliveryZone(postcode, zones) : null;
+            const wMins = M.deliveryMinutesFromWaiting(r.delivery_waiting_time);
             return {
                 id:              String(r.company_id),
                 slug:            r.domain_name ? M.slugify(r.domain_name) : M.slugify(name, r.company_id),
@@ -329,11 +365,24 @@ async function list(req, res) {
                 // to a friendly default until enough customers rate.
                 rating:          avgRating != null ? avgRating : 4.4,
                 offer:           r.has_offer ? 'Offer' : null,
-                isOpen:          M.isBranchOpen(r),
+                isOpen:          M.isOpenNow(r),
                 tint:            M.tintFor(r.company_id),
                 initial:         M.initialFor(name),
                 distanceKm:      km != null ? km : null,
-                deliveryMinutes: km != null ? distance.estimateDeliveryMinutes(km) : null,
+                // Real delivery time (merchant waiting time) when set,
+                // else the distance estimate as a fallback.
+                deliveryMinutes: wMins != null ? (wMins + ' min') : (km != null ? distance.estimateDeliveryMinutes(km) : null),
+                // Postcode-zone delivery facts. deliverable is true when
+                // no postcode was given (unknown) or a zone matched.
+                deliverable:      postcode ? !!zone : true,
+                deliveryFee:      zone ? Number(zone.charge) : null,
+                minOrder:         zone ? Number(zone.minimum_order) : null,
+                freeDeliveryOver: zone ? Number(zone.free_delivery_above) : null,
+                // Branch coordinates — used by the Pickup map to plot
+                // each restaurant by its real position. Null when the
+                // branch has no coords stored.
+                lat:             r.branch_lat != null && r.branch_lat !== '' ? Number(r.branch_lat) : null,
+                lng:             r.branch_lng != null && r.branch_lng !== '' ? Number(r.branch_lng) : null,
                 vegType,
                 // Banner first (`banner_image` lives under
                 // <co>/banner_image/), then logo (`business_image` →
@@ -343,33 +392,61 @@ async function list(req, res) {
                 image:           M.yiiImageUrl('banner', r.company_id, r.banner_image)
                                  || M.yiiImageUrl('logo', r.company_id, r.business_image)
                                  || null,
+                // ── Internal fields (stripped before the response) ──
+                // Used only for application-side filtering + facet
+                // counts; not part of the public card shape.
+                _mins:      km != null ? distance.estimateDeliveryMinutesNumeric(km) : null,
+                _priceLow:  !!r.has_price_low,
+                _priceMid:  !!r.has_price_mid,
+                _priceHigh: !!r.has_price_high,
             };
         });
 
-        // ── Application-side distance / time filters ───────────────
-        // SQL can't do Haversine without an extension. We've already
-        // computed km in JS, so apply max_km here — and let max_min
-        // ride on the same bucket (estimateDeliveryMinutes is a pure
-        // function of km, so we invert: max_min == 30 ≈ km ≤ 3, etc).
+        // ── Dynamic facet counts ───────────────────────────────────
+        // Counts are computed over the FULL candidate set (cuisine +
+        // location applied, but BEFORE the sidebar filters) so each
+        // badge stays stable regardless of what's currently ticked —
+        // it answers "how many restaurants match THIS option", which is
+        // what the sidebar numbers should show.
+        const facets = {
+            total:    restaurants.length,
+            delivery: { '15': 0, '30': 0, '45': 0, '60': 0 },
+            price:    { low: 0, mid: 0, high: 0 },
+            rating:   { '4.5': 0, '4.0': 0, '3.5': 0, '3.0': 0 },
+            veg: 0, open_now: 0, offer: 0,
+        };
+        restaurants.forEach(r => {
+            ['15', '30', '45', '60'].forEach(k => { if (deliveryMinsInBucket(r._mins, k)) { facets.delivery[k]++; } });
+            if (r._priceLow)  { facets.price.low++;  }
+            if (r._priceMid)  { facets.price.mid++;  }
+            if (r._priceHigh) { facets.price.high++; }
+            ['4.5', '4.0', '3.5', '3.0'].forEach(t => { if (r.rating >= Number(t)) { facets.rating[t]++; } });
+            if (r.vegType === 'pure-veg') { facets.veg++; }
+            if (r.isOpen)                 { facets.open_now++; }
+            if (r.offer)                  { facets.offer++; }
+        });
+
+        // ── Apply the active sidebar filters (application-side) ─────
+        // All computed from the same values shown on the card, so a
+        // restaurant the user sees rated 4.4 really does pass "4.0+",
+        // and a "15-30 min" pick really keeps only that band.
         let filtered = restaurants;
         if (Number.isFinite(maxKm) && maxKm > 0) {
             filtered = filtered.filter(r => r.distanceKm != null && r.distanceKm <= maxKm);
         }
-        if (Number.isFinite(maxMin) && maxMin > 0) {
-            // Use the helper to compute minutes from km, then test
-            // the LOW end of the bucket against the user's cap.
-            filtered = filtered.filter(r => {
-                if (r.distanceKm == null) { return false; }
-                const mins = distance.estimateDeliveryMinutesNumeric
-                    ? distance.estimateDeliveryMinutesNumeric(r.distanceKm)
-                    : null;
-                if (mins != null) { return mins <= maxMin; }
-                // Fallback: approximate — ~3 km ≈ 30 min as a rough
-                // city-traffic estimate. Same shape Helpers/distance
-                // uses internally.
-                return (r.distanceKm * 10) <= maxMin;
-            });
+        if (deliveryBuckets.length) {
+            filtered = filtered.filter(r => deliveryBuckets.some(k => deliveryMinsInBucket(r._mins, k)));
+        } else if (Number.isFinite(maxMin) && maxMin > 0) {
+            // Legacy single-cap (mobile sheet) — keep ≤ cap.
+            filtered = filtered.filter(r => r._mins != null && r._mins <= maxMin);
         }
+        if (openNow)   { filtered = filtered.filter(r => r.isOpen); }
+        if (vegOnly)   { filtered = filtered.filter(r => r.vegType === 'pure-veg'); }
+        if (hasOffer)  { filtered = filtered.filter(r => !!r.offer); }
+        if (minRating) { filtered = filtered.filter(r => r.rating >= minRating); }
+        if (priceBucket === 'low')  { filtered = filtered.filter(r => r._priceLow); }
+        if (priceBucket === 'mid')  { filtered = filtered.filter(r => r._priceMid); }
+        if (priceBucket === 'high') { filtered = filtered.filter(r => r._priceHigh); }
 
         // ── Sort ──────────────────────────────────────────────────
         // Default ('relevance' / unset) keeps the existing nearest-
@@ -398,13 +475,253 @@ async function list(req, res) {
         // Pagination slice [offset, offset+limit). has_more says
         // whether at least one row exists beyond this slice — the
         // home page renders the "See more" button only when true.
-        const sliced  = filtered.slice(offset, offset + limit);
+        // Strip the internal _-prefixed fields so the public card shape
+        // stays clean.
+        const sliced = filtered.slice(offset, offset + limit).map(r => {
+            const { _mins, _priceLow, _priceMid, _priceHigh, ...view } = r;
+            return view;
+        });
         const hasMore = filtered.length > offset + limit;
-        return H.successResponse(res, { restaurants: sliced, has_more: hasMore });
+        return H.successResponse(res, { restaurants: sliced, has_more: hasMore, facets });
     } catch (err) {
         H.log.error('marketplace.restaurants.list', err && err.message);
         return H.errorResponse(res, MSG.server.oops, 500);
     }
 }
 
-module.exports = { list };
+/**
+ * fmtClock
+ *
+ * What:  "11:00:00" / "23:00" → "11:00 AM" / "11:00 PM" for the
+ *        restaurant's opening-hours label. Returns null when the input
+ *        has no parseable HH:MM.
+ * Type:  READ (pure).
+ */
+function fmtClock(t) {
+    if (!t) { return null; }
+    const m = String(t).match(/(\d{1,2}):(\d{2})/);
+    if (!m) { return null; }
+    let h = parseInt(m[1], 10);
+    const min = m[2];
+    const ap = h >= 12 ? 'PM' : 'AM';
+    let h12 = h % 12; if (h12 === 0) { h12 = 12; }
+    return h12 + ':' + min + ' ' + ap;
+}
+
+/**
+ * detail
+ *
+ * What:  Full single-restaurant payload for the restaurant page:
+ *          { restaurant, categories, sections }
+ *        • restaurant — header/info (name, rating, cuisines, address,
+ *          phone, website, hours, open-now, distance, delivery-time,
+ *          banner, logo, coords).
+ *        • categories — the company's menu categories that actually
+ *          hold marketplace products (left-rail menu), Featured first.
+ *        • sections  — products grouped per category (+ a Featured
+ *          Items section built from is_featured products), each ready
+ *          to render as a card row.
+ * Type:  READ.
+ *
+ * Query (validated): id? | slug?, lat?, lng?.
+ */
+async function detail(req, res) {
+    try {
+        const lat   = req.query.lat != null ? Number(req.query.lat) : null;
+        const lng   = req.query.lng != null ? Number(req.query.lng) : null;
+        const postcode = req.query.postcode ? String(req.query.postcode).trim() : null;
+        const idArg = req.query.id ? Math.max(0, Number(req.query.id)) || null : null;
+        const slug  = req.query.slug ? String(req.query.slug).trim().toLowerCase() : null;
+
+        // ── Resolve the company id ─────────────────────────────────
+        let companyId = idArg;
+        if (!companyId && slug) {
+            const candidates = await db('company as c')
+                .where('c.is_marketplace', 1).andWhere('c.is_active', 1).whereNull('c.deleted_at')
+                .select('c.id', 'c.business_name', 'c.domain_name');
+            const hit = candidates.find(c => {
+                const s = c.domain_name ? M.slugify(c.domain_name) : M.slugify(c.business_name, c.id);
+                return s === slug;
+            });
+            companyId = hit ? hit.id : null;
+        }
+        if (!companyId) { return H.errorResponse(res, 'Restaurant not found.', 404); }
+
+        // ── Restaurant + primary branch ────────────────────────────
+        const row = await db('company as c')
+            .innerJoin('branch as b', 'b.company_id', 'c.id')
+            .where('c.id', companyId)
+            .andWhere('c.is_marketplace', 1)
+            .andWhere('c.is_active', 1)
+            .whereNull('c.deleted_at')
+            .andWhere('b.status', '<>', '2')
+            .select(
+                'c.id as company_id', 'c.business_name', 'c.domain_name', 'c.business_category',
+                'b.direction_address', 'b.address_1', 'b.address_2', 'b.city', 'b.postcode',
+                'b.contact_number', 'b.website', 'b.website_domain',
+                'b.start_time', 'b.end_time', 'b.delivery_waiting_time',
+                'b.banner_image', 'b.business_image',
+                'b.direction_latitude as branch_lat', 'b.direction_longitude as branch_lng',
+                'b.open_as_usual', 'b.closed_until',
+                db.raw(`(SELECT ROUND(AVG(rr.rating)::numeric, 1) FROM review_rating rr
+                          WHERE rr.company_id = c.id AND rr.publish_online = 1) AS avg_rating`),
+                db.raw(`(SELECT COUNT(*) FROM review_rating rr
+                          WHERE rr.company_id = c.id AND rr.publish_online = 1) AS rating_count`),
+            )
+            .orderBy('b.id', 'asc')
+            .first();
+        if (!row) { return H.errorResponse(res, 'Restaurant not found.', 404); }
+
+        const name = String(row.business_name || '').trim();
+        const km = distance.kmBetween(lat, lng, row.branch_lat, row.branch_lng);
+        const avgRating = row.avg_rating != null ? Number(row.avg_rating) : null;
+        const addr = [
+            row.direction_address || [row.address_1, row.address_2].filter(Boolean).join(', '),
+            row.city, row.postcode,
+        ].filter(Boolean).join(', ');
+        const open = fmtClock(row.start_time);
+        const close = fmtClock(row.end_time);
+
+        // Real delivery info — match the customer postcode to a zone.
+        let zone = null;
+        if (postcode) {
+            const zoneRows = await db('store_delivery_charge_setup')
+                .where('company_id', companyId).andWhere('status', 1)
+                .select('postcode', 'charge', 'minimum_order', 'free_delivery_above');
+            zone = M.matchDeliveryZone(postcode, zoneRows);
+        }
+        const wMins = M.deliveryMinutesFromWaiting(row.delivery_waiting_time);
+
+        const restaurant = {
+            id:              String(row.company_id),
+            slug:            row.domain_name ? M.slugify(row.domain_name) : M.slugify(name, row.company_id),
+            name,
+            cuisines:        M.cuisinesFor({ business_category: row.business_category }),
+            rating:          avgRating != null ? avgRating : 4.4,
+            ratingCount:     row.rating_count != null ? Number(row.rating_count) : 0,
+            isOpen:          M.isOpenNow(row),
+            distanceKm:      km != null ? km : null,
+            deliveryMinutes: wMins != null ? (wMins + ' min') : (km != null ? distance.estimateDeliveryMinutes(km) : null),
+            deliverable:      postcode ? !!zone : true,
+            deliveryFee:      zone ? Number(zone.charge) : null,
+            minOrder:         zone ? Number(zone.minimum_order) : null,
+            freeDeliveryOver: zone ? Number(zone.free_delivery_above) : null,
+            address:         addr,
+            phone:           row.contact_number || null,
+            website:         row.website || row.website_domain || null,
+            hours:           (open && close) ? (open + ' – ' + close) : null,
+            lat:             row.branch_lat != null && row.branch_lat !== '' ? Number(row.branch_lat) : null,
+            lng:             row.branch_lng != null && row.branch_lng !== '' ? Number(row.branch_lng) : null,
+            image:           M.yiiImageUrl('banner', row.company_id, row.banner_image) || null,
+            logo:            M.yiiImageUrl('logo', row.company_id, row.business_image) || null,
+            tint:            M.tintFor(row.company_id),
+            initial:         M.initialFor(name),
+        };
+
+        // ── Menu categories ────────────────────────────────────────
+        // Map every displayable category id → its name. The live data
+        // has duplicate category rows per name (one per branch), so we
+        // group sections by NORMALISED NAME below to avoid repeats.
+        const catRows = await db('categories as cat')
+            .where('cat.company_id', companyId)
+            .andWhere('cat.status', '1')
+            .andWhere(function () { this.where('cat.is_display_application_menu', 1).orWhereNull('cat.is_display_application_menu'); })
+            .select('cat.id', 'cat.name', 'cat.is_featured');
+        const catById = new Map();
+        catRows.forEach(c => {
+            catById.set(String(c.id), {
+                name: String(c.name || '').trim(),
+                key:  M.normaliseName(c.name),
+                feat: Number(c.is_featured) === 1,
+            });
+        });
+
+        // ── Products for the company, tagged with their category ────
+        const prodRows = await db('products as p')
+            .innerJoin('product_product_category as ppc', 'ppc.product_id', 'p.id')
+            .leftJoin(
+                db('product_image')
+                    .select('product_id', db.raw(`(
+                        SELECT url FROM product_image pi2
+                        WHERE pi2.product_id = product_image.product_id AND pi2.status = '1'
+                        ORDER BY pi2.is_primary DESC, pi2.id ASC LIMIT 1) AS url`))
+                    .where('status', '1').groupBy('product_id').as('pi'),
+                'pi.product_id', 'p.id',
+            )
+            .where('p.company_id', companyId)
+            .andWhere('p.show_marketplace', 1)
+            .andWhere('p.status', '1')
+            .andWhere('ppc.status', '1')
+            .orderBy([{ column: 'p.is_featured', order: 'desc' }, { column: 'p.is_recommended', order: 'desc' }, { column: 'p.id', order: 'asc' }])
+            .select(
+                'p.id as product_id', 'p.name as product_name', 'p.veg_non_veg',
+                'p.marketplace_price', 'p.online_platform_price', 'p.price_after_tax',
+                'p.is_recommended', 'p.is_featured', 'p.track_stock_level', 'ppc.category_id', 'pi.url as image_url',
+                db.raw("EXISTS (SELECT 1 FROM product_sold_out so WHERE so.product_id = p.id AND so.is_sold::text = '1') AS is_sold_out"),
+                db.raw("(SELECT COALESCE(SUM(si.quantity::numeric), 0) FROM product_store_inventory si WHERE si.product_id = p.id) AS stock_qty"),
+            );
+
+        const mapProd = (r) => {
+            // Out of stock when explicitly marked sold-out, OR it tracks
+            // stock and the counted quantity has run out.
+            const tracks = Number(r.track_stock_level) === 1;
+            const qty    = r.stock_qty != null ? Number(r.stock_qty) : null;
+            const outOfStock = !!r.is_sold_out || (tracks && qty != null && qty <= 0);
+            return {
+                id:            String(r.product_id),
+                name:          String(r.product_name || '').trim(),
+                slug:          M.slugify(r.product_name),
+                price:         M.pickPrice(r),
+                rating:        avgRating != null ? avgRating : 4.5,
+                veg:           M.isVegProduct(r),
+                isFeatured:    Number(r.is_featured) === 1,
+                isRecommended: Number(r.is_recommended) === 1,
+                inStock:       !outOfStock,
+                stockQty:      tracks ? qty : null,
+                image:         M.yiiImageUrl('product', companyId, r.image_url) || null,
+                tint:          M.tintFor(r.product_id),
+                initial:       M.initialFor(r.product_name),
+            };
+        };
+
+        // Group products by NORMALISED category name (merging duplicate
+        // category rows) + a Featured set from is_featured products.
+        const groups = new Map();   // key → { name, feat, seen:Set, products:[] }
+        const featured = [];
+        const seenFeat = new Set();
+        for (const r of prodRows) {
+            const pid = String(r.product_id);
+            if (Number(r.is_featured) === 1 && !seenFeat.has(pid)) { seenFeat.add(pid); featured.push(mapProd(r)); }
+            const cat = catById.get(String(r.category_id));
+            if (!cat || !cat.key) { continue; }     // not a displayable menu category
+            if (!groups.has(cat.key)) { groups.set(cat.key, { name: cat.name, feat: cat.feat, seen: new Set(), products: [] }); }
+            const g = groups.get(cat.key);
+            if (cat.feat) { g.feat = true; }
+            if (!g.seen.has(pid)) { g.seen.add(pid); g.products.push(mapProd(r)); }
+        }
+
+        // Featured categories first, then alphabetical.
+        const ordered = Array.from(groups.values())
+            .filter(g => g.products.length)
+            .sort((a, b) => (b.feat ? 1 : 0) - (a.feat ? 1 : 0) || a.name.localeCompare(b.name));
+
+        const sections = [];
+        const menu = [];
+        if (featured.length) {
+            sections.push({ id: 'featured', name: 'Featured Items', featured: true, products: featured.slice(0, 12) });
+            menu.push({ id: 'featured', name: 'Featured Items', featured: true });
+        }
+        ordered.forEach((g, i) => {
+            const id = 'cat-' + i;
+            sections.push({ id: id, name: g.name, featured: false, products: g.products });
+            menu.push({ id: id, name: g.name, featured: g.feat });
+        });
+
+        return H.successResponse(res, { restaurant, categories: menu, sections });
+    } catch (err) {
+        H.log.error('marketplace.restaurants.detail', err && err.message);
+        return H.errorResponse(res, MSG.server.oops, 500);
+    }
+}
+
+module.exports = { list, detail };

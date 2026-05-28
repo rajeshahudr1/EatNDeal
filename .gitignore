@@ -176,3 +176,8 @@ README.md
 web/.env.example
 api/.env.example
 api/.env.example
+web/public/service-worker.js
+
+# Local-only seed / one-off scripts — never committed (they write demo
+# data into the local DB). Keep them on the dev machine only.
+api/scripts/seed-*.js

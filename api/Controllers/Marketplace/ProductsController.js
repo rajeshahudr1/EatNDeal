@@ -29,6 +29,28 @@ const distance = require('../../Helpers/distance');
 const M        = require('../../Helpers/marketplace');
 
 /**
+ * resolveMpCategoryId
+ *
+ * What:  cuisine URL param (slug / normalised name) → mp category id.
+ *        Same matcher as RestaurantsController so the products rail
+ *        and the restaurants rail filter by the SAME cuisine mapping.
+ */
+async function resolveMpCategoryId(cuisine) {
+    if (!cuisine) { return null; }
+    // Same plural-robust key as RestaurantsController: lowercase, drop
+    // spaces + hyphens, strip ONE trailing plural so the singularised
+    // pill value ("burger") matches the master name/slug ("Burgers").
+    const keyify = (s) => String(s || '').toLowerCase().replace(/[\s\-]+/g, '').replace(/(es|s)$/, '');
+    const want = keyify(cuisine);
+    if (!want) { return null; }
+    const rows = await db('mp_marketplace_category')
+        .where('status', 1)
+        .select('id', 'name', 'slug');
+    const hit = rows.find(r => keyify(r.slug) === want || keyify(r.name) === want);
+    return hit ? hit.id : null;
+}
+
+/**
  * list
  *
  * What:  Returns the "For you" product rail. Price uses the chain in
@@ -50,6 +72,7 @@ async function list(req, res) {
         const limit   = req.query.limit ? Math.min(50, Math.max(1, Number(req.query.limit))) : 12;
         const offset  = req.query.offset ? Math.max(0, Number(req.query.offset)) : 0;
         const cuisine = req.query.cuisine ? String(req.query.cuisine).trim().toLowerCase() : null;
+        const mpCategoryId = await resolveMpCategoryId(cuisine);
         // Restaurant filter — limits the results to a single
         // company. Accepts an integer company id. The web side
         // resolves slug → id before calling this endpoint.
@@ -141,14 +164,27 @@ async function list(req, res) {
             // expansion uses.
             .modify(function (qb) {
                 if (!cuisine) { return; }
-                qb.whereExists(function () {
-                    this.select(db.raw('1'))
-                        .from('product_product_category as ppc')
-                        .innerJoin('categories as cat', 'cat.id', 'ppc.category_id')
-                        .whereRaw('ppc.product_id = p.id')
-                        .andWhere('ppc.status', '1')
-                        .andWhereRaw('LOWER(cat.name) LIKE ?', ['%' + cuisine + '%']);
-                });
+                if (mpCategoryId) {
+                    // Cuisine resolved to a global marketplace category →
+                    // show products from companies ASSIGNED to it.
+                    qb.whereExists(function () {
+                        this.select(db.raw('1'))
+                            .from('mp_marketplace_category_assign as mca')
+                            .whereRaw('mca.company_id = p.company_id')
+                            .andWhere('mca.category_id', mpCategoryId);
+                    });
+                } else {
+                    // Fallback: match the product's own per-company
+                    // category by like-name (legacy behaviour).
+                    qb.whereExists(function () {
+                        this.select(db.raw('1'))
+                            .from('product_product_category as ppc')
+                            .innerJoin('categories as cat', 'cat.id', 'ppc.category_id')
+                            .whereRaw('ppc.product_id = p.id')
+                            .andWhere('ppc.status', '1')
+                            .andWhereRaw('LOWER(cat.name) LIKE ?', ['%' + cuisine + '%']);
+                    });
+                }
             })
             // ── Restaurant filter ─────────────────────────────────
             // Single-restaurant focus page (/?restaurant=<slug> in
@@ -291,4 +327,257 @@ async function list(req, res) {
     }
 }
 
-module.exports = { list };
+/**
+ * optionPrice
+ *
+ * What:  First non-null of the tax-included → tax-excluded price for an
+ *        option row, coerced to a Number (0 when neither is set).
+ * Type:  READ (pure).
+ */
+function optionPrice(r) {
+    const v = r.price_tax_included != null && r.price_tax_included !== '' ? r.price_tax_included
+            : (r.price_tax_include  != null && r.price_tax_include  !== '' ? r.price_tax_include
+            : (r.price_tax_excluded != null && r.price_tax_excluded !== '' ? r.price_tax_excluded : 0));
+    const n = Number(v);
+    return Number.isFinite(n) ? n : 0;
+}
+
+/**
+ * detail
+ *
+ * What:  Single-product payload for the product page:
+ *          { product, groups }
+ *        • product — id, name, description, basePrice, image, veg,
+ *          restaurant {id, name, slug}.
+ *        • groups  — selectable option groups, unified from the two
+ *          Yii sources: product_variants_group (sizes / portions, by
+ *          product) and modifier_group via modifier_group_products
+ *          (toppings / add-ons). Each: { id, name, type:single|multi,
+ *          min, max, required, options:[{id,name,price,isDefault}] }.
+ * Type:  READ.
+ * Query (validated): id (required), lat?, lng?.
+ */
+async function detail(req, res) {
+    try {
+        // Resolve the product. Preferred (clean, no id in the URL):
+        // rest = restaurant slug + item = product-name slug. `id` is
+        // still accepted as an internal fallback.
+        let productId = req.query.id ? Math.max(0, Number(req.query.id)) || null : null;
+        const restSlug = req.query.rest ? String(req.query.rest).trim().toLowerCase() : null;
+        const itemSlug = req.query.item ? String(req.query.item).trim().toLowerCase() : null;
+        if (!productId && restSlug && itemSlug) {
+            const cands = await db('company as c')
+                .where('c.is_marketplace', 1).andWhere('c.is_active', 1).whereNull('c.deleted_at')
+                .select('c.id', 'c.business_name', 'c.domain_name');
+            const co = cands.find(c => (c.domain_name ? M.slugify(c.domain_name) : M.slugify(c.business_name, c.id)) === restSlug);
+            if (co) {
+                const prods = await db('products as p')
+                    .where('p.company_id', co.id).andWhere('p.show_marketplace', 1).andWhere('p.status', '1')
+                    .select('p.id', 'p.name');
+                const hit = prods.find(pr => M.slugify(pr.name) === itemSlug);
+                productId = hit ? hit.id : null;
+            }
+        }
+        if (!productId) { return H.errorResponse(res, 'Product not found.', 404); }
+
+        // ── Product + company (+ primary image) ────────────────────
+        const row = await db('products as p')
+            .innerJoin('company as c', 'c.id', 'p.company_id')
+            .leftJoin(
+                db('product_image')
+                    .select('product_id', db.raw(`(
+                        SELECT url FROM product_image pi2
+                        WHERE pi2.product_id = product_image.product_id AND pi2.status = '1'
+                        ORDER BY pi2.is_primary DESC, pi2.id ASC LIMIT 1) AS url`))
+                    .where('status', '1').groupBy('product_id').as('pi'),
+                'pi.product_id', 'p.id',
+            )
+            .where('p.id', productId)
+            .andWhere('p.show_marketplace', 1)
+            .andWhere('p.status', '1')
+            .andWhere('c.is_marketplace', 1)
+            .andWhere('c.is_active', 1)
+            .whereNull('c.deleted_at')
+            .select(
+                'p.id as product_id', 'p.name as product_name', 'p.product_description',
+                'p.veg_non_veg', 'p.marketplace_price', 'p.online_platform_price', 'p.price_after_tax', 'p.track_stock_level',
+                'c.id as company_id', 'c.business_name', 'c.domain_name', 'pi.url as image_url',
+                db.raw("EXISTS (SELECT 1 FROM product_sold_out so WHERE so.product_id = p.id AND so.is_sold::text = '1') AS is_sold_out"),
+                db.raw("(SELECT COALESCE(SUM(si.quantity::numeric), 0) FROM product_store_inventory si WHERE si.product_id = p.id) AS stock_qty"),
+            )
+            .first();
+        if (!row) { return H.errorResponse(res, 'Product not found.', 404); }
+
+        const name = String(row.product_name || '').trim();
+        const tracks = Number(row.track_stock_level) === 1;
+        const stockQty = row.stock_qty != null ? Number(row.stock_qty) : null;
+        const outOfStock = !!row.is_sold_out || (tracks && stockQty != null && stockQty <= 0);
+        const product = {
+            id:          String(row.product_id),
+            name,
+            slug:        M.slugify(name),
+            description: String(row.product_description || '').trim() || null,
+            basePrice:   M.pickPrice(row),
+            inStock:     !outOfStock,
+            stockQty:    tracks ? stockQty : null,
+            veg:         M.isVegProduct(row),
+            image:       M.yiiImageUrl('product', row.company_id, row.image_url) || null,
+            tint:        M.tintFor(row.product_id),
+            initial:     M.initialFor(name),
+            restaurant: {
+                id:   String(row.company_id),
+                name: String(row.business_name || '').trim(),
+                slug: row.domain_name ? M.slugify(row.domain_name) : M.slugify(row.business_name, row.company_id),
+            },
+        };
+
+        const groups = [];
+
+        // ── Variant groups (sizes / portions) — by product ─────────
+        const vGroups = await db('product_variants_group as g')
+            .where('g.product_id', productId)
+            .andWhere('g.status', '1')
+            .orderBy('g.ordering', 'asc')
+            .select('g.id', 'g.group_name', 'g.min_selection', 'g.max_selection', 'g.checkbox_type');
+        if (vGroups.length) {
+            const vOpts = await db('product_variants_group_options')
+                .whereIn('group_id', vGroups.map(g => g.id))
+                .andWhere('status', '1')
+                .orderBy('ordering', 'asc')
+                .select('id', 'group_id', 'option_name', 'price_tax_included', 'price_tax_excluded', 'is_default');
+            const byGroup = new Map();
+            vOpts.forEach(o => {
+                if (!byGroup.has(String(o.group_id))) { byGroup.set(String(o.group_id), []); }
+                byGroup.get(String(o.group_id)).push({
+                    id: String(o.id), name: String(o.option_name || '').trim(),
+                    // Variant defaults are stored as 'YES'/'NO' (modifiers use 1/2).
+                    price: optionPrice(o), isDefault: o.is_default === 'YES' || Number(o.is_default) === 1,
+                });
+            });
+            vGroups.forEach(g => {
+                const opts = byGroup.get(String(g.id)) || [];
+                if (!opts.length) { return; }
+                const max = Number(g.max_selection) || 0;
+                const min = Number(g.min_selection) || 0;
+                groups.push({
+                    id: 'v' + g.id,
+                    name: String(g.group_name || '').trim() || 'Choose an option',
+                    type: (max === 1 || String(g.checkbox_type) === 'radio') ? 'single' : 'multi',
+                    min, max, required: min >= 1,
+                    options: opts,
+                });
+            });
+        }
+
+        // ── Modifier groups (toppings / add-ons) — via link table ──
+        const mgLinks = await db('modifier_group_products')
+            .where('product_id', productId)
+            .andWhere('status', '1')
+            .orderBy('sequence', 'asc')
+            .select('modifier_group_id');
+        const mgIds = mgLinks.map(l => l.modifier_group_id);
+        if (mgIds.length) {
+            const mGroups = await db('modifier_group')
+                .whereIn('id', mgIds).andWhere('status', '1')
+                .select('id', 'group_name', 'has_modifier_limit', 'min_limit', 'max_limit');
+            const mOpts = await db('modifier_group_options')
+                .whereIn('modifier_group_id', mgIds).andWhere('status', '1')
+                .orderBy('sequence', 'asc')
+                .select('id', 'modifier_group_id', 'option_name', 'price_tax_include', 'price_tax_excluded', 'is_default');
+            const optByGroup = new Map();
+            mOpts.forEach(o => {
+                if (!optByGroup.has(String(o.modifier_group_id))) { optByGroup.set(String(o.modifier_group_id), []); }
+                optByGroup.get(String(o.modifier_group_id)).push({
+                    id: String(o.id), name: String(o.option_name || '').trim(),
+                    price: optionPrice(o), isDefault: Number(o.is_default) === 1,
+                });
+            });
+            // Preserve the link order.
+            const gById = new Map(mGroups.map(g => [String(g.id), g]));
+            mgIds.forEach(id => {
+                const g = gById.get(String(id));
+                if (!g) { return; }
+                const opts = optByGroup.get(String(g.id)) || [];
+                if (!opts.length) { return; }
+                const limited = Number(g.has_modifier_limit) === 1;
+                const max = limited ? (Number(g.max_limit) || 0) : 0;
+                const min = limited ? (Number(g.min_limit) || 0) : 0;
+                groups.push({
+                    id: 'm' + g.id,
+                    name: String(g.group_name || '').trim() || 'Add-ons',
+                    type: max === 1 ? 'single' : 'multi',
+                    min, max, required: min >= 1,
+                    options: opts,
+                });
+            });
+        }
+
+        // ── Meal-deal groups (combos — each option is another product) ──
+        const mdGroups = await db('product_meal_deals_group')
+            .where('product_id', productId).andWhere('status', '1')
+            .orderBy('ordering', 'asc')
+            .select('id', 'group_name', 'min_selection', 'max_selection');
+        if (mdGroups.length) {
+            const mdOpts = await db('product_meal_deals_group_options as o')
+                .innerJoin('products as ap', 'ap.id', 'o.assign_product_id')
+                .whereIn('o.group_id', mdGroups.map(g => g.id))
+                .andWhere('o.status', '1')
+                .orderBy('o.ordering', 'asc')
+                .select('o.id', 'o.group_id', 'ap.name as option_name', 'o.price_tax_included', 'o.price_tax_excluded');
+            const byG = new Map();
+            mdOpts.forEach(o => {
+                if (!byG.has(String(o.group_id))) { byG.set(String(o.group_id), []); }
+                byG.get(String(o.group_id)).push({ id: String(o.id), name: String(o.option_name || '').trim(), price: optionPrice(o), isDefault: false });
+            });
+            mdGroups.forEach(g => {
+                const opts = byG.get(String(g.id)) || [];
+                if (!opts.length) { return; }
+                const max = Number(g.max_selection) || 0;
+                const min = Number(g.min_selection) || 0;
+                groups.push({
+                    id: 'd' + g.id, name: String(g.group_name || '').trim() || 'Meal deal',
+                    type: max === 1 ? 'single' : 'multi', min, max, required: min >= 1, options: opts,
+                });
+            });
+        }
+
+        // ── Image gallery (all product photos) ─────────────────────
+        const imgRows = await db('product_image')
+            .where('product_id', productId).andWhere('status', '1')
+            .orderBy([{ column: 'is_primary', order: 'desc' }, { column: 'id', order: 'asc' }])
+            .select('url');
+        product.images = imgRows.map(r => M.yiiImageUrl('product', row.company_id, r.url)).filter(Boolean);
+        if (!product.image && product.images.length) { product.image = product.images[0]; }
+
+        // ── "You may also like" — other items from the same restaurant ──
+        const relRows = await db('products as p')
+            .leftJoin(
+                db('product_image')
+                    .select('product_id', db.raw(`(
+                        SELECT url FROM product_image pi3
+                        WHERE pi3.product_id = product_image.product_id AND pi3.status = '1'
+                        ORDER BY pi3.is_primary DESC, pi3.id ASC LIMIT 1) AS url`))
+                    .where('status', '1').groupBy('product_id').as('pir'),
+                'pir.product_id', 'p.id',
+            )
+            .where('p.company_id', row.company_id)
+            .andWhere('p.show_marketplace', 1)
+            .andWhere('p.status', '1')
+            .andWhereNot('p.id', productId)
+            .orderBy([{ column: 'p.is_featured', order: 'desc' }, { column: 'p.id', order: 'asc' }])
+            .limit(6)
+            .select('p.id', 'p.name', 'p.veg_non_veg', 'p.marketplace_price', 'p.online_platform_price', 'p.price_after_tax', 'pir.url as image_url');
+        const related = relRows.map(r => ({
+            id: String(r.id), name: String(r.name || '').trim(), slug: M.slugify(r.name), price: M.pickPrice(r),
+            veg: M.isVegProduct(r), image: M.yiiImageUrl('product', row.company_id, r.image_url) || null,
+            tint: M.tintFor(r.id), initial: M.initialFor(r.name),
+        }));
+
+        return H.successResponse(res, { product, groups, related });
+    } catch (err) {
+        H.log.error('marketplace.products.detail', err && err.message);
+        return H.errorResponse(res, MSG.server.oops, 500);
+    }
+}
+
+module.exports = { list, detail };

@@ -1,0 +1,191 @@
+/*
+ * components/pickup.css
+ *
+ * What:  The Pickup surface — a split layout: a scrolling restaurant
+ *        list on the left and a LOCAL stylized map on the right that
+ *        plots each restaurant by its real position relative to the
+ *        user (no street tiles → fully local, CSP-safe). Markers show
+ *        the rating; tapping one opens a popup card.
+ * Why:   Uber-Eats-style Pickup the user asked for. Delivery keeps the
+ *        normal feed; this only renders when order_mode === 'pickup'.
+ * Used:  views/partials/pickup.ejs + /js/pages/pickup.js.
+ *
+ * Layout:
+ *   Desktop ≥768px → list (left, scrolls) | map (right, fixed height).
+ *                    "Hide list" collapses the list → full-width map.
+ *   Mobile  <768px → list full-width; a "Map" button opens the map as
+ *                    a full-screen overlay; its toggle returns to list.
+ */
+
+/* ── Shell ─────────────────────────────────────────────────────────── */
+.pickup {
+    display: flex;
+    align-items: stretch;
+    height: calc(100dvh - var(--header-height-desktop, 72px));
+    overflow: hidden;
+}
+.pickup__list {
+    flex: 1 1 50%;
+    max-width: 52%;
+    overflow-y: auto;
+    padding: var(--space-5) var(--space-6) var(--space-10);
+}
+.pickup__map {
+    flex: 1 1 50%;
+    position: relative;
+    overflow: hidden;
+    border-left: 1px solid var(--color-border-soft);
+    background: #eef1f4;
+}
+
+/* Desktop: collapse the list → full-width map. */
+.pickup.is-list-collapsed .pickup__list { display: none; }
+.pickup.is-list-collapsed .pickup__map  { flex-basis: 100%; max-width: none; }
+
+/* ── List head ─────────────────────────────────────────────────────── */
+.pickup__head {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: var(--space-3); margin-bottom: var(--space-4);
+}
+.pickup__title { font-size: 1.6rem; font-weight: 800; margin: 0; }
+.pickup__empty { color: var(--color-text-soft); padding: var(--space-6) 0; }
+
+/* "Map" button — mobile only (desktop always shows the map). */
+.pickup__map-btn {
+    display: none;
+    align-items: center; gap: 6px;
+    background: var(--color-text); color: #fff;
+    border: 0; border-radius: 999px; padding: 8px 14px;
+    font-weight: 700; font-size: 0.85rem; cursor: pointer;
+}
+.pickup__map-btn svg { width: 16px; height: 16px; }
+
+/* ── Restaurant cards (horizontal, compact) ────────────────────────── */
+.pickup-cards { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-4); }
+.pickup-card__link {
+    display: flex; gap: var(--space-3); align-items: stretch;
+    background: #fff; border: 1px solid var(--color-border-soft);
+    border-radius: var(--radius-lg); overflow: hidden;
+    text-decoration: none; color: inherit;
+    transition: box-shadow 120ms ease, transform 120ms ease;
+}
+.pickup-card__link:hover { box-shadow: var(--shadow-2); transform: translateY(-1px); }
+.pickup-card__link.is-closed { opacity: 0.6; }
+.pickup-card__media {
+    position: relative; flex: 0 0 104px; width: 104px; min-height: 104px;
+    background: var(--color-bg-alt); display: grid; place-items: center; font-size: 1.8rem;
+}
+.pickup-card__media img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.pickup-card__badge {
+    position: absolute; top: 6px; left: 6px;
+    background: var(--color-primary); color: #fff;
+    font-size: 0.66rem; font-weight: 700; padding: 2px 6px; border-radius: 6px;
+}
+.pickup-card__body { flex: 1 1 auto; padding: var(--space-3); display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.pickup-card__row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.pickup-card__name { font-weight: 700; font-size: 1rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pickup-card__rating {
+    display: inline-flex; align-items: center; gap: 3px; flex: 0 0 auto;
+    background: var(--color-bg-alt); border-radius: 6px; padding: 2px 6px;
+    font-size: 0.8rem; font-weight: 700;
+}
+.pickup-card__cuisines { color: var(--color-text-soft); font-size: 0.82rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: 0; }
+.pickup-card__meta { color: var(--color-text-soft); font-size: 0.82rem; display: flex; gap: 4px; margin: 0; }
+/* Marker ↔ card cross-highlight (set by pickup.js). */
+.pickup-card.is-active .pickup-card__link { border-color: var(--color-primary); box-shadow: 0 0 0 2px rgba(229, 37, 42, 0.25); }
+
+/* ── Map plane + markers ───────────────────────────────────────────── */
+.pickup-map__plane {
+    position: absolute; inset: 0;
+    /* Subtle "map" grid so the panel reads as a map without tiles. */
+    background-color: #f4f6f8;
+    background-image:
+        repeating-linear-gradient(0deg,  rgba(0,0,0,0.04) 0 1px, transparent 1px 44px),
+        repeating-linear-gradient(90deg, rgba(0,0,0,0.04) 0 1px, transparent 1px 44px);
+    cursor: grab;
+    touch-action: none;   /* let pointer-drag pan instead of scrolling */
+}
+.pickup-map__plane.is-grabbing { cursor: grabbing; }
+
+/* Zoom controls (top-right) — spread / cluster the markers. */
+.pickup-map__zoom {
+    position: absolute; top: 12px; right: 12px; z-index: 7;
+    display: flex; flex-direction: column;
+    background: #fff; border-radius: 10px; overflow: hidden;
+    box-shadow: var(--shadow-2);
+}
+.pickup-map__zoom button {
+    width: 40px; height: 40px; border: 0; background: #fff; cursor: pointer;
+    color: var(--color-text); display: grid; place-items: center;
+}
+.pickup-map__zoom button + button { border-top: 1px solid var(--color-border-soft); }
+.pickup-map__zoom button:hover { background: var(--color-bg-alt); }
+.pickup-map__you {
+    position: absolute; transform: translate(-50%, -50%); z-index: 3;
+    width: 18px; height: 18px; border-radius: 50%;
+    background: var(--color-primary); border: 3px solid #fff;
+    box-shadow: 0 0 0 4px rgba(229, 37, 42, 0.2);
+}
+.pickup-marker { position: absolute; transform: translate(-50%, -100%); z-index: 2; cursor: pointer; }
+.pickup-marker__pill {
+    display: flex; align-items: center; gap: 3px; white-space: nowrap;
+    background: #fff; border: 1px solid var(--color-border); border-radius: 999px;
+    padding: 3px 9px; font-weight: 700; font-size: 0.8rem; color: var(--color-text);
+    box-shadow: var(--shadow-1);
+}
+.pickup-marker__pill svg { width: 11px; height: 11px; color: #1C1C1C; }
+.pickup-marker::after {
+    content: ""; position: absolute; left: 50%; bottom: -5px; transform: translateX(-50%);
+    border-left: 5px solid transparent; border-right: 5px solid transparent;
+    border-top: 6px solid #fff;
+}
+.pickup-marker:hover { z-index: 4; }
+.pickup-marker.is-active { z-index: 5; }
+.pickup-marker.is-active .pickup-marker__pill { background: var(--color-primary); color: #fff; border-color: var(--color-primary); }
+.pickup-marker.is-active .pickup-marker__pill svg { color: #fff; }
+.pickup-marker.is-active::after { border-top-color: var(--color-primary); }
+
+/* ── Popup card (opens on marker tap) ──────────────────────────────── */
+.pickup-map__popup {
+    position: absolute; z-index: 6; width: 248px;
+    background: #fff; border-radius: var(--radius-md); overflow: hidden;
+    box-shadow: var(--shadow-3); text-decoration: none; color: inherit;
+}
+.pickup-map__popup[hidden] { display: none; }
+.pickup-popup__img { display: block; height: 116px; background: var(--color-bg-alt); position: relative; }
+.pickup-popup__img img { width: 100%; height: 100%; object-fit: cover; }
+.pickup-popup__initial { position: absolute; inset: 0; display: grid; place-items: center; font-size: 2rem; }
+.pickup-popup__close {
+    position: absolute; top: 6px; right: 6px; z-index: 2;
+    width: 26px; height: 26px; border-radius: 50%; border: 0;
+    background: rgba(0,0,0,0.55); color: #fff; cursor: pointer; font-size: 1rem; line-height: 1;
+}
+.pickup-popup__body { padding: var(--space-3); display: block; }
+.pickup-popup__row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.pickup-popup__name { font-weight: 700; font-size: 0.95rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pickup-popup__rating { display: inline-flex; align-items: center; gap: 3px; font-weight: 700; font-size: 0.8rem; flex: 0 0 auto; }
+.pickup-popup__meta { color: var(--color-text-soft); font-size: 0.82rem; margin: 4px 0 0; }
+
+/* ── Map toggle (Hide/Show list — desktop; close map — mobile) ─────── */
+.pickup-map__toggle {
+    position: absolute; top: 12px; left: 12px; z-index: 7;
+    display: inline-flex; align-items: center; gap: 6px;
+    background: #fff; border: 1px solid var(--color-border); border-radius: 999px;
+    padding: 8px 14px; font-weight: 700; font-size: 0.85rem; cursor: pointer;
+    box-shadow: var(--shadow-2);
+}
+
+/* ── Mobile ────────────────────────────────────────────────────────── */
+@media (max-width: 767px) {
+    .pickup { display: block; height: auto; overflow: visible; }
+    .pickup__list { max-width: none; overflow: visible; padding: var(--space-3) var(--space-3) var(--space-10); }
+    .pickup__map-btn { display: inline-flex; }
+
+    /* Map hidden until the user taps "Map" → then full-screen overlay. */
+    .pickup__map { display: none; }
+    .pickup.is-map-only .pickup__list { display: none; }
+    .pickup.is-map-only .pickup__map {
+        display: block; position: fixed; left: 0; right: 0; bottom: 0; top: 68px;
+        height: auto; z-index: 60; border-left: 0;
+    }
+}

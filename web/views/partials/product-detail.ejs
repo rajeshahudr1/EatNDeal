@@ -1,0 +1,172 @@
+<%#
+  views/partials/product-detail.ejs
+
+  What:  Rich single-product page built to the supplied mockup:
+           • left   — image + thumbnail gallery
+           • center — veg, name, rating, price, description, the product's
+                      selectable OPTION GROUPS (sizes / sauces / add-ons /
+                      meal deals — single or multi, min/max enforced), a
+                      customization note, and "You may also like"
+           • right  — "Your order": THIS item with its chosen options, a
+                      quantity stepper, the live line total + Add to cart
+  Why:   The user supplied this layout and asked for it (web + mobile PWA),
+         driven by the real option data. (Multi-item cart + checkout is a
+         later milestone — this panel summarises the current item only.)
+  Data:  SiteController passes `product` + `product_groups` + (optionally)
+         related items. JS = /js/pages/product.js.
+-%>
+<% if (!product) { %>
+<section class="section"><p class="section__empty">We couldn't find that item. <a href="/" data-action="view-home">Back to home</a>.</p></section>
+<% } else { %>
+<% var p = product; %>
+<% var groups = (typeof product_groups !== 'undefined' && product_groups) ? product_groups : []; %>
+<% var related = (typeof product_related !== 'undefined' && product_related) ? product_related : []; %>
+<% var imgs = (p.images && p.images.length) ? p.images : (p.image ? [p.image] : []); %>
+<% var sym = brand.currencySymbol; %>
+<div class="pd" data-product
+     data-base-price="<%= (typeof p.basePrice === 'number' ? p.basePrice : 0) %>"
+     data-currency="<%= sym %>"
+     data-name="<%= p.name %>"
+     data-image="<%= p.image || '' %>"
+     data-instock="<%= p.inStock === false ? '0' : '1' %>">
+
+    <%# Breadcrumb %>
+    <nav class="pd-crumbs" aria-label="Breadcrumb">
+        <a href="/">Home</a>
+        <span aria-hidden="true">›</span>
+        <a href="/?restaurant=<%= encodeURIComponent(p.restaurant.slug) %>"><%= p.restaurant.name %></a>
+        <span aria-hidden="true">›</span>
+        <span class="pd-crumbs__current"><%= p.name %></span>
+    </nav>
+
+    <div class="pd__grid">
+
+        <%# ── Left: gallery ─────────────────────────────────────── %>
+        <div class="pd__gallery">
+            <div class="pd-gallery__main" data-tint="<%= p.tint %>" data-gallery-main>
+                <% if (imgs.length) { %><img src="<%= imgs[0] %>" alt="<%= p.name %>" loading="lazy" data-img-fallback><% } else { %><span class="pd-gallery__initial" aria-hidden="true"><%= p.initial %></span><% } %>
+            </div>
+            <% if (imgs.length > 1) { %>
+            <ul class="pd-gallery__thumbs" role="list">
+                <% imgs.slice(0, 5).forEach(function (src, i) { %>
+                    <li>
+                        <button type="button" class="pd-gallery__thumb<%= i === 0 ? ' is-active' : '' %>" data-gallery-thumb="<%= src %>">
+                            <img src="<%= src %>" alt="" loading="lazy" data-img-fallback>
+                        </button>
+                    </li>
+                <% }); %>
+            </ul>
+            <% } %>
+        </div>
+
+        <%# ── Center: details + options ─────────────────────────── %>
+        <div class="pd__main">
+            <span class="pd-veg <%= p.veg ? 'is-veg' : 'is-nonveg' %>" aria-label="<%= p.veg ? 'Vegetarian' : 'Non-vegetarian' %>"></span>
+            <h1 class="pd__name"><%= p.name %></h1>
+            <p class="pd__rating">
+                <span class="pd__stars"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg> <%= p.rating %></span>
+                <% if (p.ratingCount) { %><span class="pd__rating-count">(<%= p.ratingCount %>+)</span><% } %>
+            </p>
+            <p class="pd__price"><%= sym %><%= (typeof p.basePrice === 'number' ? p.basePrice : 0).toFixed(2) %></p>
+            <% if (p.inStock === false) { %>
+                <p class="pd__oos">Out of stock — currently unavailable</p>
+            <% } else if (typeof p.stockQty === 'number' && p.stockQty > 0 && p.stockQty <= 5) { %>
+                <p class="pd__stock">Only <%= p.stockQty %> left</p>
+            <% } %>
+            <% if (p.description) { %><p class="pd__desc"><%= p.description %></p><% } %>
+
+            <%# Option groups %>
+            <% groups.forEach(function (g) { %>
+                <% var hasDefault = g.options.some(function (o) { return o.isDefault; }); var single = g.type === 'single'; %>
+                <fieldset class="pd-group" data-group="<%= g.id %>" data-type="<%= g.type %>" data-min="<%= g.min %>" data-max="<%= g.max %>">
+                    <legend class="pd-group__legend">
+                        <span class="pd-group__name"><%= g.name %></span>
+                        <span class="pd-group__hint">
+                            <% if (g.required) { %><span class="pd-group__req">Required</span><% } else { %>Optional<% } %>
+                            <% if (single) { %> · Select 1<% } else if (g.max > 0) { %> · Up to <%= g.max %><% } %>
+                        </span>
+                    </legend>
+                    <div class="pd-group__opts">
+                        <% g.options.forEach(function (o, i) { %>
+                            <% var checked = o.isDefault || (single && g.required && !hasDefault && i === 0); %>
+                            <label class="pd-opt">
+                                <input type="<%= single ? 'radio' : 'checkbox' %>" name="grp-<%= g.id %>" value="<%= o.id %>" data-price="<%= o.price %>" data-name="<%= o.name %>" <%= checked ? 'checked' : '' %>>
+                                <span class="pd-opt__mark" aria-hidden="true"></span>
+                                <span class="pd-opt__name"><%= o.name %></span>
+                                <% if (o.price > 0) { %><span class="pd-opt__price">+<%= sym %><%= o.price.toFixed(2) %></span><% } %>
+                            </label>
+                        <% }); %>
+                    </div>
+                </fieldset>
+            <% }); %>
+
+            <%# Customization note → maps to orders_items.remark on checkout %>
+            <label class="pd-note">
+                <span class="pd-note__label">Customization note (optional)</span>
+                <textarea class="pd-note__input" data-note maxlength="120" rows="3" placeholder="Add any special instructions…"></textarea>
+                <span class="pd-note__count"><span data-note-count>0</span>/120</span>
+            </label>
+
+            <%# You may also like %>
+            <% if (related.length) { %>
+            <section class="pd-related">
+                <h2 class="pd-related__title">You may also like</h2>
+                <ul class="pd-related__list" role="list">
+                    <% related.slice(0, 6).forEach(function (rp) { %>
+                        <li class="pd-related__item">
+                            <a class="pd-related__card" href="/?rest=<%= encodeURIComponent(p.restaurant.slug) %>&item=<%= encodeURIComponent(rp.slug || '') %>">
+                                <span class="pd-related__media" data-tint="<%= rp.tint %>">
+                                    <% if (rp.image) { %><img src="<%= rp.image %>" alt="" loading="lazy" data-img-fallback><% } else { %><span aria-hidden="true"><%= rp.initial %></span><% } %>
+                                </span>
+                                <span class="pd-related__name"><%= rp.name %></span>
+                                <span class="pd-related__price"><%= sym %><%= (typeof rp.price === 'number' ? rp.price : 0).toFixed(2) %></span>
+                            </a>
+                        </li>
+                    <% }); %>
+                </ul>
+            </section>
+            <% } %>
+        </div>
+
+        <%# ── Right: this-item order summary ────────────────────── %>
+        <aside class="pd__order">
+            <div class="pd-order__card">
+                <h2 class="pd-order__title">Your order</h2>
+                <div class="pd-order__item">
+                    <span class="pd-order__thumb" data-tint="<%= p.tint %>">
+                        <% if (p.image) { %><img src="<%= p.image %>" alt="" loading="lazy" data-img-fallback><% } else { %><span aria-hidden="true"><%= p.initial %></span><% } %>
+                    </span>
+                    <div class="pd-order__info">
+                        <p class="pd-order__name"><%= p.name %></p>
+                        <p class="pd-order__opts" data-selected-summary></p>
+                    </div>
+                    <span class="pd-order__line" data-line-total><%= sym %><%= (typeof p.basePrice === 'number' ? p.basePrice : 0).toFixed(2) %></span>
+                </div>
+                <div class="pd-qty">
+                    <span class="pd-qty__label">Quantity</span>
+                    <div class="pd-qty__stepper">
+                        <button type="button" class="pd-qty__btn" data-action="pd-qty-dec" aria-label="Decrease quantity">−</button>
+                        <span class="pd-qty__value" data-qty>1</span>
+                        <button type="button" class="pd-qty__btn" data-action="pd-qty-inc" aria-label="Increase quantity">+</button>
+                    </div>
+                </div>
+                <div class="pd-order__totals">
+                    <div class="pd-order__row"><span>Subtotal</span><span data-subtotal><%= sym %><%= (typeof p.basePrice === 'number' ? p.basePrice : 0).toFixed(2) %></span></div>
+                </div>
+                <button type="button" class="pd-add pd-add--panel" data-action="pd-add">
+                    <span>Add to cart</span>
+                    <span class="pd-add__total" data-total><%= sym %><%= (typeof p.basePrice === 'number' ? p.basePrice : 0).toFixed(2) %></span>
+                </button>
+            </div>
+        </aside>
+    </div>
+
+    <%# Sticky add bar — mobile only (the right panel carries Add on desktop) %>
+    <div class="pd-bar">
+        <button type="button" class="pd-add" data-action="pd-add">
+            <span>Add to cart</span>
+            <span class="pd-add__total" data-total><%= sym %><%= (typeof p.basePrice === 'number' ? p.basePrice : 0).toFixed(2) %></span>
+        </button>
+    </div>
+</div>
+<% } %>

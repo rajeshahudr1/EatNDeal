@@ -258,30 +258,28 @@
             }));
         });
         prods.forEach(function (p) {
-            // Per the user UX: clicking a dish should NOT take you to
-            // a specific restaurant — it should show "everything like
-            // this dish", i.e. land on home filtered by that dish's
-            // CATEGORY. We treat the row as a category pick using the
-            // product's primary category. Falls back to the dish name
-            // itself when the api couldn't determine a category.
-            var catName       = p.categoryName       || p.name || '';
-            var catSearchName = p.categorySearchName || (p.name || '').toLowerCase();
+            // A dish goes to its own PRODUCT page (size / toppings / qty),
+            // via the clean rest+item slug URL (no id).
+            var pHref = (p.slug && p.restaurantSlug)
+                ? ('/?rest=' + encodeURIComponent(p.restaurantSlug) + '&item=' + encodeURIComponent(p.slug))
+                : ('/?product=' + encodeURIComponent(p.id));
             resultsEl.appendChild(rowFor({
-                action: 'pick-category',
-                href:   '/?cuisine=' + encodeURIComponent(catSearchName) + '&from=search',
-                dataName: catName,
-                dataSearchName: catSearchName,
+                action: 'pick-result',
+                href:   pHref,
+                dataName: p.name,
                 image:  p.image,
                 initial: p.initial,
                 name:   p.name,
-                sub:    catName ? ('Dish · in ' + catName) : ('Dish · ' + p.restaurant),
+                sub:    p.restaurant ? ('Dish · ' + p.restaurant) : 'Dish',
                 query:  query,
             }));
         });
         rests.forEach(function (r) {
+            // A restaurant goes to its detail page.
             resultsEl.appendChild(rowFor({
                 action: 'pick-result',
-                href:   '/restaurant/' + encodeURIComponent(r.slug || ''),
+                href:   '/?restaurant=' + encodeURIComponent(r.slug || ''),
+                dataName: r.name,
                 image:  r.image,
                 initial: r.initial,
                 name:   r.name,
@@ -397,11 +395,10 @@
         var term = String(name || searchName || '').trim();
         if (term) { rememberSearch(term); }
         var slug = String(searchName || term || '').toLowerCase();
-        // `from=search` tells SiteController this was a search-driven
-        // pick, so it moves the chosen pill to position 0. A direct
-        // pill-click on the home page omits this flag and the pill
-        // stays in place.
-        var nextUrl = '/?cuisine=' + encodeURIComponent(slug) + '&from=search';
+        // Navigate exactly like a direct pill tap: the full cuisine rail
+        // stays, this category is marked active in place, and the feed
+        // below filters to it. (No more narrowing the rail to one pill.)
+        var nextUrl = '/?cuisine=' + encodeURIComponent(slug);
         window.location.assign(nextUrl);
     }
 
@@ -600,8 +597,11 @@
                 pickCategory(catEl.getAttribute('data-name'), catEl.getAttribute('data-search-name'));
                 return;
             }
-            // pick-result rows: let the browser follow the anchor
-            // href as a normal navigation.
+            // pick-result rows (restaurant / product) → remember the
+            // term, then let the browser follow the anchor href as a
+            // normal navigation to the detail page.
+            var resultEl = t.closest && t.closest('[data-action="pick-result"]');
+            if (resultEl) { rememberSearch(resultEl.getAttribute('data-name') || ''); return; }
         });
     }
 

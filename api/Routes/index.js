@@ -215,11 +215,22 @@ const SearchCtl      = require('../Controllers/Marketplace/SearchController');
 const {
     listQuerySchema:   marketplaceListQuery,
     searchQuerySchema: marketplaceSearchQuery,
+    detailQuerySchema: marketplaceDetailQuery,
 } = require('../Validators/marketplace');
 
 router.get('/marketplace/restaurants',
     validateQuery(marketplaceListQuery),
     RestaurantsCtl.list);
+
+// Single restaurant detail page (info + menu categories + products).
+router.get('/marketplace/restaurant',
+    validateQuery(marketplaceDetailQuery),
+    RestaurantsCtl.detail);
+
+// Single product detail page (product + selectable option groups).
+router.get('/marketplace/product',
+    validateQuery(marketplaceDetailQuery),
+    ProductsCtl.detail);
 
 router.get('/marketplace/products',
     validateQuery(marketplaceListQuery),

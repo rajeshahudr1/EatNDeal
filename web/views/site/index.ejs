@@ -17,8 +17,16 @@
   Controller passes extra_js: '/js/pages/home.js'.
 -%>
 <% var __viewMode = (typeof view_mode !== 'undefined' && view_mode) ? view_mode : ''; %>
+<% var __order   = (typeof order_mode !== 'undefined' && order_mode) ? order_mode : 'delivery'; %>
+<% var __pickup  = (__order === 'pickup' && !__viewMode); %>
 
-<% if (!__viewMode) { %>
+<% if (__pickup) { %>
+<%# ══════════════════════════════════════════════════════════════════
+    PICKUP — split list + local stylized map
+   ══════════════════════════════════════════════════════════════════ %>
+<%- include('../partials/pickup') -%>
+
+<% } else if (!__viewMode) { %>
 <%# ══════════════════════════════════════════════════════════════════
     DEFAULT HOME — full mockup design
    ══════════════════════════════════════════════════════════════════ %>
@@ -38,55 +46,8 @@
             <span>Filters</span>
         </button>
 
-        <%# ── HERO ─────────────────────────────────────────────── %>
-        <section class="hero-v2" aria-labelledby="hero-v2-title">
-            <div class="hero-v2__copy">
-                <span class="hero-v2__badge">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-                    FAST DELIVERY
-                </span>
-                <h1 id="hero-v2-title" class="hero-v2__title">Delicious food,<br><em>delivered to you</em></h1>
-                <p class="hero-v2__subtitle">Your favorite restaurants and cuisines at your doorstep in minutes.</p>
-
-                <div class="hero-v2__actions">
-                    <button type="button" class="hero-v2__deliver" data-action="open-location-modal">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--color-primary)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s7-7.5 7-13a7 7 0 0 0-14 0c0 5.5 7 13 7 13z"/><circle cx="12" cy="9" r="2.5"/></svg>
-                        <span>
-                            <span class="hero-v2__deliver-label">Deliver to</span>
-                            <span class="hero-v2__deliver-value"><%= (user_location && user_location.label) ? user_location.label : 'Set your location' %></span>
-                        </span>
-                    </button>
-                    <button type="button" class="hero-v2__locate" data-action="open-location-modal">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
-                        Locate me
-                    </button>
-                </div>
-
-                <div class="hero-v2__usps">
-                    <span class="hero-v2__usp"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><polyline points="9 12 11 14 16 9"/></svg>No minimum order</span>
-                    <span class="hero-v2__usp"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>Live tracking</span>
-                    <span class="hero-v2__usp"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>100% secure payment</span>
-                    <span class="hero-v2__usp"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="1 4 1 10 7 10"/><path d="M3.5 15a9 9 0 1 0 2.1-9.4L1 10"/></svg>Easy returns</span>
-                </div>
-            </div>
-
-            <%# Food collage — tinted discs as photo placeholders. %>
-            <div class="hero-v2__art" aria-hidden="true">
-                <svg class="hero-v2__pin" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C7.6 2 4 5.6 4 10c0 5.5 8 12 8 12s8-6.5 8-12c0-4.4-3.6-8-8-8z"/><circle cx="12" cy="10" r="2.8" fill="#fff"/></svg>
-                <span class="hero-v2__disc hero-v2__disc--a">🍜</span>
-                <span class="hero-v2__disc hero-v2__disc--c">🍕</span>
-                <span class="hero-v2__disc hero-v2__disc--b">🍔</span>
-                <span class="hero-v2__disc hero-v2__disc--d">🥤</span>
-                <div class="hero-v2__track">
-                    <span class="hero-v2__track-dot">🛵</span>
-                    <span>
-                        <span class="hero-v2__track-title">Your order is on the way</span><br>
-                        <span class="hero-v2__track-sub">Arriving in 18 mins · </span>
-                        <span class="hero-v2__track-link">Track order →</span>
-                    </span>
-                </div>
-            </div>
-        </section>
+        <%# HERO removed per user — the home now opens straight at the
+            categories. Location is set via the header chip. %>
 
         <%# ── CUISINE RAIL (slider only, with prev/next arrows) ──── %>
         <%# Heading text + "View all" intentionally omitted per the
@@ -117,6 +78,12 @@
         <% } %>
 
         <%# ── TOP RESTAURANTS ──────────────────────────────────── %>
+        <%# data-home-feed: the ONLY region swapped on an in-place
+            cuisine filter. The cuisine rail + filter sidebar above stay
+            physically in the DOM (no flicker, no scroll reset); only
+            this restaurant list reloads. Always rendered (even when
+            empty) so the partial-swap target is always present. %>
+        <div data-home-feed>
         <% if (featured && featured.length > 0) { %>
         <section aria-labelledby="resto-rail-title">
             <div class="hv2-head">
@@ -148,7 +115,14 @@
                                     <% if (r.deliveryMinutes) { %><span class="resto-card__time"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg> <%= r.deliveryMinutes %></span><% } %>
                                     <% if (typeof r.distanceKm === 'number' && r.distanceKm >= 0) { %><span class="resto-card__dist"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s7-7.5 7-13a7 7 0 0 0-14 0c0 5.5 7 13 7 13z"/><circle cx="12" cy="9" r="2.5"/></svg> <%= r.distanceKm.toFixed(1) %> km</span><% } %>
                                 </div>
-                                <% if (r.isOpen) { %><span class="resto-card__delivery">Free delivery over <%= brand.currencySymbol %>10</span><% } else { %><span class="resto-card__delivery" style="color:var(--color-text-soft)">Currently closed</span><% } %>
+                                <%# Real delivery line: closed wins, then postcode-zone deliverability, then fee / min-order. %>
+                                <% if (!r.isOpen) { %>
+                                    <span class="resto-card__delivery resto-card__delivery--muted">Currently closed</span>
+                                <% } else if (r.deliverable === false) { %>
+                                    <span class="resto-card__delivery resto-card__delivery--muted">Doesn't deliver to your area</span>
+                                <% } else if (typeof r.deliveryFee === 'number') { %>
+                                    <span class="resto-card__delivery"><% if (r.deliveryFee === 0) { %>Free delivery<% } else { %><%= brand.currencySymbol %><%= r.deliveryFee.toFixed(2) %> delivery<% } %><% if (typeof r.minOrder === 'number' && r.minOrder > 0) { %> · min <%= brand.currencySymbol %><%= r.minOrder.toFixed(0) %><% } %></span>
+                                <% } %>
                             </div>
                         </a>
                     </li>
@@ -161,6 +135,7 @@
             <% } %>
         </section>
         <% } %>
+        </div><%# /[data-home-feed] %>
 
         <%# ── BEST OFFERS (static) ─────────────────────────────── %>
         <section aria-labelledby="offers-title">
@@ -242,9 +217,21 @@
     </div><%# /.home-shell__content %>
 </div><%# /.home-shell %>
 
+<% } else if (__viewMode === 'restaurant') { %>
+<%# ══════════════════════════════════════════════════════════════════
+    RESTAURANT — full detail page (left menu · center · right info)
+   ══════════════════════════════════════════════════════════════════ %>
+<%- include('../partials/restaurant-detail') -%>
+
+<% } else if (__viewMode === 'product') { %>
+<%# ══════════════════════════════════════════════════════════════════
+    PRODUCT — detail page with selectable options (size / toppings / qty)
+   ══════════════════════════════════════════════════════════════════ %>
+<%- include('../partials/product-detail') -%>
+
 <% } else { %>
 <%# ══════════════════════════════════════════════════════════════════
-    VIEW MODES — focused single-section layouts
+    VIEW MODES — focused single-section layouts (cuisines / restaurants)
    ══════════════════════════════════════════════════════════════════ %>
 <nav class="view-mode-bar" aria-label="Back to home">
     <a class="view-mode-bar__back" href="/" data-action="view-home">
@@ -303,61 +290,6 @@
     </ul>
     <% if (typeof featured_more !== 'undefined' && featured_more) { %>
         <div class="section__loadmore" data-load-more="featured" data-offset="<%= featured.length %>">
-            <button type="button" class="btn btn--ghost btn--lg section__loadmore-btn">See more</button>
-        </div>
-    <% } %>
-</section>
-<% } %>
-
-<%# View=restaurant → detail card + menu %>
-<% if (__viewMode === 'restaurant' && selected_restaurant) { %>
-    <% var r = selected_restaurant; %>
-    <section class="section section--restaurant-detail">
-        <article class="restaurant-detail<%= r.isOpen ? '' : ' is-closed' %>">
-            <div class="restaurant-detail__image restaurant-card__image restaurant-card__image--placeholder" data-tint="<%= r.tint %>">
-                <span class="restaurant-card__initial" aria-hidden="true"><%= r.initial %></span>
-                <% if (r.image) { %><img class="restaurant-card__photo" src="<%= r.image %>" alt="" loading="lazy" data-img-fallback><% } %>
-            </div>
-            <div class="restaurant-detail__body">
-                <h2 class="restaurant-detail__name"><%= r.name %></h2>
-                <p class="restaurant-detail__cuisines"><%= (r.cuisines || []).join(' · ') %></p>
-                <div class="restaurant-detail__meta">
-                    <span class="resto-card__rating"><svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg><%= r.rating %></span>
-                    <% if (r.deliveryMinutes) { %><span class="restaurant-card__time"><%= r.deliveryMinutes %></span><% } %>
-                    <% if (typeof r.distanceKm === 'number' && r.distanceKm >= 0) { %><span class="restaurant-card__distance"><%= r.distanceKm.toFixed(1) %> km</span><% } %>
-                </div>
-            </div>
-        </article>
-    </section>
-<% } %>
-<% if (__viewMode === 'restaurant' && !selected_restaurant) { %>
-    <section class="section"><p class="section__empty">We couldn't find that restaurant. <a href="/" data-action="view-home">Back to home</a>.</p></section>
-<% } %>
-
-<%# Restaurant menu (products) %>
-<% if (for_you && for_you.length > 0 && __viewMode === 'restaurant') { %>
-<section class="section section--for-you" data-paginate-section="for-you">
-    <div class="hv2-head"><h2 class="hv2-head__title">Menu</h2></div>
-    <ul class="dish-grid" role="list" data-load-target>
-        <% for_you.forEach(function (d) { %>
-            <li data-search-id="<%= d.id %>">
-                <a class="dish-card" href="/?restaurant=<%= encodeURIComponent(d.restaurantSlug) %>" data-action="pick-restaurant">
-                    <div class="dish-card__image" data-tint="<%= d.tint %>">
-                        <span class="dish-card__initial" aria-hidden="true"><%= d.initial %></span>
-                        <% if (d.image) { %><img class="dish-card__photo" src="<%= d.image %>" alt="" loading="lazy" data-img-fallback><% } %>
-                        <% if (d.veg) { %><span class="veg-marker veg-marker--veg" aria-label="Vegetarian"></span><% } else { %><span class="veg-marker veg-marker--non-veg" aria-label="Non-vegetarian"></span><% } %>
-                    </div>
-                    <div class="dish-card__body">
-                        <h3 class="dish-card__name"><%= d.name %></h3>
-                        <p class="dish-card__from">From <%= d.restaurant %></p>
-                        <p class="dish-card__price"><%= brand.currencySymbol %><%= (typeof d.priceFrom === 'number' ? d.priceFrom : 0).toFixed(2) %></p>
-                    </div>
-                </a>
-            </li>
-        <% }); %>
-    </ul>
-    <% if (typeof for_you_more !== 'undefined' && for_you_more) { %>
-        <div class="section__loadmore" data-load-more="for-you" data-offset="<%= for_you.length %>">
             <button type="button" class="btn btn--ghost btn--lg section__loadmore-btn">See more</button>
         </div>
     <% } %>

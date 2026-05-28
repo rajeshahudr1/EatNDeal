@@ -151,9 +151,12 @@
         margin: 0;
     }
     .home-shell.is-filters-collapsed .filters-show span { display: none; }  /* icon only */
-    /* Shift the FAST DELIVERY badge right so the floating icon sits
-     * beside it rather than over it. */
-    .home-shell.is-filters-collapsed .hero-v2__badge { margin-left: 52px; }
+    /* The floating Filters icon sits over the top-left of the content.
+     * Push the first row (the cuisine slider) right so the icon
+     * doesn't cover the first category — leave roughly the icon's
+     * width as clearance. Only the rail needs it; lower sections
+     * already sit below the icon. */
+    .home-shell.is-filters-collapsed .rail-wrap { padding-left: 76px; }
 }
 
 /* Sidebar hide button (chevron in the .fsb header). */
@@ -297,22 +300,59 @@
     display: flex; gap: var(--space-4);
     overflow-x: auto; scroll-snap-type: x mandatory;
     -webkit-overflow-scrolling: touch; scrollbar-width: none;
-    padding-bottom: var(--space-2); margin: 0; list-style: none;
+    /* Top/bottom padding gives the active pill's ring (and the hover
+       lift) room to breathe — overflow-x:auto clips the Y axis too.
+       The first pill's LEFT ring is handled by a small padding-left on
+       the first item below. */
+    padding-top: var(--space-2); padding-bottom: var(--space-2); margin: 0; list-style: none;
     scroll-behavior: smooth;
 }
 .cuisine-rail::-webkit-scrollbar { display: none; }
-.cuisine-rail__item { flex: 0 0 auto; width: 116px; scroll-snap-align: start; text-align: center; }
+.cuisine-rail__item { flex: 0 0 auto; width: 96px; scroll-snap-align: start; text-align: center; }
+/* First pill: tiny left padding so its active ring isn't clipped by the
+   rail's overflow / tucked under the collapsed Filters icon. */
+.cuisine-rail__item:first-child { padding-left: 3px !important; }
 .cuisine-rail__disc {
-    width: 116px; height: 116px; border-radius: var(--radius-lg);
+    width: 96px; height: 96px; border-radius: var(--radius-lg);
     background: var(--color-bg-alt);
     display: grid; place-items: center; overflow: hidden;
-    position: relative; font-size: 3rem;
+    position: relative; font-size: 2.5rem;
     transition: transform 120ms ease, box-shadow 120ms ease;
 }
 .cuisine-rail__item:hover .cuisine-rail__disc { transform: translateY(-3px); box-shadow: var(--shadow-2); }
 .cuisine-rail__disc img { width: 100%; height: 100%; object-fit: cover; }
 .cuisine-rail__name { display: block; font-weight: 700; margin-top: var(--space-2); font-size: 0.95rem; }
 .cuisine-rail__count { display: block; font-size: 0.78rem; color: var(--color-text-soft); }
+
+/* Active pill — the cuisine the feed is currently filtered to. Ring
+   round the disc + brand-colour label so the user can see WHICH
+   category is driving the restaurant list below (home.js adds the
+   .is-active-filter class from the ?cuisine= URL). */
+.cuisine-rail__item.is-active-filter .cuisine-rail__disc {
+    box-shadow: 0 0 0 2px var(--color-primary);
+}
+.cuisine-rail__item.is-active-filter .cuisine-rail__name { color: var(--color-primary); }
+
+/* Delivery line on restaurant cards — muted for closed / no-delivery. */
+.resto-card__delivery--muted { color: var(--color-text-soft); }
+
+/* ── Feed loading state ───────────────────────────────────────────── */
+/* Shown ONLY over the restaurant feed while an in-place cuisine filter
+   fetches. The rail + filters above are untouched (no flicker), but the
+   user still gets a clear "loading" cue right where the cards will
+   appear: the current list dims and a spinner spins over it. */
+[data-home-feed] { position: relative; }
+[data-home-feed].is-loading { min-height: 180px; }
+[data-home-feed].is-loading > * { opacity: 0.35; pointer-events: none; }
+[data-home-feed].is-loading::after {
+    content: ""; position: absolute; left: 50%; top: 60px;
+    width: 36px; height: 36px; margin-left: -18px;
+    border: 3px solid var(--color-border-soft);
+    border-top-color: var(--color-primary);
+    border-radius: 50%;
+    animation: feed-spin 0.7s linear infinite;
+}
+@keyframes feed-spin { to { transform: rotate(360deg); } }
 
 /* ── Restaurant rail ──────────────────────────────────────────────── */
 .resto-rail {
@@ -479,13 +519,16 @@
     .cuisine-rail__name { font-size: 0.72rem; margin-top: var(--space-1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .rail-arrow { display: none; }
 
-    /* Restaurant rail — horizontal swipe, peek of the next card. */
+    /* Restaurant rail — single column on mobile: one full-width card
+     * per row, stacked vertically (NOT a side swipe). Same vertical-
+     * feed UX as the dish grid — the user wants one restaurant per
+     * screen-width row that the feed scrolls through, and paginates
+     * via the IntersectionObserver as you reach the bottom. */
     .resto-rail {
-        display: flex; overflow-x: auto; scroll-snap-type: x mandatory;
-        -webkit-overflow-scrolling: touch; scrollbar-width: none;
+        display: grid; grid-template-columns: 1fr; gap: var(--space-4);
+        overflow: visible;
     }
-    .resto-rail::-webkit-scrollbar { display: none; }
-    .resto-rail > li { flex: 0 0 auto; width: 72vw; max-width: 280px; scroll-snap-align: start; }
+    .resto-rail > li { width: auto; max-width: none; }
 
     /* Offers — horizontal swipe. */
     .offers-rail {

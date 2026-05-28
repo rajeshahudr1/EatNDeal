@@ -36,6 +36,44 @@
         registerServiceWorker();
         bindMobileMenu();
         bindNotificationsBell();
+        bindOrderModeToggle();
+    }
+
+    /**
+     * bindOrderModeToggle
+     *
+     * What:   Delivery / Pickup segmented control in the header. Picking
+     *         a segment is a full LAYOUT switch (delivery feed ↔ pickup
+     *         map+list), so it triggers a real navigation rather than an
+     *         in-page swap. Pickup → ?mode=pickup; Delivery → drop the
+     *         param (delivery is the default). Any existing query (e.g.
+     *         ?cuisine=) is preserved.
+     * Why:    The toggle was pure-CSS (painted the segment but did
+     *         nothing). It now actually changes mode.
+     * Type:   WRITE (navigation). Delegated so it works regardless of
+     *         when the header renders.
+     */
+    function bindOrderModeToggle() {
+        document.addEventListener('change', function (ev) {
+            var t = ev.target;
+            if (!t || t.name !== 'order-mode') { return; }
+            var mode = t.value === 'pickup' ? 'pickup' : 'delivery';
+            var url;
+            try { url = new URL(window.location.href); }
+            catch (e) { return; }
+            // Land on the FEED, not a sub-view — drop any focused-view
+            // params so toggling from a restaurant/all-list page shows
+            // the pickup map / delivery feed itself.
+            url.searchParams.delete('view');
+            url.searchParams.delete('restaurant');
+            // Always set the mode EXPLICITLY (including delivery). The
+            // chosen mode is remembered in the session, so just dropping
+            // the param would let a saved "pickup" win and the map would
+            // stay — clicking Delivery must force the normal feed back.
+            url.searchParams.set('mode', mode);
+            // Pickup/Delivery always lives on the home feed.
+            window.location.href = '/' + (url.search || '');
+        });
     }
 
     /**

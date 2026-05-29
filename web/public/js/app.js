@@ -37,6 +37,27 @@
         bindMobileMenu();
         bindNotificationsBell();
         bindOrderModeToggle();
+        bindDrawerStubs();
+    }
+
+    /**
+     * bindDrawerStubs
+     *
+     * What:   The profile drawer's not-yet-built rows (Wallet, Appearance,
+     *         Payment methods, Address book) carry data-action="drawer-soon".
+     *         Tapping one surfaces a "coming soon" toast instead of a dead
+     *         link. Delegated so it covers the drawer whenever it's open.
+     * Type:   WRITE (toast).
+     */
+    function bindDrawerStubs() {
+        document.addEventListener('click', function (ev) {
+            var t = ev.target.closest && ev.target.closest('[data-action="drawer-soon"]');
+            if (!t) { return; }
+            ev.preventDefault();
+            if (window.EatNDealUi && window.EatNDealUi.showToast) {
+                window.EatNDealUi.showToast('info', 'Coming soon.');
+            }
+        });
     }
 
     /**

@@ -74,6 +74,7 @@
     <link rel="stylesheet" href="/css/components/mobile-drawer.css?v=<%= ASSET_VERSION %>">
     <link rel="stylesheet" href="/css/components/auth-page.css?v=<%= ASSET_VERSION %>">
     <link rel="stylesheet" href="/css/components/account-menu.css?v=<%= ASSET_VERSION %>">
+    <link rel="stylesheet" href="/css/components/profile.css?v=<%= ASSET_VERSION %>">
     <link rel="stylesheet" href="/css/components/country-picker.css?v=<%= ASSET_VERSION %>">
     <link rel="stylesheet" href="/css/components/static-page.css?v=<%= ASSET_VERSION %>">
     <link rel="stylesheet" href="/css/components/cookie-consent.css?v=<%= ASSET_VERSION %>">
@@ -82,6 +83,7 @@
     <link rel="stylesheet" href="/css/components/pickup.css?v=<%= ASSET_VERSION %>">
     <link rel="stylesheet" href="/css/components/restaurant-detail.css?v=<%= ASSET_VERSION %>">
     <link rel="stylesheet" href="/css/components/product-detail.css?v=<%= ASSET_VERSION %>">
+    <link rel="stylesheet" href="/css/components/offers-page.css?v=<%= ASSET_VERSION %>">
     <link rel="stylesheet" href="/css/components/location-landing.css?v=<%= ASSET_VERSION %>">
 
     <link rel="stylesheet" href="/css/desktop.css?v=<%= ASSET_VERSION %>" media="(min-width: 768px)">
@@ -102,7 +104,7 @@
     data-lat="<%= (user_location && user_location.lat != null) ? user_location.lat : '' %>"
     data-lng="<%= (user_location && user_location.lng != null) ? user_location.lng : '' %>"
     data-active-nav="<%= active_nav %>"
-    class="<%= (user_session && !(typeof bare !== 'undefined' && bare)) ? 'has-bottom-nav' : '' %>"
+    class="<%= (user_session && !(typeof bare !== 'undefined' && bare)) ? 'has-bottom-nav' : '' %> <%= (typeof view_mode !== 'undefined' && view_mode) ? ('view-' + view_mode) : '' %>"
 >
 
     <%#

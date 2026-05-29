@@ -164,13 +164,34 @@ async function search(req, res) {
         // ── 1. Direct text matches (always honour marketplace gates)
         const matchedCats = await db('categories as cat')
             .innerJoin('company as c', 'c.id', 'cat.company_id')
-            .select('cat.id', 'cat.name', 'cat.company_id', 'cat.category_image')
+            .select('cat.id', 'cat.name', 'cat.company_id', 'cat.category_image', 'c.business_name', 'c.domain_name')
             .where(tokenClause('cat.name'))
             .andWhere('c.is_marketplace', 1)
             .andWhere('c.is_active', 1)
             .andWhere(function () { this.where('c.is_maintenance', 0).orWhereNull('c.is_maintenance'); })
             .whereNull('c.deleted_at')
             .andWhere('cat.is_display_application_menu', 1);
+
+        // Global MARKETPLACE categories (the home cuisine pills) — a
+        // separate result group that routes to the filtered home page.
+        // ONLY surface categories that have at least one live restaurant
+        // assigned (same gate as the home rail) — otherwise tapping the
+        // result lands on an empty feed (e.g. "Bubble Tea" with 0
+        // restaurants).
+        const matchedMpCats = await db('mp_marketplace_category')
+            .where('status', 1)
+            .andWhere(tokenClause('name'))
+            .whereExists(function () {
+                this.select(db.raw('1'))
+                    .from('mp_marketplace_category_assign as mca')
+                    .innerJoin('company as co', 'co.id', 'mca.company_id')
+                    .whereRaw('mca.category_id = mp_marketplace_category.id')
+                    .andWhere('co.is_marketplace', 1)
+                    .andWhere('co.is_active', 1)
+                    .whereNull('co.deleted_at');
+            })
+            .select('id', 'name', 'icon', 'image')
+            .limit(20);
 
         const matchedProds = await db('products as p')
             .innerJoin('company as c', 'c.id', 'p.company_id')
@@ -274,22 +295,51 @@ async function search(req, res) {
             if (sa !== sb) { return sa - sb; }
             return Number(a.id) - Number(b.id);
         });
+        // (1) MARKETPLACE categories → home filtered (/?cuisine=).
+        const mpSorted = matchedMpCats.slice().sort((a, b) => {
+            const sa = relevanceScore(a.name, q, effectiveTokens);
+            const sb = relevanceScore(b.name, q, effectiveTokens);
+            if (sa !== sb) { return sa - sb; }
+            return Number(a.id) - Number(b.id);
+        });
+        const mpSeen = new Set();
+        const mpResult = [];
+        for (const r of mpSorted) {
+            const norm = M.normaliseName(r.name);
+            if (!norm || mpSeen.has(norm)) { continue; }
+            mpSeen.add(norm);
+            mpResult.push({
+                name:       String(r.name || '').trim(),
+                searchName: norm,
+                icon:       M.yiiImageUrl('category', null, r.icon) || (r.image || null),
+                initial:    M.initialFor(r.name),
+                tint:       M.tintFor(r.id),
+            });
+            if (mpResult.length >= RESULT_CAP) { break; }
+        }
+
+        // (2) RESTAURANT (per-company) categories → that restaurant's
+        //     page with the section selected (/?rest=&menu=). Skip names
+        //     already shown as a marketplace category (above), and dedupe
+        //     per (restaurant, name) so the same section isn't repeated.
         const catSeen   = new Set();
-        const catResult = [];
+        const restCatResult = [];
         for (const r of catSorted) {
             const norm = M.normaliseName(r.name);
-            if (!norm || catSeen.has(norm)) { continue; }
-            catSeen.add(norm);
-            const title = norm.replace(/\b\w/g, ch => ch.toUpperCase());
-            catResult.push({
-                name:    title,
-                slug:    M.slugify(title, r.id),
-                searchName: norm,
-                icon:    M.yiiImageUrl('category', r.company_id, r.category_image),
-                initial: M.initialFor(title),
-                tint:    M.tintFor(r.id),
+            if (!norm || mpSeen.has(norm)) { continue; }   // marketplace cat — shown in group 1
+            const key = r.company_id + ':' + norm;
+            if (catSeen.has(key)) { continue; }
+            catSeen.add(key);
+            restCatResult.push({
+                name:           String(r.name || '').trim(),
+                catSlug:        M.slugify(r.name),
+                restaurant:     String(r.business_name || '').trim(),
+                restaurantSlug: r.domain_name ? M.slugify(r.domain_name) : M.slugify(r.business_name, r.company_id),
+                icon:           M.yiiImageUrl('category', r.company_id, r.category_image),
+                initial:        M.initialFor(r.name),
+                tint:           M.tintFor(r.id),
             });
-            if (catResult.length >= RESULT_CAP) { break; }
+            if (restCatResult.length >= RESULT_CAP) { break; }
         }
 
         // Product results — need name + company + image, so re-query
@@ -410,10 +460,15 @@ async function search(req, res) {
             categoryNames:     Array.from(catNames),
             productIds:        Array.from(prodIds),
             restaurantIds:     Array.from(restIds),
-            // Rich rows for the search overlay listing
-            categoryResults:   catResult,
-            productResults:    prodResult,
-            restaurantResults: restResult,
+            // Four distinct result groups for the search overlay:
+            //   marketplaceCategories → home filtered (/?cuisine=)
+            //   restaurantCategories  → restaurant page, section selected
+            //   restaurantResults     → restaurant page
+            //   productResults        → restaurant page, product surfaced
+            marketplaceCategories: mpResult,
+            restaurantCategories:  restCatResult,
+            restaurantResults:     restResult,
+            productResults:        prodResult,
         });
     } catch (err) {
         H.log.error('marketplace.search', err && err.message);

@@ -134,6 +134,14 @@ function publicView(row) {
         email:         row.email || '',
         contact_no:    row.contact_no || '',
         country_code:  row.country_code != null ? String(row.country_code) : '',
+        // Profile-edit fields. birthdate MUST be returned or the account
+        // form shows it blank and a save would wipe the stored value.
+        // gender is read defensively — it's '' until the column exists
+        // (see the m260529 gender migration).
+        birthdate:     row.birthdate || '',
+        gender:        row.gender != null ? String(row.gender) : '',
+        image:         row.image != null ? String(row.image) : '',
+        loyalty_points: Number(row.loyalty_points) || 0,
         is_registered: Number(row.is_registered) === 1,
     };
 }

@@ -36,6 +36,7 @@ const MSG            = require('../../Helpers/messages');
 const { db }         = require('../../config/db');
 const distance       = require('../../Helpers/distance');
 const M              = require('../../Helpers/marketplace');
+const Offers         = require('../../Helpers/offers');
 
 /**
  * resolveMpCategoryId
@@ -198,11 +199,24 @@ async function list(req, res) {
                  AND rr.publish_online = 1) AS avg_rating`
         );
 
-        // "Has active offer" — true when either a published discount
-        // is in date range OR at least one marketplace product carries
-        // an `offer` label. EXISTS short-circuits so this stays cheap.
+        // "Has active offer" — true when the restaurant has ANY live
+        // offer right now: a published store-offer banner, an active promo
+        // coupon, a date-valid auto-discount, OR a product carrying an
+        // `offer` label. EXISTS short-circuits so this stays cheap.
         const hasOfferSubq = db.raw(
             `(EXISTS (
+                SELECT 1 FROM store_offer_banner_table sob
+                 WHERE sob.company_id = c.id
+                   AND sob.publish_online = 1
+                   AND (sob.start_date IS NULL OR sob.start_date <= CURRENT_DATE)
+                   AND (sob.end_date   IS NULL OR sob.end_date   >= CURRENT_DATE)
+              ) OR EXISTS (
+                SELECT 1 FROM coupons cp
+                 WHERE cp.company_id = c.id
+                   AND cp.is_active = 1
+                   AND cp.platform IN (1, 2)
+                   AND (cp.expiry_date IS NULL OR cp.expiry_date >= CURRENT_DATE)
+              ) OR EXISTS (
                 SELECT 1 FROM discounts d
                  WHERE d.company_id = c.id
                    AND d.status = 1
@@ -215,6 +229,7 @@ async function list(req, res) {
                    AND op.status = '1'
                    AND op.offer IS NOT NULL
                    AND op.offer <> ''
+                   AND op.offer <> '0'
               )) AS has_offer`
         );
 
@@ -332,6 +347,10 @@ async function list(req, res) {
             });
         }
 
+        // Per-restaurant offer count + a representative label (for the
+        // card badge: "50% OFF" + a count chip when there's more than one).
+        const offerSums = await Offers.offerSummaries(uniq.map(r => ({ companyId: r.company_id, branchId: r.branch_id })));
+
         const restaurants = uniq.map(r => {
             const name = String(r.company_name || r.branch_name || r.branch_trading_name || '').trim();
             // Distance + time — null when the user has no location yet
@@ -364,7 +383,11 @@ async function list(req, res) {
                 // Show the real average when we have one; fall back
                 // to a friendly default until enough customers rate.
                 rating:          avgRating != null ? avgRating : 4.4,
-                offer:           r.has_offer ? 'Offer' : null,
+                // Representative offer label + total count. Falls back to a
+                // plain "Offer" when the only offer is a per-product one
+                // (not covered by the banner/coupon/discount summary).
+                offer:           (offerSums[String(r.company_id)] && offerSums[String(r.company_id)].label) || (r.has_offer ? 'Offer' : null),
+                offerCount:      (offerSums[String(r.company_id)] && offerSums[String(r.company_id)].count) || (r.has_offer ? 1 : 0),
                 isOpen:          M.isOpenNow(r),
                 tint:            M.tintFor(r.company_id),
                 initial:         M.initialFor(name),
@@ -556,7 +579,7 @@ async function detail(req, res) {
             .whereNull('c.deleted_at')
             .andWhere('b.status', '<>', '2')
             .select(
-                'c.id as company_id', 'c.business_name', 'c.domain_name', 'c.business_category',
+                'c.id as company_id', 'b.id as branch_id', 'c.business_name', 'c.domain_name', 'c.business_category',
                 'b.direction_address', 'b.address_1', 'b.address_2', 'b.city', 'b.postcode',
                 'b.contact_number', 'b.website', 'b.website_domain',
                 'b.start_time', 'b.end_time', 'b.delivery_waiting_time',
@@ -602,6 +625,9 @@ async function detail(req, res) {
             isOpen:          M.isOpenNow(row),
             distanceKm:      km != null ? km : null,
             deliveryMinutes: wMins != null ? (wMins + ' min') : (km != null ? distance.estimateDeliveryMinutes(km) : null),
+            // Pickup time is location-driven (the customer travels to the
+            // shop), so it's a distance estimate — not the delivery/postcode time.
+            pickupMinutes:   km != null ? distance.estimatePickupMinutes(km) : null,
             deliverable:      postcode ? !!zone : true,
             deliveryFee:      zone ? Number(zone.charge) : null,
             minOrder:         zone ? Number(zone.minimum_order) : null,
@@ -665,8 +691,8 @@ async function detail(req, res) {
             // Out of stock when explicitly marked sold-out, OR it tracks
             // stock and the counted quantity has run out.
             const tracks = Number(r.track_stock_level) === 1;
-            const qty    = r.stock_qty != null ? Number(r.stock_qty) : null;
-            const outOfStock = !!r.is_sold_out || (tracks && qty != null && qty <= 0);
+            const qty    = r.stock_qty != null ? Number(r.stock_qty) : 0;
+            const outOfStock = !!r.is_sold_out || (tracks && qty <= 0);
             return {
                 id:            String(r.product_id),
                 name:          String(r.product_name || '').trim(),
@@ -677,7 +703,13 @@ async function detail(req, res) {
                 isFeatured:    Number(r.is_featured) === 1,
                 isRecommended: Number(r.is_recommended) === 1,
                 inStock:       !outOfStock,
-                stockQty:      tracks ? qty : null,
+                // Counted inventory across the company's stores. Exposed
+                // for EVERY product so the restaurant page can show a
+                // real "N stock available" line. `tracksStock` tells the
+                // view whether that number is authoritative (made-to-order
+                // items don't track inventory → number isn't meaningful).
+                stockQty:      qty,
+                tracksStock:   tracks,
                 image:         M.yiiImageUrl('product', companyId, r.image_url) || null,
                 tint:          M.tintFor(r.product_id),
                 initial:       M.initialFor(r.product_name),
@@ -708,20 +740,56 @@ async function detail(req, res) {
         const sections = [];
         const menu = [];
         if (featured.length) {
-            sections.push({ id: 'featured', name: 'Featured Items', featured: true, products: featured.slice(0, 12) });
-            menu.push({ id: 'featured', name: 'Featured Items', featured: true });
+            const featProds = featured.slice(0, 12);
+            sections.push({ id: 'featured', slug: 'featured', name: 'Featured Items', featured: true, products: featProds });
+            menu.push({ id: 'featured', name: 'Featured Items', featured: true, count: featProds.length });
         }
         ordered.forEach((g, i) => {
             const id = 'cat-' + i;
-            sections.push({ id: id, name: g.name, featured: false, products: g.products });
-            menu.push({ id: id, name: g.name, featured: g.feat });
+            sections.push({ id: id, slug: M.slugify(g.name), name: g.name, featured: false, products: g.products });
+            menu.push({ id: id, name: g.name, featured: g.feat, count: g.products.length });
         });
 
-        return H.successResponse(res, { restaurant, categories: menu, sections });
+        // Active offers for this restaurant (banners + promo codes +
+        // auto-discounts) — shown as a strip on the detail page.
+        const offers = await Offers.offersForRestaurant(companyId, row.branch_id);
+
+        return H.successResponse(res, { restaurant, categories: menu, sections, offers });
     } catch (err) {
         H.log.error('marketplace.restaurants.detail', err && err.message);
         return H.errorResponse(res, MSG.server.oops, 500);
     }
 }
 
-module.exports = { list, detail };
+/**
+ * offers
+ *
+ * What:  Active store-offer banners across all marketplace restaurants —
+ *        powers the home "Best offers for you" rail. Read-only.
+ * Type:  READ.
+ * Inputs: req.query.limit (optional, 1–20; default 8)
+ * Output: 200 envelope, data = { offers: [ { id, title, details, terms, restaurant } ] }
+ */
+async function offers(req, res) {
+    try {
+        // page=1 → categorized data for the dedicated Offers page
+        // (restaurant / product / common). grouped=1 → per-restaurant.
+        // Otherwise the home rail feed of banners.
+        if (req.query.page === '1') {
+            const data = await Offers.offersPageData();
+            return H.successResponse(res, data);
+        }
+        if (req.query.grouped === '1') {
+            const restaurants = await Offers.groupedOffers();
+            return H.successResponse(res, { restaurants });
+        }
+        const limit = Math.min(20, Math.max(1, parseInt(req.query.limit, 10) || 8));
+        const list = await Offers.offersFeed(limit);
+        return H.successResponse(res, { offers: list });
+    } catch (err) {
+        H.log.error('marketplace.offers', err && err.message);
+        return H.errorResponse(res, MSG.server.oops, 500);
+    }
+}
+
+module.exports = { list, detail, offers };

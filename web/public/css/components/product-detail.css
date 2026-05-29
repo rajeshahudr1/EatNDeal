@@ -74,8 +74,13 @@
 
 /* Stock states */
 .pd__oos { color: var(--color-primary); font-weight: 800; margin: 0 0 var(--space-2); }
-.pd__stock { color: #b45309; font-weight: 700; margin: 0 0 var(--space-2); }
+.pd__stock { display: inline-flex; align-items: center; gap: 5px; font-weight: 700; margin: 0 0 var(--space-2); }
+.pd__stock svg { flex: 0 0 auto; }
+.pd__stock--in { color: #16a34a; }
+.pd__stock--out { color: var(--color-primary); }
 .pd-add.is-disabled, .pd-add:disabled { background: var(--color-border); color: var(--color-text-soft); cursor: not-allowed; }
+.pd-qty__btn.is-disabled, .pd-qty__btn:disabled { background: var(--color-bg-alt); color: var(--color-border); cursor: not-allowed; }
+.pd-qty__btn.is-disabled:hover, .pd-qty__btn:disabled:hover { background: var(--color-bg-alt); color: var(--color-border); }
 .pd-group.is-invalid .pd-group__legend { color: var(--color-primary); }
 .pd-group.is-invalid .pd-opt { border-color: var(--color-primary); }
 

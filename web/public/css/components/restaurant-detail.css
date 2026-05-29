@@ -40,6 +40,10 @@
     position: sticky; top: 88px;
     max-height: calc(100dvh - 104px);
     overflow-y: auto;
+    /* Explicit overflow-x:hidden — otherwise setting only overflow-y
+       makes the browser compute overflow-x to `auto`, which clips a
+       long category name's count off the right edge. */
+    overflow-x: hidden;
     scrollbar-width: thin;
 }
 .rd__left::-webkit-scrollbar { width: 6px; }
@@ -60,6 +64,13 @@
 .rd-menu__item:hover { background: var(--color-bg-alt); }
 .rd-menu__item.is-active { background: var(--color-primary-soft); color: var(--color-primary); }
 .rd-menu__icon { color: var(--color-primary); flex: 0 0 auto; }
+/* Truncate long names so the count is never pushed off / clipped. */
+.rd-menu__name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rd-menu__count { flex: 0 0 auto; margin-left: auto; padding-left: 6px; color: var(--color-text-soft); font-weight: 700; font-size: 0.82rem; }
+.rd-menu__item.is-active .rd-menu__count { color: var(--color-primary); }
+
+/* Count beside each section heading. */
+.rd-section__count { color: var(--color-text-soft); font-weight: 600; font-size: 0.95rem; }
 
 /* ── Hero ──────────────────────────────────────────────────────────── */
 .rd-hero { margin: 0; }
@@ -107,6 +118,8 @@
 .rd-info__value { font-weight: 600; }
 .rd-info__value--strong { font-weight: 800; }
 .rd-info__change { background: none; border: 0; padding: 0; color: var(--color-primary); font-weight: 700; cursor: pointer; font-size: 0.82rem; text-align: left; }
+.rd-info__call { color: var(--color-primary); text-decoration: none; }
+.rd-info__call:hover { text-decoration: underline; }
 .rd-info__warn { color: var(--color-primary); font-weight: 700; align-self: center; }
 .rd-map {
     margin-left: auto; position: relative; width: 220px; height: 96px;
@@ -120,12 +133,31 @@
 .rd-map__pin { position: absolute; right: 20px; bottom: 22px; color: var(--color-primary); }
 .rd-map__pill { position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%); background: #fff; border-radius: 999px; padding: 3px 8px; font-size: 0.72rem; font-weight: 700; box-shadow: var(--shadow-1); white-space: nowrap; }
 
+/* ── Offers & deals strip ──────────────────────────────────────────── */
+.rd-offers { margin: 0 0 var(--space-6); }
+.rd-offers__title { font-size: 1.05rem; font-weight: 800; margin: 0 0 var(--space-3); }
+.rd-offers__list { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: var(--space-3); }
+.rd-offer {
+    display: flex; align-items: flex-start; gap: 10px;
+    border: 1px dashed var(--color-primary); border-radius: 14px;
+    background: var(--color-primary-soft); padding: var(--space-3) var(--space-4);
+}
+.rd-offer__icon { flex: 0 0 auto; width: 34px; height: 34px; border-radius: 9px; background: #fff; color: var(--color-primary); display: grid; place-items: center; }
+.rd-offer__body { flex: 1 1 auto; min-width: 0; }
+.rd-offer__title { font-weight: 800; margin: 0; color: var(--color-text); }
+.rd-offer__sub { font-size: 0.85rem; color: var(--color-text-soft); margin: 2px 0 0; }
+.rd-offer__terms { font-size: 0.76rem; color: var(--color-text-soft); margin: 3px 0 0; font-style: italic; }
+.rd-offer__code { display: inline-block; color: var(--color-primary); background: #fff; border: 1px dashed var(--color-primary); border-radius: 6px; padding: 0 6px; letter-spacing: 0.04em; }
+
 /* ── Menu sections ─────────────────────────────────────────────────── */
 .rd-section { margin-bottom: var(--space-8); scroll-margin-top: 96px; }
-.rd-section__title { font-size: 1.3rem; font-weight: 800; margin: 0 0 var(--space-4); }
+.rd-section__title { font-size: 1.12rem; font-weight: 800; margin: 0 0 var(--space-4); }
 .rd-products { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--space-4); }
 .rd-product { background: #fff; border: 1px solid var(--color-border-soft); border-radius: var(--radius-lg); overflow: hidden; display: flex; flex-direction: column; cursor: pointer; transition: box-shadow 120ms ease, transform 120ms ease; }
 .rd-product:hover { box-shadow: var(--shadow-2); transform: translateY(-2px); }
+/* Flash a dish the user arrived at from search (?highlight=). */
+.rd-product.is-highlight { border-color: var(--color-primary); box-shadow: 0 0 0 3px rgba(229, 37, 42, 0.28); animation: rd-pulse 0.6s ease 2; }
+@keyframes rd-pulse { 0%, 100% { box-shadow: 0 0 0 3px rgba(229, 37, 42, 0.28); } 50% { box-shadow: 0 0 0 6px rgba(229, 37, 42, 0.12); } }
 .rd-product__media { position: relative; aspect-ratio: 1 / 1; background: var(--color-bg-alt); display: grid; place-items: center; font-size: 2rem; }
 .rd-product__media img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .rd-product .veg-marker { position: absolute; top: 8px; left: 8px; z-index: 2; }
@@ -135,13 +167,18 @@
 .rd-product__soldout { position: absolute; inset: 0; z-index: 3; display: grid; place-items: center; background: rgba(255, 255, 255, 0.66); color: var(--color-text); font-weight: 800; font-size: 0.85rem; }
 .rd-product__oos { color: var(--color-text-soft); font-weight: 700; font-size: 0.85rem; }
 .rd-product__stock { color: #b45309; font-weight: 700; font-size: 0.76rem; margin-left: 8px; }
-.rd-product__body { padding: var(--space-3); display: flex; flex-direction: column; gap: 6px; flex: 1 1 auto; }
-.rd-product__name { font-size: 0.95rem; font-weight: 700; margin: 0; }
+/* Per-product stock line (green = available / count, red = out). */
+.rd-product__stockline { display: inline-flex; align-items: center; gap: 4px; font-size: 0.74rem; font-weight: 700; }
+.rd-product__stockline svg { flex: 0 0 auto; }
+.rd-product__stockline--in { color: #16a34a; }
+.rd-product__stockline--out { color: var(--color-primary); }
+.rd-product__body { padding: var(--space-3); display: flex; flex-direction: column; gap: 5px; flex: 1 1 auto; min-width: 0; }
+.rd-product__name { font-size: 0.86rem; font-weight: 700; margin: 0; line-height: 1.3; }
 .rd-product__meta { margin: 0; }
-.rd-product__rating { display: inline-flex; align-items: center; gap: 3px; background: var(--color-bg-alt); border-radius: 6px; padding: 2px 6px; font-size: 0.78rem; font-weight: 700; }
+.rd-product__rating { display: inline-flex; align-items: center; gap: 3px; background: var(--color-bg-alt); border-radius: 6px; padding: 2px 6px; font-size: 0.72rem; font-weight: 700; }
 .rd-product__foot { margin-top: auto; display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
-.rd-product__price { font-weight: 800; }
-.rd-product__add { display: inline-flex; align-items: center; gap: 4px; background: #fff; border: 1px solid var(--color-primary); color: var(--color-primary); border-radius: 999px; padding: 5px 12px; font-weight: 700; cursor: pointer; font-size: 0.82rem; }
+.rd-product__price { font-weight: 800; font-size: 0.92rem; }
+.rd-product__add { display: inline-flex; align-items: center; gap: 4px; background: #fff; border: 1px solid var(--color-primary); color: var(--color-primary); border-radius: 999px; padding: 5px 11px; font-weight: 700; cursor: pointer; font-size: 0.76rem; }
 .rd-product__add:hover { background: var(--color-primary); color: #fff; }
 
 /* ── Right rail cards ──────────────────────────────────────────────── */
@@ -195,29 +232,57 @@
 @media (max-width: 900px) {
     .rd {
         display: flex; flex-direction: column; grid-template-areas: none;
+        width: 100%; max-width: 100%;
         padding: var(--space-3) var(--space-3) var(--space-10); gap: var(--space-4);
     }
+    /* Every column becomes a full-width row; min-width:0 stops a long
+       child (a wide product grid / a long name) from forcing the whole
+       page wider than the screen. */
+    .rd > * { min-width: 0; max-width: 100%; }
     .rd-hero     { order: 1; }
     .rd-info-bar { order: 2; }
     .rd__left    { order: 3; }
     .rd__main    { order: 4; }
     .rd__right   { order: 5; position: static; max-height: none; overflow: visible; display: flex; flex-direction: column; gap: var(--space-4); }
 
+    /* The left rail is just a plain block on mobile (no sticky, no
+       negative margins — full-bleed breakouts were shifting the whole
+       page left of the screen under body{overflow-x:hidden}). Only the
+       category pills pin (see .rd-menu below). */
     .rd__left {
-        position: sticky; top: 54px; z-index: 35;
-        max-height: none; overflow: visible;        /* horizontal bar on mobile */
-        background: #fff; border-bottom: 1px solid var(--color-border-soft);
-        margin: 0 calc(-1 * var(--space-3));   /* full-bleed sticky bar */
-        padding: var(--space-2) var(--space-3);
+        position: static; max-height: none; overflow: visible;
+        margin: 0; padding: 0; background: none; border: 0;
     }
     .rd__back { margin-bottom: var(--space-2); font-size: 0.9rem; }
-    .rd-menu { flex-direction: row; overflow-x: auto; gap: var(--space-2); scrollbar-width: none; }
+    /* Category pills = a pinned horizontal SLIDE bar that stops just
+       under the sticky mobile search row. Contained inside the page
+       padding; pills never shrink so the row scrolls cleanly. */
+    .rd-menu {
+        position: sticky; top: 52px; z-index: 35;
+        flex-direction: row; flex-wrap: nowrap;
+        overflow-x: auto; -webkit-overflow-scrolling: touch;
+        gap: var(--space-2); scrollbar-width: none;
+        background: #fff; padding: var(--space-2) 0;
+        border-bottom: 1px solid var(--color-border-soft);
+        box-shadow: 0 6px 10px -8px rgba(0, 0, 0, 0.18);
+        scroll-padding-left: var(--space-3);
+    }
     .rd-menu::-webkit-scrollbar { display: none; }
-    .rd-menu__item { white-space: nowrap; padding: 8px 12px; }
+    .rd-menu__item {
+        flex: 0 0 auto; white-space: nowrap; gap: 6px;
+        padding: 7px 13px; border: 1px solid var(--color-border-soft);
+        border-radius: 999px; font-size: 0.82rem;
+    }
+    .rd-menu__name { flex: 0 0 auto; }
+    .rd-menu__count { font-size: 0.74rem; }
+    .rd-menu__item.is-active { background: var(--color-primary); color: #fff; border-color: var(--color-primary); }
+    .rd-menu__item.is-active .rd-menu__icon,
+    .rd-menu__item.is-active .rd-menu__count { color: #fff; }
 
     .rd-products { grid-template-columns: repeat(2, 1fr); }
-    /* Jump-links: clear the sticky search (≈54px) + category bar. */
-    .rd-section { scroll-margin-top: 128px; }
+    /* Jump-links: clear the sticky search (≈52px) + category bar (≈52px). */
+    .rd-section { scroll-margin-top: 120px; }
+    .rd-section__title { font-size: 1.05rem; }
     .rd-map { display: none; }
 
     .rd-hero__media { aspect-ratio: 16 / 7; min-height: 150px; }
@@ -225,6 +290,9 @@
     .rd-hero__overlay { padding: var(--space-4) var(--space-3) var(--space-3) 76px; }
     .rd-hero__name { font-size: 1.25rem; }
     .rd-info { gap: var(--space-4); }
+    .rd-info__cell { min-width: 0; }
+    .rd-info__value { overflow-wrap: anywhere; }
+    .rd-rinfo__link { overflow-wrap: anywhere; word-break: break-word; }
     .rd-tabs { overflow-x: auto; scrollbar-width: none; }
     .rd-tabs::-webkit-scrollbar { display: none; }
     .rd-tab { white-space: nowrap; }
@@ -235,9 +303,11 @@
 @media (max-width: 560px) {
     .rd-products { grid-template-columns: 1fr; gap: var(--space-3); }
     .rd-product { flex-direction: row; }
-    .rd-product__media { flex: 0 0 108px; width: 108px; aspect-ratio: 1 / 1; align-self: stretch; }
-    .rd-product__body { padding: var(--space-3); }
-    .rd-product__name { font-size: 1rem; }
+    .rd-product__media { flex: 0 0 96px; width: 96px; aspect-ratio: 1 / 1; align-self: stretch; }
+    .rd-product__body { padding: var(--space-3); gap: 4px; }
+    .rd-product__name { font-size: 0.92rem; }
+    .rd-product__rating { font-size: 0.7rem; }
+    .rd-product__price { font-size: 0.9rem; }
     .rd-hero__name { font-size: 1.15rem; }
     .rd-tab { padding: 8px 10px; font-size: 0.85rem; }
 }

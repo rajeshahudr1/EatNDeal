@@ -1,0 +1,229 @@
+/*
+ * components/profile.css
+ *
+ * What:  The signed-in "My Profile" dashboard (views/account/index.ejs):
+ *        a left sidebar of account tabs + Invite card, and a main column
+ *        with the editable profile card (avatar + outlined fields), the
+ *        Update / Log Out actions, a stats row and an account-safety card.
+ *        Built to the supplied mockup. Rendered WITH the site header.
+ * Used:  AuthController.accountPage.
+ */
+
+/* ── Page shell: sidebar + main ─────────────────────────────────────── */
+.acct {
+    width: 100%; max-width: 1180px; margin: 0 auto;
+    padding: var(--space-6) var(--space-4) var(--space-10);
+    display: grid; grid-template-columns: 248px minmax(0, 1fr); gap: var(--space-6);
+    align-items: start;
+}
+/* Nothing inside may force the page wider than the screen. */
+.acct, .acct-main, .acct-card, .acct-fields, .acct-stat { min-width: 0; }
+.acct-main { max-width: 100%; }
+
+/* ── Sidebar ────────────────────────────────────────────────────────── */
+.acct-nav {
+    position: sticky; top: 88px;
+    display: flex; flex-direction: column; gap: var(--space-4);
+}
+.acct-nav__list {
+    display: flex; flex-direction: column; gap: 2px;
+    background: #fff; border: 1px solid var(--color-border-soft);
+    border-radius: 18px; padding: var(--space-3);
+}
+.acct-nav__item {
+    display: flex; align-items: center; gap: 12px;
+    padding: 11px 12px; border-radius: 12px; border: 0; background: none;
+    cursor: pointer; font: inherit; font-weight: 600; color: var(--color-text);
+    text-decoration: none; width: 100%; text-align: left;
+}
+.acct-nav__item:hover { background: var(--color-bg-alt); }
+.acct-nav__item svg { flex: 0 0 auto; color: var(--color-text-soft); }
+.acct-nav__item.is-active { background: var(--color-primary-soft); color: var(--color-primary); font-weight: 800; }
+.acct-nav__item.is-active svg { color: var(--color-primary); }
+
+.acct-invite { background: linear-gradient(140deg, #fde8e8, #fff3ec); border: 1px solid var(--color-border-soft); border-radius: 16px; padding: var(--space-4); }
+.acct-invite__title { font-weight: 800; color: var(--color-primary); margin: 0; }
+.acct-invite__sub { font-size: 0.85rem; color: var(--color-text-soft); margin: 4px 0 var(--space-3); }
+.acct-invite__btn { background: #fff; border: 1px solid var(--color-primary); color: var(--color-primary); border-radius: 10px; padding: 8px 16px; font-weight: 800; cursor: pointer; }
+.acct-invite__btn:hover { background: var(--color-primary); color: #fff; }
+
+/* ── Main column ────────────────────────────────────────────────────── */
+.acct-main { min-width: 0; }
+.acct-head { margin-bottom: var(--space-5); }
+.acct-head__title { font-size: 1.8rem; font-weight: 800; margin: 0; }
+.acct-head__sub { color: var(--color-text-soft); margin: 4px 0 0; }
+
+/* Profile card: avatar (left) + 2-column field grid. */
+.acct-card {
+    background: #fff; border: 1px solid var(--color-border-soft); border-radius: 18px;
+    padding: var(--space-5); display: flex; gap: var(--space-5); align-items: flex-start;
+}
+.acct-card__avatar { flex: 0 0 auto; }
+.acct-fields { flex: 1 1 auto; min-width: 0; display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-5); }
+
+/* Avatar */
+.profile-avatar { position: relative; }
+.profile-avatar__circle { display: grid; place-items: center; width: 84px; height: 84px; border-radius: 50%; background: var(--color-primary-soft); color: var(--color-primary); font-size: 2rem; font-weight: 800; overflow: hidden; }
+.profile-avatar__circle img { width: 100%; height: 100%; object-fit: cover; }
+.profile-avatar__edit { position: absolute; right: -2px; bottom: -2px; width: 30px; height: 30px; border-radius: 50%; background: #fff; border: 1px solid var(--color-border); display: grid; place-items: center; box-shadow: var(--shadow-1); cursor: pointer; color: var(--color-text); }
+.profile-avatar__edit:hover { color: var(--color-primary); }
+
+/* ── Outlined fields (label on the border) — shared with the form JS ── */
+.pf-field { position: relative; }
+.pf-field__label { position: absolute; top: -9px; left: 14px; z-index: 1; background: #fff; padding: 0 6px; font-size: 0.8rem; color: var(--color-text-soft); }
+.pf-field__control { display: flex; align-items: center; gap: 8px; border: 1px solid var(--color-border); border-radius: 12px; padding: 0 14px; min-height: 58px; background: #fff; }
+.pf-field__control:focus-within { border-color: var(--color-primary); }
+.pf-field__input { flex: 1 1 auto; min-width: 0; border: 0; outline: 0; background: transparent; font: inherit; font-size: 1rem; padding: 14px 0; color: var(--color-text); }
+.pf-field__input::placeholder { color: var(--color-text-soft); }
+.pf-field__input--date { cursor: pointer; }
+
+/* Custom gender dropdown (consistent across browsers). */
+.pf-select__btn { width: 100%; background: #fff; cursor: pointer; justify-content: space-between; text-align: left; }
+.pf-select__btn:focus-visible { outline: none; border-color: var(--color-primary); }
+.pf-select__value { flex: 1 1 auto; min-width: 0; font-size: 1rem; color: var(--color-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pf-select__value.is-placeholder { color: var(--color-text-soft); }
+.pf-select__chev { flex: 0 0 auto; color: var(--color-text-soft); transition: transform 160ms ease; }
+.pf-field--select.is-open .pf-select__btn { border-color: var(--color-primary); box-shadow: 0 0 0 3px rgba(229, 37, 42, 0.12); }
+.pf-field--select.is-open .pf-select__chev { transform: rotate(180deg); }
+.pf-select__menu {
+    position: absolute; left: 0; right: 0; top: calc(100% + 6px); z-index: 40;
+    margin: 0; padding: 6px; list-style: none;
+    background: #fff; border: 1px solid var(--color-border);
+    border-radius: 14px; box-shadow: var(--shadow-2);
+    max-height: 280px; overflow-y: auto; animation: pf-select-in 120ms ease;
+}
+@keyframes pf-select-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+.pf-select__opt { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border-radius: 10px; cursor: pointer; font-size: 1rem; color: var(--color-text); user-select: none; }
+.pf-select__opt:hover, .pf-select__opt.is-active { background: var(--color-bg-alt); }
+.pf-select__opt.is-selected { color: var(--color-primary); font-weight: 700; }
+.pf-select__opt.is-selected::after {
+    content: ''; width: 16px; height: 16px; flex: 0 0 auto;
+    background: no-repeat center / contain url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23e5252a' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='20 6 9 17 4 12'/%3E%3C/svg%3E");
+}
+
+.pf-clear { flex: 0 0 auto; background: none; border: 0; padding: 0; cursor: pointer; display: inline-flex; }
+.pf-change { flex: 0 0 auto; background: none; border: 0; padding: 0; color: var(--color-primary); font-weight: 800; font-size: 0.9rem; letter-spacing: 0.03em; cursor: pointer; }
+.pf-readonly { flex: 1 1 auto; min-width: 0; font-size: 1rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pf-readonly.is-empty { color: var(--color-text-soft); }
+.pf-edit { display: flex; align-items: center; gap: 8px; flex: 1 1 auto; min-width: 0; }
+.pf-field--lock.is-editing .pf-readonly,
+.pf-field--lock.is-editing .pf-change { display: none; }
+/* Country chip inside the profile field: drop its own border/height
+   (the field already has a box) and use a subtle right divider so it
+   reads as one clean control instead of a box-in-a-box. */
+.pf-edit .country-chip {
+    flex: 0 0 auto; height: auto; border: 0; border-radius: 0;
+    background: transparent; padding: 0 10px 0 0; margin-right: 4px;
+    border-right: 1px solid var(--color-border-soft);
+}
+
+/* ── Actions ────────────────────────────────────────────────────────── */
+.acct-actions { display: flex; gap: var(--space-3); margin: var(--space-5) 0; }
+.acct-logout-form { margin: 0; }
+.acct-btn { border-radius: 12px; padding: 13px 28px; font-weight: 800; font-size: 1rem; cursor: pointer; }
+.acct-btn--update { background: var(--color-primary); color: #fff; border: 0; }
+.acct-btn--update:hover { background: var(--color-primary-dark); }
+.acct-btn--update[disabled] { background: #e5e7eb; color: var(--color-text-soft); cursor: not-allowed; }
+.acct-btn--logout { background: #fff; border: 1px solid var(--color-border); color: var(--color-text); }
+.acct-btn--logout:hover { border-color: var(--color-primary); color: var(--color-primary); }
+
+/* ── Stats ──────────────────────────────────────────────────────────── */
+.acct-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--space-4); background: #fff; border: 1px solid var(--color-border-soft); border-radius: 18px; padding: var(--space-5); margin-bottom: var(--space-5); }
+.acct-stat { display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; }
+.acct-stat__icon { width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center; }
+.acct-stat__icon--orders { background: #fde8e8; color: #e5252a; }
+.acct-stat__icon--fav    { background: #e7f6ec; color: #16a34a; }
+.acct-stat__icon--points { background: #fef3d7; color: #d97706; }
+.acct-stat__icon--offers { background: #ede9fe; color: #7c3aed; }
+.acct-stat__num { font-size: 1.5rem; font-weight: 800; }
+.acct-stat__label { font-size: 0.85rem; color: var(--color-text-soft); }
+
+/* ── Account safety ─────────────────────────────────────────────────── */
+.acct-safe { display: flex; align-items: center; gap: var(--space-4); background: var(--color-primary-soft); border-radius: 16px; padding: var(--space-5); }
+.acct-safe__icon { flex: 0 0 auto; width: 46px; height: 46px; border-radius: 50%; background: #fff; color: var(--color-primary); display: grid; place-items: center; }
+.acct-safe__text { flex: 1 1 auto; min-width: 0; }
+.acct-safe__title { font-weight: 800; margin: 0; }
+.acct-safe__sub { font-size: 0.88rem; color: var(--color-text-soft); margin: 2px 0 0; }
+.acct-safe__btn { flex: 0 0 auto; background: #fff; border: 1px solid var(--color-primary); color: var(--color-primary); border-radius: 12px; padding: 10px 16px; font-weight: 800; cursor: pointer; white-space: nowrap; }
+.acct-safe__btn:hover { background: var(--color-primary); color: #fff; }
+
+/* Placeholder screen for not-yet-built tabs (Payment / Orders / etc.). */
+.acct-placeholder {
+    background: #fff; border: 1px solid var(--color-border-soft); border-radius: 18px;
+    padding: var(--space-8) var(--space-5); text-align: center;
+    display: flex; flex-direction: column; align-items: center; gap: var(--space-2);
+}
+.acct-placeholder__icon { width: 60px; height: 60px; border-radius: 50%; background: var(--color-primary-soft); color: var(--color-primary); display: grid; place-items: center; margin-bottom: var(--space-2); }
+.acct-placeholder__title { font-size: 1.2rem; font-weight: 800; margin: 0; }
+.acct-placeholder__sub { color: var(--color-text-soft); margin: 0; max-width: 380px; }
+.acct-placeholder .acct-btn { margin-top: var(--space-4); }
+
+/* Mobile-only back bar — hidden on desktop. */
+.acct-mobilebar { display: none; }
+
+/* ── Tablet + mobile (≤ 1024px): single column, tabs → horizontal pills ─ */
+@media (max-width: 1024px) {
+    /* Force a single column + clamp everything to the viewport width so the
+       page can never scroll/cut sideways on a phone. */
+    .acct { grid-template-columns: 1fr !important; padding: var(--space-3) var(--space-3) var(--space-10); gap: var(--space-4); overflow-x: hidden; }
+    .acct-nav, .acct-main, .acct-card, .acct-fields, .acct-stats, .acct-safe, .acct-actions, .acct-nav__list { max-width: 100%; }
+
+    .acct-nav { position: static; }
+    /* All tabs stay reachable on mobile as a swipeable pill row. */
+    .acct-nav__list {
+        flex-direction: row; overflow-x: auto; -webkit-overflow-scrolling: touch;
+        gap: var(--space-2); scrollbar-width: none; padding: var(--space-2);
+    }
+    .acct-nav__list::-webkit-scrollbar { display: none; }
+    .acct-nav__item { flex: 0 0 auto; white-space: nowrap; border: 1px solid var(--color-border-soft); border-radius: 999px; padding: 9px 14px; }
+    .acct-nav__item.is-active { border-color: var(--color-primary); }
+    .acct-invite { display: none; }   /* keep the mobile screen focused on the profile */
+
+    .acct-head__title { font-size: 1.5rem; }
+    .acct-card { flex-direction: column; align-items: stretch; }
+    .acct-card__avatar { align-self: center; }
+    .acct-fields { grid-template-columns: 1fr; gap: var(--space-4); }
+    .acct-actions { flex-direction: column; }
+    .acct-btn { width: 100%; }
+    .acct-stats { grid-template-columns: repeat(2, 1fr); }
+    .acct-safe { flex-direction: column; align-items: flex-start; }
+    .acct-safe__btn { width: 100%; }
+}
+
+/* ── Phone (≤ 767px): a FOCUSED app screen, not the web dashboard. ─────
+   Strip all site chrome (header, search, filter, bottom nav, sidebar
+   tabs, stats, safety card) and show a clean "Your Profile" screen:
+   a back bar, an avatar card with stacked fields, and a sticky
+   "Update profile" action — matching the supplied mobile mockup. */
+@media (max-width: 767px) {
+    /* Remove the global site chrome on this page only. */
+    body[data-active-nav="profile"] .site-header,
+    body[data-active-nav="profile"] .mobile-search,
+    body[data-active-nav="profile"] .promo-strip,
+    body[data-active-nav="profile"] .bottom-nav { display: none !important; }
+    body[data-active-nav="profile"].has-bottom-nav #app-main { padding-bottom: 0; }
+
+    /* Page becomes a full-height app screen. */
+    .acct { display: block; padding: 0 0 132px; background: #f3f4f6; min-height: 100dvh; overflow-x: hidden; }
+    /* No tabs / desktop heading / stats / safety on the focused screen. */
+    .acct-nav, .acct-head, .acct-stats, .acct-safe { display: none !important; }
+
+    /* Back bar. */
+    .acct-mobilebar { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3) var(--space-4) 0; }
+    .acct-mobilebar__back { display: inline-flex; color: var(--color-text); text-decoration: none; }
+    .acct-mobilebar__title { font-size: 1.5rem; font-weight: 800; margin: 0; }
+
+    /* Card with the avatar overlapping its top edge. */
+    .acct-card { display: block; margin: 44px 0 0; border: 0; border-radius: 26px 26px 0 0; box-shadow: none; padding: 62px var(--space-5) var(--space-6); position: relative; }
+    .acct-card__avatar { position: absolute; top: -46px; left: 50%; transform: translateX(-50%); }
+    .profile-avatar__circle { width: 96px; height: 96px; font-size: 2.4rem; border: 4px solid #fff; box-shadow: var(--shadow-2); }
+    .profile-avatar__edit { right: -2px; bottom: 2px; width: 34px; height: 34px; }
+    .acct-fields { display: flex; flex-direction: column; gap: var(--space-5); }
+
+    /* Sticky bottom actions. */
+    .acct-actions { position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; margin: 0; background: #fff; border-top: 1px solid var(--color-border-soft); padding: var(--space-3) var(--space-4) var(--space-4); flex-direction: column; gap: var(--space-2); }
+    .acct-btn { width: 100%; }
+    .acct-logout-form { width: 100%; }
+    .acct-btn--logout { width: 100%; border: 0; background: none; color: var(--color-text-soft); padding: 6px; }
+    .acct-btn--logout:hover { color: var(--color-primary); border: 0; }
+}

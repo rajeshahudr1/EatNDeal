@@ -1,19 +1,27 @@
 <%#
   views/partials/location-modal.ejs
 
-  What:  Full-screen "Where do you want to order from?" modal. Opens
-         automatically on first visit (when no user_location is in session),
-         and on demand when the user clicks the location chip in the header.
-  Why:   Food-delivery convention — pick the area first, then see restaurants
-         that serve it. Modal is full-screen on mobile (immersive) and a
-         large centred card on desktop. Pure CSS positioning — open / close
-         is just a body class toggle, handled in /js/ui/location-modal.js.
+  What:  Zomato-style "Select a location" sheet. Full-screen on mobile,
+         centred card on desktop. Two stacked views inside one panel:
+           • picker — search · use-current-location · Add Address ·
+                      Saved addresses · Searched address · Recently used
+           • form   — the "Address info" add/edit screen (local stylized
+                      map + building type + details + instructions + label)
+  Why:   The user supplied both mockups and the section order:
+           current-location → saved → searched → nearby(recent).
+  Logic: Saved addresses load via GET /addresses (signed-in only).
+         The searched/active location + recently-used list are cookie-
+         backed (no login needed). Add/edit/delete go through
+         POST /address/save and /address/delete.
+  Data:  user_session (signed-in flag) + user_location (active pick) are
+         read from layout locals; the rest is fetched/built client-side
+         by /js/ui/location-modal.js.
   Used:  Included from views/_layout.ejs.
-
-  Inputs from data-* on <body>:
-   • data-has-location — "true"  → modal stays hidden until user opens it
-                          "false" → /js/app.js opens it on DOM-ready
 -%>
+<%
+    var __loggedIn = (typeof user_session !== 'undefined' && user_session) ? '1' : '0';
+    var __activeLoc = (typeof user_location !== 'undefined' && user_location) ? user_location : null;
+%>
 <div
     id="location-modal"
     class="location-modal"
@@ -21,96 +29,208 @@
     aria-modal="true"
     aria-labelledby="location-modal-title"
     aria-hidden="true"
+    data-logged-in="<%= __loggedIn %>"
+    data-active-location="<%= __activeLoc ? encodeURIComponent(JSON.stringify({ label: __activeLoc.label || '', postcode: __activeLoc.postcode || null, lat: (__activeLoc.lat != null ? __activeLoc.lat : null), lng: (__activeLoc.lng != null ? __activeLoc.lng : null) })) : '' %>"
     hidden
 >
     <div class="location-modal__backdrop" data-action="close-location-modal" aria-hidden="true"></div>
 
     <div class="location-modal__panel" role="document">
 
-        <div class="location-modal__header">
-            <h2 id="location-modal-title" class="location-modal__title">Where do you want to order from?</h2>
-            <p  class="location-modal__subtitle">Enter your postcode or share your location and we will show every restaurant that delivers to you.</p>
+        <%# ════════════ VIEW: PICKER ════════════ %>
+        <div class="loc-view loc-view--picker" data-loc-view="picker">
 
-            <button
-                type="button"
-                class="location-modal__close"
-                data-action="close-location-modal"
-                aria-label="Close"
-            >
-                <svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <line x1="18" y1="6"  x2="6"  y2="18"/>
-                    <line x1="6"  y1="6"  x2="18" y2="18"/>
-                </svg>
-            </button>
+            <header class="loc-head">
+                <span class="loc-head__pin" aria-hidden="true">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s7-7.5 7-13a7 7 0 0 0-14 0c0 5.5 7 13 7 13z"/><circle cx="12" cy="9" r="2.5"/></svg>
+                </span>
+                <div class="loc-head__text">
+                    <h2 id="location-modal-title" class="loc-head__title">Select delivery location</h2>
+                    <p class="loc-head__sub">Enter your address to see restaurants that deliver to you</p>
+                </div>
+                <button type="button" class="loc-head__close" data-action="close-location-modal" aria-label="Close">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+            </header>
+
+            <%# Search — area / street / building. Suggestions render below. %>
+            <div class="loc-search">
+                <svg class="loc-search__icon" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <input
+                    id="location-search-input"
+                    class="loc-search__input"
+                    type="search"
+                    autocomplete="off"
+                    spellcheck="false"
+                    placeholder="Search for area, street name, building..."
+                    aria-controls="location-search-suggestions"
+                    aria-expanded="false"
+                >
+                <button type="button" class="loc-search__clear" data-action="clear-loc-search" aria-label="Clear search" hidden>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="#9ca3af"/><path d="M15 9l-6 6M9 9l6 6" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg>
+                </button>
+            </div>
+            <ul id="location-search-suggestions" class="loc-suglist" role="listbox" hidden></ul>
+            <p class="loc-search__status" id="location-search-status" hidden></p>
+
+            <%# Two action tiles — use current location · add new address. %>
+            <div class="loc-actions2">
+                <button type="button" class="loc-action2" data-action="use-current-location">
+                    <span class="loc-action2__icon loc-action2__icon--gps" aria-hidden="true">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="8"/></svg>
+                    </span>
+                    <span class="loc-action2__text">
+                        <span class="loc-action2__title">Use current location</span>
+                        <span class="loc-action2__sub" data-current-address>Detect my location</span>
+                    </span>
+                </button>
+                <button type="button" class="loc-action2" data-action="add-address">
+                    <span class="loc-action2__icon loc-action2__icon--add" aria-hidden="true">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    </span>
+                    <span class="loc-action2__text">
+                        <span class="loc-action2__title">Add new address</span>
+                        <span class="loc-action2__sub">Manually enter address</span>
+                    </span>
+                </button>
+            </div>
+
+            <%# Saved addresses (signed-in). Cards built by JS on open. %>
+            <section class="loc-section" data-saved-section hidden>
+                <h3 class="loc-section__label">Saved addresses</h3>
+                <div class="loc-saved" data-saved-list></div>
+            </section>
+
+            <%# Guest hint — shown instead of saved addresses when logged out. %>
+            <p class="loc-guest-hint" data-guest-hint hidden>
+                <a href="/signin" data-action="goto-signin">Sign in</a> to see your saved addresses.
+            </p>
+
+            <%# Recent searches — cookie-backed chips. %>
+            <section class="loc-section" data-nearby-section hidden>
+                <h3 class="loc-section__label">Recent searches</h3>
+                <div class="loc-chips" data-nearby-list></div>
+            </section>
+
+            <%# Can't find your address? — landmark search help. %>
+            <div class="loc-landmark">
+                <span class="loc-landmark__art" aria-hidden="true">
+                    <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>
+                </span>
+                <div class="loc-landmark__text">
+                    <p class="loc-landmark__title">Can't find your address?</p>
+                    <p class="loc-landmark__sub">Try searching with a nearby landmark</p>
+                    <p class="loc-landmark__eg">e.g. "Near Buckland School" or "Opposite City Center"</p>
+                </div>
+                <button type="button" class="loc-landmark__btn" data-action="search-by-landmark">Search by landmark</button>
+            </div>
+
         </div>
 
-        <div class="location-modal__body">
+        <%# ════════════ VIEW: ADDRESS FORM ════════════ %>
+        <div class="loc-view loc-view--form" data-loc-view="form" hidden>
 
-            <%# Postcode / address search input. The dropdown list below is
-                populated by /js/ui/location-modal.js after each keystroke
-                (debounced + min 3 chars per the api's contract). %>
-            <div class="location-search">
-                <label class="location-search__label" for="location-search-input">Postcode or address</label>
-                <div class="location-search__field">
-                    <svg class="location-search__icon" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <circle cx="11" cy="11" r="7"/>
-                        <line x1="21" y1="21" x2="16.65" y2="16.65"/>
-                    </svg>
-                    <input
-                        id="location-search-input"
-                        class="location-search__input"
-                        type="search"
-                        autocomplete="off"
-                        spellcheck="false"
-                        placeholder="e.g. SW1A 1AA or 10 Downing Street"
-                        aria-controls="location-search-suggestions"
-                        aria-expanded="false"
-                    >
+            <header class="loc-head loc-head--form">
+                <button type="button" class="loc-head__back" data-action="loc-form-back" aria-label="Back">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+                </button>
+                <h2 class="loc-head__title">Address info</h2>
+                <button type="button" class="loc-head__close" data-action="close-location-modal" aria-label="Close">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+            </header>
+
+            <form class="loc-form" data-address-form novalidate>
+                <input type="hidden" name="id" data-af-id value="">
+                <input type="hidden" name="latitude" data-af-lat value="">
+                <input type="hidden" name="longitude" data-af-lng value="">
+
+                <%# Local stylized map (no external tiles — CSP-safe), with a
+                    draggable centre pin. JS pans the grid; the pin marks the
+                    chosen point. %>
+                <div class="loc-map" data-loc-map>
+                    <div class="loc-map__grid" data-loc-map-grid></div>
+                    <span class="loc-map__pin" aria-hidden="true">
+                        <svg width="30" height="30" viewBox="0 0 24 24" fill="var(--color-primary)" stroke="#fff" stroke-width="1.5"><path d="M12 2C7.6 2 4 5.6 4 10c0 5.5 8 12 8 12s8-6.5 8-12c0-4.4-3.6-8-8-8z"/><circle cx="12" cy="10" r="2.6" fill="#fff" stroke="none"/></svg>
+                    </span>
+                    <span class="loc-map__hint">Drag to adjust the pin</span>
                 </div>
 
-                <ul
-                    id="location-search-suggestions"
-                    class="location-search__suggestions"
-                    role="listbox"
-                    hidden
-                ></ul>
-
-                <p class="location-search__status" id="location-search-status" hidden></p>
-            </div>
-
-            <div class="location-modal__divider"><span>or</span></div>
-
-            <%# Geolocation button — uses the browser's navigator.geolocation
-                API. On success we forward the lat/lng to the api which maps
-                them to the nearest postcode for delivery-zone lookups. %>
-            <button
-                type="button"
-                class="btn btn--secondary btn--block btn--lg"
-                data-action="use-current-location"
-            >
-                <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <circle cx="12" cy="12" r="9"/>
-                    <line x1="12" y1="3"  x2="12" y2="6"/>
-                    <line x1="12" y1="18" x2="12" y2="21"/>
-                    <line x1="3"  y1="12" x2="6"  y2="12"/>
-                    <line x1="18" y1="12" x2="21" y2="12"/>
-                    <circle cx="12" cy="12" r="2.5" fill="currentColor"/>
-                </svg>
-                Use my current location
-            </button>
-
-            <%# Popular cities — quick shortcuts. Static for now; can become
-                dynamic once we have a /cities endpoint. %>
-            <div class="location-popular">
-                <p class="location-popular__label">Popular cities</p>
-                <div class="location-popular__chips">
-                    <button type="button" class="chip" data-city="London">London</button>
-                    <button type="button" class="chip" data-city="Manchester">Manchester</button>
-                    <button type="button" class="chip" data-city="Birmingham">Birmingham</button>
-                    <button type="button" class="chip" data-city="Leeds">Leeds</button>
-                    <button type="button" class="chip" data-city="Glasgow">Glasgow</button>
+                <div class="loc-field">
+                    <label class="loc-field__label" for="af-address">Address</label>
+                    <input id="af-address" class="loc-field__input" name="address" data-af-address type="text" placeholder="Flat / house, street, area" maxlength="500" required>
                 </div>
-            </div>
+
+                <%# Building type — custom dropdown (consistent across browsers). %>
+                <div class="loc-field">
+                    <span class="loc-field__label">Building type</span>
+                    <div class="loc-select" data-loc-select="type" data-placeholder="Select">
+                        <button type="button" class="loc-select__btn" data-loc-select-btn aria-haspopup="listbox" aria-expanded="false">
+                            <span class="loc-select__value is-placeholder" data-loc-select-value>Select</span>
+                            <svg class="loc-select__chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+                        </button>
+                        <ul class="loc-select__menu" role="listbox" data-loc-select-menu hidden>
+                            <li class="loc-select__opt" role="option" data-value="house">House</li>
+                            <li class="loc-select__opt" role="option" data-value="apartment">Apartment / Flat</li>
+                            <li class="loc-select__opt" role="option" data-value="office">Office</li>
+                            <li class="loc-select__opt" role="option" data-value="hotel">Hotel</li>
+                            <li class="loc-select__opt" role="option" data-value="other">Other</li>
+                        </ul>
+                        <input type="hidden" name="address_type" data-af-type value="">
+                    </div>
+                </div>
+
+                <div class="loc-field">
+                    <label class="loc-field__label" for="af-additional">Additional details</label>
+                    <input id="af-additional" class="loc-field__input" name="additional_details" type="text" placeholder="e.g. house number or name" maxlength="255">
+                </div>
+
+                <div class="loc-field">
+                    <label class="loc-field__label" for="af-instructions">Instructions for delivery person</label>
+                    <textarea id="af-instructions" class="loc-field__input loc-field__textarea" name="delivery_instructions" placeholder="Example: Please knock instead of using the doorbell" maxlength="500"></textarea>
+                </div>
+
+                <div class="loc-field">
+                    <label class="loc-field__label" for="af-contact">Contact number</label>
+                    <div class="loc-contact">
+                        <%# Country dial-code dropdown (custom, reuses .loc-select). %>
+                        <div class="loc-select loc-select--dial" data-loc-select="dial" data-placeholder="+44">
+                            <button type="button" class="loc-select__btn" data-loc-select-btn aria-haspopup="listbox" aria-expanded="false" aria-label="Country dial code">
+                                <span class="loc-select__value" data-loc-select-value>+44</span>
+                                <svg class="loc-select__chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+                            </button>
+                            <ul class="loc-select__menu" role="listbox" data-loc-select-menu hidden>
+                                <li class="loc-select__opt is-selected" role="option" data-value="44"  data-display="+44">🇬🇧 +44 United Kingdom</li>
+                                <li class="loc-select__opt" role="option" data-value="91"  data-display="+91">🇮🇳 +91 India</li>
+                                <li class="loc-select__opt" role="option" data-value="1"   data-display="+1">🇺🇸 +1 United States</li>
+                                <li class="loc-select__opt" role="option" data-value="353" data-display="+353">🇮🇪 +353 Ireland</li>
+                                <li class="loc-select__opt" role="option" data-value="971" data-display="+971">🇦🇪 +971 UAE</li>
+                                <li class="loc-select__opt" role="option" data-value="61"  data-display="+61">🇦🇺 +61 Australia</li>
+                                <li class="loc-select__opt" role="option" data-value="92"  data-display="+92">🇵🇰 +92 Pakistan</li>
+                                <li class="loc-select__opt" role="option" data-value="880" data-display="+880">🇧🇩 +880 Bangladesh</li>
+                                <li class="loc-select__opt" role="option" data-value="966" data-display="+966">🇸🇦 +966 Saudi Arabia</li>
+                                <li class="loc-select__opt" role="option" data-value="49"  data-display="+49">🇩🇪 +49 Germany</li>
+                                <li class="loc-select__opt" role="option" data-value="33"  data-display="+33">🇫🇷 +33 France</li>
+                                <li class="loc-select__opt" role="option" data-value="234" data-display="+234">🇳🇬 +234 Nigeria</li>
+                            </ul>
+                            <input type="hidden" name="contact_dial" data-af-dial value="44">
+                        </div>
+                        <input id="af-contact" class="loc-field__input" name="contact_no" type="tel" inputmode="numeric" pattern="[0-9]*" placeholder="Phone number" maxlength="15" data-af-contact>
+                    </div>
+                </div>
+
+                <div class="loc-field">
+                    <label class="loc-field__label" for="af-label">Address label</label>
+                    <input id="af-label" class="loc-field__input" name="label" type="text" placeholder="Add a label (e.g. Home, Work)" maxlength="60">
+                </div>
+            </form>
+
+            <footer class="loc-form__foot">
+                <button type="button" class="loc-form__delete" data-action="loc-form-delete" hidden>Delete</button>
+                <span class="loc-form__spacer"></span>
+                <button type="button" class="loc-form__back-btn" data-action="loc-form-back">Back</button>
+                <button type="button" class="loc-form__save" data-action="loc-form-save">Save</button>
+            </footer>
 
         </div>
     </div>

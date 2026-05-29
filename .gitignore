@@ -153,16 +153,27 @@ vite.config.ts.timestamp-*
 # truth so the list is visible in one place.
 
 # api — Node + Express + Knex
-api/uploads/                       # customer-uploaded files (logos, banners, product photos)
-api/runtime/                       # any runtime cache / pid / lock files written by the api
-api/logs/                          # rolled log output (if/when winston is wired)
-api/firebase-service-account.json  # FCM push credentials — never commit
-api/.env                           # secrets (db url, jwt secret, sms api key, oauth secrets)
+# (Git does NOT support trailing inline comments on patterns — a "# ..."
+#  after the path becomes part of the pattern and stops it matching. Keep
+#  every comment on its own line so the patterns below actually take.)
+# customer-uploaded files (logos, banners, product photos)
+api/uploads/
+# any runtime cache / pid / lock files written by the api
+api/runtime/
+# rolled log output (if/when winston is wired)
+api/logs/
+# FCM push credentials — never commit
+api/firebase-service-account.json
+# secrets (db url, jwt secret, sms api key, oauth secrets)
+api/.env
 
 # web — Node + Express + EJS PWA
-web/runtime/                       # future on-disk session store, cache, etc.
-web/logs/                          # rolled log output
-web/.env                           # secrets (session secret, oauth client secrets, api url)
+# on-disk session store (session-file-store), cache, etc.
+web/runtime/
+# rolled log output
+web/logs/
+# secrets (session secret, oauth client secrets, api url)
+web/.env
 
 # OS clutter that appears in both
 api/.DS_Store

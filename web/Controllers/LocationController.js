@@ -68,17 +68,29 @@ function save(req, res) {
         });
     }
 
-    // Persist on session. express-session writes the change to the store
-    // on the response flush, so a subsequent page reload immediately sees
-    // the new location (header chip, hero copy, restaurant search).
+    // Persist on session. We EXPLICITLY save before responding: the
+    // file-backed session store writes asynchronously, so without this the
+    // client's "navigate to /" can race the disk write — the home request
+    // then reads no location and bounces back to this gate page (looked
+    // like "selecting a location just reloads the page"). Saving first
+    // guarantees the location is durable before the client navigates.
     req.session.userLocation = check.value;
 
-    return res.status(200).json({
+    const respond = () => res.status(200).json({
         status: 200,
         show:   false,
         msg:    'Location saved.',
         data:   check.value,
     });
+    if (typeof req.session.save === 'function') {
+        return req.session.save(function (err) {
+            if (err) {
+                return res.status(200).json({ status: 500, show: true, msg: 'Could not save your location. Please try again.' });
+            }
+            return respond();
+        });
+    }
+    return respond();
 }
 
 /**

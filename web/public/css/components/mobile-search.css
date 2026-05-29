@@ -105,3 +105,10 @@
     -webkit-appearance: none;
     appearance: none;
 }
+
+/* Inside a single restaurant or a product page there is nothing to
+ * filter/sort (the home-feed facets don't apply here), so the filter
+ * trigger is hidden and the search input takes the full width — a
+ * cleaner, app-like top bar. */
+body.view-restaurant .mobile-search__filter,
+body.view-product .mobile-search__filter { display: none; }

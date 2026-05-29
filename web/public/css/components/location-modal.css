@@ -1,12 +1,16 @@
 /*
  * components/location-modal.css
  *
- * What:  Full-screen / centred-panel location picker modal. Mobile shows
- *        full-screen; desktop centres a card. Layout differences are in
- *        desktop.css / mobile.css; this file owns the visuals (backdrop,
- *        input, suggestion list).
- * Why:   First UX moment for a new visitor. Needs to feel solid + simple.
- * Used:  Imported by base.css.
+ * What:  Zomato-style "Select a location" sheet + "Address info" add/edit
+ *        form. Mobile = full-screen sheet; desktop = centred card (panel
+ *        sizing lives in desktop.css / mobile.css). This file owns the
+ *        visuals: search, action card, saved/searched/recent lists, the
+ *        local stylized map and the form fields.
+ * Why:   First UX moment + the saved-address book. Built to the supplied
+ *        mockups.
+ * Used:  Imported via its own <link> in views/_layout.ejs. Markup lives in
+ *        views/partials/location-modal.ejs; behaviour in
+ *        /js/ui/location-modal.js.
  */
 
 .location-modal {
@@ -20,164 +24,230 @@
 .location-modal[aria-hidden="false"] { display: flex; }
 .location-modal[aria-hidden="true"]  { display: none; }
 
-/* The no-location gate is now a dedicated landing PAGE
- * (views/site/location.ejs), not a forced modal — so the old
- * "hide everything + force the modal open" rules were removed. The
- * modal here is used only for the CHANGE-location flow once a
- * location already exists. */
-
-/* Backdrop fades in over 200ms; panel slides up + fades in over 240ms
- * with an ease-out curve so the first-visit modal lands smoothly
- * instead of popping abruptly. Animation runs each time `display`
- * flips from `none` to `flex` (when aria-hidden goes false). */
-.location-modal[aria-hidden="false"] .location-modal__backdrop {
-    animation: location-modal-fade 200ms ease-out;
-}
-.location-modal[aria-hidden="false"] .location-modal__panel {
-    animation: location-modal-rise 240ms cubic-bezier(0.2, 0.8, 0.2, 1);
-}
-@keyframes location-modal-fade {
-    from { opacity: 0; }
-    to   { opacity: 1; }
-}
-@keyframes location-modal-rise {
-    from { transform: translateY(20px); opacity: 0; }
-    to   { transform: translateY(0);    opacity: 1; }
-}
-/* When the user prefers reduced motion, skip the animation entirely. */
+/* Backdrop fade + panel rise (skipped under prefers-reduced-motion). */
+.location-modal[aria-hidden="false"] .location-modal__backdrop { animation: location-modal-fade 200ms ease-out; }
+.location-modal[aria-hidden="false"] .location-modal__panel    { animation: location-modal-rise 240ms cubic-bezier(0.2, 0.8, 0.2, 1); }
+@keyframes location-modal-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes location-modal-rise { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 @media (prefers-reduced-motion: reduce) {
     .location-modal[aria-hidden="false"] .location-modal__backdrop,
-    .location-modal[aria-hidden="false"] .location-modal__panel {
-        animation: none;
-    }
+    .location-modal[aria-hidden="false"] .location-modal__panel { animation: none; }
 }
 
 .location-modal__backdrop {
-    position: absolute;
-    inset: 0;
+    position: absolute; inset: 0;
     background-color: rgba(20, 20, 20, 0.45);
     backdrop-filter: blur(4px);
     -webkit-backdrop-filter: blur(4px);
 }
 
+/* Panel is a flex column so the head pins to the top and (in the form
+   view) the action bar pins to the bottom while the middle scrolls. */
 .location-modal__panel {
     position: relative;
-    background-color: #fff;
-    overflow: auto;
+    background-color: #f4f5f7;
     box-shadow: var(--shadow-3);
-}
-
-.location-modal__header { position: relative; }
-.location-modal__title { font-weight: 700; line-height: 1.2; margin-bottom: var(--space-2); }
-.location-modal__subtitle { color: var(--color-text-muted); font-size: 0.95rem; }
-
-.location-modal__close {
-    position: absolute;
-    top: var(--space-4);
-    right: var(--space-4);
-    width: 36px;
-    height: 36px;
-    border-radius: 50%;
-    background-color: var(--color-bg-alt);
-    color: var(--color-text);
-    display: grid;
-    place-items: center;
-    transition: background-color 120ms ease;
-}
-.location-modal__close:hover { background-color: var(--color-border); }
-
-/* ── Search field ──────────────────────────────────────────────────── */
-
-.location-search__label {
-    display: block;
-    font-weight: 600;
-    font-size: 0.9rem;
-    margin-bottom: var(--space-2);
-    color: var(--color-text);
-}
-.location-search__field {
-    position: relative;
     display: flex;
-    align-items: center;
-}
-.location-search__icon {
-    position: absolute;
-    left: var(--space-4);
-    color: var(--color-text-soft);
-    pointer-events: none;
-}
-.location-search__input {
-    width: 100%;
-    padding: 0.95rem 1rem 0.95rem 2.6rem;
-    font-size: 1rem;
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
-    background-color: var(--color-bg-soft);
-    transition: border-color 120ms ease, background-color 120ms ease, box-shadow 120ms ease;
-}
-/* Softer focus ring — 2px instead of 3px + lower-alpha brand red so
- * the auto-focused input on first open doesn't read as a heavy halo. */
-.location-search__input:focus {
-    outline: none;
-    background-color: #fff;
-    border-color: var(--color-primary);
-    box-shadow: 0 0 0 2px rgba(229, 37, 42, 0.18);
+    flex-direction: column;
+    overflow: hidden;
 }
 
-.location-search__suggestions {
-    margin-top: var(--space-3);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
-    background-color: #fff;
-    max-height: 260px;
-    overflow-y: auto;
+/* Each view fills the panel and scrolls its own body. */
+.loc-view { display: flex; flex-direction: column; min-height: 0; flex: 1 1 auto; overflow-y: auto; }
+
+/* ── Header ─────────────────────────────────────────────────────────── */
+.loc-head {
+    position: sticky; top: 0; z-index: 5;
+    display: flex; align-items: flex-start; gap: var(--space-3);
+    background: #fff; border-bottom: 1px solid var(--color-border-soft);
+    padding: var(--space-5) var(--space-5) var(--space-4);
 }
-.location-search__suggestions li {
+.loc-head__pin { flex: 0 0 auto; color: var(--color-primary); margin-top: 2px; }
+.loc-head__text { flex: 1 1 auto; min-width: 0; }
+.loc-head__title { font-size: 1.4rem; font-weight: 800; margin: 0; line-height: 1.2; }
+.loc-head__sub { font-size: 0.9rem; color: var(--color-text-soft); margin: 4px 0 0; }
+.loc-head__back, .loc-head__close {
+    flex: 0 0 auto; display: inline-flex; color: var(--color-text);
+    background: none; border: 0; padding: 4px; cursor: pointer; border-radius: 8px;
+}
+.loc-head__back:hover, .loc-head__close:hover { color: var(--color-primary); }
+.loc-head--form { align-items: center; }
+.loc-head--form .loc-head__title { font-size: 1.15rem; flex: 1 1 auto; }
+
+/* ── Search ─────────────────────────────────────────────────────────── */
+.loc-search {
+    position: relative; display: flex; align-items: center; gap: 8px;
+    margin: var(--space-4) var(--space-4) 0;
+    background: #fff; border: 1px solid var(--color-border);
+    border-radius: 14px; padding: 0 12px; min-height: 52px;
+}
+.loc-search:focus-within { border-color: var(--color-primary); box-shadow: 0 0 0 3px rgba(229, 37, 42, 0.12); }
+.loc-search__icon { flex: 0 0 auto; color: var(--color-primary); }
+.loc-search__input { flex: 1 1 auto; min-width: 0; border: 0; outline: 0; background: transparent; font: inherit; font-size: 1rem; padding: 12px 0; color: var(--color-text); }
+.loc-search__input::placeholder { color: var(--color-text-soft); }
+.loc-search__input::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; }
+.loc-search__clear { flex: 0 0 auto; background: none; border: 0; padding: 0; cursor: pointer; display: inline-flex; }
+
+.loc-suglist {
+    margin: var(--space-2) var(--space-4) 0; padding: 4px;
+    list-style: none; background: #fff;
+    border: 1px solid var(--color-border); border-radius: 14px;
+    max-height: 260px; overflow-y: auto;
+}
+.loc-suglist li {
+    padding: 12px 12px; border-radius: 10px; cursor: pointer;
+    font-size: 0.95rem; color: var(--color-text);
+}
+.loc-suglist li:hover, .loc-suglist li.is-focused { background: var(--color-bg-alt); }
+.loc-search__status { margin: var(--space-2) var(--space-4) 0; font-size: 0.85rem; color: var(--color-text-soft); }
+
+/* ── Two action tiles (current location · add new address) ──────────── */
+.loc-actions2 {
+    display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3);
+    margin: var(--space-4) var(--space-5) 0;
+}
+.loc-action2 {
+    display: flex; align-items: center; gap: var(--space-3);
+    background: #fff; border: 1px solid var(--color-border); border-radius: 14px;
+    padding: var(--space-4); cursor: pointer; text-align: left; color: var(--color-text);
+    transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+.loc-action2:hover { border-color: var(--color-primary); box-shadow: 0 0 0 3px rgba(229, 37, 42, 0.10); }
+.loc-action2__icon { flex: 0 0 auto; width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; color: var(--color-primary); background: rgba(229, 37, 42, 0.10); }
+.loc-action2__text { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.loc-action2__title { font-weight: 800; }
+.loc-action2__sub { font-size: 0.82rem; color: var(--color-text-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ── Sections (saved / recent) ──────────────────────────────────────── */
+.loc-section { margin: var(--space-2) 0 0; padding: 0 var(--space-5); }
+.loc-section__label { font-size: 0.95rem; font-weight: 800; color: var(--color-text); margin: var(--space-5) 0 var(--space-3); }
+
+/* Saved-address cards */
+.loc-saved { display: flex; flex-direction: column; gap: var(--space-3); }
+.loc-saved__card {
+    display: flex; align-items: flex-start; gap: var(--space-3);
+    background: #fff; border: 1px solid var(--color-border-soft); border-radius: 14px; padding: var(--space-4);
+    transition: border-color 120ms ease;
+}
+.loc-saved__card:hover { border-color: var(--color-border); }
+.loc-saved__icon { flex: 0 0 auto; width: 38px; height: 38px; border-radius: 10px; display: grid; place-items: center; color: var(--color-text); background: var(--color-bg-alt); }
+.loc-saved__main { flex: 1 1 auto; min-width: 0; background: none; border: 0; padding: 0; cursor: pointer; text-align: left; display: flex; flex-direction: column; gap: 3px; }
+.loc-saved__top { display: flex; align-items: center; gap: 8px; }
+.loc-saved__name { font-weight: 800; color: var(--color-text); }
+.loc-saved__badge { font-size: 0.68rem; font-weight: 800; letter-spacing: 0.02em; color: var(--color-primary); background: var(--color-primary-soft); border-radius: 6px; padding: 2px 7px; }
+.loc-saved__addr { color: var(--color-text-soft); font-size: 0.9rem; }
+.loc-saved__actions { flex: 0 0 auto; display: flex; gap: var(--space-2); }
+.loc-saved__act {
+    width: 36px; height: 36px; border-radius: 50%;
+    border: 1px solid var(--color-border); background: #fff; color: var(--color-text-soft);
+    display: grid; place-items: center; cursor: pointer;
+}
+.loc-saved__act:hover { border-color: var(--color-primary); color: var(--color-primary); }
+
+/* Recent-search chips */
+.loc-chips { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.loc-chip {
+    display: inline-flex; align-items: center; gap: 7px;
+    background: #fff; border: 1px solid var(--color-border); border-radius: 999px;
+    padding: 9px 14px; cursor: pointer; color: var(--color-text); font-size: 0.9rem;
+}
+.loc-chip:hover { border-color: var(--color-primary); }
+.loc-chip__ico { flex: 0 0 auto; display: inline-flex; color: var(--color-text-soft); }
+.loc-chip__text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 220px; }
+
+/* "Can't find your address?" landmark help card */
+.loc-landmark {
+    display: flex; align-items: center; gap: var(--space-3);
+    margin: var(--space-5) var(--space-5) var(--space-5);
+    background: var(--color-primary-soft); border-radius: 14px; padding: var(--space-4);
+}
+.loc-landmark__art { flex: 0 0 auto; color: var(--color-primary); }
+.loc-landmark__text { flex: 1 1 auto; min-width: 0; }
+.loc-landmark__title { font-weight: 800; margin: 0; }
+.loc-landmark__sub { font-size: 0.88rem; color: var(--color-text); margin: 2px 0 0; }
+.loc-landmark__eg { font-size: 0.8rem; color: var(--color-text-soft); margin: 2px 0 0; }
+.loc-landmark__btn { flex: 0 0 auto; background: #fff; border: 1px solid var(--color-primary); color: var(--color-primary); border-radius: 12px; padding: 10px 16px; font-weight: 800; cursor: pointer; white-space: nowrap; }
+.loc-landmark__btn:hover { background: var(--color-primary); color: #fff; }
+
+.loc-guest-hint { margin: var(--space-3) var(--space-5) 0; color: var(--color-text-soft); font-size: 0.9rem; }
+.loc-guest-hint a { color: var(--color-primary); font-weight: 700; }
+
+/* ── Mobile: stack the two action tiles + soften the landmark card ──── */
+@media (max-width: 560px) {
+    .loc-actions2 { grid-template-columns: 1fr; }
+    .loc-landmark { flex-direction: column; align-items: flex-start; }
+    .loc-landmark__btn { width: 100%; }
+}
+
+/* ── Address form ───────────────────────────────────────────────────── */
+.loc-form { padding: var(--space-4) var(--space-4) var(--space-6); display: flex; flex-direction: column; gap: var(--space-4); }
+
+.loc-map {
+    position: relative; height: 150px; border-radius: 14px; overflow: hidden;
+    background-color: #e8edf2; cursor: grab; touch-action: none;
+}
+.loc-map:active { cursor: grabbing; }
+.loc-map__grid {
+    position: absolute; inset: -200px;
+    background-image:
+        repeating-linear-gradient(0deg,  rgba(0,0,0,0.05) 0 1px, transparent 1px 26px),
+        repeating-linear-gradient(90deg, rgba(0,0,0,0.05) 0 1px, transparent 1px 26px);
+    background-position: 0 0;
+}
+.loc-map__pin { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -100%); pointer-events: none; filter: drop-shadow(0 3px 4px rgba(0,0,0,0.25)); }
+.loc-map__hint { position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%); background: #fff; border-radius: 999px; padding: 4px 10px; font-size: 0.72rem; font-weight: 700; box-shadow: var(--shadow-1); white-space: nowrap; }
+
+.loc-field { position: relative; display: flex; flex-direction: column; gap: 6px; }
+.loc-field__label { font-size: 0.82rem; font-weight: 700; color: var(--color-text-soft); }
+.loc-field__input {
+    width: 100%; border: 1px solid var(--color-border); border-radius: 12px;
+    padding: 13px 14px; font: inherit; font-size: 1rem; background: #fff; color: var(--color-text);
+}
+.loc-field__input:focus { outline: 0; border-color: var(--color-primary); box-shadow: 0 0 0 3px rgba(229, 37, 42, 0.12); }
+.loc-field__textarea { resize: vertical; min-height: 76px; }
+
+/* Contact number row: dial-code dropdown + number input. */
+.loc-contact { display: flex; gap: var(--space-2); align-items: stretch; }
+.loc-contact .loc-field__input { flex: 1 1 auto; min-width: 0; }
+.loc-select--dial { flex: 0 0 auto; width: 102px; }
+.loc-select--dial .loc-select__btn { padding-left: 12px; padding-right: 10px; }
+/* The dial menu rows carry flag + name, so widen the popup beyond the
+   narrow button (anchored to the left). */
+.loc-select--dial .loc-select__menu { right: auto; left: 0; min-width: 250px; }
+
+/* Building-type custom dropdown */
+.loc-select { position: relative; }
+.loc-select__btn {
+    width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    border: 1px solid var(--color-border); border-radius: 12px; background: #fff;
+    padding: 13px 14px; cursor: pointer; font: inherit; font-size: 1rem; color: var(--color-text);
+}
+.loc-select__btn:focus-visible { outline: 0; border-color: var(--color-primary); }
+.loc-select.is-open .loc-select__btn { border-color: var(--color-primary); box-shadow: 0 0 0 3px rgba(229, 37, 42, 0.12); }
+.loc-select__value { flex: 1 1 auto; min-width: 0; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.loc-select__value.is-placeholder { color: var(--color-text-soft); }
+.loc-select__chev { flex: 0 0 auto; color: var(--color-text-soft); transition: transform 160ms ease; }
+.loc-select.is-open .loc-select__chev { transform: rotate(180deg); }
+.loc-select__menu {
+    position: absolute; left: 0; right: 0; top: calc(100% + 6px); z-index: 10;
+    margin: 0; padding: 6px; list-style: none; background: #fff;
+    border: 1px solid var(--color-border); border-radius: 12px; box-shadow: var(--shadow-2);
+    max-height: 240px; overflow-y: auto;
+}
+.loc-select__opt { padding: 11px 12px; border-radius: 9px; cursor: pointer; font-size: 0.98rem; }
+.loc-select__opt:hover, .loc-select__opt.is-active { background: var(--color-bg-alt); }
+.loc-select__opt.is-selected { color: var(--color-primary); font-weight: 700; }
+
+/* Sticky action bar */
+.loc-form__foot {
+    position: sticky; bottom: 0; z-index: 5;
+    display: flex; align-items: center; gap: var(--space-3);
+    background: #fff; border-top: 1px solid var(--color-border-soft);
     padding: var(--space-3) var(--space-4);
-    border-bottom: 1px solid var(--color-border-soft);
-    cursor: pointer;
-    transition: background-color 100ms ease;
-    font-size: 0.95rem;
 }
-.location-search__suggestions li:last-child { border-bottom: 0; }
-.location-search__suggestions li:hover,
-.location-search__suggestions li.is-focused { background-color: var(--color-bg-alt); }
-.location-search__suggestions strong { color: var(--color-primary-dark); font-weight: 600; }
-
-.location-search__status {
-    margin-top: var(--space-3);
-    font-size: 0.85rem;
-    color: var(--color-text-soft);
-}
-
-/* ── "or" divider ──────────────────────────────────────────────────── */
-
-.location-modal__divider {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-    margin: var(--space-6) 0;
-    color: var(--color-text-soft);
-    font-size: 0.85rem;
-}
-.location-modal__divider::before,
-.location-modal__divider::after {
-    content: '';
-    flex: 1;
-    height: 1px;
-    background-color: var(--color-border);
-}
-
-/* ── Popular cities ────────────────────────────────────────────────── */
-
-.location-popular { margin-top: var(--space-6); }
-.location-popular__label {
-    font-size: 0.85rem;
-    color: var(--color-text-muted);
-    margin-bottom: var(--space-3);
-}
-.location-popular__chips {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-2);
-}
+.loc-form__spacer { flex: 1 1 auto; }
+.loc-form__delete { background: none; border: 0; color: var(--color-primary); font-weight: 700; cursor: pointer; padding: 8px; }
+.loc-form__back-btn { background: #fff; border: 1px solid var(--color-border); border-radius: 12px; padding: 12px 20px; font-weight: 700; cursor: pointer; }
+.loc-form__save { background: var(--color-primary); color: #fff; border: 0; border-radius: 12px; padding: 12px 26px; font-weight: 800; cursor: pointer; }
+.loc-form__save:hover { background: var(--color-primary-dark); }
+.loc-form__save[disabled] { background: #e5e7eb; color: var(--color-text-soft); cursor: not-allowed; }

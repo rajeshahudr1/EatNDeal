@@ -1,32 +1,19 @@
 <%#
   views/partials/mobile-drawer.ejs
 
-  What:  Slide-in drawer for mobile only. Opens from the right when the
-         user taps the hamburger in the header. On mobile the site
-         footer is hidden — ALL of its links + brand + social + legal
-         live here instead, grouped into sections at the bottom of the
-         drawer. This keeps the page itself short on small screens
-         while still giving the user a single tap to reach Terms,
-         Partner with us, Contact us, etc.
-
-         Drawer order, top-to-bottom:
-           • Head (brand mark + close)
-           • Auth / account row
-           • Primary nav (Home / Restaurants / Offers)
-           • ── footer band ──
-              · Company links
-              · For-restaurants links
-              · Help & legal links
-              · Social icons row
-              · Copyright + build version
-           • Log out (only when signed in)
-  Why:   Mobile header has room for the logo + location + hamburger
-         only. Pushing the footer into the drawer matches the Zomato /
-         Swiggy mobile pattern where users tap the menu for everything
-         that isn't the main feed.
-  Used:  Included from views/_layout.ejs. Toggled by /js/app.js via
-         [data-action="toggle-mobile-menu"] (the hamburger) and
-         dismissed by clicking the backdrop / close button / Esc.
+  What:  Mobile slide-in drawer (from the right), redesigned to the
+         Zomato-style profile menu the user supplied:
+           • profile card (avatar + name + Edit profile)  /  Sign in
+           • rewards banner
+           • Wallet + Your coupons tiles
+           • "Your preferences" card (Veg Mode / ratings / Appearance /
+             Payment methods)
+           • "Food delivery" card (Your orders / Address book)
+           • "More" card (footer links) + social + copyright
+           • Log out
+         Rows with a real destination are links; the rest carry
+         data-action="drawer-soon" → a "coming soon" toast (app.js).
+  Used:  Included from views/_layout.ejs. Toggled by /js/app.js.
 -%>
 <div
     id="mobile-drawer"
@@ -41,113 +28,120 @@
 
     <aside class="mobile-drawer__panel" role="document">
 
-        <div class="mobile-drawer__head">
-            <a class="mobile-drawer__brand" href="/">
-                <img src="<%= brand.logoUrl %>?v=<%= ASSET_VERSION %>" alt="<%= brand.name %>" height="32">
-            </a>
-            <button
-                type="button"
-                class="mobile-drawer__close"
-                data-action="close-mobile-menu"
-                aria-label="Close menu"
-            >
-                <svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <line x1="18" y1="6"  x2="6"  y2="18"/>
-                    <line x1="6"  y1="6"  x2="18" y2="18"/>
-                </svg>
+        <div class="md-head">
+            <button type="button" class="md-back" data-action="close-mobile-menu" aria-label="Close menu">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
             </button>
         </div>
 
-        <%# Auth row — visible when logged out, swaps to account row when logged in. %>
+        <%# Profile card / sign-in %>
         <% if (user_session) { %>
-            <a class="mobile-drawer__account" href="/account">
-                <span class="mobile-drawer__avatar" aria-hidden="true">
-                    <%= (user_session.firstname || '?').charAt(0).toUpperCase() %>
-                </span>
-                <span class="mobile-drawer__account-name">
-                    <%= [user_session.firstname, user_session.lastname].filter(Boolean).join(' ') || 'My account' %>
-                </span>
-            </a>
+            <div class="md-profile">
+                <span class="md-profile__avatar" aria-hidden="true"><%= (user_session.firstname || '?').charAt(0).toUpperCase() %></span>
+                <div class="md-profile__body">
+                    <p class="md-profile__name"><%= (user_session.firstname || 'My account').toUpperCase() %></p>
+                    <a class="md-profile__edit" href="/account">Edit profile <span aria-hidden="true">›</span></a>
+                </div>
+            </div>
         <% } else { %>
-            <%# Single sign-in entry — the page handles both new + returning
-                users via OTP, so we don't need a separate Sign-up button. -%>
-            <div class="mobile-drawer__auth">
-                <a href="/signin" class="btn btn--primary btn--block">Sign in</a>
+            <div class="md-profile md-profile--guest">
+                <span class="md-profile__avatar" aria-hidden="true">👋</span>
+                <div class="md-profile__body">
+                    <p class="md-profile__name">Welcome</p>
+                    <a class="md-profile__edit" href="/signin">Sign in or create account <span aria-hidden="true">›</span></a>
+                </div>
             </div>
         <% } %>
 
-        <%# Primary nav — the headline destinations. Restaurants + Offers
-            mirror the bottom-nav on the home screen so users have two
-            ways to reach the same page. %>
-        <nav class="mobile-drawer__nav" aria-label="Primary navigation">
-            <a href="/"            class="mobile-drawer__link">Home</a>
-            <a href="/restaurants" class="mobile-drawer__link">Restaurants</a>
-            <a href="/offers"      class="mobile-drawer__link">Offers</a>
-        </nav>
+        <%# Rewards banner %>
+        <a class="md-rewards" href="/rewards">
+            <span class="md-rewards__crown" aria-hidden="true">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M5 16 3 6l5.5 4L12 4l3.5 6L21 6l-2 10H5zm0 2h14v2H5v-2z"/></svg>
+            </span>
+            <span class="md-rewards__text">Join <%= brand.name %> Rewards</span>
+            <span class="md-rewards__chev" aria-hidden="true">›</span>
+        </a>
 
-        <%# ────────────────────────────────────────────────────────────
-            Footer band — what used to live in views/partials/footer.ejs.
-            The desktop footer is still rendered as normal; this band
-            mirrors the same content for the mobile drawer so we never
-            ship a page where Partner with us / Terms / etc. can only
-            be reached via direct URL.
-        ──────────────────────────────────────────────────────────── %>
-        <div class="mobile-drawer__footer">
-
-            <nav class="mobile-drawer__group" aria-label="Company">
-                <h4 class="mobile-drawer__group-title">Company</h4>
-                <a href="/about"   class="mobile-drawer__link mobile-drawer__link--sub">About</a>
-                <a href="/careers" class="mobile-drawer__link mobile-drawer__link--sub">Careers</a>
-                <a href="/blog"    class="mobile-drawer__link mobile-drawer__link--sub">Blog</a>
-                <a href="/contact" class="mobile-drawer__link mobile-drawer__link--sub">Contact us</a>
-            </nav>
-
-            <nav class="mobile-drawer__group" aria-label="For restaurants">
-                <h4 class="mobile-drawer__group-title">For restaurants</h4>
-                <a href="/partner"  class="mobile-drawer__link mobile-drawer__link--sub">Partner with us</a>
-                <a href="/ride"     class="mobile-drawer__link mobile-drawer__link--sub">Ride with us</a>
-                <a href="/business" class="mobile-drawer__link mobile-drawer__link--sub">For business</a>
-            </nav>
-
-            <nav class="mobile-drawer__group" aria-label="Help and legal">
-                <h4 class="mobile-drawer__group-title">Help &amp; legal</h4>
-                <a href="/help" class="mobile-drawer__link mobile-drawer__link--sub">Help centre</a>
-                <a href="<%= brand.termsUrl   || '/terms'   %>" class="mobile-drawer__link mobile-drawer__link--sub">Terms</a>
-                <a href="<%= brand.privacyUrl || '/privacy' %>" class="mobile-drawer__link mobile-drawer__link--sub">Privacy</a>
-                <% if (brand.supportEmail) { %>
-                    <a href="mailto:<%= brand.supportEmail %>" class="mobile-drawer__link mobile-drawer__link--sub"><%= brand.supportEmail %></a>
-                <% } %>
-            </nav>
-
-            <%# Social row — matches the icons in the desktop footer. %>
-            <ul class="mobile-drawer__social" aria-label="Social media">
-                <li>
-                    <a href="#" aria-label="Facebook">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M22 12.06C22 6.5 17.52 2 12 2S2 6.5 2 12.06c0 5.02 3.66 9.19 8.44 9.94v-7.03H7.9v-2.91h2.54V9.85c0-2.5 1.49-3.89 3.77-3.89 1.09 0 2.24.2 2.24.2v2.46h-1.26c-1.24 0-1.63.77-1.63 1.56v1.88h2.78l-.44 2.91h-2.34V22c4.78-.75 8.44-4.92 8.44-9.94z"/></svg>
-                    </a>
-                </li>
-                <li>
-                    <a href="#" aria-label="Instagram">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1" fill="currentColor"/></svg>
-                    </a>
-                </li>
-                <li>
-                    <a href="#" aria-label="X">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M18.244 2H21l-6.52 7.46L22 22h-6.828l-4.69-6.137L4.86 22H2.103l6.97-7.97L2 2h6.96l4.24 5.61L18.244 2zm-2.39 18h1.66L7.22 4H5.5l10.354 16z"/></svg>
-                    </a>
-                </li>
-            </ul>
-
-            <p class="mobile-drawer__copy">
-                <%= brand.copyright %>
-                <span class="mobile-drawer__build"> · v<%= ASSET_VERSION.slice(-6) %></span>
-            </p>
+        <%# Wallet + coupons tiles %>
+        <div class="md-tiles">
+            <button type="button" class="md-tile" data-action="drawer-soon">
+                <span class="md-tile__icon" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="13" rx="2"/><path d="M16 12h.01"/><path d="M2 10h20"/></svg></span>
+                <span class="md-tile__body"><span class="md-tile__label"><%= brand.name %> Money</span><span class="md-tile__value"><%= brand.currencySymbol %>0</span></span>
+            </button>
+            <a class="md-tile" href="/offers">
+                <span class="md-tile__icon" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 9h.01M15 15h.01M16 8l-8 8"/><circle cx="12" cy="12" r="10"/></svg></span>
+                <span class="md-tile__body"><span class="md-tile__label">Your coupons</span></span>
+            </a>
         </div>
 
+        <%# Preferences %>
+        <section class="md-sec">
+            <h3 class="md-sec__title">Your preferences</h3>
+            <div class="md-card">
+                <a class="md-row" href="/?veg=1">
+                    <span class="md-row__icon md-row__icon--veg" aria-hidden="true"><span></span></span>
+                    <span class="md-row__label">Veg Mode</span>
+                    <span class="md-row__value">Off</span>
+                    <span class="md-row__chev" aria-hidden="true">›</span>
+                </a>
+                <label class="md-row md-row--toggle">
+                    <span class="md-row__icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></span>
+                    <span class="md-row__label">Show personalised ratings</span>
+                    <input type="checkbox" class="md-switch" data-action="drawer-pref">
+                    <span class="md-switch__ui" aria-hidden="true"></span>
+                </label>
+                <button type="button" class="md-row" data-action="drawer-soon">
+                    <span class="md-row__icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="10.5" r="2.5"/><circle cx="8.5" cy="7.5" r="2.5"/><circle cx="6.5" cy="12.5" r="2.5"/><path d="M12 2a10 10 0 0 0 0 20c1.1 0 2-.9 2-2 0-.55-.22-1.05-.59-1.41-.36-.36-.59-.86-.59-1.42 0-1.1.9-2 2-2h2.36A4.24 4.24 0 0 0 22 11.06C22 6.05 17.5 2 12 2z"/></svg></span>
+                    <span class="md-row__label">Appearance</span>
+                    <span class="md-row__value">Light</span>
+                    <span class="md-row__chev" aria-hidden="true">›</span>
+                </button>
+                <button type="button" class="md-row" data-action="drawer-soon">
+                    <span class="md-row__icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg></span>
+                    <span class="md-row__label">Payment methods</span>
+                    <span class="md-row__chev" aria-hidden="true">›</span>
+                </button>
+            </div>
+        </section>
+
+        <%# Food delivery %>
+        <section class="md-sec">
+            <h3 class="md-sec__title">Food delivery</h3>
+            <div class="md-card">
+                <a class="md-row" href="/orders">
+                    <span class="md-row__icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg></span>
+                    <span class="md-row__label">Your orders</span>
+                    <span class="md-row__chev" aria-hidden="true">›</span>
+                </a>
+                <button type="button" class="md-row" data-action="drawer-soon">
+                    <span class="md-row__icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 22V12h6v10"/></svg></span>
+                    <span class="md-row__label">Address book</span>
+                    <span class="md-row__chev" aria-hidden="true">›</span>
+                </button>
+            </div>
+        </section>
+
+        <%# More (former footer links) %>
+        <section class="md-sec">
+            <h3 class="md-sec__title">More</h3>
+            <div class="md-card">
+                <a class="md-row" href="/help"><span class="md-row__label">Help centre</span><span class="md-row__chev" aria-hidden="true">›</span></a>
+                <a class="md-row" href="/about"><span class="md-row__label">About</span><span class="md-row__chev" aria-hidden="true">›</span></a>
+                <a class="md-row" href="/partner"><span class="md-row__label">Partner with us</span><span class="md-row__chev" aria-hidden="true">›</span></a>
+                <a class="md-row" href="<%= brand.termsUrl || '/terms' %>"><span class="md-row__label">Terms</span><span class="md-row__chev" aria-hidden="true">›</span></a>
+                <a class="md-row" href="<%= brand.privacyUrl || '/privacy' %>"><span class="md-row__label">Privacy</span><span class="md-row__chev" aria-hidden="true">›</span></a>
+            </div>
+        </section>
+
+        <ul class="md-social" aria-label="Social media">
+            <li><a href="#" aria-label="Facebook"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M22 12.06C22 6.5 17.52 2 12 2S2 6.5 2 12.06c0 5.02 3.66 9.19 8.44 9.94v-7.03H7.9v-2.91h2.54V9.85c0-2.5 1.49-3.89 3.77-3.89 1.09 0 2.24.2 2.24.2v2.46h-1.26c-1.24 0-1.63.77-1.63 1.56v1.88h2.78l-.44 2.91h-2.34V22c4.78-.75 8.44-4.92 8.44-9.94z"/></svg></a></li>
+            <li><a href="#" aria-label="Instagram"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1" fill="currentColor"/></svg></a></li>
+            <li><a href="#" aria-label="X"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M18.244 2H21l-6.52 7.46L22 22h-6.828l-4.69-6.137L4.86 22H2.103l6.97-7.97L2 2h6.96l4.24 5.61L18.244 2z"/></svg></a></li>
+        </ul>
+        <p class="md-copy"><%= brand.copyright %><span class="md-build"> · v<%= ASSET_VERSION.slice(-6) %></span></p>
+
         <% if (user_session) { %>
-            <form method="post" action="/logout" class="mobile-drawer__logout">
-                <button type="submit" class="btn btn--ghost btn--block">Log out</button>
-            </form>
+            <form method="post" action="/logout" class="md-logout"><button type="submit" class="md-logout__btn">Log out</button></form>
         <% } %>
 
     </aside>

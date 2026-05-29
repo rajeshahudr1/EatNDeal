@@ -1,0 +1,128 @@
+<%#
+  views/site/offers.ejs
+
+  What:  "Offers & Deals" page (bottom-nav 🏷️ + desktop header), built to
+         the supplied mockup: a header, filter tabs (All / Restaurant /
+         Product / Common), a search box, a "you have N offers" banner, and
+         horizontally-scrolling card rails per category.
+  Data:  SiteController.offersPage → GET /api/v1/marketplace/offers?page=1
+         → offers_restaurant / offers_product / offers_common / offers_total.
+         (Category Offers is omitted — no category-targeted data exists.)
+  JS:    /js/pages/offers.js (tab filter, search filter, copy-code).
+-%>
+<%
+    var rOffers = (typeof offers_restaurant !== 'undefined' && offers_restaurant) ? offers_restaurant : [];
+    var pOffers = (typeof offers_product    !== 'undefined' && offers_product)    ? offers_product    : [];
+    var cOffers = (typeof offers_common     !== 'undefined' && offers_common)     ? offers_common     : [];
+    var total   = (typeof offers_total !== 'undefined') ? offers_total : (rOffers.length + pOffers.length + cOffers.length);
+%>
+<section class="offp2" data-offers-page>
+
+    <header class="offp2__head">
+        <h1 class="offp2__title">Offers &amp; Deals</h1>
+        <p class="offp2__sub">Grab the best offers and save more on your favourite food.</p>
+    </header>
+
+    <% if (!total) { %>
+    <p class="section__empty">No active offers right now. <a href="/" data-action="view-home">Back to home</a>.</p>
+    <% } else { %>
+
+    <%# Filter tabs %>
+    <nav class="offp2-tabs" role="tablist" aria-label="Offer type">
+        <button type="button" class="offp2-tab is-active" data-offers-tab="all">All Offers</button>
+        <% if (rOffers.length) { %><button type="button" class="offp2-tab" data-offers-tab="restaurant">Restaurant Offers</button><% } %>
+        <% if (pOffers.length) { %><button type="button" class="offp2-tab" data-offers-tab="product">Product Offers</button><% } %>
+        <% if (cOffers.length) { %><button type="button" class="offp2-tab" data-offers-tab="common">Common Offers</button><% } %>
+    </nav>
+
+    <%# Search %>
+    <div class="offp2-search">
+        <svg class="offp2-search__icon" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="search" class="offp2-search__input" data-offers-search placeholder="Search offers by restaurant, dish or code" autocomplete="off" spellcheck="false">
+    </div>
+
+    <%# "You have N offers" banner %>
+    <div class="offp2-banner">
+        <span class="offp2-banner__icon" aria-hidden="true">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41 11 3.83V3H3v8h.83l9.58 9.59a2 2 0 0 0 2.83 0l4.35-4.35a2 2 0 0 0 0-2.83z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+        </span>
+        <div class="offp2-banner__text">
+            <p class="offp2-banner__title">Yay! You have <%= total %> offer<%= total === 1 ? '' : 's' %> available</p>
+            <p class="offp2-banner__sub">Use the code at checkout, or auto-discounts apply automatically.</p>
+        </div>
+    </div>
+
+    <%#
+      Card macro — repeated per section. We can't define EJS functions
+      cleanly, so each section loops with the same card structure.
+    -%>
+
+    <% if (rOffers.length) { %>
+    <section class="offp2-group" data-offers-group="restaurant">
+        <h2 class="offp2-group__title">Restaurant Offers</h2>
+        <div class="offp2-rail">
+            <% rOffers.forEach(function (o) { %>
+            <article class="ofc" data-offer-card data-search="<%= ((o.restaurant && o.restaurant.name) || '') + ' ' + (o.code || '') + ' ' + o.label %>">
+                <a class="ofc__top" href="/?restaurant=<%= encodeURIComponent(o.restaurant.slug) %>" data-action="pick-restaurant">
+                    <span class="ofc__logo" data-tint="<%= o.restaurant.tint %>"><% if (o.restaurant.image) { %><img src="<%= o.restaurant.image %>" alt="" loading="lazy" data-img-fallback><% } else { %><%= o.restaurant.initial %><% } %></span>
+                    <span class="ofc__rest"><%= o.restaurant.name %></span>
+                </a>
+                <p class="ofc__label"><%= o.label %><% if (o.freeDelivery) { %> <span class="ofc__free">+ Free delivery</span><% } %></p>
+                <p class="ofc__sub"><%= o.sub %></p>
+                <% if (o.code) { %>
+                <button type="button" class="ofc__code" data-copy-code="<%= o.code %>" aria-label="Copy code <%= o.code %>">
+                    <span class="ofc__code-text"><%= o.code %></span>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                </button>
+                <% } %>
+                <% if (o.validTill) { %><p class="ofc__valid">Valid till <%= o.validTill %></p><% } %>
+            </article>
+            <% }); %>
+        </div>
+    </section>
+    <% } %>
+
+    <% if (cOffers.length) { %>
+    <section class="offp2-group" data-offers-group="common">
+        <h2 class="offp2-group__title">Common Offers</h2>
+        <div class="offp2-rail">
+            <% cOffers.forEach(function (o) { %>
+            <article class="ofc ofc--common" data-offer-card data-search="<%= ((o.restaurant && o.restaurant.name) || '') + ' ' + (o.code || '') + ' ' + o.label %>">
+                <p class="ofc__label"><%= o.label %></p>
+                <p class="ofc__sub"><%= o.sub %></p>
+                <% if (o.code) { %>
+                <button type="button" class="ofc__code" data-copy-code="<%= o.code %>" aria-label="Copy code <%= o.code %>">
+                    <span class="ofc__code-text"><%= o.code %></span>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                </button>
+                <% } %>
+                <p class="ofc__from"><%= (o.restaurant && o.restaurant.name) ? o.restaurant.name : 'All restaurants' %><% if (o.validTill) { %> · valid till <%= o.validTill %><% } %></p>
+            </article>
+            <% }); %>
+        </div>
+    </section>
+    <% } %>
+
+    <% if (pOffers.length) { %>
+    <section class="offp2-group" data-offers-group="product">
+        <h2 class="offp2-group__title">Product Offers</h2>
+        <div class="offp2-rail">
+            <% pOffers.forEach(function (o) { %>
+            <article class="ofc ofc--product" data-offer-card data-search="<%= (o.product || '') + ' ' + ((o.restaurant && o.restaurant.name) || '') + ' ' + o.label %>">
+                <a class="ofc__top" href="/?restaurant=<%= encodeURIComponent(o.restaurant.slug) %>" data-action="pick-restaurant">
+                    <span class="ofc__logo" data-tint="<%= o.restaurant.tint %>"><% if (o.restaurant.image) { %><img src="<%= o.restaurant.image %>" alt="" loading="lazy" data-img-fallback><% } else { %><%= o.restaurant.initial %><% } %></span>
+                    <span class="ofc__rest"><%= o.restaurant.name %></span>
+                </a>
+                <p class="ofc__product"><%= o.product %></p>
+                <p class="ofc__label"><%= o.label %></p>
+                <p class="ofc__sub"><%= o.sub %></p>
+                <% if (o.validTill) { %><p class="ofc__valid">Valid till <%= o.validTill %></p><% } %>
+            </article>
+            <% }); %>
+        </div>
+    </section>
+    <% } %>
+
+    <p class="offp2-empty" data-offers-empty hidden>No offers match your search.</p>
+    <% } %>
+</section>

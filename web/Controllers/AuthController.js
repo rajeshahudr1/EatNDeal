@@ -41,6 +41,8 @@
  */
 
 const crypto       = require('node:crypto');
+const fs           = require('node:fs');
+const path         = require('node:path');
 const { callApi }  = require('../Helpers/apiClient');
 const oauth        = require('../Helpers/oauthProviders');
 
@@ -263,7 +265,7 @@ async function verifyOtp(req, res) {
         req.session.user        = data.customer;
         req.session.pendingAuth = null;
         req.flash('success', 'Welcome back, ' + (data.customer.firstname || '').trim() + '.');
-        return res.redirect(safeNext(pending.next));
+        return redirectAfterSave(req, res, safeNext(pending.next));
     }
 
     // 'new' or 'pending' → ask for Personal Details.
@@ -320,7 +322,7 @@ async function saveProfile(req, res) {
     req.session.user        = body.data.customer;
     req.session.pendingAuth = null;
     req.flash('success', 'Welcome to ' + (res.locals.brand && res.locals.brand.name ? res.locals.brand.name : 'EatNDeal') + ', ' + firstname + '.');
-    return res.redirect(safeNext(pending.next));
+    return redirectAfterSave(req, res, safeNext(pending.next));
 }
 
 /**
@@ -335,18 +337,64 @@ async function saveProfile(req, res) {
  *        `next=/account` so they land back here after the OTP flow.
  * Type:  READ.
  */
-function accountPage(req, res) {
-    const user = (req.session && req.session.user) || null;
+async function accountPage(req, res) {
+    let user = (req.session && req.session.user) || null;
     if (!user) {
         return res.redirect('/signin?next=' + encodeURIComponent('/account'));
     }
+
+    // Re-hydrate from the DB so the form always shows the latest values
+    // (birthdate / gender, etc.) — the stored session.user may predate
+    // those fields being added to the public view. Best-effort: if the
+    // refresh fails we just render the session copy.
+    try {
+        const apiRes = await callApi(req, 'GET', '/api/v1/auth/me?customer_id=' + encodeURIComponent(user.id));
+        if (apiRes.body && apiRes.body.status === 200 && apiRes.body.data && apiRes.body.data.customer) {
+            user = apiRes.body.data.customer;
+            req.session.user = user;
+        }
+    } catch (e) { /* keep the session copy */ }
+
+    // Profile stats. rewardPoints comes from the real loyalty_points;
+    // orders / favourites / offers aren't tracked for marketplace
+    // customers yet (no customer↔orders link), so they're honest zeros
+    // until those features land.
+    const stats = {
+        orders:       0,
+        favourites:   0,
+        rewardPoints: Number(user.loyalty_points) || 0,
+        offers:       0,
+    };
+
+    // Which account tab is active. Only "profile" has a real screen today;
+    // the rest render a placeholder panel (with the tab highlighted) until
+    // those features land. "help" is a separate page, not a tab here.
+    const TABS = {
+        profile:       'My Profile',
+        addresses:     'Addresses',
+        payment:       'Payment Methods',
+        orders:        'My Orders',
+        favourites:    'Favourites',
+        rewards:       'Rewards',
+        notifications: 'Notifications',
+        settings:      'Settings',
+    };
+    let activeTab = String((req.query && req.query.tab) || 'profile').toLowerCase();
+    if (!TABS[activeTab]) { activeTab = 'profile'; }
+
     return res.render('account/index', {
-        page_title:       'My profile',
+        page_title:       TABS[activeTab],
         _layoutFile:      '../_layout',
-        active_nav:       '',
+        active_nav:       'profile',
         extra_js:         '/js/pages/account.js',
+        // Full site chrome (header + footer) like the mockup, but NO promo
+        // strip on this page.
         show_promo_strip: false,
+        bare:             false,
         account_user:     user,
+        account_stats:    stats,
+        active_tab:       activeTab,
+        active_tab_label: TABS[activeTab],
     });
 }
 
@@ -402,6 +450,18 @@ async function updateProfile(req, res) {
     if (contact) {
         payload.country_code = country;
         payload.contact_no   = contact;
+    }
+    // Date of birth — HTML date input gives YYYY-MM-DD. Forward only a
+    // valid value (or empty to clear); the api validates the format.
+    const dob = String((req.body && req.body.birthdate) || '').trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dob) || dob === '') {
+        payload.birthdate = dob;
+    }
+    // Gender — forward the known options (api validates + persists only
+    // once the customer.gender column exists).
+    const gender = String((req.body && req.body.gender) || '').trim().toLowerCase();
+    if (['male', 'female', 'other', 'na', ''].indexOf(gender) !== -1) {
+        payload.gender = gender;
     }
 
     const apiRes = await callApi(req, 'POST', '/api/v1/auth/update-profile', payload);
@@ -554,7 +614,56 @@ async function oauthCallback(req, res) {
         req.flash('success', 'Welcome back, ' + (body.data.customer.firstname || '').trim() + '.');
     }
 
-    return res.redirect(safeNext(stashed.next));
+    return redirectAfterSave(req, res, safeNext(stashed.next));
+}
+
+/**
+ * redirectAfterSave
+ *
+ * What:  Persists the session to the store, THEN redirects. The
+ *        file-backed session store writes asynchronously, so redirecting
+ *        immediately after setting req.session.user can race the disk
+ *        write — the next page load then reads the old session and shows
+ *        the wrong logged-in/out state until a manual refresh. Saving
+ *        first guarantees the new state is durable before we navigate.
+ * Type:  WRITE.
+ */
+function redirectAfterSave(req, res, url) {
+    if (!req.session || typeof req.session.save !== 'function') { return res.redirect(url); }
+    req.session.save(function () { res.redirect(url); });
+}
+
+/**
+ * uploadAvatar
+ *
+ * What:  POST /account/avatar — multer has already stored the uploaded
+ *        file on the web disk (web/runtime/avatars) and set req.file. We
+ *        forward the resulting web-relative path to the api to persist on
+ *        customer.image, then refresh the session so the header + profile
+ *        show the new photo. Returns JSON for the in-page uploader.
+ * Type:  WRITE.
+ */
+async function uploadAvatar(req, res) {
+    const user = (req.session && req.session.user) || null;
+    if (!user) { return res.status(200).json({ status: 401, show: true, msg: 'Please sign in.' }); }
+    if (!req.file) { return res.status(200).json({ status: 400, show: true, msg: 'Please choose an image (PNG or JPG, under 3 MB).' }); }
+
+    const imagePath = '/avatars/' + req.file.filename;
+    const apiRes = await callApi(req, 'POST', '/api/v1/auth/update-avatar', { customer_id: user.id, image: imagePath });
+    const body = apiRes.body || {};
+
+    if (body.status !== 200 || !body.data || !body.data.customer) {
+        // Persistence failed — remove the orphaned file so it doesn't pile up.
+        try { fs.unlinkSync(path.join(__dirname, '..', 'runtime', 'avatars', req.file.filename)); } catch (e) { /* ignore */ }
+        return res.status(200).json({ status: body.status || 502, show: true, msg: body.msg || 'Could not save your photo. Please try again.' });
+    }
+
+    req.session.user = body.data.customer;
+    // Persist the session before replying so the header avatar reflects the
+    // new photo immediately on the next render (file-store writes async).
+    return req.session.save(function () {
+        res.status(200).json({ status: 200, show: false, msg: 'Profile photo updated.', data: { image: imagePath } });
+    });
 }
 
 /**
@@ -565,11 +674,17 @@ async function oauthCallback(req, res) {
  * Type:  WRITE.
  */
 function signOut(req, res) {
-    if (req.session) {
-        req.session.user        = null;
-        req.session.pendingAuth = null;
-    }
-    return res.redirect('/');
+    if (!req.session) { return res.redirect('/'); }
+    // DESTROY the session (not just null the user) and clear the cookie
+    // before redirecting. With the file-backed session store a plain
+    // `user = null` + immediate redirect races the async disk write, so
+    // the next page load could still read the old session and keep showing
+    // the username until a manual refresh. Destroying in the callback
+    // guarantees the store is cleared before we send the user home.
+    req.session.destroy(function () {
+        res.clearCookie(process.env.SESSION_NAME || 'eatndeal_web', { path: '/' });
+        res.redirect('/');
+    });
 }
 
 module.exports = {
@@ -579,6 +694,7 @@ module.exports = {
     saveProfile,
     accountPage,
     updateProfile,
+    uploadAvatar,
     oauthRedirect,
     oauthCallback,
     signOut,

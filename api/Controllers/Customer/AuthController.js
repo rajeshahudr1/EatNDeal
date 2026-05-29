@@ -31,6 +31,24 @@ const customers    = require('../../Helpers/customerLookup');
 const social       = require('../../Helpers/socialAuth');
 const { db }       = require('../../config/db');
 
+// Whether customer.gender exists yet (added by m260529_140000). Checked
+// once + cached so updateProfile can write gender after the migration is
+// run, but never errors on a DB where the column isn't there yet.
+let _hasGenderCol = null;
+async function customerHasGender() {
+    if (_hasGenderCol !== null) { return _hasGenderCol; }
+    try {
+        const r = await db.raw(
+            "select 1 from information_schema.columns where table_name = 'customer' and column_name = 'gender' limit 1",
+        );
+        const rows = r && (r.rows || r);
+        _hasGenderCol = Array.isArray(rows) ? rows.length > 0 : false;
+    } catch (e) {
+        _hasGenderCol = false;
+    }
+    return _hasGenderCol;
+}
+
 /**
  * sendOtp
  *
@@ -370,7 +388,7 @@ async function saveProfile(req, res) {
  */
 async function updateProfile(req, res) {
     try {
-        const { customer_id, firstname, lastname, email, country_code, contact_no } = req.body;
+        const { customer_id, firstname, lastname, email, country_code, contact_no, birthdate, gender } = req.body;
 
         const row = await db('customer')
             .where({ id: customer_id })
@@ -409,6 +427,16 @@ async function updateProfile(req, res) {
             updated_at:        db.fn.now(),
             server_updated_at: db.fn.now(),
         };
+        // Date of birth — optional. Only overwrite when the field is
+        // present in the request (empty string clears it).
+        if (birthdate !== undefined) {
+            update.birthdate = birthdate || null;
+        }
+        // Gender — optional, and only written once the column exists
+        // (guarded so the update never breaks before the migration runs).
+        if (gender !== undefined && await customerHasGender()) {
+            update.gender = gender || null;
+        }
 
         if (wantsContact) {
             const cleanCountry = Number(customers.normalisePhone(country_code)) || 0;
@@ -443,6 +471,85 @@ async function updateProfile(req, res) {
         }, MSG.resource.updated);
     } catch (err) {
         H.log.error('auth.updateProfile', err && err.message);
+        return H.errorResponse(res, MSG.server.oops, 500);
+    }
+}
+
+// Whether customer.image exists yet (added by m260529_160000). Cached.
+let _hasImageCol = null;
+async function customerHasImage() {
+    if (_hasImageCol !== null) { return _hasImageCol; }
+    try {
+        const r = await db.raw(
+            "select 1 from information_schema.columns where table_name = 'customer' and column_name = 'image' limit 1",
+        );
+        const rows = r && (r.rows || r);
+        _hasImageCol = Array.isArray(rows) ? rows.length > 0 : false;
+    } catch (e) { _hasImageCol = false; }
+    return _hasImageCol;
+}
+
+/**
+ * updateAvatar
+ *
+ * What:  Persists the customer's profile photo PATH (the web layer has
+ *        already stored the actual file + sends us the relative URL, e.g.
+ *        "/avatars/101-...png"). Guarded on the customer.image column so it
+ *        fails cleanly if the migration hasn't run yet.
+ * Type:  WRITE.
+ * Inputs: req.body — customer_id, image (relative path) | '' to clear.
+ * Output: 200 envelope, data = { customer }
+ */
+async function updateAvatar(req, res) {
+    try {
+        const { customer_id, image } = req.body;
+        if (!(await customerHasImage())) {
+            return H.errorResponse(res, 'Photo upload is not enabled yet — run the customer.image migration.', 422);
+        }
+        const row = await db('customer').where({ id: customer_id }).whereNull('company_id').first();
+        if (!row) { return H.errorResponse(res, MSG.resource.notFound, 404); }
+        const state = customers.classify(row);
+        if (state === 'deleted' || state === 'disabled') { return H.errorResponse(res, MSG.auth.accountDisabled, 403); }
+        if (state === 'banned') { return H.errorResponse(res, MSG.auth.accountBanned, 403); }
+
+        await db('customer').where({ id: row.id }).update({
+            image:             image || null,
+            updated_at:        db.fn.now(),
+            server_updated_at: db.fn.now(),
+        });
+        const fresh = await db('customer').where({ id: row.id }).first();
+        return H.successResponse(res, { customer: customers.publicView(fresh) }, MSG.resource.updated);
+    } catch (err) {
+        H.log.error('auth.updateAvatar', err && err.message);
+        return H.errorResponse(res, MSG.server.oops, 500);
+    }
+}
+
+/**
+ * me
+ *
+ * What:  Returns the fresh public view of a marketplace customer by id.
+ *        Used by the web /account page to re-hydrate req.session.user so
+ *        the profile form always reflects the DB (e.g. birthdate / gender
+ *        that may have been added to publicView after the session was
+ *        created). Blocked accounts return 403 with the same wording as
+ *        verifyOtp so we never leak the block reason.
+ * Type:  READ.
+ *
+ * Inputs:  req.query.customer_id
+ * Output:  200 envelope, data = { customer: {...} }
+ */
+async function me(req, res) {
+    try {
+        const { customer_id } = req.query;
+        const row = await db('customer').where({ id: customer_id }).whereNull('company_id').first();
+        if (!row) { return H.errorResponse(res, MSG.resource.notFound, 404); }
+        const state = customers.classify(row);
+        if (state === 'deleted' || state === 'disabled') { return H.errorResponse(res, MSG.auth.accountDisabled, 403); }
+        if (state === 'banned') { return H.errorResponse(res, MSG.auth.accountBanned, 403); }
+        return H.successResponse(res, { customer: customers.publicView(row) });
+    } catch (err) {
+        H.log.error('auth.me', err && err.message);
         return H.errorResponse(res, MSG.server.oops, 500);
     }
 }
@@ -607,4 +714,4 @@ async function socialSignin(req, res) {
     }
 }
 
-module.exports = { sendOtp, verifyOtp, saveProfile, updateProfile, socialSignin };
+module.exports = { sendOtp, verifyOtp, saveProfile, updateProfile, updateAvatar, me, socialSignin };

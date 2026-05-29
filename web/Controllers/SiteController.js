@@ -81,11 +81,12 @@ async function fetchMarketplace(req, lat, lng, cuisine, filters, postcode) {
         callApi(req, 'GET', '/api/v1/marketplace/restaurants?' + rqs.toString()),
         callApi(req, 'GET', '/api/v1/marketplace/products?'    + pqs.toString()),
         callApi(req, 'GET', '/api/v1/marketplace/categories'),
+        callApi(req, 'GET', '/api/v1/marketplace/offers?limit=8'),
     ];
     if (cuisine) {
         calls.push(callApi(req, 'GET', '/api/v1/marketplace/categories?parent=' + encodeURIComponent(cuisine)));
     }
-    const [rRes, pRes, cRes, sRes] = await Promise.all(calls);
+    const [rRes, pRes, cRes, oRes, sRes] = await Promise.all(calls);
 
     const featured      = (rRes.body && rRes.body.status === 200 && rRes.body.data && rRes.body.data.restaurants) || null;
     const forYou        = (pRes.body && pRes.body.status === 200 && pRes.body.data && pRes.body.data.products)    || null;
@@ -101,6 +102,7 @@ async function fetchMarketplace(req, lat, lng, cuisine, filters, postcode) {
     // computed by the restaurants endpoint over the candidate set. The
     // sidebar renders its badge numbers from these.
     const facets = (rRes.body && rRes.body.status === 200 && rRes.body.data && rRes.body.data.facets) || null;
+    const homeOffers = (oRes && oRes.body && oRes.body.status === 200 && oRes.body.data && oRes.body.data.offers) || [];
     return {
         featured,
         for_you:        forYou,
@@ -109,6 +111,7 @@ async function fetchMarketplace(req, lat, lng, cuisine, filters, postcode) {
         featured_more:  featuredMore,
         for_you_more:   forYouMore,
         facets,
+        home_offers:    homeOffers,
     };
 }
 
@@ -275,12 +278,15 @@ async function index(req, res, next) {
     let liveRestaurant     = null;   // populated only when viewMode === 'restaurant'
     let liveMenuCategories = [];     // restaurant page: left-rail menu
     let liveSections       = [];     // restaurant page: products grouped by category
+    let liveOffers         = null;   // restaurant page: active offers (banners/coupons/discounts)
     let liveProduct        = null;   // product page: the product
     let liveProductGroups  = [];     // product page: selectable option groups
     let liveProductRelated = [];     // product page: "you may also like"
     let featuredMore       = false;
     let forYouMore         = false;
     let liveFacets         = null;   // dynamic filter counts for the sidebar
+    let liveHomeOffers     = [];     // home "Best offers" rail (real banners)
+    let cuisineNoMatch     = false;  // cuisine filter returned 0 → showing fallback restaurants
     if (userLocation) {
         try {
             const lat = userLocation.lat != null ? Number(userLocation.lat) : null;
@@ -339,6 +345,7 @@ async function index(req, res, next) {
                 liveRestaurant     = dd ? dd.restaurant : null;
                 liveMenuCategories = dd ? (dd.categories || []) : [];
                 liveSections       = dd ? (dd.sections   || []) : [];
+                liveOffers         = dd ? (dd.offers     || null) : null;
             } else if (viewMode === 'product') {
                 // Single-product page — product + its selectable option
                 // groups (sizes / toppings / add-ons) from the api.
@@ -381,6 +388,25 @@ async function index(req, res, next) {
                 featuredMore      = !!out.featured_more;
                 forYouMore        = !!out.for_you_more;
                 liveFacets        = out.facets || null;
+                liveHomeOffers    = out.home_offers || [];
+
+                // Empty cuisine → don't show a blank feed. Fall back to
+                // nearby restaurants (with a note) so the user still has
+                // something to browse instead of nothing.
+                if (cuisine && Array.isArray(liveFeatured) && liveFeatured.length === 0) {
+                    const fqs = new URLSearchParams();
+                    fqs.set('limit', '24');
+                    if (Number.isFinite(lat)) fqs.set('lat', String(lat));
+                    if (Number.isFinite(lng)) fqs.set('lng', String(lng));
+                    if (custPostcode)         fqs.set('postcode', custPostcode);
+                    const fb = await callApi(req, 'GET', '/api/v1/marketplace/restaurants?' + fqs.toString());
+                    if (fb.body && fb.body.status === 200 && fb.body.data) {
+                        liveFeatured   = fb.body.data.restaurants || [];
+                        featuredMore   = !!fb.body.data.has_more;
+                        liveFacets     = fb.body.data.facets || liveFacets;
+                        cuisineNoMatch = true;
+                    }
+                }
             }
         } catch (err) {
             // Don't fail the whole page — fall through to the static
@@ -639,10 +665,14 @@ async function index(req, res, next) {
         user_location:    userLocation,
         cuisines:         finalCuisines,
         selected_cuisine: cuisine || null,
+        // True when the picked cuisine had no restaurants and we fell
+        // back to nearby ones (the view shows a note).
+        cuisine_no_match: cuisineNoMatch,
         // Dynamic filter facet counts for the sidebar badges (null when
         // the api was unreachable — the sidebar then hides the numbers).
         facet_counts:     liveFacets,
         featured:         finalFeatured,
+        home_offers:      liveHomeOffers,
         for_you:          finalForYou,
         // has_more flags from the api → drive both the "View all"
         // header link and the "See more" load-more block at the
@@ -661,6 +691,7 @@ async function index(req, res, next) {
         // Restaurant page: left-rail menu categories + product sections.
         menu_categories:     liveMenuCategories,
         menu_sections:       liveSections,
+        restaurant_offers:   liveOffers,
         // Product page: the product + its selectable option groups + related.
         product:             liveProduct,
         product_groups:      liveProductGroups,
@@ -675,4 +706,32 @@ async function index(req, res, next) {
   }
 }
 
-module.exports = { index };
+/**
+ * offersPage
+ *
+ * What:  GET /offers — every marketplace restaurant that has active offers,
+ *        grouped under it (restaurant header + its banners/codes/discounts),
+ *        with a restaurant jump-list sidebar. Read-only.
+ * Type:  READ.
+ */
+async function offersPage(req, res, next) {
+    try {
+        const apiRes = await callApi(req, 'GET', '/api/v1/marketplace/offers?page=1');
+        const d = (apiRes.body && apiRes.body.status === 200 && apiRes.body.data) || {};
+        return res.render('site/offers', {
+            page_title:       'Offers',
+            _layoutFile:      '../_layout',
+            active_nav:       'offers',
+            extra_js:         '/js/pages/offers.js',
+            show_promo_strip: false,
+            offers_restaurant: d.restaurantOffers || [],
+            offers_product:    d.productOffers || [],
+            offers_common:     d.commonOffers || [],
+            offers_total:      d.total || 0,
+        });
+    } catch (err) {
+        next(err);
+    }
+}
+
+module.exports = { index, offersPage };

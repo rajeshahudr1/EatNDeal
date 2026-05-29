@@ -85,6 +85,10 @@
                 x.classList.toggle('is-active', on);
                 x.setAttribute('aria-selected', on ? 'true' : 'false');
             });
+            // Swap the detail panel (delivery vs pickup).
+            qa('[data-rd-panel]').forEach(function (p) {
+                p.hidden = p.getAttribute('data-rd-panel') !== mode;
+            });
             if (mode === 'group') { toast('info', 'Group ordering is coming soon.'); }
         });
     }
@@ -129,6 +133,35 @@
         });
     }
 
+    /**
+     * applyDeepLink — when arriving from search:
+     *   ?menu=<category-slug>   → open + highlight that menu section
+     *   ?highlight=<product-slug> → scroll to + flash that dish at the top
+     */
+    function applyDeepLink() {
+        var params = new URLSearchParams(window.location.search);
+        var menuSlug = (params.get('menu') || '').toLowerCase();
+        var hlSlug   = (params.get('highlight') || '').toLowerCase();
+        if (!menuSlug && !hlSlug) { return; }
+
+        window.setTimeout(function () {
+            if (menuSlug) {
+                var sec = qa('[data-rd-section]').filter(function (s) { return (s.getAttribute('data-section-slug') || '').toLowerCase() === menuSlug; })[0];
+                if (sec) { setActive(sec.getAttribute('data-rd-section')); sec.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+            }
+            if (hlSlug) {
+                var card = qa('.rd-product[data-slug]').filter(function (c) { return (c.getAttribute('data-slug') || '').toLowerCase() === hlSlug; })[0];
+                if (card) {
+                    var sec2 = card.closest('[data-rd-section]');
+                    if (sec2) { setActive(sec2.getAttribute('data-rd-section')); }
+                    card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    card.classList.add('is-highlight');
+                    window.setTimeout(function () { card.classList.remove('is-highlight'); }, 2400);
+                }
+            }
+        }, 220);
+    }
+
     function onReady() {
         if (!document.querySelector('[data-restaurant]')) { return; }
         bindImageFallback();
@@ -138,6 +171,7 @@
         bindTabs();
         bindActions();
         bindProductClick();
+        applyDeepLink();
     }
 
     if (document.readyState === 'loading') {

@@ -24,12 +24,16 @@
  *   • 'geolocation' — browser geolocation API
  *   • 'popular'     — user tapped a popular-city chip
  *   • 'manual'      — reserved for future free-text entry
+ *   • 'saved'       — user tapped a saved address card
+ *   • 'recent'      — user tapped a recent-search chip
+ *   • 'searched'    — re-selecting the current active pick
  *
  * Change log:
  *   2026-05-25 — initial.
+ *   2026-05-29 — added saved / recent / searched (location-sheet redesign).
  */
 
-const ALLOWED_SOURCES = new Set(['postcode', 'geolocation', 'popular', 'manual']);
+const ALLOWED_SOURCES = new Set(['postcode', 'geolocation', 'popular', 'manual', 'saved', 'recent', 'searched']);
 const MAX_LABEL_LEN   = 200;
 const MAX_POSTCODE_LEN = 20;
 

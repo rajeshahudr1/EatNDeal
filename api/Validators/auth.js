@@ -153,6 +153,19 @@ const updateProfileSchema = Joi.object({
         .pattern(/^[0-9\s\-()+]{4,20}$/)
         .allow('', null)
         .messages({ 'string.pattern.base': 'Please enter a valid mobile number.' }),
+    // Date of birth — YYYY-MM-DD (HTML date input). Optional.
+    birthdate: Joi.string()
+        .trim()
+        .pattern(/^\d{4}-\d{2}-\d{2}$/)
+        .allow('', null)
+        .messages({ 'string.pattern.base': 'Please enter a valid date of birth.' }),
+    // Gender — optional. Persisted only once the customer.gender column
+    // exists (see m260529_140000); the controller guards the write.
+    gender: Joi.string()
+        .trim()
+        .valid('male', 'female', 'other', 'na')
+        .allow('', null)
+        .messages({ 'any.only': 'Please choose a valid gender option.' }),
 });
 
 // ── /auth/social-signin ───────────────────────────────────────────
@@ -192,10 +205,39 @@ const socialSigninSchema = Joi.object({
     'object.xor':     'Send exactly one of id_token or access_token, not both.',
 });
 
+// ── /auth/update-avatar ───────────────────────────────────────────
+// Persist the profile-photo path (the web stores the file; we save the
+// relative URL). image is a short server-relative path or '' to clear.
+const updateAvatarSchema = Joi.object({
+    customer_id: Joi.alternatives()
+        .try(Joi.number().integer().positive(), Joi.string().pattern(/^[0-9]+$/))
+        .required()
+        .messages({ 'any.required': 'Customer id is required.', 'alternatives.match': 'Customer id is not valid.' }),
+    image: Joi.string()
+        .trim()
+        .pattern(/^\/[\w./-]{1,200}$/)
+        .allow('', null)
+        .messages({ 'string.pattern.base': 'Image path is not valid.' }),
+});
+
+// ── /auth/me ──────────────────────────────────────────────────────
+// Re-fetch the current customer by id (web /account re-hydration).
+const meSchema = Joi.object({
+    customer_id: Joi.alternatives()
+        .try(Joi.number().integer().positive(), Joi.string().pattern(/^[0-9]+$/))
+        .required()
+        .messages({
+            'any.required':       'Customer id is required.',
+            'alternatives.match': 'Customer id is not valid.',
+        }),
+});
+
 module.exports = {
     sendOtpSchema,
     verifyOtpSchema,
     saveProfileSchema,
     updateProfileSchema,
+    updateAvatarSchema,
+    meSchema,
     socialSigninSchema,
 };

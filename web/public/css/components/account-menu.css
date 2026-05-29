@@ -54,7 +54,9 @@
     font-size: 0.85rem;
     font-weight: 700;
     flex: 0 0 auto;
+    overflow: hidden;
 }
+.account-menu__avatar img { width: 100%; height: 100%; object-fit: cover; }
 
 .account-menu__name {
     max-width: 12ch;
@@ -78,16 +80,21 @@
     position: absolute;
     top: calc(100% + var(--space-2));
     right: 0;
-    min-width: 240px;
+    min-width: 248px;
     background-color: #fff;
     border: 1px solid var(--color-border);
     border-radius: var(--radius-lg);
     box-shadow: var(--shadow-3);
     padding: var(--space-2);
     z-index: 60;
+    /* The menu now lists every account section, so cap the height and
+       let it scroll on short screens instead of running off the page. */
+    max-height: min(78vh, 560px);
+    overflow-y: auto;
     /* Subtle entrance — slides down 4px while fading in. */
     animation: account-menu-fade 140ms ease;
 }
+.account-menu__sep { height: 1px; background: var(--color-border-soft); margin: var(--space-1) 0; }
 
 @keyframes account-menu-fade {
     from { opacity: 0; transform: translateY(-4px); }

@@ -410,8 +410,8 @@ async function detail(req, res) {
 
         const name = String(row.product_name || '').trim();
         const tracks = Number(row.track_stock_level) === 1;
-        const stockQty = row.stock_qty != null ? Number(row.stock_qty) : null;
-        const outOfStock = !!row.is_sold_out || (tracks && stockQty != null && stockQty <= 0);
+        const stockQty = row.stock_qty != null ? Number(row.stock_qty) : 0;
+        const outOfStock = !!row.is_sold_out || (tracks && stockQty <= 0);
         const product = {
             id:          String(row.product_id),
             name,
@@ -419,7 +419,10 @@ async function detail(req, res) {
             description: String(row.product_description || '').trim() || null,
             basePrice:   M.pickPrice(row),
             inStock:     !outOfStock,
-            stockQty:    tracks ? stockQty : null,
+            // Counted inventory exposed for every product (see restaurant
+            // detail). tracksStock tells the view whether it's authoritative.
+            stockQty:    stockQty,
+            tracksStock: tracks,
             veg:         M.isVegProduct(row),
             image:       M.yiiImageUrl('product', row.company_id, row.image_url) || null,
             tint:        M.tintFor(row.product_id),

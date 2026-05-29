@@ -154,8 +154,45 @@ function estimateDeliveryMinutesNumeric(km) {
     return PREP_MIN + d * KM_TO_MIN;
 }
 
+/**
+ * estimatePickupMinutes
+ *
+ * What:  Pickup time RANGE — how long for the CUSTOMER to reach the shop,
+ *        derived from distance (no rider, no prep buffer; just travel +
+ *        a small ready buffer). Same auto-escalating buckets as
+ *        estimateDeliveryMinutes so it never reads as nonsense at large
+ *        distances. centre = PICKUP_BASE + km * KM_TO_MIN_PICKUP.
+ * Why:   Delivery time comes from the merchant/postcode; pickup is
+ *        location-driven (the user travels to collect).
+ * Type:  READ (pure).
+ */
+const PICKUP_BASE        = 4;     // ready/collection buffer
+const KM_TO_MIN_PICKUP   = 2.2;   // ≈ 27 km/h town travel
+
+function estimatePickupMinutes(km) {
+    const d = Number(km);
+    if (!Number.isFinite(d) || d < 0) { return null; }
+    const centre = PICKUP_BASE + d * KM_TO_MIN_PICKUP;
+    if (centre <= MIN_IN_HOUR) {
+        const low = Math.max(5, Math.floor((centre - 5) / 5) * 5);
+        return low + '-' + (low + 10) + ' min';
+    }
+    if (centre <= MIN_IN_DAY) {
+        const hours = Math.max(1, Math.floor(centre / MIN_IN_HOUR));
+        return hours + '-' + (hours + 1) + ' hr';
+    }
+    if (centre <= MIN_IN_MONTH) {
+        const days = Math.max(1, Math.floor(centre / MIN_IN_DAY));
+        return days + '-' + (days + 1) + ' days';
+    }
+    const months = Math.min(12, Math.max(1, Math.floor(centre / MIN_IN_MONTH)));
+    if (months >= 12) { return '12+ months'; }
+    return months + '-' + (months + 1) + ' months';
+}
+
 module.exports = {
     kmBetween,
     estimateDeliveryMinutes,
     estimateDeliveryMinutesNumeric,
+    estimatePickupMinutes,
 };

@@ -1,0 +1,75 @@
+/*
+ * components/offers-page.css
+ *
+ * What:  "Offers & Deals" page (views/site/offers.ejs): header, filter
+ *        tabs, search, a "you have N offers" banner, and horizontally-
+ *        scrolling card rails per category (Restaurant / Common / Product).
+ * Why:   Built to the supplied categorized offers mockup.
+ */
+
+.offp2 { max-width: 1200px; margin: 0 auto; padding: var(--space-5) var(--space-4) var(--space-10); }
+
+.offp2__head { margin-bottom: var(--space-4); }
+.offp2__title { font-size: 1.7rem; font-weight: 800; margin: 0; }
+.offp2__sub { color: var(--color-text-soft); margin: 4px 0 0; }
+
+/* ── Filter tabs ─────────────────────────────────────────────────── */
+.offp2-tabs { display: flex; gap: var(--space-5); border-bottom: 1px solid var(--color-border-soft); margin-bottom: var(--space-4); overflow-x: auto; scrollbar-width: none; }
+.offp2-tabs::-webkit-scrollbar { display: none; }
+.offp2-tab { flex: 0 0 auto; background: none; border: 0; padding: 10px 2px; cursor: pointer; font: inherit; font-weight: 700; color: var(--color-text-soft); border-bottom: 2px solid transparent; white-space: nowrap; }
+.offp2-tab:hover { color: var(--color-text); }
+.offp2-tab.is-active { color: var(--color-primary); border-bottom-color: var(--color-primary); }
+
+/* ── Search ──────────────────────────────────────────────────────── */
+.offp2-search { position: relative; display: flex; align-items: center; gap: 8px; background: #fff; border: 1px solid var(--color-border); border-radius: 12px; padding: 0 12px; min-height: 48px; margin-bottom: var(--space-4); max-width: 480px; }
+.offp2-search:focus-within { border-color: var(--color-primary); box-shadow: 0 0 0 3px rgba(229, 37, 42, 0.12); }
+.offp2-search__icon { color: var(--color-text-soft); flex: 0 0 auto; }
+.offp2-search__input { flex: 1 1 auto; min-width: 0; border: 0; outline: 0; background: transparent; font: inherit; font-size: 0.95rem; color: var(--color-text); }
+
+/* ── "You have N offers" banner ──────────────────────────────────── */
+.offp2-banner { display: flex; align-items: center; gap: var(--space-3); background: var(--color-primary-soft); border-radius: 14px; padding: var(--space-4); margin-bottom: var(--space-5); }
+.offp2-banner__icon { flex: 0 0 auto; width: 44px; height: 44px; border-radius: 50%; background: #fff; color: var(--color-primary); display: grid; place-items: center; }
+.offp2-banner__title { font-weight: 800; margin: 0; }
+.offp2-banner__sub { font-size: 0.88rem; color: var(--color-text-soft); margin: 2px 0 0; }
+
+/* ── Groups + rails ──────────────────────────────────────────────── */
+.offp2-group { margin-bottom: var(--space-6); }
+.offp2-group__title { font-size: 1.15rem; font-weight: 800; margin: 0 0 var(--space-3); }
+.offp2-rail { display: flex; gap: var(--space-4); overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: thin; padding-bottom: 10px; scroll-behavior: smooth; }
+.offp2-rail::-webkit-scrollbar { height: 8px; }
+.offp2-rail::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 4px; }
+.offp2-rail::-webkit-scrollbar-track { background: transparent; }
+.offp2-rail.is-grabbing { scroll-behavior: auto; cursor: grabbing; user-select: none; }
+
+/* ── Offer card ──────────────────────────────────────────────────── */
+.ofc { flex: 0 0 auto; width: 252px; min-height: 150px; background: #fff; border: 1px solid var(--color-border-soft); border-radius: 16px; padding: var(--space-4); display: flex; flex-direction: column; gap: 4px; }
+.ofc__top { display: flex; align-items: center; gap: 8px; text-decoration: none; color: var(--color-text); margin-bottom: 4px; }
+.ofc__logo { flex: 0 0 auto; width: 34px; height: 34px; border-radius: 50%; overflow: hidden; display: grid; place-items: center; font-weight: 800; color: #fff; font-size: 0.9rem; background: var(--color-bg-alt); }
+.ofc__logo img { width: 100%; height: 100%; object-fit: cover; }
+.ofc__rest { font-weight: 700; font-size: 0.92rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ofc__top:hover .ofc__rest { color: var(--color-primary); }
+.ofc__product { font-weight: 700; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ofc__label { color: var(--color-primary); font-weight: 800; font-size: 1.15rem; margin: 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.ofc__free { color: var(--color-success); font-size: 0.78rem; font-weight: 700; }
+.ofc__sub { color: var(--color-text-soft); font-size: 0.85rem; margin: 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.ofc__code { align-self: flex-start; display: inline-flex; align-items: center; gap: 8px; margin-top: 8px; background: #fff; border: 1px dashed var(--color-primary); color: var(--color-primary); border-radius: 8px; padding: 5px 10px; font-weight: 800; letter-spacing: 0.04em; cursor: pointer; }
+.ofc__code:hover { background: var(--color-primary-soft); }
+.ofc__code.is-copied { background: var(--color-primary); color: #fff; border-style: solid; }
+/* Validity / "from" line is pinned to the bottom so equal-height cards
+   fill cleanly instead of leaving a gap under short cards. */
+.ofc__valid, .ofc__from { font-size: 0.76rem; color: var(--color-text-soft); margin: auto 0 0; padding-top: 8px; }
+
+/* Common offers — colourful pastel cards (like the mockup), borderless. */
+.ofc--common { border: 0; }
+.ofc--common:nth-child(4n+1) { background: #fdecec; }
+.ofc--common:nth-child(4n+2) { background: #e8f6ee; }
+.ofc--common:nth-child(4n+3) { background: #eee9fe; }
+.ofc--common:nth-child(4n+4) { background: #fef3d8; }
+
+.offp2-empty { color: var(--color-text-soft); padding: var(--space-4) 0; }
+
+@media (max-width: 767px) {
+    .offp2 { padding: var(--space-3) var(--space-3) var(--space-10); }
+    .offp2__title { font-size: 1.4rem; }
+    .ofc { width: 224px; }
+}

@@ -179,6 +179,8 @@ const {
     verifyOtpSchema,
     saveProfileSchema,
     updateProfileSchema,
+    updateAvatarSchema,
+    meSchema,
     socialSigninSchema,
 }             = require('../Validators/auth');
 
@@ -198,9 +200,40 @@ router.post('/auth/update-profile',
     validate(updateProfileSchema),
     AuthCtl.updateProfile);
 
+router.get('/auth/me',
+    validateQuery(meSchema),
+    AuthCtl.me);
+
+router.post('/auth/update-avatar',
+    validate(updateAvatarSchema),
+    AuthCtl.updateAvatar);
+
 router.post('/auth/social-signin',
     validate(socialSigninSchema),
     AuthCtl.socialSignin);
+
+// ── Customer saved addresses ───────────────────────────────────────
+// The signed-in customer's address book (Home / Work / ...) backing the
+// location sheet + "Address info" add/edit screen. Scoped to one
+// customer_id (Phase-1 trust model — the web supplies it from session).
+const AddressCtl = require('../Controllers/Customer/AddressController');
+const {
+    addressListSchema,
+    addressSaveSchema,
+    addressDeleteSchema,
+} = require('../Validators/address');
+
+router.get('/customer/addresses',
+    validateQuery(addressListSchema),
+    AddressCtl.list);
+
+router.post('/customer/address/save',
+    validate(addressSaveSchema),
+    AddressCtl.save);
+
+router.post('/customer/address/delete',
+    validate(addressDeleteSchema),
+    AddressCtl.remove);
 
 // ── Marketplace dashboard (public read-only feeds) ─────────────────
 // Powers the homepage restaurant grid + "For you" dish rail. Both are
@@ -243,6 +276,9 @@ router.get('/marketplace/categories',
 router.get('/marketplace/search',
     validateQuery(marketplaceSearchQuery),
     SearchCtl.search);
+
+// Active store-offer banners across marketplace restaurants (home rail).
+router.get('/marketplace/offers', RestaurantsCtl.offers);
 
 // ── Future namespaces ──────────────────────────────────────────────
 // router.use('/customer',   require('./customer'));

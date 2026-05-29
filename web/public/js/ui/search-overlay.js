@@ -239,56 +239,54 @@
     function renderResults(payload, query) {
         if (!resultsEl) { return; }
         while (resultsEl.firstChild) { resultsEl.removeChild(resultsEl.firstChild); }
-        var cats  = (payload && payload.categoryResults)   || [];
-        var prods = (payload && payload.productResults)    || [];
-        var rests = (payload && payload.restaurantResults) || [];
+        var enc   = encodeURIComponent;
+        var mpCats = (payload && payload.marketplaceCategories) || [];
+        var rCats  = (payload && payload.restaurantCategories)  || [];
+        var rests  = (payload && payload.restaurantResults)     || [];
+        var prods  = (payload && payload.productResults)        || [];
 
-        cats.forEach(function (c) {
+        // (1) Marketplace category → home filtered to that cuisine.
+        mpCats.forEach(function (c) {
             resultsEl.appendChild(rowFor({
                 action: 'pick-category',
-                href:   '/?cuisine=' + encodeURIComponent(c.searchName || (c.name || '').toLowerCase()),
-                dataName: c.name,
-                dataSearchName: c.searchName,
-                image:  c.icon,
-                initial: c.initial,
-                name:   c.name,
-                sub:    null,
-                cta:    'See all restaurants',
-                query:  query,
+                href:   '/?cuisine=' + enc(c.searchName || (c.name || '').toLowerCase()),
+                dataName: c.name, dataSearchName: c.searchName,
+                image: c.icon, initial: c.initial, name: c.name,
+                sub: 'Category', query: query,
             }));
         });
+        // (2) Restaurant menu category → that restaurant's page, section selected.
+        rCats.forEach(function (c) {
+            resultsEl.appendChild(rowFor({
+                action: 'pick-result',
+                href:   '/?restaurant=' + enc(c.restaurantSlug || '') + '&menu=' + enc(c.catSlug || ''),
+                dataName: c.name, image: c.icon, initial: c.initial, name: c.name,
+                sub: c.restaurant ? ('Menu · ' + c.restaurant) : 'Menu', query: query,
+            }));
+        });
+        // (3) Restaurant → its page.
+        rests.forEach(function (r) {
+            resultsEl.appendChild(rowFor({
+                action: 'pick-result',
+                href:   '/?restaurant=' + enc(r.slug || ''),
+                dataName: r.name, image: r.image, initial: r.initial, name: r.name,
+                sub: 'Restaurant', query: query,
+            }));
+        });
+        // (4) Product → that restaurant's page with the dish surfaced at the top.
         prods.forEach(function (p) {
-            // A dish goes to its own PRODUCT page (size / toppings / qty),
-            // via the clean rest+item slug URL (no id).
             var pHref = (p.slug && p.restaurantSlug)
-                ? ('/?rest=' + encodeURIComponent(p.restaurantSlug) + '&item=' + encodeURIComponent(p.slug))
-                : ('/?product=' + encodeURIComponent(p.id));
+                ? ('/?restaurant=' + enc(p.restaurantSlug) + '&highlight=' + enc(p.slug))
+                : ('/?product=' + enc(p.id));
             resultsEl.appendChild(rowFor({
                 action: 'pick-result',
                 href:   pHref,
-                dataName: p.name,
-                image:  p.image,
-                initial: p.initial,
-                name:   p.name,
-                sub:    p.restaurant ? ('Dish · ' + p.restaurant) : 'Dish',
-                query:  query,
-            }));
-        });
-        rests.forEach(function (r) {
-            // A restaurant goes to its detail page.
-            resultsEl.appendChild(rowFor({
-                action: 'pick-result',
-                href:   '/?restaurant=' + encodeURIComponent(r.slug || ''),
-                dataName: r.name,
-                image:  r.image,
-                initial: r.initial,
-                name:   r.name,
-                sub:    'Restaurant',
-                query:  query,
+                dataName: p.name, image: p.image, initial: p.initial, name: p.name,
+                sub: p.restaurant ? ('Dish · ' + p.restaurant) : 'Dish', query: query,
             }));
         });
 
-        var total = cats.length + prods.length + rests.length;
+        var total = mpCats.length + rCats.length + rests.length + prods.length;
         resultsEl.hidden = total === 0;
         if (noMatchEl) { noMatchEl.hidden = total !== 0; }
         if (emptyEl)   { emptyEl.hidden   = true; }

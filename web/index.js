@@ -33,8 +33,11 @@
 require('dotenv').config();
 
 const path        = require('path');
+const fs          = require('fs');
 const express     = require('express');
+const multer      = require('multer');
 const session     = require('express-session');
+const FileStore    = require('session-file-store')(session);
 const flash       = require('express-flash');
 const helmet      = require('helmet');
 const compression = require('compression');
@@ -44,6 +47,7 @@ const chalk       = require('chalk');
 const { fetchBrand }       = require('./Helpers/apiClient');
 const SiteController       = require('./Controllers/SiteController');
 const LocationController   = require('./Controllers/LocationController');
+const AddressController     = require('./Controllers/AddressController');
 const AuthController       = require('./Controllers/AuthController');
 const StaticPageController = require('./Controllers/StaticPageController');
 
@@ -150,17 +154,61 @@ if (yiiUploadsPath) {
     }));
 }
 
+// ── Profile avatar uploads ─────────────────────────────────────
+// Customer-uploaded profile photos live on the WEB disk (gitignored
+// web/runtime/avatars) and are served from the web origin so the strict
+// img-src 'self' CSP allows them. The API only stores the relative path
+// in customer.image. multer handles the multipart upload; the route is
+// POST /account/avatar (see AuthController.uploadAvatar).
+const AVATAR_DIR = path.join(__dirname, 'runtime', 'avatars');
+try { fs.mkdirSync(AVATAR_DIR, { recursive: true }); } catch (e) { /* ignore */ }
+app.use('/avatars', express.static(AVATAR_DIR, { maxAge: ENV === 'production' ? '7d' : 0, fallthrough: true }));
+
+// ── Restaurant images ──────────────────────────────────────────
+// Demo/marketplace restaurant photos (seeded by api/scripts/
+// seed-restaurant-images.js) live in gitignored web/runtime/
+// restaurant-images and are served from the web origin so the strict
+// img-src 'self' CSP allows them. branch.banner_image stores the
+// relative path "/restaurant-images/<file>".
+const RESTO_IMG_DIR = path.join(__dirname, 'runtime', 'restaurant-images');
+try { fs.mkdirSync(RESTO_IMG_DIR, { recursive: true }); } catch (e) { /* ignore */ }
+app.use('/restaurant-images', express.static(RESTO_IMG_DIR, { maxAge: ENV === 'production' ? '7d' : 0, fallthrough: true }));
+const avatarUpload = multer({
+    storage: multer.diskStorage({
+        destination: (req, file, cb) => cb(null, AVATAR_DIR),
+        filename: (req, file, cb) => {
+            const uid = (req.session && req.session.user && req.session.user.id) || 'anon';
+            const ext = ({ 'image/png': '.png', 'image/jpeg': '.jpg', 'image/webp': '.webp', 'image/gif': '.gif' })[file.mimetype] || '.img';
+            cb(null, uid + '-' + Date.now() + ext);
+        },
+    }),
+    limits: { fileSize: 3 * 1024 * 1024 },   // 3 MB
+    fileFilter: (req, file, cb) => cb(null, /^image\/(png|jpe?g|webp|gif)$/.test(file.mimetype)),
+});
+// Exposed so the route wiring below can use it.
+app.locals.avatarUpload = avatarUpload;
+
 // ── Session ────────────────────────────────────────────────────
-// We use a server-side session (cookie carries only the session id) so
-// the JWT issued by api/<actor>/login never lives on the client. The
-// session cookie is httpOnly + sameSite=lax + secure-in-prod.
+// Server-side session (the cookie carries only the session id). The
+// data is persisted to disk (session-file-store) under runtime/sessions
+// so a server RESTART no longer logs users out — the default in-memory
+// store would wipe every session on restart. The sessions dir is
+// gitignored (web/runtime/).
+const SESSION_MAX_AGE = parseInt(process.env.SESSION_MAX_AGE, 10) || 7 * 24 * 60 * 60 * 1000;
 app.use(session({
     name:              process.env.SESSION_NAME   || 'eatndeal_web',
     secret:            process.env.SESSION_SECRET || 'change_me_in_production',
     resave:            false,
     saveUninitialized: false,
+    store: new FileStore({
+        path:         path.join(__dirname, 'runtime', 'sessions'),
+        ttl:          Math.floor(SESSION_MAX_AGE / 1000),   // seconds
+        retries:      1,
+        reapInterval: 60 * 60,        // purge expired files hourly
+        logFn:        function () {},  // silence "missing file" noise on first read
+    }),
     cookie: {
-        maxAge:   parseInt(process.env.SESSION_MAX_AGE, 10) || 7 * 24 * 60 * 60 * 1000,
+        maxAge:   SESSION_MAX_AGE,
         httpOnly: true,
         sameSite: 'lax',
         secure:   ENV === 'production',
@@ -307,10 +355,26 @@ if (IS_DEV) {
     });
 }
 
+// ── No-store for dynamic pages ─────────────────────────────────
+// Every request that reaches here is a page / JSON route (static assets
+// were already served + ended by express.static above, with their own
+// long-cache headers). Authenticated pages embed the signed-in user
+// (header username, profile) server-side, so they must NEVER be served
+// from the browser/back-forward cache — otherwise after login or logout
+// the user sees a stale page until they manually refresh. `no-store`
+// also disables the BFCache for these responses.
+app.use((req, res, next) => {
+    res.set('Cache-Control', 'no-store, must-revalidate');
+    next();
+});
+
 // ── Routes ─────────────────────────────────────────────────────
 // Phase 0: landing page + delivery-location endpoints. Login / sign-up
 // will be added as separate routes when those flows are built (Phase 1).
 app.get('/', SiteController.index);
+
+// Offers page — all restaurants' active offers, grouped per restaurant.
+app.get('/offers', SiteController.offersPage);
 
 // ── Location (works WITHOUT login — stored on the web session) ──
 // Picked locations live on req.session.userLocation. Every page render
@@ -319,6 +383,14 @@ app.get('/', SiteController.index);
 app.post('/location/save',  LocationController.save);
 app.post('/location/clear', LocationController.clear);
 app.get ('/location',       LocationController.get);
+
+// ── Saved addresses (signed-in customers; proxied to the api) ───
+// Backs the location sheet's "Saved addresses" section + the
+// "Address info" add/edit screen. customer_id is injected from the
+// session inside the controller — never trusted from the body.
+app.get ('/addresses',       AddressController.list);
+app.post('/address/save',    AddressController.save);
+app.post('/address/delete',  AddressController.remove);
 
 // ── Auth (single mobile-OTP entry) ──────────────────────────────
 // Both /signin and /signup point at the same page — the api decides
@@ -343,6 +415,21 @@ app.post('/signin/verify',       AuthController.verifyOtp);
 app.post('/signin/save-profile', AuthController.saveProfile);
 app.get ('/account',             AuthController.accountPage);
 app.post('/account',             AuthController.updateProfile);
+// Profile photo upload (multipart). multer stores the file on the web
+// disk; the controller forwards the relative path to the api to persist.
+// The wrapper turns multer errors (too big / wrong type) into a friendly
+// JSON envelope instead of the 500 page.
+app.post('/account/avatar', (req, res) => {
+    avatarUpload.single('avatar')(req, res, (err) => {
+        if (err) {
+            const msg = err.code === 'LIMIT_FILE_SIZE'
+                ? 'Image must be under 3 MB.'
+                : 'Could not upload that image. Please try a PNG or JPG.';
+            return res.status(200).json({ status: 400, show: true, msg });
+        }
+        return AuthController.uploadAvatar(req, res);
+    });
+});
 
 // Social sign-in (Google + Facebook redirect flow).
 // :provider is constrained to google | facebook inside the handler.

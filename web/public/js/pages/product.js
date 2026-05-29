@@ -22,6 +22,10 @@
     function toast(type, msg) { if (window.EatNDealUi && window.EatNDealUi.showToast) { window.EatNDealUi.showToast(type, msg); } }
 
     var root, basePrice = 0, sym = '£', qty = 1;
+    // Upper bound for the stepper. When the product has a real counted
+    // stock (> 0) the user can't add more than that; otherwise it's a
+    // soft cap of 99 (made-to-order items with no inventory count).
+    var maxQty = 99;
 
     function applyTints(scope) {
         qa('[data-tint]', scope || document).forEach(function (el) {
@@ -105,11 +109,28 @@
             var dec = ev.target.closest && ev.target.closest('[data-action="pd-qty-dec"]');
             if (!inc && !dec) { return; }
             ev.preventDefault();
-            qty = Math.max(1, Math.min(99, qty + (inc ? 1 : -1)));
+            // Hard stop at the available stock — can't add an 8th when only
+            // 7 are in stock.
+            if (inc && qty >= maxQty) {
+                toast('info', 'Only ' + maxQty + ' in stock.');
+                return;
+            }
+            qty = Math.max(1, Math.min(maxQty, qty + (inc ? 1 : -1)));
             var qEl = root.querySelector('[data-qty]');
             if (qEl) { qEl.textContent = String(qty); }
+            syncIncState();
             recompute();
         });
+    }
+
+    /** syncIncState — visually disable the + button once the cap is hit. */
+    function syncIncState() {
+        var incBtn = root.querySelector('[data-action="pd-qty-inc"]');
+        if (incBtn) {
+            var atMax = qty >= maxQty;
+            incBtn.disabled = atMax;
+            incBtn.classList.toggle('is-disabled', atMax);
+        }
     }
 
     function bindNote() {
@@ -170,6 +191,9 @@
         if (!root) { return; }
         basePrice = parseFloat(root.getAttribute('data-base-price')) || 0;
         sym = root.getAttribute('data-currency') || '£';
+        // Counted stock caps the stepper; 0 (untracked) → soft cap of 99.
+        var stock = parseInt(root.getAttribute('data-stock-qty'), 10);
+        maxQty = (isFinite(stock) && stock > 0) ? stock : 99;
 
         bindImageFallback();
         applyTints();
@@ -180,6 +204,7 @@
         bindAdd();
         recompute();
         applyStock();
+        syncIncState();
     }
 
     if (document.readyState === 'loading') {

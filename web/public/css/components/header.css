@@ -219,3 +219,35 @@
 
 .site-header__auth     { display: inline-flex; gap: var(--space-2); align-items: center; }
 .site-header__menu-btn { color: var(--color-text); }
+
+/* Signed-in: the mobile menu trigger becomes the user's avatar (initial)
+   instead of the 3-line hamburger — a cleaner, app-style entry point. */
+.site-header__menu-btn--avatar { padding: 0; }
+.site-header__avatar {
+    width: 36px; height: 36px; border-radius: 50%;
+    background: var(--color-primary); color: #fff;
+    display: grid; place-items: center; font-weight: 800; font-size: 0.95rem;
+    overflow: hidden;
+}
+.site-header__avatar img { width: 100%; height: 100%; object-fit: cover; }
+
+/* ── Location gate ────────────────────────────────────────────────────
+   Until a delivery location is set (body[data-has-location="false"]),
+   strip the browsing chrome so the focused "Where do you want to order
+   from?" page stays clean — whether or not the visitor is signed in.
+   Hidden: header search, the mobile search+filter row, the Delivery/
+   Pickup toggle, the Rewards/Orders/Cart quick links, the bottom nav,
+   AND the "Set your location" change-chip itself (there's nothing to
+   change yet — the page is where you set it). Only the logo + the
+   user avatar / menu remain, with the avatar pushed to the right. */
+body[data-has-location="false"] .site-header__search,
+body[data-has-location="false"] .mobile-search,
+body[data-has-location="false"] .mode-toggle,
+body[data-has-location="false"] .header-quick,
+body[data-has-location="false"] .bottom-nav,
+body[data-has-location="false"] .site-header__location { display: none !important; }
+
+/* With the location chip gone, push the avatar / menu / sign-in to the
+   far right of the header. */
+body[data-has-location="false"] .site-header__auth,
+body[data-has-location="false"] .site-header__menu-btn { margin-left: auto; }

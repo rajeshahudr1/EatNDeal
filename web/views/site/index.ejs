@@ -84,22 +84,24 @@
             this restaurant list reloads. Always rendered (even when
             empty) so the partial-swap target is always present. %>
         <div data-home-feed>
+        <% if (typeof cuisine_no_match !== 'undefined' && cuisine_no_match && selected_cuisine) { %>
+            <p class="feed-note">No restaurants serving “<%= selected_cuisine.charAt(0).toUpperCase() + selected_cuisine.slice(1) %>” near you yet — here’s what else is available.</p>
+        <% } %>
         <% if (featured && featured.length > 0) { %>
         <section aria-labelledby="resto-rail-title">
             <div class="hv2-head">
-                <h2 id="resto-rail-title" class="hv2-head__title">Top restaurants near you</h2>
+                <h2 id="resto-rail-title" class="hv2-head__title"><%= (typeof cuisine_no_match !== 'undefined' && cuisine_no_match) ? 'More restaurants near you' : 'Top restaurants near you' %></h2>
                 <a href="/?view=restaurants" class="hv2-head__link" data-action="view-all">View all</a>
             </div>
             <ul class="resto-rail" role="list" data-load-target>
-                <% featured.forEach(function (r, i) { %>
-                    <%# Static-ish badge variety from index until the api
-                        returns real badges. Real ones (offer/closed) win. %>
-                    <% var badges = ['','--trending','--popular','--new']; var bcls = badges[i % badges.length]; var blabel = r.offer ? r.offer : (bcls==='--trending'?'Trending':bcls==='--popular'?'Popular':bcls==='--new'?'New':'Offer'); %>
+                <% featured.forEach(function (r) { %>
                     <li data-search-id="<%= r.id %>">
                         <a class="resto-card<%= r.isOpen ? '' : ' is-closed' %>" href="/?restaurant=<%= encodeURIComponent(r.slug || r.id) %>" data-action="pick-restaurant">
                             <div class="resto-card__media" data-tint="<%= r.tint %>">
                                 <% if (r.image) { %><img src="<%= r.image %>" alt="" loading="lazy" data-img-fallback><% } else { %><%= r.initial %><% } %>
-                                <span class="resto-card__badge resto-card__badge<%= bcls %>"><%= blabel %></span>
+                                <%# Real offer badge — representative offer + a count chip
+                                    when the restaurant has more than one offer. %>
+                                <% if (r.offer) { %><span class="resto-card__badge resto-card__badge--offer"><%= r.offer %><% if (r.offerCount && r.offerCount > 1) { %><span class="resto-card__badge-count"><%= r.offerCount %></span><% } %></span><% } %>
                             </div>
                             <div class="resto-card__body">
                                 <span class="resto-card__name">
@@ -137,7 +139,26 @@
         <% } %>
         </div><%# /[data-home-feed] %>
 
-        <%# ── BEST OFFERS (static) ─────────────────────────────── %>
+        <%# ── BEST OFFERS — real store-offer banners (fallback: static) ─ %>
+        <% var __offers = (typeof home_offers !== 'undefined' && home_offers) ? home_offers : []; %>
+        <% if (__offers.length) { %>
+        <section aria-labelledby="offers-title">
+            <div class="hv2-head">
+                <h2 id="offers-title" class="hv2-head__title">Best offers for you</h2>
+            </div>
+            <div class="offers-rail">
+                <% var __ov = ['offer-banner--red','offer-banner--orange','offer-banner--purple']; %>
+                <% __offers.forEach(function (o, i) { %>
+                    <a class="offer-banner offer-banner--real <%= __ov[i % __ov.length] %>" href="/?restaurant=<%= encodeURIComponent(o.restaurant.slug) %>" data-action="pick-restaurant">
+                        <span class="offer-banner__title"><%= o.title %></span>
+                        <% if (o.details) { %><span class="offer-banner__sub"><%= o.details %></span><% } %>
+                        <span class="offer-banner__from"><%= o.restaurant.name %></span>
+                        <span class="offer-banner__cta">Order Now →</span>
+                    </a>
+                <% }); %>
+            </div>
+        </section>
+        <% } else { %>
         <section aria-labelledby="offers-title">
             <div class="hv2-head">
                 <h2 id="offers-title" class="hv2-head__title">Best offers for you</h2>
@@ -161,6 +182,7 @@
                 </div>
             </div>
         </section>
+        <% } %>
 
         <%# ── POPULAR CUISINES (dark cards) ────────────────────── %>
         <% if (cuisines && cuisines.length > 0) { %>
@@ -273,7 +295,7 @@
                 <a class="resto-card<%= r.isOpen ? '' : ' is-closed' %>" href="/?restaurant=<%= encodeURIComponent(r.slug || r.id) %>" data-action="pick-restaurant">
                     <div class="resto-card__media" data-tint="<%= r.tint %>">
                         <% if (r.image) { %><img src="<%= r.image %>" alt="" loading="lazy" data-img-fallback><% } else { %><%= r.initial %><% } %>
-                        <% if (r.offer) { %><span class="resto-card__badge resto-card__badge--trending"><%= r.offer %></span><% } %>
+                        <% if (r.offer) { %><span class="resto-card__badge resto-card__badge--offer"><%= r.offer %><% if (r.offerCount && r.offerCount > 1) { %><span class="resto-card__badge-count"><%= r.offerCount %></span><% } %></span><% } %>
                     </div>
                     <div class="resto-card__body">
                         <span class="resto-card__name"><%= r.name %></span>

@@ -21,37 +21,16 @@
  * Used:   GET /favourites, POST /favourite/toggle (wired in web/index.js).
  */
 
-const { callApi } = require('../Helpers/apiClient');
+const { callApi }            = require('../Helpers/apiClient');
+const { requireUser, relay } = require('../Helpers/authProxy');
 
-function requireUser(req, res) {
-    const user = (req.session && req.session.user) || null;
-    if (!user || !user.id) {
-        res.status(200).json({
-            status: 401,
-            show:   true,
-            msg:    'Please sign in to use favourites.',
-        });
-        return null;
-    }
-    return user;
-}
-
-function relay(res, apiRes) {
-    if (apiRes.networkError || !apiRes.body) {
-        return res.status(200).json({
-            status: 502,
-            show:   true,
-            msg:    'We could not reach the server. Please try again in a moment.',
-        });
-    }
-    return res.status(200).json(apiRes.body);
-}
+const needUser = (req, res) => requireUser(req, res, 'Please sign in to use favourites.');
 
 /**
  * list — GET /favourites
  */
 async function list(req, res) {
-    const user = requireUser(req, res);
+    const user = needUser(req, res);
     if (!user) { return; }
 
     const loc = (req.session && req.session.userLocation) || {};
@@ -67,7 +46,7 @@ async function list(req, res) {
  * toggle — POST /favourite/toggle
  */
 async function toggle(req, res) {
-    const user = requireUser(req, res);
+    const user = needUser(req, res);
     if (!user) { return; }
 
     const payload = {

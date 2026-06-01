@@ -25,42 +25,16 @@ const MSG       = require('../../Helpers/messages');
 const customers = require('../../Helpers/customerLookup');
 const M         = require('../../Helpers/marketplace');
 const distance  = require('../../Helpers/distance');
+const OrderTime = require('../../Helpers/orderTime');
 const { db }    = require('../../config/db');
 
 const TABLE          = 'mp_customer_favourite_restaurant';
 const STATUS_ACTIVE  = 1;
 const STATUS_REMOVED = 2;
 
-/**
- * loadActiveCustomer
- *
- * What:  Same guard used by AddressController — confirms the caller is a
- *        marketplace customer (company_id IS NULL) and isn't disabled or
- *        banned. Returns { row } or { error: {msg,status} }.
- * Type:  READ.
- */
-async function loadActiveCustomer(customerId) {
-    const row = await db('customer')
-        .where({ id: customerId })
-        .whereNull('company_id')
-        .first();
-    if (!row) { return { error: { msg: MSG.resource.notFound, status: 404 } }; }
-
-    const state = customers.classify(row);
-    if (state === 'deleted' || state === 'disabled') {
-        return { error: { msg: MSG.auth.accountDisabled, status: 403 } };
-    }
-    if (state === 'banned') {
-        return { error: { msg: MSG.auth.accountBanned, status: 403 } };
-    }
-    return { row };
-}
-
-function numOrNull(v) {
-    if (v == null || v === '') { return null; }
-    const n = Number(v);
-    return Number.isFinite(n) ? n : null;
-}
+// Marketplace-customer guard + numOrNull live in Helpers/customerLookup
+// (loadMarketplaceCustomer, coerceNum) — kept DRY across all authed endpoints.
+const numOrNull = customers.coerceNum;
 
 /**
  * list
@@ -79,7 +53,7 @@ async function list(req, res) {
         const lat = numOrNull(req.query.lat);
         const lng = numOrNull(req.query.lng);
 
-        const { error } = await loadActiveCustomer(customerId);
+        const { error } = await customers.loadMarketplaceCustomer(customerId);
         if (error) { return H.errorResponse(res, error.msg, error.status); }
 
         // Newest hearts first. Joined to the canonical company/branch
@@ -90,10 +64,8 @@ async function list(req, res) {
             .innerJoin('branch as b',  'b.company_id', 'c.id')
             .where('f.customer_id', customerId)
             .andWhere('f.status', STATUS_ACTIVE)
-            .andWhere('c.is_marketplace', 1)
-            .andWhere('c.is_active', 1)
-            .whereNull('c.deleted_at')
-            .andWhere('b.status', '<>', '2')
+            .modify(M.eligibleCompanyScope, 'c')
+            .modify(M.eligibleBranchScope,  'b')
             .select(
                 'f.id as fav_id', 'f.created_at as fav_at',
                 'c.id as company_id', 'c.business_name', 'c.domain_name', 'c.business_category',
@@ -114,32 +86,16 @@ async function list(req, res) {
             seen.add(r.company_id); return true;
         });
 
-        const favourites = uniq.map(r => {
-            const name = String(r.business_name || r.branch_trading_name || r.branch_name || '').trim();
-            const km   = distance.kmBetween(lat, lng, r.branch_lat, r.branch_lng);
-            // Legacy parity: time from merchant-set branch column only.
-            // No distance fallback — 0/unset stays 0/null.
-            const wMins  = M.deliveryMinutesFromWaiting(r.delivery_waiting_time);
-            const pkMins = M.deliveryMinutesFromWaiting(r.pickup_waiting_time);
-            return {
-                id:              String(r.company_id),
-                branchId:        r.branch_id ? String(r.branch_id) : null,
-                slug:            r.domain_name ? M.slugify(r.domain_name) : M.slugify(name, r.company_id),
-                name,
-                cuisines:        M.cuisinesFor({ business_category: r.business_category }),
-                rating:          4.4,
-                isOpen:          M.isOpenNow(r),
-                tint:            M.tintFor(r.company_id),
-                initial:         M.initialFor(name),
-                distanceKm:      km != null ? km : null,
-                deliveryMinutes: wMins  != null ? (wMins  + ' min') : null,
-                pickupMinutes:   pkMins != null ? (pkMins + ' min') : null,
-                image:           M.yiiImageUrl('banner', r.company_id, r.banner_image)
-                                  || M.yiiImageUrl('logo', r.company_id, r.business_image)
-                                  || null,
-                isFavourite:     true,
-            };
-        });
+        // Single batched call → per-branch formatted time labels.
+        const timesByBranch = await OrderTime.computeForBranches(uniq);
+
+        // Shared card mapper from Helpers/marketplace — same shape every
+        // surface gets (home grid, account favourites tab, etc.).
+        const favourites = uniq.map((r) => M.toRestaurantCard(r, {
+            lat, lng,
+            times:       timesByBranch[String(r.branch_id)],
+            isFavourite: true,
+        }));
 
         return H.successResponse(res, { favourites });
     } catch (err) {
@@ -168,7 +124,7 @@ async function toggle(req, res) {
         const companyId  = req.body.company_id;
         const branchId   = req.body.branch_id || null;
 
-        const { error } = await loadActiveCustomer(customerId);
+        const { error } = await customers.loadMarketplaceCustomer(customerId);
         if (error) { return H.errorResponse(res, error.msg, error.status); }
 
         // The restaurant must exist + be marketplace-eligible — guards

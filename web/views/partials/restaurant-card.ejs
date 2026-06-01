@@ -1,0 +1,96 @@
+<%#
+  views/partials/restaurant-card.ejs
+
+  What:  ONE source of truth for the restaurant card markup. Three home
+         surfaces used to inline a near-identical copy (My Favourites rail,
+         Top restaurants grid, Restaurants view-all grid) plus the account
+         page's Favourites tab; any tweak (badge style, meta order, heart
+         placement) drifted across them. This partial collapses all of
+         that to a single block.
+
+  Caller passes:
+    r              — the card object from the API (see api/Helpers/marketplace.toRestaurantCard).
+    user_session   — the layout local (controls whether the heart renders).
+    showOffer      — bool, render the offer badge on the media. Default
+                     false (My Favourites + Account favourites don't show
+                     it; the main grid does).
+    metaIcons      — bool, include the little svg icons next to time +
+                     distance. The home grid uses them; rail-sized cards
+                     (My Favs / Account) omit for a cleaner look. Default
+                     false.
+    showDelivery   — bool, render the third meta line ("Free delivery /
+                     min £X" + closed / deliverable warnings). Used only
+                     on the main grid; rails omit. Default false.
+    forceFavourite — bool, render the heart as filled even if r.isFavourite
+                     is missing (used by surfaces where every card is by
+                     definition a favourite — My Favs + Account). Default
+                     false.
+
+  EJS include (in the parent view):
+    include partials/restaurant-card with locals { r: r, showOffer: true, metaIcons: true }
+-%>
+<% var showOffer       = (typeof showOffer       !== 'undefined') ? showOffer       : false; %>
+<% var metaIcons       = (typeof metaIcons       !== 'undefined') ? metaIcons       : false; %>
+<% var showDelivery    = (typeof showDelivery    !== 'undefined') ? showDelivery    : false; %>
+<% var forceFavourite  = (typeof forceFavourite  !== 'undefined') ? forceFavourite  : false; %>
+<% var isFav           = forceFavourite || !!r.isFavourite; %>
+<li data-search-id="<%= r.id %>">
+    <a class="resto-card<%= r.isOpen ? '' : ' is-closed' %>" href="/?restaurant=<%= encodeURIComponent(r.slug || r.id) %>" data-action="pick-restaurant">
+        <div class="resto-card__media" data-tint="<%= r.tint %>">
+            <% if (r.image) { %><img src="<%= r.image %>" alt="" loading="lazy" data-img-fallback><% } else { %><%= r.initial %><% } %>
+            <% if (showOffer && r.offer) { %>
+                <span class="resto-card__badge resto-card__badge--offer">
+                    <%= r.offer %><% if (r.offerCount && r.offerCount > 1) { %><span class="resto-card__badge-count"><%= r.offerCount %></span><% } %>
+                </span>
+            <% } %>
+            <% if (user_session) { %>
+                <button type="button" class="resto-card__fav<%= isFav ? ' is-active' : '' %>"
+                        data-fav-toggle="<%= r.id %>"
+                        data-fav-branch="<%= r.branchId || '' %>"
+                        data-fav-name="<%= r.name %>"
+                        aria-label="<%= isFav ? 'Remove from favourites' : 'Add to favourites' %>"
+                        aria-pressed="<%= isFav ? 'true' : 'false' %>">
+                    <svg viewBox="0 0 24 24" fill="<%= isFav ? 'currentColor' : 'none' %>" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+                </button>
+            <% } %>
+        </div>
+        <div class="resto-card__body">
+            <span class="resto-card__name">
+                <%= r.name %>
+                <% if (metaIcons) { %>
+                    <svg class="resto-card__verified" width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="m9 12 2 2 4-4"/><path d="M12 2 4 5v6c0 5 8 11 8 11s8-6 8-11V5l-8-3z" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+                <% } %>
+            </span>
+            <% if ((r.cuisines || []).length) { %>
+                <p class="resto-card__cuisines"><%= (r.cuisines || []).slice(0, 3).join(' · ') %></p>
+            <% } %>
+            <div class="resto-card__meta">
+                <span class="resto-card__rating">
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                    <%= r.rating %>
+                </span>
+                <% if (r.deliveryMinutes) { %>
+                    <span class="resto-card__time">
+                        <% if (metaIcons) { %><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg> <% } %>
+                        <%= r.deliveryMinutes %>
+                    </span>
+                <% } %>
+                <% if (typeof r.distanceKm === 'number' && r.distanceKm >= 0) { %>
+                    <span class="resto-card__dist">
+                        <% if (metaIcons) { %><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s7-7.5 7-13a7 7 0 0 0-14 0c0 5.5 7 13 7 13z"/><circle cx="12" cy="9" r="2.5"/></svg> <% } %>
+                        <%= r.distanceKm.toFixed(1) %> km
+                    </span>
+                <% } %>
+            </div>
+            <% if (showDelivery) { %>
+                <% if (!r.isOpen) { %>
+                    <span class="resto-card__delivery resto-card__delivery--muted">Currently closed</span>
+                <% } else if (r.deliverable === false) { %>
+                    <span class="resto-card__delivery resto-card__delivery--muted">Doesn't deliver to your area</span>
+                <% } else if (typeof r.deliveryFee === 'number') { %>
+                    <span class="resto-card__delivery"><% if (r.deliveryFee === 0) { %>Free delivery<% } else { %><%= brand.currencySymbol %><%= r.deliveryFee.toFixed(2) %> delivery<% } %><% if (typeof r.minOrder === 'number' && r.minOrder > 0) { %> · min <%= brand.currencySymbol %><%= r.minOrder.toFixed(0) %><% } %></span>
+                <% } %>
+            <% } %>
+        </div>
+    </a>
+</li>

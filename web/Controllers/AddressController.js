@@ -24,42 +24,19 @@
  *         (wired in web/index.js).
  */
 
-const { callApi } = require('../Helpers/apiClient');
+const { callApi }            = require('../Helpers/apiClient');
+const { requireUser, relay } = require('../Helpers/authProxy');
 
-// Pull the signed-in customer off the session, or send a 401 envelope and
-// return null so the caller bails out.
-function requireUser(req, res) {
-    const user = (req.session && req.session.user) || null;
-    if (!user || !user.id) {
-        res.status(200).json({
-            status: 401,
-            show:   true,
-            msg:    'Please sign in to manage your saved addresses.',
-        });
-        return null;
-    }
-    return user;
-}
-
-// Relay the api envelope straight through to the browser (single parser on
-// the client). Network / non-JSON failures become a friendly 502.
-function relay(res, apiRes) {
-    if (apiRes.networkError || !apiRes.body) {
-        return res.status(200).json({
-            status: 502,
-            show:   true,
-            msg:    'We could not reach the server. Please try again in a moment.',
-        });
-    }
-    return res.status(200).json(apiRes.body);
-}
+// Wrap requireUser with a context-specific 401 message; everything else is
+// the shared helper from Helpers/authProxy.
+const needUser = (req, res) => requireUser(req, res, 'Please sign in to manage your saved addresses.');
 
 /**
  * list — GET /addresses
  * Forwards customer_id (+ active lat/lng for distances) to the api.
  */
 async function list(req, res) {
-    const user = requireUser(req, res);
+    const user = needUser(req, res);
     if (!user) { return; }
 
     const loc = (req.session && req.session.userLocation) || {};
@@ -76,7 +53,7 @@ async function list(req, res) {
  * Upsert. customer_id is taken from the session, never the body.
  */
 async function save(req, res) {
-    const user = requireUser(req, res);
+    const user = needUser(req, res);
     if (!user) { return; }
 
     const payload = { ...req.body, customer_id: user.id };
@@ -88,7 +65,7 @@ async function save(req, res) {
  * remove — POST /address/delete
  */
 async function remove(req, res) {
-    const user = requireUser(req, res);
+    const user = needUser(req, res);
     if (!user) { return; }
 
     const payload = { customer_id: user.id, id: req.body.id };

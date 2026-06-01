@@ -25,8 +25,9 @@
 const H        = require('../../Helpers/helper');
 const MSG      = require('../../Helpers/messages');
 const { db }   = require('../../config/db');
-const distance = require('../../Helpers/distance');
-const M        = require('../../Helpers/marketplace');
+const distance  = require('../../Helpers/distance');
+const M         = require('../../Helpers/marketplace');
+const OrderTime = require('../../Helpers/orderTime');
 
 /**
  * resolveMpCategoryId
@@ -146,6 +147,7 @@ async function list(req, res) {
                 'c.id                  as company_id',
                 'c.business_name       as company_name',
                 'c.domain_name         as company_domain',
+                'b.id                  as branch_id',
                 'b.direction_latitude  as branch_lat',
                 'b.direction_longitude as branch_lng',
                 'b.delivery_waiting_time',
@@ -154,10 +156,7 @@ async function list(req, res) {
             )
             .where('p.show_marketplace', 1)
             .andWhere('p.status', '1')
-            .andWhere('c.is_marketplace', 1)
-            .andWhere('c.is_active', 1)
-            .andWhere(function () { this.where('c.is_maintenance', 0).orWhereNull('c.is_maintenance'); })
-            .whereNull('c.deleted_at')
+            .modify(M.eligibleCompanyScope, 'c')
             // ── Cuisine filter ────────────────────────────────────
             // When ?cuisine=<name> is set, only return products
             // linked to a category whose name contains <name>. Uses
@@ -234,23 +233,30 @@ async function list(req, res) {
             ])
             .limit(fetchLimit);
 
+        // Time labels (delivery + pickup) computed once for every
+        // distinct branch on the page. Each row carries `branch_id`
+        // via the join below (aliased through).
+        const branchRows = rows.map(r => ({
+            branch_id: r.branch_id,
+            delivery_waiting_time: r.delivery_waiting_time,
+            pickup_waiting_time:   r.pickup_waiting_time,
+        }));
+        const timesByBranch = await OrderTime.computeForBranches(branchRows);
+
         // Capture km on a separate sortKm field so we keep the
         // human-readable distanceKm shape unchanged while having a
         // numeric sort key with Infinity for "no coords known".
         const products = rows.map(r => {
             const name = String(r.product_name || '').trim();
             const km   = distance.kmBetween(lat, lng, r.branch_lat, r.branch_lng);
-            // Legacy parity: merchant-set cooking baseline only. No
-            // distance fallback — 0/unset stays null and the chip hides.
-            const wMins  = M.deliveryMinutesFromWaiting(r.delivery_waiting_time);
-            const pkMins = M.deliveryMinutesFromWaiting(r.pickup_waiting_time);
+            const t    = timesByBranch[String(r.branch_id)] || { delivery: null, pickup: null };
             return {
                 id:              String(r.product_id),
                 name,
                 priceFrom:       M.pickPrice(r),
                 rating:          4.5,                       // TODO: derive from review_rating table
-                deliveryMinutes: wMins  != null ? (wMins  + ' min') : null,
-                pickupMinutes:   pkMins != null ? (pkMins + ' min') : null,
+                deliveryMinutes: t.delivery,
+                pickupMinutes:   t.pickup,
                 restaurant:      String(r.company_name || '').trim(),
                 restaurantSlug:  r.company_domain ? M.slugify(r.company_domain) : M.slugify(r.company_name, r.company_id),
                 veg:             M.isVegProduct(r),
@@ -519,7 +525,7 @@ async function detail(req, res) {
         const itemSlug = req.query.item ? String(req.query.item).trim().toLowerCase() : null;
         if (!productId && restSlug && itemSlug) {
             const cands = await db('company as c')
-                .where('c.is_marketplace', 1).andWhere('c.is_active', 1).whereNull('c.deleted_at')
+                .modify(M.eligibleCompanyScope, 'c')
                 .select('c.id', 'c.business_name', 'c.domain_name');
             const co = cands.find(c => (c.domain_name ? M.slugify(c.domain_name) : M.slugify(c.business_name, c.id)) === restSlug);
             if (co) {
@@ -547,9 +553,7 @@ async function detail(req, res) {
             .where('p.id', productId)
             .andWhere('p.show_marketplace', 1)
             .andWhere('p.status', '1')
-            .andWhere('c.is_marketplace', 1)
-            .andWhere('c.is_active', 1)
-            .whereNull('c.deleted_at')
+            .modify(M.eligibleCompanyScope, 'c')
             .select(
                 'p.id as product_id', 'p.name as product_name', 'p.product_description',
                 'p.veg_non_veg', 'p.marketplace_price', 'p.online_platform_price', 'p.price_after_tax', 'p.track_stock_level',

@@ -369,6 +369,150 @@ function matchDeliveryZone(customerPostcode, zones) {
  *
  * Type:   READ (pure).
  */
+/**
+ * eligibleCompanyScope
+ *
+ * What:  Adds the standard "company is a live marketplace tenant" filter
+ *        to a Knex query — used by RestaurantsController.list/detail,
+ *        ProductsController.list, FavouriteController.list, SearchController,
+ *        OffersController, etc. so they all share one definition of
+ *        eligibility:
+ *
+ *           c.is_marketplace = 1
+ *           c.is_active      = 1
+ *           c.deleted_at IS NULL
+ *           (c.is_maintenance = 0 OR c.is_maintenance IS NULL)
+ *
+ *        Usage (inside a Knex builder):
+ *           db('company as c')
+ *             .modify(M.eligibleCompanyScope, 'c')
+ *             .select(...);
+ *
+ *        The `alias` argument (default 'c') lets callers name the table
+ *        whatever they want; the filter qualifies its columns.
+ * Type:  READ (query-builder modifier).
+ */
+function eligibleCompanyScope(qb, alias) {
+    const a = alias || 'c';
+    qb.where(a + '.is_marketplace', 1)
+      .andWhere(a + '.is_active', 1)
+      .whereNull(a + '.deleted_at')
+      .andWhere(function () { this.where(a + '.is_maintenance', 0).orWhereNull(a + '.is_maintenance'); });
+}
+
+/**
+ * eligibleBranchScope
+ *
+ * What:  Companion to eligibleCompanyScope — adds the branch-side filter
+ *        (`b.status <> '2'` = not soft-deleted). Usually called alongside
+ *        eligibleCompanyScope on every join that includes branches.
+ * Type:  READ (query-builder modifier).
+ */
+function eligibleBranchScope(qb, alias) {
+    const a = alias || 'b';
+    qb.andWhere(a + '.status', '<>', '2');
+}
+
+/**
+ * toRestaurantCard
+ *
+ * What:  Canonical (company,branch) row → public card shape. ONE definition
+ *        of "what a restaurant card looks like" so every surface that
+ *        renders cards (home grid, favourites rail, account favourites,
+ *        future search results, pickup map) shares the exact same fields.
+ *
+ *        Was previously duplicated across:
+ *          • RestaurantsController.list   (inline map)
+ *          • FavouriteController.list     (parallel mapper with subtle
+ *                                          differences — drift risk).
+ *
+ *        Caller supplies the joined DB row (with company + branch
+ *        columns) plus a small opts bag for things the DB row doesn't
+ *        carry (customer location, pre-computed time labels, favourite
+ *        state, offer summaries, postcode zone).
+ *
+ *        Required columns on `row`:
+ *          c.id (company_id), c.business_name, c.domain_name,
+ *          c.business_category,
+ *          b.id (branch_id), b.banner_image, b.business_image,
+ *          b.direction_latitude, b.direction_longitude,
+ *          b.start_time, b.end_time, b.open_as_usual, b.closed_until,
+ *          b.delivery_waiting_time, b.pickup_waiting_time   (for time labels)
+ *
+ *        opts:
+ *          lat, lng              — customer coords (for distance)
+ *          times                 — { delivery, pickup } strings from
+ *                                   OrderTime.computeForBranches
+ *          isFavourite           — bool
+ *          offer / offerCount    — strings from Offers.offerSummaries
+ *          zone                  — matched delivery zone row (from
+ *                                   store_delivery_charge_setup) when
+ *                                   the user supplied a postcode
+ *
+ * Why:   Cards stay visually consistent across pages even when one
+ *        controller adds a new field — adding `rating_count` here once
+ *        means it appears everywhere.
+ * Type:  READ (pure).
+ */
+function toRestaurantCard(row, opts) {
+    opts = opts || {};
+    const distance = require('./distance');
+
+    // Tolerate either { c.id as company_id, b.id as branch_id } aliasing
+    // OR the raw column names — callers vary.
+    const companyId  = row.company_id || row.id;
+    const branchId   = row.branch_id || row.bid || null;
+    const businessName = row.business_name || row.company_name || row.branch_trading_name || row.branch_name || '';
+    const name = String(businessName).trim();
+
+    const lat = opts.lat, lng = opts.lng;
+    const branchLat = row.branch_lat != null ? row.branch_lat : row.direction_latitude;
+    const branchLng = row.branch_lng != null ? row.branch_lng : row.direction_longitude;
+    const km = distance.kmBetween(lat, lng, branchLat, branchLng);
+
+    const times = opts.times || { delivery: null, pickup: null };
+    const zone  = opts.zone || null;
+
+    const avgRating = row.avg_rating != null ? Number(row.avg_rating) : null;
+
+    // Veg classification — only available when the caller pre-computed
+    // the EXISTS flags (used on the main grid; favourites skips it).
+    let vegType = null;
+    if (row.has_veg != null || row.has_non_veg != null) {
+        if (row.has_veg && !row.has_non_veg)       { vegType = 'pure-veg'; }
+        else if (row.has_non_veg)                  { vegType = 'non-veg';  }
+    }
+
+    return {
+        id:               String(companyId),
+        branchId:         branchId ? String(branchId) : null,
+        slug:             row.domain_name ? slugify(row.domain_name) : slugify(name, companyId),
+        name,
+        cuisines:         cuisinesFor({ business_category: row.business_category }),
+        rating:           avgRating != null ? avgRating : 4.4,
+        isOpen:           isOpenNow(row),
+        tint:             tintFor(companyId),
+        initial:          initialFor(name),
+        distanceKm:       km != null ? km : null,
+        deliveryMinutes:  times.delivery,
+        pickupMinutes:    times.pickup,
+        image:            yiiImageUrl('banner', companyId, row.banner_image)
+                          || yiiImageUrl('logo', companyId, row.business_image)
+                          || null,
+        isFavourite:      !!opts.isFavourite,
+        // Optional bits — only populated when the caller passed them.
+        offer:            opts.offer || null,
+        offerCount:       opts.offerCount || 0,
+        vegType,
+        lat:              branchLat != null && branchLat !== '' ? Number(branchLat) : null,
+        lng:              branchLng != null && branchLng !== '' ? Number(branchLng) : null,
+        deliverable:      opts.postcode ? !!zone : true,
+        deliveryFee:      zone ? Number(zone.charge) : null,
+        minOrder:         zone ? Number(zone.minimum_order) : null,
+        freeDeliveryOver: zone ? Number(zone.free_delivery_above) : null,
+    };
+}
+
 function deliveryMinutesFromWaiting(val) {
     if (val == null || val === '') { return null; }
     const s = String(val).trim();
@@ -396,4 +540,7 @@ module.exports = {
     isVegProduct,
     yiiImageUrl,
     normaliseName,
+    eligibleCompanyScope,
+    eligibleBranchScope,
+    toRestaurantCard,
 };

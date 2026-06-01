@@ -184,6 +184,99 @@ function formatMinutes(mins) {
     return n + ' mins';
 }
 
+/**
+ * maxAdvancedExtraByBranch
+ *
+ * What:  Batched lookup — given a list of branch ids, returns a map
+ *          { [branchId]: { delivery: number, pickup: number } }
+ *        where each value is the SUM of `time_for_new_order_min` across
+ *        every active threshold row on that branch for that service.
+ *        Listing pages don't have a cart total or a real-time volume
+ *        count, so they can't pick the EXACT row that would apply — but
+ *        they CAN preview the maximum possible extra so the customer
+ *        sees a range like "20-50 min".
+ * Type:  READ.
+ */
+async function maxAdvancedExtraByBranch(branchIds) {
+    const out = {};
+    if (!Array.isArray(branchIds) || !branchIds.length) { return out; }
+    const ids = Array.from(new Set(branchIds.map(String).filter(Boolean)));
+    if (!ids.length) { return out; }
+
+    const rows = await db('advance_order_waiting_time')
+        .whereIn('branch_id', ids)
+        .andWhere('status', 1)
+        .select('branch_id', 'service_type', 'time_for_new_order_min');
+
+    rows.forEach((r) => {
+        const bid  = String(r.branch_id);
+        const mins = Number(r.time_for_new_order_min) || 0;
+        if (!out[bid]) { out[bid] = { delivery: 0, pickup: 0 }; }
+        const svc = Number(r.service_type);
+        if      (svc === SVC_DELIVERY) { out[bid].delivery += mins; }
+        else if (svc === SVC_PICKUP)   { out[bid].pickup   += mins; }
+    });
+    return out;
+}
+
+/**
+ * formatRange
+ *
+ * What:  Builds the customer-facing label from a (base, extra) pair:
+ *           base = 20, extra =  0   →  "20 min"
+ *           base = 20, extra = 30   →  "20-50 min"
+ *           base =  0, extra = any  →  null  (base must be set)
+ *        Caller sees null when the chip should hide.
+ * Type:  READ (pure).
+ */
+function formatRange(base, extra) {
+    const b = Number(base) || 0;
+    const e = Number(extra) || 0;
+    if (b <= 0) { return null; }
+    if (e <= 0) { return b + ' min'; }
+    return b + '-' + (b + e) + ' min';
+}
+
+/**
+ * computeForBranches
+ *
+ * What:  THE one function the marketplace surfaces (list / detail /
+ *        favourites / dishes) call to get formatted delivery + pickup
+ *        time labels for every branch in one round trip. Avoids each
+ *        controller re-doing the parse + advance lookup + formatRange
+ *        dance.
+ *
+ *        Input:  array of rows that contain at least
+ *                  { branch_id, delivery_waiting_time, pickup_waiting_time }
+ *                (the rows the controllers already SELECT for cards).
+ *        Output: { [branchId]: { delivery: "20-50 min" | null,
+ *                                pickup:   "30-60 min" | null } }
+ *
+ *        For a SINGLE branch (the detail page) just pass [row]; the
+ *        result has one entry. For listings pass the full array; one
+ *        SQL round-trip covers the whole page.
+ *
+ * Type:  READ.
+ */
+async function computeForBranches(branchRows) {
+    const out = {};
+    if (!Array.isArray(branchRows) || !branchRows.length) { return out; }
+    const ids = branchRows.map(r => r && r.branch_id).filter(Boolean);
+    const adv = await maxAdvancedExtraByBranch(ids);
+    branchRows.forEach((r) => {
+        if (!r || !r.branch_id) { return; }
+        const bid    = String(r.branch_id);
+        const ext    = adv[bid] || { delivery: 0, pickup: 0 };
+        const wMins  = M.deliveryMinutesFromWaiting(r.delivery_waiting_time);
+        const pkMins = M.deliveryMinutesFromWaiting(r.pickup_waiting_time);
+        out[bid] = {
+            delivery: formatRange(wMins, ext.delivery),
+            pickup:   formatRange(pkMins, ext.pickup),
+        };
+    });
+    return out;
+}
+
 module.exports = {
     SVC_PICKUP,
     SVC_DELIVERY,
@@ -193,4 +286,7 @@ module.exports = {
     advancedTime,
     totalMinutes,
     formatMinutes,
+    maxAdvancedExtraByBranch,
+    formatRange,
+    computeForBranches,
 };

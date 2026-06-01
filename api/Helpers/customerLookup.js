@@ -34,6 +34,7 @@
  */
 
 const { db } = require('../config/db');
+const MSG    = require('./messages');
 
 const TABLE = 'customer';
 
@@ -146,9 +147,61 @@ function publicView(row) {
     };
 }
 
+/**
+ * loadMarketplaceCustomer
+ *
+ * What:  THE one guard every authed marketplace endpoint should call
+ *        BEFORE touching customer-scoped data (addresses, favourites,
+ *        orders…). Returns either:
+ *           { row }                       — caller proceeds
+ *           { error: { msg, status } }    — caller relays via H.errorResponse
+ *
+ *        Rules:
+ *          • `company_id IS NULL` — marketplace customer (not a tenant staff
+ *            account).
+ *          • classify(row) gates: disabled / deleted / banned all reject
+ *            with the canonical wording.
+ *
+ *        Was previously duplicated in AddressController + FavouriteController.
+ *        Single source of truth means a future status rule (e.g. "soft-
+ *        suspended" pending KYC) auto-applies everywhere.
+ * Type:  READ.
+ */
+async function loadMarketplaceCustomer(customerId) {
+    const row = await db(TABLE)
+        .where({ id: customerId })
+        .whereNull('company_id')
+        .first();
+    if (!row) { return { error: { msg: MSG.resource.notFound, status: 404 } }; }
+
+    const state = classify(row);
+    if (state === 'deleted' || state === 'disabled') {
+        return { error: { msg: MSG.auth.accountDisabled, status: 403 } };
+    }
+    if (state === 'banned') {
+        return { error: { msg: MSG.auth.accountBanned, status: 403 } };
+    }
+    return { row };
+}
+
+/**
+ * coerceNum
+ *
+ * What:  Number-or-null. Empty / non-numeric inputs return null so the
+ *        caller can decide "treat as missing" instead of getting NaN.
+ * Type:  READ (pure).
+ */
+function coerceNum(v) {
+    if (v == null || v === '') { return null; }
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+}
+
 module.exports = {
     findByPhone,
     classify,
     publicView,
     normalisePhone,
+    loadMarketplaceCustomer,
+    coerceNum,
 };

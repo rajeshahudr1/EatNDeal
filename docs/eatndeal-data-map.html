@@ -739,7 +739,23 @@ SELECT time_for_new_order_min FROM advance_order_waiting_time
    AND min_subtotal_amount &lt;= count
    AND max_subtotal_amount &gt;= count
  LIMIT 1</code></pre>
-  <p class="small">Implementation: <code>api/Helpers/orderTime.js</code> · marketplace list/detail uses <code>baseMinutes(branch,'delivery')</code> · cart/checkout will use <code>totalMinutes(branch, cartTotal, 'delivery')</code>.</p>
+  <h3>Display — range, not single value</h3>
+  <p>Listing pages don't have the cart total or live volume count, so they can't pick the EXACT row. Instead they show the worst-case range:</p>
+  <pre><code>low  = baseTime
+high = baseTime + sum(time_for_new_order_min)
+       across every active advance row for this branch+service
+
+Examples:
+  base 20, no advance rules        → "20 min"
+  base 20, value 15 + volume 20    → "20-55 min"
+  base 0                            → null (chip hides)</code></pre>
+  <h3>One common entry point</h3>
+  <p>Every page (list / detail / favourites / dishes) calls:</p>
+  <pre><code>const times = await OrderTime.computeForBranches(branchRows);
+//   times[branchId] = { delivery: "20-55 min" | null,
+//                       pickup:   "30-60 min" | null }</code></pre>
+  <p>One round trip for the whole page. Controllers just map <code>branch_id → t.delivery / t.pickup</code>; the parse + lookup + format dance lives ONLY in <code>orderTime.js</code>.</p>
+  <p class="small">Implementation: <code>api/Helpers/orderTime.js</code> · <code>computeForBranches(rows)</code> · for checkout: <code>totalMinutes(branch, cartTotal, mode)</code>.</p>
 </section>
 
 <!-- 29 ─ CALC / PICKUP TIME ────────────────────────────────────── -->

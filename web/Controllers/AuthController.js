@@ -382,6 +382,26 @@ async function accountPage(req, res) {
     let activeTab = String((req.query && req.query.tab) || 'profile').toLowerCase();
     if (!TABS[activeTab]) { activeTab = 'profile'; }
 
+    // Favourites tab — fetch the customer's saved restaurants so the
+    // panel renders the live list. Other tabs still show their
+    // placeholder until those features land.
+    let favourites = null;
+    if (activeTab === 'favourites') {
+        try {
+            const loc = (req.session && req.session.userLocation) || {};
+            const qs = new URLSearchParams({ customer_id: String(user.id) });
+            if (loc.lat != null && loc.lat !== '') { qs.set('lat', String(loc.lat)); }
+            if (loc.lng != null && loc.lng !== '') { qs.set('lng', String(loc.lng)); }
+            const favRes = await callApi(req, 'GET', '/api/v1/customer/favourites?' + qs.toString());
+            if (favRes.body && favRes.body.status === 200 && favRes.body.data) {
+                favourites = favRes.body.data.favourites || [];
+            } else {
+                favourites = [];
+            }
+        } catch (e) { favourites = []; }
+        stats.favourites = favourites.length;
+    }
+
     return res.render('account/index', {
         page_title:       TABS[activeTab],
         _layoutFile:      '../_layout',
@@ -395,6 +415,7 @@ async function accountPage(req, res) {
         account_stats:    stats,
         active_tab:       activeTab,
         active_tab_label: TABS[activeTab],
+        favourites:       favourites,
     });
 }
 

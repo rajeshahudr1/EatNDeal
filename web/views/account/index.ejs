@@ -99,7 +99,44 @@
             </div>
         </header>
 
-        <% if (active_tab !== 'profile') { %>
+        <% if (active_tab === 'favourites') { %>
+        <%# Favourites tab — real saved-restaurants list. %>
+        <% var favs = (typeof favourites !== 'undefined' && favourites) ? favourites : []; %>
+        <% if (favs.length === 0) { %>
+            <div class="acct-placeholder">
+                <span class="acct-placeholder__icon" aria-hidden="true">
+                    <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+                </span>
+                <h2 class="acct-placeholder__title">No favourites yet</h2>
+                <p class="acct-placeholder__sub">Tap the heart on any restaurant to save it here for quick reordering.</p>
+                <a class="acct-btn acct-btn--update" href="/">Browse restaurants</a>
+            </div>
+        <% } else { %>
+            <ul class="resto-rail acct-fav-grid" role="list">
+            <% favs.forEach(function (r) { %>
+                <li data-search-id="<%= r.id %>">
+                    <a class="resto-card<%= r.isOpen ? '' : ' is-closed' %>" href="/?restaurant=<%= encodeURIComponent(r.slug || r.id) %>" data-action="pick-restaurant">
+                        <div class="resto-card__media" data-tint="<%= r.tint %>">
+                            <% if (r.image) { %><img src="<%= r.image %>" alt="" loading="lazy" data-img-fallback><% } else { %><%= r.initial %><% } %>
+                            <button type="button" class="resto-card__fav is-active" data-fav-toggle="<%= r.id %>" data-fav-branch="<%= r.branchId || '' %>" data-fav-name="<%= r.name %>" aria-label="Remove from favourites" aria-pressed="true">
+                                <svg viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+                            </button>
+                        </div>
+                        <div class="resto-card__body">
+                            <span class="resto-card__name"><%= r.name %></span>
+                            <% if ((r.cuisines || []).length) { %><p class="resto-card__cuisines"><%= (r.cuisines || []).slice(0,3).join(' · ') %></p><% } %>
+                            <div class="resto-card__meta">
+                                <span class="resto-card__rating"><svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg> <%= r.rating %></span>
+                                <% if (r.deliveryMinutes) { %><span class="resto-card__time"><%= r.deliveryMinutes %></span><% } %>
+                                <% if (typeof r.distanceKm === 'number' && r.distanceKm >= 0) { %><span class="resto-card__dist"><%= r.distanceKm.toFixed(1) %> km</span><% } %>
+                            </div>
+                        </div>
+                    </a>
+                </li>
+            <% }); %>
+            </ul>
+        <% } %>
+        <% } else if (active_tab !== 'profile') { %>
         <%# Placeholder screen for tabs we haven't built yet — the tab still
             highlights in the sidebar so the navigation reads as "selected". %>
         <div class="acct-placeholder">

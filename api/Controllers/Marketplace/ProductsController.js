@@ -148,6 +148,8 @@ async function list(req, res) {
                 'c.domain_name         as company_domain',
                 'b.direction_latitude  as branch_lat',
                 'b.direction_longitude as branch_lng',
+                'b.delivery_waiting_time',
+                'b.pickup_waiting_time',
                 'pi.url                as image_url',
             )
             .where('p.show_marketplace', 1)
@@ -238,12 +240,17 @@ async function list(req, res) {
         const products = rows.map(r => {
             const name = String(r.product_name || '').trim();
             const km   = distance.kmBetween(lat, lng, r.branch_lat, r.branch_lng);
+            // Legacy parity: merchant-set cooking baseline only. No
+            // distance fallback — 0/unset stays null and the chip hides.
+            const wMins  = M.deliveryMinutesFromWaiting(r.delivery_waiting_time);
+            const pkMins = M.deliveryMinutesFromWaiting(r.pickup_waiting_time);
             return {
                 id:              String(r.product_id),
                 name,
                 priceFrom:       M.pickPrice(r),
                 rating:          4.5,                       // TODO: derive from review_rating table
-                deliveryMinutes: km != null ? distance.estimateDeliveryMinutes(km) : null,
+                deliveryMinutes: wMins  != null ? (wMins  + ' min') : null,
+                pickupMinutes:   pkMins != null ? (pkMins + ' min') : null,
                 restaurant:      String(r.company_name || '').trim(),
                 restaurantSlug:  r.company_domain ? M.slugify(r.company_domain) : M.slugify(r.company_name, r.company_id),
                 veg:             M.isVegProduct(r),
@@ -342,6 +349,151 @@ function optionPrice(r) {
     return Number.isFinite(n) ? n : 0;
 }
 
+// POS-specific dummy option names that the legacy webordering hides from
+// the customer (they exist for in-store till behaviour, never for online).
+// Source: common/constants/Posconstant.php — FREE/NO/LESS/CHIPS/BURGER.
+const HIDDEN_OPTION_NAMES = ['Free', 'No', 'Less', 'On Chips', 'On Burger'];
+
+/**
+ * loadProductOptionGroups
+ *
+ * What:  Ports webordering/controllers/ProductController.php's
+ *        getProductModifiers() to Node. The legacy logic is the source
+ *        of truth — same dedup behaviour, same hidden-name filter, same
+ *        linked-group nesting via `modifier_copy_details`.
+ *
+ *        Steps (mirroring the PHP):
+ *          1. Read `modifier_group_products` rows for the product
+ *             (status='1', ordered by sequence).
+ *          2. Collect every `link_group_id` referenced by those groups
+ *             in `modifier_copy_details`. Any group that appears as a
+ *             link target is rendered NESTED inside its parent option,
+ *             not as a top-level group → no duplicates.
+ *          3. For each remaining top-level group, load its options
+ *             (status='1', excluding HIDDEN_OPTION_NAMES) and attach
+ *             a `linkedGroup` to each option that has a copy detail
+ *             row pointing at another group.
+ *
+ * Type:  READ.
+ * Output: an array of {id, name, type, min, max, required, options}
+ *         matching the existing public shape.
+ */
+async function loadProductOptionGroups(productId) {
+    const links = await db('modifier_group_products')
+        .where('product_id', productId)
+        .andWhere('status', '1')
+        .orderBy('sequence', 'asc')
+        .select('modifier_group_id');
+    if (!links.length) { return []; }
+
+    const linkedIds = links.map(l => l.modifier_group_id);
+
+    // ── Step 2: which groups appear as link targets? ─────────────
+    // A group whose id appears in ANY of these copy-detail rows is
+    // logically nested (e.g. "Side Choice" lives inside "Add a Side
+    // or Drink") and must NOT also render at the top level.
+    const copyRows = await db('modifier_copy_details')
+        .whereIn('group_id', linkedIds)
+        .andWhere('status', '1')
+        .select('group_id', 'modifier_option_id', 'link_group_id');
+    const skipTopLevelIds = new Set(copyRows.map(r => String(r.link_group_id)));
+    // (option_id, parent_group_id) → linked sub-group row (for nesting).
+    const linkByOptionKey = new Map();
+    copyRows.forEach(r => {
+        linkByOptionKey.set(String(r.modifier_option_id) + ':' + String(r.group_id), String(r.link_group_id));
+    });
+
+    // ── Step 3: load every group we MIGHT need (top-level + any
+    // sub-group referenced as a link target). One round trip. ──
+    const allGroupIds = Array.from(new Set([
+        ...linkedIds.map(String),
+        ...Array.from(skipTopLevelIds),
+    ]));
+    if (!allGroupIds.length) { return []; }
+    const groupRows = await db('modifier_group')
+        .whereIn('id', allGroupIds)
+        .andWhere('status', '1')
+        .select('id', 'group_name', 'modifier_type', 'has_modifier_limit', 'min_limit', 'max_limit');
+    const groupById = new Map(groupRows.map(g => [String(g.id), g]));
+
+    const optRows = await db('modifier_group_options')
+        .whereIn('modifier_group_id', allGroupIds)
+        .andWhere('status', '1')
+        .whereNotIn('option_name', HIDDEN_OPTION_NAMES)
+        .orderBy('sequence', 'asc')
+        .select('id', 'modifier_group_id', 'option_name', 'price_tax_include', 'price_tax_excluded', 'is_default');
+    const optsByGroup = new Map();
+    optRows.forEach(o => {
+        const k = String(o.modifier_group_id);
+        if (!optsByGroup.has(k)) { optsByGroup.set(k, []); }
+        optsByGroup.get(k).push(o);
+    });
+
+    function buildGroup(g, parentGroupId) {
+        const rawOpts = optsByGroup.get(String(g.id)) || [];
+        const options = rawOpts.map(o => {
+            const out = {
+                id:        String(o.id),
+                name:      String(o.option_name || '').trim(),
+                price:     optionPrice(o),
+                isDefault: Number(o.is_default) === 1,
+            };
+            // If this option has a copy-detail row inside the PARENT
+            // group, attach the nested sub-group so the UI can render
+            // a follow-up choice (e.g. "Side" → pick a drink type).
+            // Only attached when parentGroupId is supplied; nested
+            // groups themselves don't chain further.
+            if (parentGroupId) {
+                const sub = linkByOptionKey.get(String(o.id) + ':' + String(parentGroupId));
+                if (sub) {
+                    const subGroup = groupById.get(String(sub));
+                    if (subGroup) { out.linkedGroup = buildGroup(subGroup, null); }
+                }
+            }
+            return out;
+        });
+        // Single vs multi is driven by the group's modifier_type column
+        // (legacy field). Values seen in the live DB:
+        //   'Single Choice' / 'radio'        → single (radio buttons)
+        //   'Multiple Choice' / 'checkbox'   → multi  (checkboxes)
+        // has_modifier_limit / min_limit / max_limit are SEPARATE — they
+        // only apply when has_modifier_limit = 1 (otherwise the group is
+        // unbounded). For single-choice groups we force max=1 and treat
+        // them as ALWAYS required — matches legacy webordering
+        // products.js (line 336): `isRequired = minLimit > 0 || type
+        // === 'Single Choice'`. Without this, radio groups with
+        // min_limit=0 wouldn't enforce a pick on submit even though
+        // the legacy UI does.
+        const t = String(g.modifier_type || '').toLowerCase();
+        const isSingle = (t === 'single choice' || t === 'radio');
+        const limited = Number(g.has_modifier_limit) === 1;
+        let max = limited ? (Number(g.max_limit) || 0) : 0;
+        let min = limited ? (Number(g.min_limit) || 0) : 0;
+        if (isSingle) { max = 1; min = 1; }
+        return {
+            id:       'm' + g.id,
+            name:     String(g.group_name || '').trim() || 'Add-ons',
+            type:     isSingle ? 'single' : 'multi',
+            min, max,
+            required: isSingle || min >= 1,
+            options,
+        };
+    }
+
+    // Preserve the original link order; drop groups that are link
+    // targets (rendered nested) or whose group row is missing/inactive.
+    const out = [];
+    for (const id of linkedIds) {
+        const key = String(id);
+        if (skipTopLevelIds.has(key)) { continue; }
+        const g = groupById.get(key);
+        if (!g) { continue; }
+        const built = buildGroup(g, id);
+        if (built.options.length) { out.push(built); }
+    }
+    return out;
+}
+
 /**
  * detail
  *
@@ -434,115 +586,15 @@ async function detail(req, res) {
             },
         };
 
-        const groups = [];
-
-        // ── Variant groups (sizes / portions) — by product ─────────
-        const vGroups = await db('product_variants_group as g')
-            .where('g.product_id', productId)
-            .andWhere('g.status', '1')
-            .orderBy('g.ordering', 'asc')
-            .select('g.id', 'g.group_name', 'g.min_selection', 'g.max_selection', 'g.checkbox_type');
-        if (vGroups.length) {
-            const vOpts = await db('product_variants_group_options')
-                .whereIn('group_id', vGroups.map(g => g.id))
-                .andWhere('status', '1')
-                .orderBy('ordering', 'asc')
-                .select('id', 'group_id', 'option_name', 'price_tax_included', 'price_tax_excluded', 'is_default');
-            const byGroup = new Map();
-            vOpts.forEach(o => {
-                if (!byGroup.has(String(o.group_id))) { byGroup.set(String(o.group_id), []); }
-                byGroup.get(String(o.group_id)).push({
-                    id: String(o.id), name: String(o.option_name || '').trim(),
-                    // Variant defaults are stored as 'YES'/'NO' (modifiers use 1/2).
-                    price: optionPrice(o), isDefault: o.is_default === 'YES' || Number(o.is_default) === 1,
-                });
-            });
-            vGroups.forEach(g => {
-                const opts = byGroup.get(String(g.id)) || [];
-                if (!opts.length) { return; }
-                const max = Number(g.max_selection) || 0;
-                const min = Number(g.min_selection) || 0;
-                groups.push({
-                    id: 'v' + g.id,
-                    name: String(g.group_name || '').trim() || 'Choose an option',
-                    type: (max === 1 || String(g.checkbox_type) === 'radio') ? 'single' : 'multi',
-                    min, max, required: min >= 1,
-                    options: opts,
-                });
-            });
-        }
-
-        // ── Modifier groups (toppings / add-ons) — via link table ──
-        const mgLinks = await db('modifier_group_products')
-            .where('product_id', productId)
-            .andWhere('status', '1')
-            .orderBy('sequence', 'asc')
-            .select('modifier_group_id');
-        const mgIds = mgLinks.map(l => l.modifier_group_id);
-        if (mgIds.length) {
-            const mGroups = await db('modifier_group')
-                .whereIn('id', mgIds).andWhere('status', '1')
-                .select('id', 'group_name', 'has_modifier_limit', 'min_limit', 'max_limit');
-            const mOpts = await db('modifier_group_options')
-                .whereIn('modifier_group_id', mgIds).andWhere('status', '1')
-                .orderBy('sequence', 'asc')
-                .select('id', 'modifier_group_id', 'option_name', 'price_tax_include', 'price_tax_excluded', 'is_default');
-            const optByGroup = new Map();
-            mOpts.forEach(o => {
-                if (!optByGroup.has(String(o.modifier_group_id))) { optByGroup.set(String(o.modifier_group_id), []); }
-                optByGroup.get(String(o.modifier_group_id)).push({
-                    id: String(o.id), name: String(o.option_name || '').trim(),
-                    price: optionPrice(o), isDefault: Number(o.is_default) === 1,
-                });
-            });
-            // Preserve the link order.
-            const gById = new Map(mGroups.map(g => [String(g.id), g]));
-            mgIds.forEach(id => {
-                const g = gById.get(String(id));
-                if (!g) { return; }
-                const opts = optByGroup.get(String(g.id)) || [];
-                if (!opts.length) { return; }
-                const limited = Number(g.has_modifier_limit) === 1;
-                const max = limited ? (Number(g.max_limit) || 0) : 0;
-                const min = limited ? (Number(g.min_limit) || 0) : 0;
-                groups.push({
-                    id: 'm' + g.id,
-                    name: String(g.group_name || '').trim() || 'Add-ons',
-                    type: max === 1 ? 'single' : 'multi',
-                    min, max, required: min >= 1,
-                    options: opts,
-                });
-            });
-        }
-
-        // ── Meal-deal groups (combos — each option is another product) ──
-        const mdGroups = await db('product_meal_deals_group')
-            .where('product_id', productId).andWhere('status', '1')
-            .orderBy('ordering', 'asc')
-            .select('id', 'group_name', 'min_selection', 'max_selection');
-        if (mdGroups.length) {
-            const mdOpts = await db('product_meal_deals_group_options as o')
-                .innerJoin('products as ap', 'ap.id', 'o.assign_product_id')
-                .whereIn('o.group_id', mdGroups.map(g => g.id))
-                .andWhere('o.status', '1')
-                .orderBy('o.ordering', 'asc')
-                .select('o.id', 'o.group_id', 'ap.name as option_name', 'o.price_tax_included', 'o.price_tax_excluded');
-            const byG = new Map();
-            mdOpts.forEach(o => {
-                if (!byG.has(String(o.group_id))) { byG.set(String(o.group_id), []); }
-                byG.get(String(o.group_id)).push({ id: String(o.id), name: String(o.option_name || '').trim(), price: optionPrice(o), isDefault: false });
-            });
-            mdGroups.forEach(g => {
-                const opts = byG.get(String(g.id)) || [];
-                if (!opts.length) { return; }
-                const max = Number(g.max_selection) || 0;
-                const min = Number(g.min_selection) || 0;
-                groups.push({
-                    id: 'd' + g.id, name: String(g.group_name || '').trim() || 'Meal deal',
-                    type: max === 1 ? 'single' : 'multi', min, max, required: min >= 1, options: opts,
-                });
-            });
-        }
+        // ── Option groups — matches the legacy eatndealclean
+        // webordering ProductController exactly (single source of
+        // truth: `modifier_group_products`). Variant + meal-deal
+        // tables are NOT read here — real marketplace products carry
+        // every selectable group via modifier_group_products, and
+        // mixing the other two sources just duplicates the same group
+        // (see Test Mega Combo, which had Size/Crust/Add a Side or
+        // Drink mirrored across three tables → six cards rendered).
+        const groups = await loadProductOptionGroups(productId);
 
         // ── Image gallery (all product photos) ─────────────────────
         const imgRows = await db('product_image')

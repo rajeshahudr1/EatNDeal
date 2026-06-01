@@ -31,6 +31,12 @@
             <span class="rd-hero__logo" data-tint="<%= r.tint %>">
                 <% if (r.logo) { %><img src="<%= r.logo %>" alt="<%= r.name %>" loading="lazy" data-img-fallback><% } else { %><span class="rd-hero__logo-initial"><%= r.initial %></span><% } %>
             </span>
+            <%# Heart icon — login-only. Top-right of the hero. %>
+            <% if (user_session) { %>
+            <button type="button" class="rd-hero__fav<%= r.isFavourite ? ' is-active' : '' %>" data-fav-toggle="<%= r.id %>" data-fav-branch="<%= r.branchId || '' %>" data-fav-name="<%= r.name %>" aria-label="<%= r.isFavourite ? 'Remove from favourites' : 'Add to favourites' %>" aria-pressed="<%= r.isFavourite ? 'true' : 'false' %>">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+            </button>
+            <% } %>
             <div class="rd-hero__overlay">
                 <h1 class="rd-hero__name">
                     <%= r.name %>

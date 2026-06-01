@@ -235,6 +235,23 @@ router.post('/customer/address/delete',
     validate(addressDeleteSchema),
     AddressCtl.remove);
 
+// ── Customer favourite restaurants (heart icon) ────────────────────
+// Signed-in only. The web layer supplies customer_id from session;
+// the validator rejects requests with no id.
+const FavouriteCtl = require('../Controllers/Customer/FavouriteController');
+const {
+    favouriteListSchema,
+    favouriteToggleSchema,
+} = require('../Validators/favourite');
+
+router.get('/customer/favourites',
+    validateQuery(favouriteListSchema),
+    FavouriteCtl.list);
+
+router.post('/customer/favourite/toggle',
+    validate(favouriteToggleSchema),
+    FavouriteCtl.toggle);
+
 // ── Marketplace dashboard (public read-only feeds) ─────────────────
 // Powers the homepage restaurant grid + "For you" dish rail. Both are
 // filtered by company.is_marketplace=1 (+ products.show_marketplace=1

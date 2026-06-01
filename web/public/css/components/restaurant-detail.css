@@ -100,6 +100,22 @@
 .rd-hero__rating-count { font-weight: 500; opacity: 0.9; }
 .rd-hero__address { margin: 6px 0 0; font-size: 0.9rem; opacity: 0.92; }
 
+/* Heart icon — top-right of the hero (login-only). */
+.rd-hero__fav {
+    position: absolute; top: 14px; right: 14px; z-index: 2;
+    width: 40px; height: 40px; border-radius: 50%;
+    background: rgba(255, 255, 255, 0.95); border: 0; cursor: pointer;
+    display: grid; place-items: center; color: var(--color-text-soft);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.22);
+    padding: 0; line-height: 0;
+    transition: transform 120ms ease, color 120ms ease;
+}
+.rd-hero__fav:hover { color: var(--color-primary); transform: scale(1.06); }
+.rd-hero__fav.is-active { color: var(--color-primary); }
+.rd-hero__fav.is-active svg { fill: currentColor; stroke: currentColor; }
+.rd-hero__fav:disabled { opacity: 0.6; cursor: progress; }
+.rd-hero__fav.is-pulsing { animation: fav-pulse 360ms ease; }
+
 /* ── Info bar ──────────────────────────────────────────────────────── */
 .rd-info-bar {
     background: #fff; border: 1px solid var(--color-border-soft);

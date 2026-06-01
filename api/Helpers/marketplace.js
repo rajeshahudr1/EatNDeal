@@ -340,10 +340,33 @@ function matchDeliveryZone(customerPostcode, zones) {
 /**
  * deliveryMinutesFromWaiting
  *
- * What:   Parses a branch.delivery_waiting_time value into whole
- *         minutes. Accepts "HH:MM:SS" / "H:M" / a plain number. Returns
- *         null when it can't yield a sensible (> 0) minute value — the
- *         caller then falls back to the distance estimate.
+ * What:   Parses a branch.delivery_waiting_time / pickup_waiting_time
+ *         value into whole minutes. Matches the legacy webordering
+ *         formula EXACTLY (see common/Commonquery::displayRealOrderTime):
+ *
+ *             total_min  =  (last_part as MINUTES)
+ *                        +  (middle_part as HOURS × 60)
+ *
+ *         i.e. the PHP code does `date('s', strtotime($t))` for the last
+ *         field and `date('i', strtotime($t)) * 60` for the middle field.
+ *         The legacy admin form stores values as `day:hour:minute`, and
+ *         after PHP's strtotime re-reads it as HH:MM:SS, the admin's
+ *         minutes end up in the seconds slot and the admin's hours end
+ *         up in the minutes slot. Reading the LAST field as minutes and
+ *         the MIDDLE field as hours rebuilds the admin's intent.
+ *
+ *         Examples that match the legacy renderer:
+ *           "0:0:25"   → 25 min            (admin set 25 min)
+ *           "0:1:0"    → 60 min            (admin set 1 hour)
+ *           "0:1:30"   → 90 min
+ *           "00:00:20" → 20 min            (real EatNDeal row)
+ *           "00:00:00" → null              (unset)
+ *           "00:30"    → 30 min            (legacy two-part: H:M)
+ *           "45"       → 45 min            (bare integer)
+ *
+ *         Days (the leading field on three-part values) are intentionally
+ *         dropped — matches legacy displayRealOrderTime.
+ *
  * Type:   READ (pure).
  */
 function deliveryMinutesFromWaiting(val) {
@@ -353,8 +376,8 @@ function deliveryMinutesFromWaiting(val) {
     const parts = s.split(':').map(n => parseInt(n, 10));
     if (parts.some(isNaN)) { return null; }
     let mins = 0;
-    if (parts.length === 3)      { mins = parts[0] * 60 + parts[1]; }   // H:M:S → ignore seconds
-    else if (parts.length === 2) { mins = parts[0] * 60 + parts[1]; }   // H:M
+    if (parts.length === 3)      { mins = parts[2] + parts[1] * 60; }   // D:H:M → minutes + hours×60
+    else if (parts.length === 2) { mins = parts[1] + parts[0] * 60; }   // H:M  → minutes + hours×60
     else                         { mins = parts[0]; }
     return mins > 0 ? mins : null;
 }

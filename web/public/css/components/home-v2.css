@@ -192,7 +192,11 @@
     margin-bottom: var(--space-4);
     gap: var(--space-3);
 }
-.hv2-head__title { font-size: 1.4rem; font-weight: 800; color: var(--color-text); }
+.hv2-head__title { font-size: 1.4rem; font-weight: 800; color: var(--color-text); display: inline-flex; align-items: center; gap: 8px; margin: 0; }
+.hv2-head__title-icon { flex: 0 0 auto; color: var(--color-primary); }
+/* When a "My Favourites" rail sits above the main grid, give the next
+   section a little breathing room so the two titles don't crowd. */
+[data-home-feed] section + section { margin-top: var(--space-5); }
 .hv2-head__link  { color: var(--color-primary); font-weight: 600; font-size: 0.9rem; white-space: nowrap; }
 .hv2-head__link:hover { text-decoration: underline; }
 
@@ -390,13 +394,30 @@
 .resto-card__badge--offer    { background: var(--color-success); display: inline-flex; align-items: center; gap: 5px; }
 /* Count chip — shown only when a restaurant has more than one offer. */
 .resto-card__badge-count { background: rgba(255, 255, 255, 0.28); border-radius: 999px; padding: 0 6px; font-size: 0.68rem; font-weight: 800; line-height: 1.5; }
+/* Heart icon (signed-in only). Filled when active. Pinned to the
+   media area; sits above the offer badge layer (z-index:3 vs 2). */
 .resto-card__fav {
-    position: absolute; top: 8px; right: 8px; z-index: 2;
+    position: absolute; top: 8px; right: 8px; z-index: 3;
     width: 32px; height: 32px; border-radius: 50%;
     background: rgba(255,255,255,0.92); border: 0; cursor: pointer;
     display: grid; place-items: center; color: var(--color-text-soft);
+    box-shadow: 0 1px 4px rgba(0,0,0,0.18);
+    padding: 0; line-height: 0;
+    transition: transform 120ms ease, color 120ms ease, background 120ms ease;
 }
-.resto-card__fav:hover { color: var(--color-primary); }
+.resto-card__fav svg { width: 17px; height: 17px; }
+.resto-card__fav:hover { color: var(--color-primary); transform: scale(1.06); }
+.resto-card__fav.is-active { color: var(--color-primary); background: #fff; }
+.resto-card__fav.is-active svg { fill: currentColor; stroke: currentColor; }
+.resto-card__fav:disabled { opacity: 0.6; cursor: progress; }
+/* Tiny pop animation on toggle. */
+.resto-card__fav.is-pulsing { animation: fav-pulse 360ms ease; }
+@keyframes fav-pulse {
+    0%   { transform: scale(1); }
+    35%  { transform: scale(1.25); }
+    65%  { transform: scale(0.92); }
+    100% { transform: scale(1); }
+}
 .resto-card__body { padding: var(--space-3); display: flex; flex-direction: column; gap: 4px; }
 .resto-card__name { font-weight: 700; font-size: 1rem; display: flex; align-items: center; gap: 4px; }
 .resto-card__verified { color: #2563eb; flex: 0 0 auto; }

@@ -78,11 +78,37 @@
         }
     }
 
+    /**
+     * syncLinkedGroups — show/hide nested sub-groups based on the parent
+     * option's checked state. Mirrors legacy `modifier_copy_details`
+     * behaviour: when a parent option is selected, its linkedGroup
+     * appears inline below; when deselected (or a different radio in
+     * the same group is picked) the sub-group hides AND its inputs are
+     * cleared so unseen options never count toward the price.
+     */
+    function syncLinkedGroups() {
+        qa('[data-linked-for]', root).forEach(function (wrap) {
+            var optionId = wrap.getAttribute('data-linked-for');
+            var name     = wrap.getAttribute('data-linked-name');
+            // Match the parent option by its name + value (the radio /
+            // checkbox immediately above the wrap).
+            var input = root.querySelector('input[name="' + name + '"][value="' + optionId + '"]');
+            var show  = !!(input && input.checked);
+            wrap.hidden = !show;
+            if (!show) {
+                // Clear any picks inside a hidden sub-group so they
+                // don't sneak into the price total or the summary.
+                qa('input:checked', wrap).forEach(function (i) { i.checked = false; });
+            }
+        });
+    }
+
     function bindOptions() {
         root.addEventListener('change', function (ev) {
             var inp = ev.target;
             if (!inp || (inp.type !== 'checkbox' && inp.type !== 'radio')) { return; }
             enforceMax(inp);
+            syncLinkedGroups();
             recompute();
         });
     }
@@ -140,13 +166,19 @@
         note.addEventListener('input', function () { count.textContent = String(note.value.length); });
     }
 
-    /** firstInvalidGroup — a required group with fewer than `min` picks. */
+    /** firstInvalidGroup — a required group with fewer than `min` picks.
+     *  Hidden nested groups don't count: only validate them when their
+     *  parent option is currently selected. */
     function firstInvalidGroup() {
         var bad = null;
         qa('.pd-group', root).forEach(function (g) {
             if (bad) { return; }
             var min = Number(g.getAttribute('data-min')) || 0;
             if (min < 1) { return; }
+            // Skip nested groups whose parent option isn't currently
+            // chosen (their wrapper is hidden).
+            var wrap = g.closest('[data-linked-for]');
+            if (wrap && wrap.hidden) { return; }
             if (qa('input:checked', g).length < min) { bad = g; }
         });
         return bad;
@@ -202,6 +234,12 @@
         bindQty();
         bindNote();
         bindAdd();
+        // Reveal nested groups for any options that came pre-checked
+        // (is_default=1). Without this, defaults sit selected but their
+        // linked sub-groups stay hidden until the user clicks something.
+        // Matches legacy webordering products.js (line 236) where the
+        // initial display flag is derived from `is_default`.
+        syncLinkedGroups();
         recompute();
         applyStock();
         syncIncState();

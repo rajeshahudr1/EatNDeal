@@ -87,6 +87,47 @@
         <% if (typeof cuisine_no_match !== 'undefined' && cuisine_no_match && selected_cuisine) { %>
             <p class="feed-note">No restaurants serving “<%= selected_cuisine.charAt(0).toUpperCase() + selected_cuisine.slice(1) %>” near you yet — here’s what else is available.</p>
         <% } %>
+
+        <%# ── My Favourites ─────────────────────────────────────────
+            Shown ABOVE the main rail when the signed-in customer has
+            saved at least one restaurant. The same cards are stripped
+            from `featured` in the controller so they never duplicate. %>
+        <% var myFavs = (typeof my_favourites !== 'undefined' && my_favourites) ? my_favourites : []; %>
+        <% if (user_session && myFavs.length > 0) { %>
+        <section aria-labelledby="my-fav-rail-title">
+            <div class="hv2-head">
+                <h2 id="my-fav-rail-title" class="hv2-head__title">
+                    <svg class="hv2-head__title-icon" width="18" height="18" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+                    My Favourites
+                </h2>
+                <a href="/account?tab=favourites" class="hv2-head__link" data-action="view-favourites">View all</a>
+            </div>
+            <ul class="resto-rail" role="list">
+                <% myFavs.forEach(function (r) { %>
+                    <li data-search-id="<%= r.id %>">
+                        <a class="resto-card<%= r.isOpen ? '' : ' is-closed' %>" href="/?restaurant=<%= encodeURIComponent(r.slug || r.id) %>" data-action="pick-restaurant">
+                            <div class="resto-card__media" data-tint="<%= r.tint %>">
+                                <% if (r.image) { %><img src="<%= r.image %>" alt="" loading="lazy" data-img-fallback><% } else { %><%= r.initial %><% } %>
+                                <button type="button" class="resto-card__fav is-active" data-fav-toggle="<%= r.id %>" data-fav-branch="<%= r.branchId || '' %>" data-fav-name="<%= r.name %>" aria-label="Remove from favourites" aria-pressed="true">
+                                    <svg viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+                                </button>
+                            </div>
+                            <div class="resto-card__body">
+                                <span class="resto-card__name"><%= r.name %></span>
+                                <% if ((r.cuisines || []).length) { %><p class="resto-card__cuisines"><%= (r.cuisines || []).slice(0,3).join(' · ') %></p><% } %>
+                                <div class="resto-card__meta">
+                                    <span class="resto-card__rating"><svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg> <%= r.rating %></span>
+                                    <% if (r.deliveryMinutes) { %><span class="resto-card__time"><%= r.deliveryMinutes %></span><% } %>
+                                    <% if (typeof r.distanceKm === 'number' && r.distanceKm >= 0) { %><span class="resto-card__dist"><%= r.distanceKm.toFixed(1) %> km</span><% } %>
+                                </div>
+                            </div>
+                        </a>
+                    </li>
+                <% }); %>
+            </ul>
+        </section>
+        <% } %>
+
         <% if (featured && featured.length > 0) { %>
         <section aria-labelledby="resto-rail-title">
             <div class="hv2-head">
@@ -102,6 +143,12 @@
                                 <%# Real offer badge — representative offer + a count chip
                                     when the restaurant has more than one offer. %>
                                 <% if (r.offer) { %><span class="resto-card__badge resto-card__badge--offer"><%= r.offer %><% if (r.offerCount && r.offerCount > 1) { %><span class="resto-card__badge-count"><%= r.offerCount %></span><% } %></span><% } %>
+                                <%# Heart icon — login-only. Guests never see it. %>
+                                <% if (user_session) { %>
+                                <button type="button" class="resto-card__fav<%= r.isFavourite ? ' is-active' : '' %>" data-fav-toggle="<%= r.id %>" data-fav-branch="<%= r.branchId || '' %>" data-fav-name="<%= r.name %>" aria-label="<%= r.isFavourite ? 'Remove from favourites' : 'Add to favourites' %>" aria-pressed="<%= r.isFavourite ? 'true' : 'false' %>">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+                                </button>
+                                <% } %>
                             </div>
                             <div class="resto-card__body">
                                 <span class="resto-card__name">
@@ -296,6 +343,11 @@
                     <div class="resto-card__media" data-tint="<%= r.tint %>">
                         <% if (r.image) { %><img src="<%= r.image %>" alt="" loading="lazy" data-img-fallback><% } else { %><%= r.initial %><% } %>
                         <% if (r.offer) { %><span class="resto-card__badge resto-card__badge--offer"><%= r.offer %><% if (r.offerCount && r.offerCount > 1) { %><span class="resto-card__badge-count"><%= r.offerCount %></span><% } %></span><% } %>
+                        <% if (user_session) { %>
+                        <button type="button" class="resto-card__fav<%= r.isFavourite ? ' is-active' : '' %>" data-fav-toggle="<%= r.id %>" data-fav-branch="<%= r.branchId || '' %>" data-fav-name="<%= r.name %>" aria-label="<%= r.isFavourite ? 'Remove from favourites' : 'Add to favourites' %>" aria-pressed="<%= r.isFavourite ? 'true' : 'false' %>">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+                        </button>
+                        <% } %>
                     </div>
                     <div class="resto-card__body">
                         <span class="resto-card__name"><%= r.name %></span>

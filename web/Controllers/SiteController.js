@@ -47,12 +47,18 @@ async function fetchMarketplace(req, lat, lng, cuisine, filters, postcode) {
     // unknown fields, so categories can't see e.g. ?rating= and
     // products can't see ?max_km=. The base block (lat/lng/cuisine)
     // is shared.
+    // Signed-in customer (if any) → forwarded to the api so cards
+    // come back with `isFavourite` already painted. Guests omit it.
+    const sessUser = (req.session && req.session.user) || null;
+    const customerId = sessUser && sessUser.id ? String(sessUser.id) : null;
+
     function baseQs() {
         const qs = new URLSearchParams();
         if (Number.isFinite(lat)) qs.set('lat', String(lat));
         if (Number.isFinite(lng)) qs.set('lng', String(lng));
         if (cuisine)              qs.set('cuisine', cuisine);
         if (postcode)             qs.set('postcode', postcode);
+        if (customerId)           qs.set('customer_id', customerId);
         return qs;
     }
     // Restaurants: every restaurant-level filter.
@@ -287,6 +293,7 @@ async function index(req, res, next) {
     let liveFacets         = null;   // dynamic filter counts for the sidebar
     let liveHomeOffers     = [];     // home "Best offers" rail (real banners)
     let cuisineNoMatch     = false;  // cuisine filter returned 0 → showing fallback restaurants
+    let myFavourites       = [];     // signed-in customer's saved restaurants (default home only)
     if (userLocation) {
         try {
             const lat = userLocation.lat != null ? Number(userLocation.lat) : null;
@@ -296,6 +303,10 @@ async function index(req, res, next) {
             const custPostcode = userLocation.postcode ? String(userLocation.postcode) : '';
             const latLng = (Number.isFinite(lat) ? '&lat=' + lat : '')
                          + (Number.isFinite(lng) ? '&lng=' + lng : '');
+            // Signed-in customer id → forwarded so the api paints the
+            // heart icon (isFavourite) on every card / detail header.
+            const sessUser   = (req.session && req.session.user) || null;
+            const customerId = sessUser && sessUser.id ? String(sessUser.id) : null;
 
             if (viewMode === 'restaurants') {
                 // Full restaurants grid — pull the largest page the
@@ -314,6 +325,7 @@ async function index(req, res, next) {
                 if (filters.offer)    fqs.set('offer',    '1');
                 if (filters.price)    fqs.set('price',    filters.price);
                 if (filters.delivery) fqs.set('delivery', filters.delivery);
+                if (customerId)       fqs.set('customer_id', customerId);
                 const r = await callApi(req, 'GET',
                     '/api/v1/marketplace/restaurants?' + fqs.toString());
                 liveFeatured = (r.body && r.body.status === 200 && r.body.data && r.body.data.restaurants) || [];
@@ -340,6 +352,7 @@ async function index(req, res, next) {
                 if (Number.isFinite(lat)) dqs.set('lat', String(lat));
                 if (Number.isFinite(lng)) dqs.set('lng', String(lng));
                 if (custPostcode)         dqs.set('postcode', custPostcode);
+                if (customerId)           dqs.set('customer_id', customerId);
                 const d = await callApi(req, 'GET', '/api/v1/marketplace/restaurant?' + dqs.toString());
                 const dd = (d.body && d.body.status === 200 && d.body.data) || null;
                 liveRestaurant     = dd ? dd.restaurant : null;
@@ -370,6 +383,7 @@ async function index(req, res, next) {
                 if (Number.isFinite(lat)) pqs.set('lat', String(lat));
                 if (Number.isFinite(lng)) pqs.set('lng', String(lng));
                 if (cuisine)              pqs.set('cuisine', cuisine);
+                if (customerId)           pqs.set('customer_id', customerId);
                 const [rRes, cRes] = await Promise.all([
                     callApi(req, 'GET', '/api/v1/marketplace/restaurants?' + pqs.toString()),
                     callApi(req, 'GET', '/api/v1/marketplace/categories'),
@@ -399,12 +413,41 @@ async function index(req, res, next) {
                     if (Number.isFinite(lat)) fqs.set('lat', String(lat));
                     if (Number.isFinite(lng)) fqs.set('lng', String(lng));
                     if (custPostcode)         fqs.set('postcode', custPostcode);
+                    if (customerId)           fqs.set('customer_id', customerId);
                     const fb = await callApi(req, 'GET', '/api/v1/marketplace/restaurants?' + fqs.toString());
                     if (fb.body && fb.body.status === 200 && fb.body.data) {
                         liveFeatured   = fb.body.data.restaurants || [];
                         featuredMore   = !!fb.body.data.has_more;
                         liveFacets     = fb.body.data.facets || liveFacets;
                         cuisineNoMatch = true;
+                    }
+                }
+
+                // ── My Favourites rail ──────────────────────────────
+                // Only on the truly default home (no cuisine, no
+                // sidebar/sheet filter active) — when the user is
+                // narrowing the list with anything, the page should
+                // honour that narrowing without an extra rail above it.
+                const hasActiveFilters = !!(
+                    filters.sort || filters.rating || filters.max_km || filters.max_min ||
+                    filters.open_now || filters.veg || filters.offer ||
+                    filters.price || filters.delivery ||
+                    filters.recommended || filters.featured
+                );
+                if (customerId && !cuisine && !hasActiveFilters) {
+                    const fqs = new URLSearchParams({ customer_id: customerId });
+                    if (Number.isFinite(lat)) fqs.set('lat', String(lat));
+                    if (Number.isFinite(lng)) fqs.set('lng', String(lng));
+                    const favRes = await callApi(req, 'GET', '/api/v1/customer/favourites?' + fqs.toString());
+                    if (favRes.body && favRes.body.status === 200 && favRes.body.data) {
+                        myFavourites = favRes.body.data.favourites || [];
+                    }
+                    // Strip favourites from the main "Top restaurants
+                    // near you" rail so the same card never appears in
+                    // both places.
+                    if (myFavourites.length && Array.isArray(liveFeatured) && liveFeatured.length) {
+                        const favIds = new Set(myFavourites.map(f => String(f.id)));
+                        liveFeatured = liveFeatured.filter(r => !favIds.has(String(r.id)));
                     }
                 }
             }
@@ -672,6 +715,7 @@ async function index(req, res, next) {
         // the api was unreachable — the sidebar then hides the numbers).
         facet_counts:     liveFacets,
         featured:         finalFeatured,
+        my_favourites:    myFavourites,
         home_offers:      liveHomeOffers,
         for_you:          finalForYou,
         // has_more flags from the api → drive both the "View all"

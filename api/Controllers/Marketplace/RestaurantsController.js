@@ -37,6 +37,7 @@ const { db }         = require('../../config/db');
 const distance       = require('../../Helpers/distance');
 const M              = require('../../Helpers/marketplace');
 const Offers         = require('../../Helpers/offers');
+const Favourites     = require('../Customer/FavouriteController');
 
 /**
  * resolveMpCategoryId
@@ -268,6 +269,7 @@ async function list(req, res) {
                 'b.start_time',
                 'b.end_time',
                 'b.delivery_waiting_time',
+                'b.pickup_waiting_time',
                 'b.branch_description',
                 hasVegSubq,
                 hasNonVegSubq,
@@ -351,6 +353,12 @@ async function list(req, res) {
         // card badge: "50% OFF" + a count chip when there's more than one).
         const offerSums = await Offers.offerSummaries(uniq.map(r => ({ companyId: r.company_id, branchId: r.branch_id })));
 
+        // Heart-icon state for the signed-in customer (single batched
+        // lookup). Empty Set when no customer_id was supplied → every
+        // card renders isFavourite=false and the view hides the icon.
+        const customerId = req.query.customer_id ? String(req.query.customer_id) : null;
+        const favSet = await Favourites.favouriteIdSet(customerId, uniq.map(r => r.company_id));
+
         const restaurants = uniq.map(r => {
             const name = String(r.company_name || r.branch_name || r.branch_trading_name || '').trim();
             // Distance + time — null when the user has no location yet
@@ -374,7 +382,12 @@ async function list(req, res) {
             // Real delivery info from the matched postcode zone.
             const zones = zonesByBranch.get(String(r.branch_id)) || [];
             const zone  = postcode ? M.matchDeliveryZone(postcode, zones) : null;
-            const wMins = M.deliveryMinutesFromWaiting(r.delivery_waiting_time);
+            // Legacy parity: time comes ONLY from the merchant-set
+            // branch columns. No distance estimate fallback — if a
+            // branch has 0 / unset waiting time, the chip is null and
+            // the view hides it (matches legacy webordering exactly).
+            const wMins  = M.deliveryMinutesFromWaiting(r.delivery_waiting_time);
+            const pkMins = M.deliveryMinutesFromWaiting(r.pickup_waiting_time);
             return {
                 id:              String(r.company_id),
                 slug:            r.domain_name ? M.slugify(r.domain_name) : M.slugify(name, r.company_id),
@@ -392,9 +405,10 @@ async function list(req, res) {
                 tint:            M.tintFor(r.company_id),
                 initial:         M.initialFor(name),
                 distanceKm:      km != null ? km : null,
-                // Real delivery time (merchant waiting time) when set,
-                // else the distance estimate as a fallback.
-                deliveryMinutes: wMins != null ? (wMins + ' min') : (km != null ? distance.estimateDeliveryMinutes(km) : null),
+                // Merchant-set cooking baseline ONLY — no distance
+                // estimate fallback. If 0/unset, the chip stays null.
+                deliveryMinutes: wMins != null ? (wMins + ' min') : null,
+                pickupMinutes:   pkMins != null ? (pkMins + ' min') : null,
                 // Postcode-zone delivery facts. deliverable is true when
                 // no postcode was given (unknown) or a zone matched.
                 deliverable:      postcode ? !!zone : true,
@@ -415,6 +429,10 @@ async function list(req, res) {
                 image:           M.yiiImageUrl('banner', r.company_id, r.banner_image)
                                  || M.yiiImageUrl('logo', r.company_id, r.business_image)
                                  || null,
+                // Heart-icon state — false for guests (no customer_id);
+                // the view hides the icon entirely until login.
+                isFavourite:     favSet.has(String(r.company_id)),
+                branchId:        r.branch_id ? String(r.branch_id) : null,
                 // ── Internal fields (stripped before the response) ──
                 // Used only for application-side filtering + facet
                 // counts; not part of the public card shape.
@@ -582,7 +600,7 @@ async function detail(req, res) {
                 'c.id as company_id', 'b.id as branch_id', 'c.business_name', 'c.domain_name', 'c.business_category',
                 'b.direction_address', 'b.address_1', 'b.address_2', 'b.city', 'b.postcode',
                 'b.contact_number', 'b.website', 'b.website_domain',
-                'b.start_time', 'b.end_time', 'b.delivery_waiting_time',
+                'b.start_time', 'b.end_time', 'b.delivery_waiting_time', 'b.pickup_waiting_time',
                 'b.banner_image', 'b.business_image',
                 'b.direction_latitude as branch_lat', 'b.direction_longitude as branch_lng',
                 'b.open_as_usual', 'b.closed_until',
@@ -613,21 +631,31 @@ async function detail(req, res) {
                 .select('postcode', 'charge', 'minimum_order', 'free_delivery_above');
             zone = M.matchDeliveryZone(postcode, zoneRows);
         }
-        const wMins = M.deliveryMinutesFromWaiting(row.delivery_waiting_time);
+        // Legacy parity: time = merchant cooking baseline only. No
+        // distance estimate fallback. Both delivery and pickup come
+        // from their own branch columns.
+        const wMins  = M.deliveryMinutesFromWaiting(row.delivery_waiting_time);
+        const pkMins = M.deliveryMinutesFromWaiting(row.pickup_waiting_time);
+
+        // Heart-icon state for the signed-in customer (single row lookup).
+        const detailCustomerId = req.query.customer_id ? String(req.query.customer_id) : null;
+        const detailFavSet = await Favourites.favouriteIdSet(detailCustomerId, [row.company_id]);
 
         const restaurant = {
             id:              String(row.company_id),
             slug:            row.domain_name ? M.slugify(row.domain_name) : M.slugify(name, row.company_id),
             name,
+            branchId:        String(row.branch_id),
+            isFavourite:     detailFavSet.has(String(row.company_id)),
             cuisines:        M.cuisinesFor({ business_category: row.business_category }),
             rating:          avgRating != null ? avgRating : 4.4,
             ratingCount:     row.rating_count != null ? Number(row.rating_count) : 0,
             isOpen:          M.isOpenNow(row),
             distanceKm:      km != null ? km : null,
-            deliveryMinutes: wMins != null ? (wMins + ' min') : (km != null ? distance.estimateDeliveryMinutes(km) : null),
-            // Pickup time is location-driven (the customer travels to the
-            // shop), so it's a distance estimate — not the delivery/postcode time.
-            pickupMinutes:   km != null ? distance.estimatePickupMinutes(km) : null,
+            deliveryMinutes: wMins  != null ? (wMins  + ' min') : null,
+            // Pickup time is the merchant-set pickup_waiting_time, not a
+            // distance guess — matches legacy webordering exactly.
+            pickupMinutes:   pkMins != null ? (pkMins + ' min') : null,
             deliverable:      postcode ? !!zone : true,
             deliveryFee:      zone ? Number(zone.charge) : null,
             minOrder:         zone ? Number(zone.minimum_order) : null,

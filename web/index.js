@@ -48,6 +48,7 @@ const { fetchBrand }       = require('./Helpers/apiClient');
 const SiteController       = require('./Controllers/SiteController');
 const LocationController   = require('./Controllers/LocationController');
 const AddressController     = require('./Controllers/AddressController');
+const FavouriteController   = require('./Controllers/FavouriteController');
 const AuthController       = require('./Controllers/AuthController');
 const StaticPageController = require('./Controllers/StaticPageController');
 
@@ -173,6 +174,14 @@ app.use('/avatars', express.static(AVATAR_DIR, { maxAge: ENV === 'production' ? 
 const RESTO_IMG_DIR = path.join(__dirname, 'runtime', 'restaurant-images');
 try { fs.mkdirSync(RESTO_IMG_DIR, { recursive: true }); } catch (e) { /* ignore */ }
 app.use('/restaurant-images', express.static(RESTO_IMG_DIR, { maxAge: ENV === 'production' ? '7d' : 0, fallthrough: true }));
+
+// ── Internal docs (the data-map slide deck etc.) ───────────────────
+// Plain static HTML/MD served from project-root/docs. Not linked from
+// the public site; reachable directly at /docs/<file>. The deck has
+// inline CSS + JS so a strict CSP elsewhere doesn't apply here — the
+// static middleware just streams the file as-is.
+const DOCS_DIR = path.join(__dirname, '..', 'docs');
+app.use('/docs', express.static(DOCS_DIR, { maxAge: 0, fallthrough: true }));
 const avatarUpload = multer({
     storage: multer.diskStorage({
         destination: (req, file, cb) => cb(null, AVATAR_DIR),
@@ -391,6 +400,12 @@ app.get ('/location',       LocationController.get);
 app.get ('/addresses',       AddressController.list);
 app.post('/address/save',    AddressController.save);
 app.post('/address/delete',  AddressController.remove);
+
+// ── Favourite restaurants (signed-in customers; proxied to the api) ──
+// Heart icon on cards / detail + Favourites tab on the account page.
+// customer_id is injected from the session inside the controller.
+app.get ('/favourites',         FavouriteController.list);
+app.post('/favourite/toggle',   FavouriteController.toggle);
 
 // ── Auth (single mobile-OTP entry) ──────────────────────────────
 // Both /signin and /signup point at the same page — the api decides

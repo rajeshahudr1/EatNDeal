@@ -88,10 +88,18 @@
             <% } %>
             <% if (p.description) { %><p class="pd__desc"><%= p.description %></p><% } %>
 
-            <%# Option groups %>
-            <% groups.forEach(function (g) { %>
-                <% var hasDefault = g.options.some(function (o) { return o.isDefault; }); var single = g.type === 'single'; %>
-                <fieldset class="pd-group" data-group="<%= g.id %>" data-type="<%= g.type %>" data-min="<%= g.min %>" data-max="<%= g.max %>">
+            <%# Option groups
+                A "linkedGroup" on an option means: only show its sub-options
+                when this option is selected. The sub-group is rendered as
+                its OWN section AFTER the parent group's fieldset (not inline
+                inside the option grid) so the layout stays clean and the
+                sub-group sits in the natural reading order — right before
+                the next top-level group / Customization note. product.js
+                toggles each sub-section's visibility on change. Mirrors
+                the legacy webordering modifier_copy_details behaviour. -%>
+            <% function renderGroup(g, isNested) { %>
+                <% var single = g.type === 'single'; %>
+                <fieldset class="pd-group<%= isNested ? ' pd-group--nested' : '' %>" data-group="<%= g.id %>" data-type="<%= g.type %>" data-min="<%= g.min %>" data-max="<%= g.max %>"<%= isNested ? ' data-nested="1"' : '' %>>
                     <legend class="pd-group__legend">
                         <span class="pd-group__name"><%= g.name %></span>
                         <span class="pd-group__hint">
@@ -100,8 +108,11 @@
                         </span>
                     </legend>
                     <div class="pd-group__opts">
-                        <% g.options.forEach(function (o, i) { %>
-                            <% var checked = o.isDefault || (single && g.required && !hasDefault && i === 0); %>
+                        <% g.options.forEach(function (o) { %>
+                            <%# Legacy parity: pre-tick ONLY when is_default=1.
+                                If a required Single Choice group has no default,
+                                the user must pick one (validator enforces). -%>
+                            <% var checked = !!o.isDefault; %>
                             <label class="pd-opt">
                                 <input type="<%= single ? 'radio' : 'checkbox' %>" name="grp-<%= g.id %>" value="<%= o.id %>" data-price="<%= o.price %>" data-name="<%= o.name %>" <%= checked ? 'checked' : '' %>>
                                 <span class="pd-opt__mark" aria-hidden="true"></span>
@@ -111,7 +122,18 @@
                         <% }); %>
                     </div>
                 </fieldset>
-            <% }); %>
+                <%# Linked sub-groups for this parent — rendered AFTER the
+                    fieldset, one section per option that carries a linkedGroup.
+                    Each section is hidden until its parent option is checked. -%>
+                <% g.options.forEach(function (o) { %>
+                    <% if (o.linkedGroup) { %>
+                    <div class="pd-linked-section" data-linked-for="<%= o.id %>" data-linked-name="grp-<%= g.id %>" hidden>
+                        <% renderGroup(o.linkedGroup, true); %>
+                    </div>
+                    <% } %>
+                <% }); %>
+            <% } %>
+            <% groups.forEach(function (g) { renderGroup(g, false); }); %>
 
             <%# Customization note → maps to orders_items.remark on checkout %>
             <label class="pd-note">

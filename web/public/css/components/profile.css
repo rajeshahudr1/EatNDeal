@@ -158,6 +158,12 @@
 .acct-placeholder__sub { color: var(--color-text-soft); margin: 0; max-width: 380px; }
 .acct-placeholder .acct-btn { margin-top: var(--space-4); }
 
+/* Favourites tab — restaurant cards in a responsive grid that fits the
+   account panel (narrower than the home page). Overrides the home rail's
+   4-column default. */
+.acct-fav-grid { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)) !important; gap: var(--space-3); }
+.acct-fav-grid > li { width: auto; max-width: none; }
+
 /* Mobile-only back bar — hidden on desktop. */
 .acct-mobilebar { display: none; }
 

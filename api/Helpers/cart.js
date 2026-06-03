@@ -1,0 +1,889 @@
+'use strict';
+
+/*
+ * Helpers/cart.js
+ *
+ * What:  The single source of truth for everything that touches the live
+ *        `cart` / `cart_details` / `cart_sub_details` / `cart_payment`
+ *        tables on behalf of the EatNDeal marketplace. Every cart
+ *        endpoint (add / update / remove / set-mode / set-address /
+ *        apply-coupon / place-order) calls these helpers — no controller
+ *        ever writes those tables directly.
+ *
+ * Why:   Cart writes are the single most fragile path in the project
+ *        (live schema shared with the legacy POS, 70+ columns). Keeping
+ *        every write inside one helper means:
+ *          • the recompute formula is implemented once
+ *          • every endpoint produces the EXACT same cart state for a
+ *            given set of inputs (no drift between controllers)
+ *          • the legacy POS never sees a marketplace cart and vice-versa
+ *            (every helper passes `is_marketplace = 1` on writes,
+ *            every read filters by it).
+ *
+ * Match:  Ports the relevant pieces of
+ *          eatndealclean/webordering/controllers/CartController.php
+ *         and Commonquery cart helpers — same grandtotal formula
+ *         (sub_total + delivery_fees + service_charge_amount + bag_charge
+ *          + charity_amount − discount).
+ *
+ * Status / sentinel constants live near the top so reads + writes use the
+ * same numbers (the legacy migration uses smallints 0/1/2 here).
+ */
+
+const { db }        = require('../config/db');
+const M             = require('./marketplace');
+const OrderTime     = require('./orderTime');
+const AutoDiscount  = require('./autoDiscount');
+
+// Cart row state. (Legacy uses 1/0; this matches.)
+const CART_OPEN     = 1;
+const CART_DELETED  = 1;
+const CART_ACTIVE   = 0;       // is_deleted = 0
+
+// is_marketplace marker. Every marketplace cart / order carries this flag
+// so the legacy POS list queries (which never set it) automatically skip
+// our rows, and ours automatically skip theirs.
+const MARKETPLACE_FLAG = 1;
+
+/**
+ * cartScope
+ *
+ * What:  Knex modifier — the canonical "this cart belongs to this customer
+ *        AND is the active marketplace cart" predicate. Used by every
+ *        read so a controller never accidentally loads a closed / deleted
+ *        / POS cart.
+ * Type:  READ (query-builder modifier).
+ */
+function cartScope(qb, customerId) {
+    qb.where('is_marketplace', MARKETPLACE_FLAG)
+      .andWhere('user_id', customerId)
+      .andWhere('is_open', CART_OPEN)
+      .andWhere('is_deleted', CART_ACTIVE);
+}
+
+/**
+ * getOrCreateCart
+ *
+ * What:  Returns the customer's active marketplace cart for a given branch,
+ *        creating a fresh row when none exists. Idempotent — repeated
+ *        calls reuse the same id until the cart is placed-as-order or
+ *        cleared.
+ *
+ *        One cart per (customer, branch) is the legacy convention. If a
+ *        customer adds an item from a DIFFERENT branch we DON'T silently
+ *        merge — the caller (add-to-cart endpoint) decides whether to
+ *        clear the current cart or reject the second branch. This helper
+ *        just returns "your cart for this branch" deterministically.
+ *
+ * Type:  WRITE (insert on first call, read after).
+ *
+ * Inputs:  { customerId, branchId, companyId, serveType?, localId? }
+ * Output:  the cart row.
+ */
+async function getOrCreateCart({ customerId, branchId, companyId, serveType, localId }) {
+    const existing = await db('cart')
+        .modify(cartScope, customerId)
+        .andWhere('branch_id', branchId)
+        .first();
+    if (existing) { return existing; }
+
+    const now = db.fn.now();
+    const [created] = await db('cart')
+        .insert({
+            user_id:        customerId,
+            branch_id:      branchId,
+            company_id:     companyId,
+            is_marketplace: MARKETPLACE_FLAG,
+            is_open:        CART_OPEN,
+            is_deleted:     CART_ACTIVE,
+            serve_type:     Number(serveType) || 3,    // default: delivery
+            localID:        String(localId || ('MP_' + customerId + '_' + Date.now())),
+            sub_total:      0,
+            tax:            0,
+            discount:       0,
+            grandtotal:     0,
+            total_qty:      0,
+            bag_charge:     0,
+            delivery_fees:  0,
+            charity_amount: 0,
+            service_charge_amount: 0,
+            free_delivery:  0,
+            coupon_id:      0,
+            discount_id:    0,
+            voucher_id:     0,
+            is_pre_order:   0,
+            created_by:     customerId,
+            created_at:     now,
+        })
+        .returning('*');
+    return created;
+}
+
+/**
+ * loadActiveCart
+ *
+ * What:  Fetches the customer's active marketplace cart by id (and verifies
+ *        it belongs to the customer + is open + marketplace). Returns
+ *        null when the row is missing / not theirs / closed.
+ * Type:  READ.
+ */
+async function loadActiveCart(cartId, customerId) {
+    if (!cartId || !customerId) { return null; }
+    const row = await db('cart')
+        .where('id', cartId)
+        .modify(cartScope, customerId)
+        .first();
+    return row || null;
+}
+
+/**
+ * findOpenCart
+ *
+ * What:  Returns the customer's most recently-updated open marketplace
+ *        cart (across all branches), or null when the customer has none.
+ *        Used by GET /cart so the cart page works without a known
+ *        branch_id — the customer's existing cart (if any) just appears.
+ * Type:  READ.
+ */
+async function findOpenCart(customerId) {
+    if (!customerId) { return null; }
+    const row = await db('cart')
+        .modify(cartScope, customerId)
+        .orderBy('id', 'desc')
+        .first();
+    return row || null;
+}
+
+/**
+ * loadCartById
+ *
+ * What:  Re-reads a cart row by id. Used as the "post-write refresh"
+ *        — every controller that runs recomputeTotals needs the FRESH
+ *        row (totals + qty just changed) before building the public
+ *        view, otherwise the response carries the pre-recompute
+ *        snapshot and the client's badge stays stale.
+ * Type:  READ.
+ */
+async function loadCartById(cartId) {
+    if (!cartId) { return null; }
+    const row = await db('cart').where({ id: cartId }).first();
+    return row || null;
+}
+
+/**
+ * loadLineItems
+ *
+ * What:  Returns the cart's live items + their modifier picks. Skips
+ *        soft-deleted rows. Each item carries its own `modifiers` array so
+ *        callers don't have to second-join.
+ * Type:  READ.
+ */
+async function loadLineItems(cartId) {
+    const items = await db('cart_details')
+        .where({ cart_id: cartId, is_deleted: 0 })
+        .orderBy('id', 'asc')
+        .select('*');
+    if (!items.length) { return []; }
+
+    const subs = await db('cart_sub_details')
+        .whereIn('cart_details_id', items.map((i) => i.id))
+        .select('*');
+    const subsByItem = new Map();
+    subs.forEach((s) => {
+        const k = String(s.cart_details_id);
+        if (!subsByItem.has(k)) { subsByItem.set(k, []); }
+        subsByItem.get(k).push(s);
+    });
+
+    return items.map((it) => Object.assign({}, it, {
+        modifiers: subsByItem.get(String(it.id)) || [],
+    }));
+}
+
+/**
+ * lineSubtotal
+ *
+ * What:  Per-row money math for ONE cart_details row + its modifiers.
+ *        Matches legacy:
+ *
+ *          unit = product_net_price (already post product-level discount)
+ *          mods = Σ (cart_sub_details.variant_price × variant_qty)
+ *          line = (unit + mods) × product_qty
+ *
+ *        Returns a plain number (Math.round to 2 dp).
+ * Type:  READ (pure).
+ */
+function lineSubtotal(item) {
+    const unit = Number(item.product_net_price) || 0;
+    const qty  = Number(item.product_qty) || 0;
+    let mods = 0;
+    (item.modifiers || []).forEach((m) => {
+        const p = Number(m.variant_price) || 0;
+        const q = Number(m.variant_qty)   || 1;
+        mods += p * q;
+    });
+    const line = (unit + mods) * qty;
+    return Math.round(line * 100) / 100;
+}
+
+/**
+ * recomputeTotals
+ *
+ * What:  THE single recompute path — every cart write calls this last so
+ *        the cart row's stored totals always match the live items + the
+ *        applied promo / fee state.
+ *
+ *        Formula (matches legacy CartController::updateCartTotals_New):
+ *           sub_total      = Σ lineSubtotal(item)
+ *           total_qty      = Σ item.product_qty
+ *           bag_charge     = ceil(total_qty / online_per_bag_qty) × online_bag_charge   (delivery only)
+ *           charity_amount = (fix_charity_percentage / 100) × sub_total
+ *           service_charge = service_charge_online_order             (flat from branch)
+ *           delivery_fees  = kept as-is on cart (set by /cart/set-address)
+ *           discount       = kept as-is on cart (set by /cart/apply-coupon)
+ *           grandtotal     = sub_total + delivery_fees + service_charge_amount
+ *                          + bag_charge + charity_amount − discount
+ *
+ *        Returns the freshly updated cart row.
+ *
+ * Type:  WRITE (UPDATE on cart).
+ */
+async function recomputeTotals(cartId) {
+    const cart = await db('cart').where({ id: cartId }).first();
+    if (!cart) { throw new Error('cart.recomputeTotals: cart not found'); }
+
+    const branch = await db('branch').where({ id: cart.branch_id }).first();
+    const items  = await loadLineItems(cartId);
+
+    let subTotal = 0;
+    let totalQty = 0;
+    items.forEach((it) => {
+        subTotal += lineSubtotal(it);
+        totalQty += Number(it.product_qty) || 0;
+    });
+
+    // Bag charge (delivery only — pickup doesn't pack the bag at the till).
+    let bagCharge = 0;
+    if (Number(cart.serve_type) === 3 && branch) {
+        const perBag = Number(branch.online_per_bag_qty) || 0;
+        const charge = Number(branch.online_bag_charge)  || 0;
+        if (perBag > 0 && charge > 0 && totalQty > 0) {
+            bagCharge = Math.ceil(totalQty / perBag) * charge;
+        }
+    }
+
+    // Charity (% of sub-total). 0 when the branch hasn't set a percentage.
+    const charityPct = branch ? (Number(branch.fix_charity_percentage) || 0) : 0;
+    const charityAmt = Math.round((subTotal * charityPct / 100) * 100) / 100;
+
+    // Service charge — flat per-order figure from branch config.
+    const serviceCharge = branch ? (Number(branch.service_charge_online_order) || 0) : 0;
+
+    // Keep the previously-set delivery_fees; recompute discount based
+    // on what's active. The caller that DOES want to change
+    // delivery_fees (set-address) writes its own value, then re-calls
+    // recomputeTotals.
+    const deliveryFees = Number(cart.delivery_fees) || 0;
+
+    // ── Discount resolution ─────────────────────────────────────────
+    // Manual promo (coupon / voucher) wins — the apply-coupon handler
+    // wrote the amount on the cart row directly; we just clamp it to
+    // sub_total so a stale large discount can't drive grandtotal below
+    // the fee + charge components.
+    // Otherwise, re-evaluate the auto-discount catalogue against the
+    // CURRENT cart state (subtotal / mode / time). Whatever the best
+    // matching row is now wins; nothing matching → clear it.
+    let discount   = 0;
+    let discountId = Number(cart.discount_id) || 0;
+
+    const hasManualPromo = Number(cart.coupon_id) > 0 || Number(cart.voucher_id) > 0;
+    if (hasManualPromo) {
+        discount = Math.min(Number(cart.discount) || 0, subTotal);
+        discountId = 0;  // auto-discount slot is cleared when a coupon is in play
+    } else if (branch) {
+        const result = await AutoDiscount.findBest({ ...cart, sub_total: subTotal }, branch);
+        if (result) {
+            discountId = result.discount.id;
+            discount   = result.amount;
+        } else {
+            discountId = 0;
+            discount   = 0;
+        }
+    }
+
+    const grandtotal = Math.round(
+        (subTotal + deliveryFees + serviceCharge + bagCharge + charityAmt - discount) * 100
+    ) / 100;
+
+    await db('cart').where({ id: cartId }).update({
+        sub_total:             round2(subTotal),
+        total_qty:             totalQty,
+        bag_charge:            round2(bagCharge),
+        charity_amount:        round2(charityAmt),
+        service_charge_amount: round2(serviceCharge),
+        discount_id:           discountId,
+        discount:              round2(discount),
+        grandtotal:            round2(grandtotal),
+    });
+
+    return db('cart').where({ id: cartId }).first();
+}
+
+// Helper — 2 dp rounding, NaN-safe.
+function round2(n) {
+    const v = Number(n);
+    if (!Number.isFinite(v)) { return 0; }
+    return Math.round(v * 100) / 100;
+}
+
+// Helper — pre_order_time (timestamptz) → "HH:MM" display string.
+// Returns null when not a pre-order or the timestamp is unparseable.
+function formatScheduledTime(preOrderTime, isPreOrder) {
+    if (Number(isPreOrder) !== 1 || !preOrderTime) { return null; }
+    const d = new Date(preOrderTime);
+    if (!Number.isFinite(d.getTime())) { return null; }
+    const pad = (n) => String(n).padStart(2, '0');
+    return pad(d.getHours()) + ':' + pad(d.getMinutes());
+}
+
+/**
+ * addItem
+ *
+ * What:  Inserts ONE cart_details row + N cart_sub_details rows for the
+ *        passed product / qty / options. The caller (CartController.add)
+ *        must have already:
+ *           • verified the product is marketplace-eligible + in stock
+ *           • resolved the SERVER-side `unitPrice` (never trust client)
+ *           • verified every `option` row is still active + linked to
+ *             the product via modifier_group_products
+ *        This function is the WRITE path only — re-validate via
+ *        cartValidate.validate(WRITE) AFTER the insert and rollback if
+ *        the gate now fails (extremely rare, defensive).
+ *
+ *        Each cart_sub_details row uses `variant_price` as a TEXT column
+ *        (the legacy schema's choice) — we stringify the number.
+ *
+ * Type:  WRITE.
+ */
+async function addItem({ cartId, product, qty, options, unitPrice, remark }) {
+    // category_id is informational (used by legacy reports). Pick the
+    // first active link; null when the product isn't categorised yet.
+    const ppc = await db('product_product_category')
+        .where({ product_id: product.id, status: '1' })
+        .orderBy('id', 'asc')
+        .first('category_id');
+
+    const [item] = await db('cart_details').insert({
+        cart_id:           cartId,
+        product_id:        product.id,
+        product_name:      product.name || '',
+        product_price:     unitPrice,
+        product_qty:       qty,
+        product_net_price: unitPrice,        // no product-level discount yet (Phase-2C)
+        category_id:       ppc ? ppc.category_id : null,
+        company_id:        product.company_id,
+        remark:            remark || null,
+        is_deleted:        0,
+        sync:              0,
+        is_send_kitchen:   0,
+        created_at:        db.fn.now(),
+    }).returning('*');
+
+    // One sub-row per chosen modifier option. variant_price is stored as
+    // TEXT in the live schema; stringify so we match it.
+    for (const opt of (options || [])) {
+        const price = Number(opt.price_tax_include) || Number(opt.price_tax_included) || Number(opt.price_tax_excluded) || 0;
+        await db('cart_sub_details').insert({
+            cart_details_id:         item.id,
+            cart_details_product_id: product.id,
+            modifier_id:             opt.modifier_group_id,
+            modifier_option_id:      String(opt.id),
+            variant_name:            opt.option_name || '',
+            variant_price:           String(round2(price)),
+            variant_qty:             '1',
+            variant_type:            null,
+            company_id:              product.company_id,
+        });
+    }
+
+    return item;
+}
+
+/**
+ * closeCart
+ *
+ * What:  Marks a cart row `is_open=0` so the customer's `findOpenCart`
+ *        lookup skips it. Used when:
+ *           • the user confirms "clear cart and switch restaurant"
+ *           • the user explicitly clears their cart
+ *           • the cart is placed as an order (Phase-2D)
+ *        Row is NOT deleted — kept for audit.
+ * Type:  WRITE.
+ */
+async function closeCart(cartId) {
+    if (!cartId) { return 0; }
+    // Only close when STILL open — guards against the
+    // sync /order/place + Stripe webhook double-close race.
+    // Returns the row count so callers can detect "already closed".
+    return db('cart')
+        .where({ id: cartId, is_open: CART_OPEN })
+        .update({ is_open: 0 });
+}
+
+/**
+ * loadOwnedLineItem
+ *
+ * What:  Returns ONE active cart_details row only when it belongs to the
+ *        given cart. Returns null when missing / soft-deleted / from
+ *        someone else's cart. Caller treats null as "not yours" (404).
+ *        Used by update-qty + remove-item before any write.
+ * Type:  READ.
+ */
+async function loadOwnedLineItem(cartId, lineItemId) {
+    if (!cartId || !lineItemId) { return null; }
+    const row = await db('cart_details')
+        .where({ id: lineItemId, cart_id: cartId, is_deleted: 0 })
+        .first();
+    return row || null;
+}
+
+/**
+ * updateLineQty
+ *
+ * What:  Sets cart_details.product_qty to a new value. Caller MUST have
+ *        already loadOwnedLineItem'd + validated stock; this is the
+ *        write-only path.
+ * Type:  WRITE.
+ */
+async function updateLineQty(lineItemId, qty) {
+    if (!lineItemId) { return; }
+    await db('cart_details').where({ id: lineItemId }).update({ product_qty: qty });
+}
+
+/**
+ * resolveDeliveryFee
+ *
+ * What:  Given the current cart row + its branch, returns the delivery
+ *        fee that should be on the cart RIGHT NOW. Pure read — no write.
+ *
+ *        Rules:
+ *          • serve_type = 2 (pickup) → 0
+ *          • serve_type = 3 (delivery) AND cart.delivery_postcode set →
+ *              longest-prefix match against store_delivery_charge_setup
+ *              for this branch; returns matched zone's charge or null
+ *              when no zone matches (i.e. "doesn't deliver here").
+ *          • delivery + no postcode → null (caller treats as "unknown
+ *              yet" and leaves delivery_fees at 0).
+ *
+ *        Returns: { fee: number|null, zone: <row|null>, deliverable: bool }
+ *        deliverable=false signals "address is unservable" — the caller
+ *        surfaces it as a warning on the cart.
+ * Type:  READ.
+ */
+async function resolveDeliveryFee(cart, branch) {
+    if (!cart || !branch) { return { fee: null, zone: null, deliverable: false }; }
+    if (Number(cart.serve_type) === 2) { return { fee: 0, zone: null, deliverable: true }; }
+    const pc = String(cart.delivery_postcode || '').trim();
+    if (!pc) { return { fee: null, zone: null, deliverable: true }; }
+
+    const rows = await db('store_delivery_charge_setup')
+        .where({ branch_id: branch.id, status: 1 })
+        .select('postcode', 'charge', 'minimum_order', 'free_delivery_above');
+    const zone = M.matchDeliveryZone(pc, rows);
+    if (!zone) { return { fee: null, zone: null, deliverable: false }; }
+    return { fee: Number(zone.charge) || 0, zone: zone, deliverable: true };
+}
+
+/**
+ * setAddress
+ *
+ * What:  Writes the cart's delivery_* fields from a customer_address row,
+ *        then resolves the matching delivery zone for the chosen branch
+ *        and writes the resulting fee. Pickup carts still call this to
+ *        save the address-of-record (used by the order tracker even when
+ *        no fee applies).
+ *
+ *        Returns the resolveDeliveryFee result so the controller can
+ *        surface "address.no_zone" as a warning.
+ * Type:  WRITE.
+ */
+async function setAddress(cartId, address, branch) {
+    if (!cartId || !address) { return { fee: null, zone: null, deliverable: false }; }
+
+    const postcode  = String(address.post_code || '').trim();
+    const lineParts = [address.address, address.line1, address.line2, address.post_town, postcode]
+        .map((s) => String(s || '').trim()).filter(Boolean);
+
+    const patch = {
+        delivery_address:    lineParts.join(', '),
+        delivery_postcode:   postcode,
+        delivery_latitude:   address.latitude != null ? String(address.latitude) : null,
+        delivery_longitude:  address.longitude != null ? String(address.longitude) : null,
+        delivery_label:      address.label || '',
+        delivery_building_type: address.address_type || null,
+    };
+
+    // driver_instructions is SHARED with the drop-off feature
+    // (setInstructions encodes the preset + note there). Only SEED it
+    // from the saved address when the cart has none yet — otherwise an
+    // explicit drop-off the customer set would be silently wiped every
+    // time the address is (re-)applied, including the automatic
+    // ensureDefaultDeliveryAddress call on cart load.
+    const existing = await db('cart').where({ id: cartId }).first('driver_instructions');
+    if (!existing || !String(existing.driver_instructions || '').trim()) {
+        patch.driver_instructions = address.delivery_instructions || null;
+    }
+
+    // Apply the address patch BEFORE resolving the fee so the resolver
+    // sees the new postcode on the cart row.
+    await db('cart').where({ id: cartId }).update(patch);
+
+    const cart = await db('cart').where({ id: cartId }).first();
+    const r = await resolveDeliveryFee(cart, branch);
+    await db('cart').where({ id: cartId }).update({
+        delivery_fees: r.fee != null ? r.fee : 0,
+    });
+    return r;
+}
+
+/**
+ * ensureDefaultDeliveryAddress
+ *
+ * What:  When the cart is in delivery mode (serve_type=3) and no
+ *        delivery_address is set yet, auto-apply the customer's default
+ *        saved address (customer_address with is_default=1 and
+ *        status=1). No-op for pickup carts, or when the customer has no
+ *        default address yet, or when an address is already attached.
+ *
+ *        This closes the gap where the cart page shows the default
+ *        address visually highlighted but the cart row's column is still
+ *        empty — without this, the customer thinks they have an address
+ *        picked, hits Place Order, and gets blocked by `address.missing`.
+ *
+ * Why:   Matches the food-delivery pattern (Zomato / Swiggy / Uber Eats):
+ *        once you save a default address, every new order pre-selects it.
+ *
+ * Type:  WRITE (only writes when an address needs to be applied).
+ */
+async function ensureDefaultDeliveryAddress(cartId, customerId, branch) {
+    if (!cartId || !customerId || !branch) { return; }
+    const cart = await db('cart').where({ id: cartId }).first();
+    if (!cart || Number(cart.serve_type) !== 3) { return; }
+    if (cart.delivery_address && String(cart.delivery_address).trim() !== '') { return; }
+
+    const def = await db('customer_address')
+        .where({ customer_id: customerId, status: 1, is_default: 1 })
+        .first();
+    if (!def) { return; }
+
+    await setAddress(cartId, def, branch);
+}
+
+/**
+ * setMode
+ *
+ * What:  Switches the cart's serve_type (2 = pickup, 3 = delivery) and
+ *        recomputes delivery_fees accordingly. Pickup wipes the fee +
+ *        free_delivery flag; delivery re-matches the saved postcode zone
+ *        (if any) so the fee reflects the destination.
+ *        Caller (controller) runs recomputeTotals AFTER this — the
+ *        helper writes the mode-dependent fields only.
+ * Type:  WRITE.
+ */
+async function setMode(cartId, serveType, branch) {
+    if (!cartId) { return; }
+    const cart = await db('cart').where({ id: cartId }).first();
+    if (!cart) { return; }
+    const next = Number(serveType) === 2 ? 2 : 3;
+    const patch = { serve_type: next };
+    if (next === 2) {
+        patch.delivery_fees  = 0;
+        patch.free_delivery  = 0;
+    } else {
+        const r = await resolveDeliveryFee({ ...cart, serve_type: next }, branch);
+        patch.delivery_fees = r.fee != null ? r.fee : 0;
+    }
+    await db('cart').where({ id: cartId }).update(patch);
+}
+
+/**
+ * Drop-off options.
+ *
+ * What:  The marketplace has no per-order drop-off-preset column, so we
+ *        encode the preset + the free-text instructions together into
+ *        the existing `cart.driver_instructions` text column as a single
+ *        parseable line:
+ *
+ *           [dropoff:<preset>] <free text>
+ *
+ *        preset ∈ DROP_OFF_OPTIONS keys. Free text is optional. A value
+ *        that doesn't start with `[dropoff:` is treated as legacy raw
+ *        free text (preset = null) — back-compat with setAddress(),
+ *        which writes the saved address's delivery_instructions raw.
+ * Why:   One column, no schema change, fully reversible. publicCartView
+ *        decodes it so the client never sees the tag.
+ */
+const DROP_OFF_OPTIONS = {
+    hand_to_me:    'Hand it to me',
+    meet_at_door:  'Meet at my door',
+    meet_outside:  'Meet outside',
+    meet_reception:'Meet at reception',
+    leave_at_door: 'Leave at my door',
+};
+
+function encodeDropOff(preset, text) {
+    const p = DROP_OFF_OPTIONS[preset] ? preset : null;
+    const t = String(text || '').trim();
+    if (!p && !t) { return null; }            // nothing set → clear the column
+    if (!p)       { return t; }               // free text only (legacy shape)
+    return t ? ('[dropoff:' + p + '] ' + t) : ('[dropoff:' + p + ']');
+}
+
+function decodeDropOff(raw) {
+    const s = String(raw || '').trim();
+    if (!s) { return { dropOffOption: null, dropOffLabel: '', instructions: '' }; }
+    // [\s\S] (not . ) so a multi-line free-text note isn't truncated
+    // at the first newline.
+    const m = s.match(/^\[dropoff:([a-z_]+)\]\s?([\s\S]*)$/);
+    if (m && DROP_OFF_OPTIONS[m[1]]) {
+        return { dropOffOption: m[1], dropOffLabel: DROP_OFF_OPTIONS[m[1]], instructions: (m[2] || '').trim() };
+    }
+    // Legacy / untagged → treat whole value as free text, no preset.
+    return { dropOffOption: null, dropOffLabel: '', instructions: s };
+}
+
+/**
+ * setInstructions
+ *
+ * What:  Persists the drop-off preset + free-text instructions onto the
+ *        cart by writing the encoded string into `driver_instructions`.
+ *        Mirrors setSchedule's single-UPDATE shape; the controller's
+ *        respondWithCart recomputes + returns the public view after.
+ * Type:  WRITE.
+ */
+async function setInstructions(cartId, preset, text) {
+    if (!cartId) { return; }
+    await db('cart').where({ id: cartId }).update({
+        driver_instructions: encodeDropOff(preset, text),
+    });
+}
+
+/**
+ * setSchedule
+ *
+ * What:  Toggles "Schedule for later" on the cart.
+ *
+ *          isPreOrder=true  → store the picked datetime on
+ *                              `cart.pre_order_time` (timestamptz) and
+ *                              set `cart.is_pre_order=1`.
+ *          isPreOrder=false → null the timestamp and clear the flag
+ *                              (ASAP delivery / pickup).
+ *
+ *        The legacy POS uses two columns (`pre_order_time` full TS,
+ *        `scheduled_time` time-of-day). The marketplace uses ONLY
+ *        pre_order_time — Phase-2D place-order will derive the orders
+ *        TIME column from it.
+ *
+ *        Caller MUST have validated that `scheduledAt` is a parseable
+ *        Date in the future before invoking. This helper is the WRITE
+ *        path only.
+ * Type:  WRITE.
+ */
+async function setSchedule(cartId, scheduledAt, isPreOrder) {
+    if (!cartId) { return; }
+    if (isPreOrder && scheduledAt) {
+        await db('cart').where({ id: cartId }).update({
+            is_pre_order:    1,
+            pre_order_time:  scheduledAt,
+        });
+    } else {
+        await db('cart').where({ id: cartId }).update({
+            is_pre_order:    0,
+            pre_order_time:  null,
+        });
+    }
+}
+
+/**
+ * setCoupon
+ *
+ * What:  Persists a successful coupon application on the cart. Caller
+ *        (CartController.applyCoupon) has already run coupons.validate()
+ *        and is handing in a verified result.
+ *
+ *          • coupon_id    ← coupon.id
+ *          • promocode    ← coupon.code (raw, for display + audit)
+ *          • discount     ← computed amount (£)
+ *          • free_delivery ← 1 when the coupon waives delivery
+ *          • delivery_fees ← zeroed when free_delivery, otherwise kept
+ *
+ *        recomputeTotals runs after, picking up cart.discount in the
+ *        legacy grandtotal formula (sub_total + fees − discount).
+ * Type:  WRITE.
+ */
+async function setCoupon(cartId, coupon, discount, freeDelivery) {
+    if (!cartId || !coupon) { return; }
+    const patch = {
+        coupon_id:    coupon.id,
+        voucher_id:   0,                              // coupon + voucher are mutually exclusive
+        discount_id:  0,                              // clears any active auto-discount
+        promocode:    coupon.code || null,
+        discount:     round2(discount),
+        free_delivery: freeDelivery ? 1 : 0,
+    };
+    if (freeDelivery) { patch.delivery_fees = 0; }
+    await db('cart').where({ id: cartId }).update(patch);
+}
+
+/**
+ * clearCoupon
+ *
+ * What:  Wipes the cart's coupon-related fields AND restores the
+ *        delivery fee from the saved postcode zone (because free_delivery
+ *        might have zeroed it). Caller passes the branch so the zone
+ *        lookup can run without a second query.
+ *        Returns the resolveDeliveryFee result for the controller's
+ *        success message ("delivery fee restored to £X").
+ * Type:  WRITE.
+ */
+async function clearCoupon(cartId, branch) {
+    if (!cartId) { return { fee: null, zone: null, deliverable: false }; }
+
+    // Wipe coupon fields first so resolveDeliveryFee sees a "no free
+    // delivery" cart.
+    await db('cart').where({ id: cartId }).update({
+        coupon_id:    0,
+        promocode:    null,
+        discount:     0,
+        free_delivery: 0,
+    });
+
+    const cart = await db('cart').where({ id: cartId }).first();
+    const r = await resolveDeliveryFee(cart, branch);
+    await db('cart').where({ id: cartId }).update({
+        delivery_fees: r.fee != null ? r.fee : 0,
+    });
+    return r;
+}
+
+/**
+ * removeLineItem
+ *
+ * What:  Soft-deletes a cart_details row (`is_deleted=1`) and removes its
+ *        modifier sub-rows (hard delete on cart_sub_details — they're
+ *        meaningless without the parent line and never audited solo).
+ *        Caller MUST have already loadOwnedLineItem'd.
+ * Type:  WRITE.
+ */
+async function removeLineItem(lineItemId) {
+    if (!lineItemId) { return; }
+    await db('cart_sub_details').where({ cart_details_id: lineItemId }).del();
+    await db('cart_details').where({ id: lineItemId }).update({ is_deleted: 1 });
+}
+
+/**
+ * publicCartView
+ *
+ * What:  Public response shape for GET /cart and every write endpoint.
+ *        Hides internal columns the client doesn't need (sync, queue_*,
+ *        terminal_*, qr_menu_*, etc.) and reshapes line items + modifiers
+ *        into camelCase so the UI stays clean.
+ * Type:  READ (pure).
+ */
+function publicCartView(cart, items) {
+    return {
+        id:               String(cart.id),
+        localId:          cart.localID || '',
+        branchId:         cart.branch_id != null ? String(cart.branch_id) : null,
+        companyId:        cart.company_id != null ? String(cart.company_id) : null,
+        serveType:        Number(cart.serve_type) || 3,
+        subTotal:         Number(cart.sub_total)      || 0,
+        bagCharge:        Number(cart.bag_charge)     || 0,
+        deliveryFees:     Number(cart.delivery_fees)  || 0,
+        serviceCharge:    Number(cart.service_charge_amount) || 0,
+        charityAmount:    Number(cart.charity_amount) || 0,
+        discount:         Number(cart.discount)       || 0,
+        // Where the discount came from — UI labels it differently.
+        //   'coupon'  → customer-entered code        (cart.coupon_id > 0)
+        //   'voucher' → logged-in customer voucher   (cart.voucher_id > 0)
+        //   'auto'    → matched discounts-table row  (cart.discount_id > 0)
+        //   null      → no discount applied
+        discountSource:   (Number(cart.coupon_id)  > 0) ? 'coupon'
+                         : (Number(cart.voucher_id) > 0) ? 'voucher'
+                         : (Number(cart.discount_id) > 0) ? 'auto' : null,
+        grandtotal:       Number(cart.grandtotal)     || 0,
+        totalQty:         Number(cart.total_qty)      || 0,
+        freeDelivery:     Number(cart.free_delivery) === 1,
+        couponId:         cart.coupon_id ? String(cart.coupon_id) : null,
+        voucherId:        cart.voucher_id ? String(cart.voucher_id) : null,
+        discountId:       cart.discount_id ? String(cart.discount_id) : null,
+        promocode:        cart.promocode || '',
+        deliveryAddress:  cart.delivery_address || '',
+        deliveryPostcode: cart.delivery_postcode || '',
+        deliveryLat:      cart.delivery_latitude != null && cart.delivery_latitude !== '' ? Number(cart.delivery_latitude) : null,
+        deliveryLng:      cart.delivery_longitude != null && cart.delivery_longitude !== '' ? Number(cart.delivery_longitude) : null,
+        deliveryLabel:    cart.delivery_label || '',
+        // Decode the encoded drop-off line so the client gets clean
+        // fields and never sees the `[dropoff:...]` tag.
+        dropOffOption:    decodeDropOff(cart.driver_instructions).dropOffOption,
+        dropOffLabel:     decodeDropOff(cart.driver_instructions).dropOffLabel,
+        driverInstructions: decodeDropOff(cart.driver_instructions).instructions,
+        // scheduledTime is the display-only HH:MM extracted from the
+        // pre_order_time timestamp (the legacy `scheduled_time` time
+        // column is unused on marketplace carts — we always store the
+        // full datetime in pre_order_time).
+        scheduledTime:    formatScheduledTime(cart.pre_order_time, cart.is_pre_order),
+        preOrderTime:     cart.pre_order_time || null,
+        isPreOrder:       Number(cart.is_pre_order) === 1,
+        items: (items || []).map((it) => ({
+            id:           String(it.id),
+            productId:    String(it.product_id),
+            name:         it.product_name || '',
+            qty:          Number(it.product_qty) || 0,
+            unitPrice:    Number(it.product_net_price) || 0,
+            linePrice:    lineSubtotal(it),
+            remark:       it.remark || '',
+            modifiers: (it.modifiers || []).map((m) => ({
+                id:                String(m.id),
+                modifierGroupId:   m.modifier_id != null ? String(m.modifier_id) : null,
+                modifierOptionId:  m.modifier_option_id ? String(m.modifier_option_id) : null,
+                name:              m.variant_name || '',
+                price:             Number(m.variant_price) || 0,
+                qty:               Number(m.variant_qty)   || 1,
+            })),
+        })),
+    };
+}
+
+module.exports = {
+    MARKETPLACE_FLAG,
+    CART_OPEN,
+    CART_DELETED,
+    CART_ACTIVE,
+    cartScope,
+    getOrCreateCart,
+    loadActiveCart,
+    findOpenCart,
+    loadCartById,
+    loadLineItems,
+    lineSubtotal,
+    recomputeTotals,
+    addItem,
+    closeCart,
+    loadOwnedLineItem,
+    updateLineQty,
+    removeLineItem,
+    resolveDeliveryFee,
+    setMode,
+    setAddress,
+    ensureDefaultDeliveryAddress,
+    setSchedule,
+    setInstructions,
+    setCoupon,
+    clearCoupon,
+    publicCartView,
+    round2,
+    DROP_OFF_OPTIONS,
+    encodeDropOff,
+    decodeDropOff,
+};

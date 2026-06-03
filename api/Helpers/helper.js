@@ -60,12 +60,22 @@ function successResponse(res, data, msg = 'success', extra = {}) {
  * Inputs: res    — Express response object
  *         msg    — user-facing message (use Helpers/messages.js, not literals)
  *         status — logical status code in body (default 422; common: 401, 404)
- *         extra  — extra top-level fields merged into the body
+ *         extra  — extra fields nested under `data` (`code`, `errors`, etc.)
+ *
+ * Phase-2X normalisation: every error envelope now nests its extras
+ * under `data` so the client always reads them at `env.data.<field>`,
+ * matching the success-response shape. The standard fields are:
+ *           data.code   — stable string id for client-side branching
+ *           data.errors — array of {code, msg, field} from validators
+ * Anything else passed in `extra` also lands under `data`.
+ *
  * Output: Express response (chain-friendly).
  * Used:   Every middleware / controller that needs to surface an error.
  */
 function errorResponse(res, msg, status = 422, extra = {}) {
-    return res.status(200).json({ status, show: true, msg, ...extra });
+    const body = { status, show: true, msg };
+    if (extra && Object.keys(extra).length) { body.data = extra; }
+    return res.status(200).json(body);
 }
 
 // ───────────────────────────────────────────────────────────────────

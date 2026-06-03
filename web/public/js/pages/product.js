@@ -166,41 +166,10 @@
         note.addEventListener('input', function () { count.textContent = String(note.value.length); });
     }
 
-    /** firstInvalidGroup — a required group with fewer than `min` picks.
-     *  Hidden nested groups don't count: only validate them when their
-     *  parent option is currently selected. */
-    function firstInvalidGroup() {
-        var bad = null;
-        qa('.pd-group', root).forEach(function (g) {
-            if (bad) { return; }
-            var min = Number(g.getAttribute('data-min')) || 0;
-            if (min < 1) { return; }
-            // Skip nested groups whose parent option isn't currently
-            // chosen (their wrapper is hidden).
-            var wrap = g.closest('[data-linked-for]');
-            if (wrap && wrap.hidden) { return; }
-            if (qa('input:checked', g).length < min) { bad = g; }
-        });
-        return bad;
-    }
-
-    function bindAdd() {
-        root.addEventListener('click', function (ev) {
-            var add = ev.target.closest && ev.target.closest('[data-action="pd-add"]');
-            if (!add) { return; }
-            ev.preventDefault();
-            var bad = firstInvalidGroup();
-            if (bad) {
-                var name = bad.querySelector('.pd-group__name');
-                toast('error', 'Please choose: ' + (name ? name.textContent : 'a required option') + '.');
-                bad.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                bad.classList.add('is-invalid');
-                window.setTimeout(function () { bad.classList.remove('is-invalid'); }, 1500);
-                return;
-            }
-            toast('success', 'Added ' + qty + ' to cart — checkout coming soon.');
-        });
-    }
+    // Add-to-cart click handling (incl. required-group validation) lives
+    // in /js/ui/cart.js (global UI module loaded by the layout). This
+    // page only owns gallery, qty stepper, option-group sync, and
+    // live price total — all view-only concerns.
 
     /**
      * applyStock — when the product is out of stock, disable the Add
@@ -233,7 +202,6 @@
         bindOptions();
         bindQty();
         bindNote();
-        bindAdd();
         // Reveal nested groups for any options that came pre-checked
         // (is_default=1). Without this, defaults sit selected but their
         // linked sub-groups stay hidden until the user clicks something.

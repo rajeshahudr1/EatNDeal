@@ -38,6 +38,85 @@
         bindNotificationsBell();
         bindOrderModeToggle();
         bindDrawerStubs();
+        bindScrollHide();
+    }
+
+    /**
+     * bindScrollHide
+     *
+     * What:   Shows the mobile bottom-nav ONLY while the top header band
+     *         (logo / location / bell) is actually on screen, and hides it
+     *         once that header has scrolled out of view. Driven by an
+     *         `is-header-hidden` class on <body> that bottom-nav.css uses
+     *         to slide the menu down off the bottom edge.
+     * Why:    The user's rule: "the bottom menu should appear only when
+     *         the top header appears". Earlier this keyed off scroll
+     *         DIRECTION, so a tiny scroll-up halfway down the page flashed
+     *         the menu back. That was wrong. We now key off the header's
+     *         POSITION (on screen vs off screen) instead — a small up-
+     *         scroll mid-page does nothing; the menu returns only when the
+     *         user scrolls up far enough that the header itself reappears.
+     * How:    On mobile the header is position:static (mobile.css), so it
+     *         only sits in the viewport near the top of the page. An
+     *         IntersectionObserver watches it: intersecting → header
+     *         visible → show the nav; not intersecting → header gone →
+     *         hide the nav. Position-based, so there is zero flicker from
+     *         small back-and-forth scrolls.
+     * Type:   WRITE (toggles a body class as the header enters/leaves).
+     * Inputs: none — observes the .site-header element directly.
+     * Output: void.
+     * Used:   Called once from onReady().
+     *
+     * Notes:  Desktop keeps a sticky header and renders no bottom-nav, so
+     *         the class is force-cleared there and the bottom-nav.css hide
+     *         rule lives inside the max-width:767px media query anyway —
+     *         a stale class on desktop has no visual effect.
+     */
+    function bindScrollHide() {
+        var mq     = window.matchMedia('(max-width: 767px)');
+        var header = document.querySelector('.site-header');
+        var nav    = document.querySelector('.bottom-nav');
+        // No header or no bottom-nav (logged-out / bare pages) → nothing
+        // to sync.
+        if (!header || !nav) { return; }
+
+        // Reflect "header is off screen" onto <body>. On desktop always
+        // clear it — the header is sticky there and there is no nav to
+        // hide.
+        function setHeaderHidden(hidden) {
+            if (!mq.matches) {
+                document.body.classList.remove('is-header-hidden');
+                return;
+            }
+            document.body.classList.toggle('is-header-hidden', !!hidden);
+        }
+
+        // Preferred path: observe the header's actual visibility.
+        // threshold 0 → "intersecting" stays true while ANY pixel of the
+        // header is in the viewport, and flips false only once it has
+        // fully scrolled off. So the nav is present exactly while the
+        // header is on screen.
+        if ('IntersectionObserver' in window) {
+            var io = new IntersectionObserver(function (entries) {
+                setHeaderHidden(!entries[0].isIntersecting);
+            }, { threshold: 0 });
+            io.observe(header);
+            return;
+        }
+
+        // Fallback (very old browsers): hide once scrolled past the
+        // header's height. Still position-based, not direction-based.
+        var ticking = false;
+        function apply() {
+            ticking = false;
+            var h = header.offsetHeight || 64;
+            setHeaderHidden((window.pageYOffset || 0) > h);
+        }
+        window.addEventListener('scroll', function () {
+            if (ticking) { return; }
+            ticking = true;
+            window.requestAnimationFrame(apply);
+        }, { passive: true });
     }
 
     /**

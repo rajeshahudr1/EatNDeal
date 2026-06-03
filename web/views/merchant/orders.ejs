@@ -1,0 +1,90 @@
+<%#
+  views/merchant/orders.ejs
+
+  What:  Merchant dashboard — list of marketplace orders for the
+         signed-in staff member's company. Pills filter by state
+         (live / completed / cancelled). Each card shows the order's
+         current status + the merchant-facing actions
+         (Accept / Start preparing / Mark out / Mark delivered /
+          Cancel). /js/ui/merchant.js wires the buttons + polls every
+         15 s for new pending orders.
+
+  Data:  MerchantController.dashboardPage passes `orders` (array of
+         summary rows from /api/v1/merchant/orders) + `state` + a
+         `blocked` flag for non-staff users.
+-%>
+<section class="merchant" data-merchant-root>
+
+    <% if (blocked) { %>
+        <div class="merchant__blocked">
+            <h1>Merchant dashboard</h1>
+            <p><%= blockedMsg %></p>
+        </div>
+    <% } else { %>
+
+        <header class="merchant__head">
+            <h1 class="merchant__title">Incoming orders</h1>
+            <p class="merchant__sub" data-merchant-count><%= orders.length %> in this view · auto-refreshes every 15 s</p>
+        </header>
+
+        <nav class="merchant-tabs" role="tablist" aria-label="Order state">
+            <a class="merchant-tabs__tab<%= state === 'live'      ? ' is-active' : '' %>" href="/merchant?state=live">Live</a>
+            <a class="merchant-tabs__tab<%= state === 'completed' ? ' is-active' : '' %>" href="/merchant?state=completed">Completed</a>
+            <a class="merchant-tabs__tab<%= state === 'cancelled' ? ' is-active' : '' %>" href="/merchant?state=cancelled">Cancelled</a>
+            <a class="merchant-tabs__tab<%= state === 'all'       ? ' is-active' : '' %>" href="/merchant?state=all">All</a>
+        </nav>
+
+        <% if (!orders.length) { %>
+            <div class="merchant-empty">
+                <span class="merchant-empty__icon" aria-hidden="true">
+                    <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3h2l2 13h13l2-9H6"/><circle cx="9" cy="21" r="1.6"/><circle cx="18" cy="21" r="1.6"/></svg>
+                </span>
+                <h2>No <%= state %> orders right now</h2>
+                <p>New marketplace orders appear here as customers place them.</p>
+            </div>
+        <% } else { %>
+            <ol class="merchant-orders" role="list" data-merchant-list data-state="<%= state %>">
+                <% orders.forEach(function (o) { %>
+                <li class="merchant-order" data-order-id="<%= o.id %>" data-order-status="<%= o.status %>">
+                    <header class="merchant-order__head">
+                        <div class="merchant-order__name">
+                            <a class="merchant-order__number" href="/merchant/order/<%= encodeURIComponent(o.id) %>"><%= o.number || ('#' + o.id) %></a>
+                            <% if (o.isPreOrder) { %><span class="merchant-order__chip merchant-order__chip--pre">PRE-ORDER<% if (o.scheduledTime) { %> · <%= o.scheduledTime %><% } %></span><% } %>
+                        </div>
+                        <span class="merchant-order__status merchant-order__status--<%= o.statusClass %>" data-status-pill><%= o.statusLabel %></span>
+                    </header>
+                    <p class="merchant-order__meta">
+                        <%= o.totalQty %> item<%= o.totalQty === 1 ? '' : 's' %>
+                        · <%= o.serveType === 2 ? 'Pickup' : 'Delivery' %>
+                        · <%= brand.currencySymbol %><%= o.grandTotal.toFixed(2) %>
+                        <% if (o.createdAt) { %> · <span data-utc="<%= o.createdAt %>"><%= new Date(o.createdAt).toLocaleTimeString() %></span><% } %>
+                    </p>
+                    <% if (o.customerName) { %>
+                        <p class="merchant-order__cust"><%= o.customerName %><% if (o.customerPhone) { %> · <%= o.customerPhone %><% } %></p>
+                    <% } %>
+                    <% if (o.serveType === 3 && o.deliveryAddress) { %>
+                        <p class="merchant-order__addr">Deliver to: <%= o.deliveryAddress %></p>
+                    <% } %>
+                    <% if (o.remark) { %>
+                        <p class="merchant-order__note">Note: <%= o.remark %></p>
+                    <% } %>
+                    <% if (o.nextActions && o.nextActions.length) { %>
+                    <div class="merchant-order__actions" data-actions>
+                        <% o.nextActions.forEach(function (a) { %>
+                            <button type="button"
+                                    class="merchant-btn<%= a.danger ? ' merchant-btn--danger' : ' merchant-btn--primary' %>"
+                                    data-action="merchant-advance"
+                                    data-order-id="<%= o.id %>"
+                                    data-expected-status="<%= o.status %>"
+                                    data-next-status="<%= a.status %>"><%= a.label %></button>
+                        <% }); %>
+                    </div>
+                    <% } %>
+                </li>
+                <% }); %>
+            </ol>
+        <% } %>
+
+    <% } %>
+
+</section>

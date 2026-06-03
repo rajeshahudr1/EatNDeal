@@ -208,3 +208,9 @@
     color: var(--color-primary-dark);
     margin: var(--space-2) 0 0;
 }
+.dish-card__price--na {
+    font-size: 0.85rem;
+    font-weight: 600;
+    font-style: italic;
+    color: var(--color-text-soft);
+}

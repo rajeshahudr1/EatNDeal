@@ -222,7 +222,7 @@ async function list(req, res) {
                 //   marketplace_price → online_platform_price →
                 //   price_after_tax → 0
                 const expr = `COALESCE(p.marketplace_price, p.online_platform_price, p.price_after_tax, 0)`;
-                if (priceBucket === 'low')      { qb.andWhereRaw(expr + ' <= ?',  [6]); }
+                if (priceBucket === 'low')      { qb.andWhereRaw(expr + ' > 0 AND ' + expr + ' <= ?',  [6]); }
                 else if (priceBucket === 'mid') { qb.andWhereRaw(expr + ' > ? AND ' + expr + ' <= ?', [6, 12]); }
                 else if (priceBucket === 'high'){ qb.andWhereRaw(expr + ' > ?',   [12]); }
             })

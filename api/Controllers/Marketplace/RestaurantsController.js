@@ -241,7 +241,7 @@ async function list(req, res) {
         // They drive BOTH the "Price for one" filter and its dynamic
         // facet counts.
         const priceExpr = 'COALESCE(pb.marketplace_price, pb.online_platform_price, pb.price_after_tax, 0)';
-        const priceLowSubq  = db.raw(`EXISTS (SELECT 1 FROM products pb WHERE pb.company_id = c.id AND pb.show_marketplace = 1 AND pb.status = '1' AND ${priceExpr} <= 6) AS has_price_low`);
+        const priceLowSubq  = db.raw(`EXISTS (SELECT 1 FROM products pb WHERE pb.company_id = c.id AND pb.show_marketplace = 1 AND pb.status = '1' AND ${priceExpr} > 0 AND ${priceExpr} <= 6) AS has_price_low`);
         const priceMidSubq  = db.raw(`EXISTS (SELECT 1 FROM products pb WHERE pb.company_id = c.id AND pb.show_marketplace = 1 AND pb.status = '1' AND ${priceExpr} > 6 AND ${priceExpr} <= 12) AS has_price_mid`);
         const priceHighSubq = db.raw(`EXISTS (SELECT 1 FROM products pb WHERE pb.company_id = c.id AND pb.show_marketplace = 1 AND pb.status = '1' AND ${priceExpr} > 12) AS has_price_high`);
 

@@ -1,0 +1,43 @@
+/*
+ * components/order-confirm.css
+ *
+ * What:  Phase-2D minimal "order placed" page. Single white card with a
+ *        large green tick, the order number, and two CTAs. Mobile-first.
+ *        Phase-2E will expand this into a full live tracker with the
+ *        order detail; this stylesheet is sized to grow into that.
+ */
+
+.order-confirm {
+    max-width: 640px; margin: 0 auto;
+    padding: var(--space-8) var(--space-4) var(--space-10);
+}
+.order-confirm__card {
+    background: #fff; border: 1px solid var(--color-border-soft); border-radius: var(--radius-lg);
+    padding: var(--space-8) var(--space-5);
+    text-align: center;
+    display: flex; flex-direction: column; align-items: center; gap: var(--space-3);
+}
+.order-confirm__icon {
+    width: 88px; height: 88px; border-radius: 50%;
+    background: rgba(22, 163, 74, 0.12); color: var(--color-success, #16a34a);
+    display: grid; place-items: center;
+}
+.order-confirm__title {
+    font-size: 1.6rem; font-weight: 800; margin: 0;
+    color: var(--color-text);
+}
+.order-confirm__sub {
+    color: var(--color-text-soft); margin: 0; max-width: 420px;
+    line-height: 1.5; font-size: 0.98rem;
+}
+.order-confirm__cta {
+    display: flex; gap: var(--space-3); flex-wrap: wrap; justify-content: center; margin-top: var(--space-3);
+}
+.order-confirm__cta .btn { min-width: 180px; }
+
+@media (max-width: 640px) {
+    .order-confirm { padding: var(--space-5) var(--space-3) var(--space-10); }
+    .order-confirm__card { padding: var(--space-6) var(--space-4); }
+    .order-confirm__icon { width: 72px; height: 72px; }
+    .order-confirm__cta .btn { flex: 1 1 auto; min-width: 0; }
+}

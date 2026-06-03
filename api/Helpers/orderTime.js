@@ -222,19 +222,30 @@ async function maxAdvancedExtraByBranch(branchIds) {
 /**
  * formatRange
  *
- * What:  Builds the customer-facing label from a (base, extra) pair:
- *           base = 20, extra =  0   →  "20 min"
- *           base = 20, extra = 30   →  "20-50 min"
- *           base =  0, extra = any  →  null  (base must be set)
- *        Caller sees null when the chip should hide.
+ * What:  Builds the customer-facing label from a (base, extra) pair.
+ *        Returns the SINGLE upper-bound figure (base + extra) — the
+ *        most pessimistic-but-realistic wait time given the merchant's
+ *        configured advance rules. Crosses into hours once the total
+ *        reaches 60 min so the chip reads naturally instead of "75 min".
+ *
+ *          base = 20, extra =  0   →  "20 min"
+ *          base = 20, extra = 30   →  "50 min"
+ *          base = 30, extra = 30   →  "1 hour"
+ *          base = 30, extra = 45   →  "1h 15m"
+ *          base = 60, extra = 60   →  "2 hours"
+ *          base =  0, extra =  0   →  null  (chip hides)
  * Type:  READ (pure).
  */
 function formatRange(base, extra) {
     const b = Number(base) || 0;
     const e = Number(extra) || 0;
-    if (b <= 0) { return null; }
-    if (e <= 0) { return b + ' min'; }
-    return b + '-' + (b + e) + ' min';
+    const total = b + e;
+    if (total <= 0) { return null; }
+    if (total < 60) { return total + ' min'; }
+    const h = Math.floor(total / 60);
+    const m = total % 60;
+    if (m === 0) { return h + (h === 1 ? ' hour' : ' hours'); }
+    return h + 'h ' + m + 'm';
 }
 
 /**

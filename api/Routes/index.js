@@ -252,6 +252,162 @@ router.post('/customer/favourite/toggle',
     validate(favouriteToggleSchema),
     FavouriteCtl.toggle);
 
+// ── Customer cart (signed-in marketplace customers only) ───────────
+// Phase 2A.3 — read-only. Write endpoints (add / update / remove /
+// place) land in 2A.4+ once this read path is verified.
+const CartCtl = require('../Controllers/Customer/CartController');
+const {
+    cartGetSchema,
+    cartAddSchema,
+    cartUpdateQtySchema,
+    cartRemoveItemSchema,
+    cartClearSchema,
+    cartSetModeSchema,
+    cartSetAddressSchema,
+    cartSetScheduleSchema,
+    cartSetInstructionsSchema,
+    cartApplyCouponSchema,
+    cartRemoveCouponSchema,
+} = require('../Validators/cart');
+
+router.get('/customer/cart',
+    validateQuery(cartGetSchema),
+    CartCtl.get);
+
+router.get('/customer/cart/count',
+    validateQuery(cartGetSchema),
+    CartCtl.count);
+
+router.get('/customer/cart/promotions',
+    validateQuery(cartGetSchema),
+    CartCtl.promotions);
+
+router.post('/customer/cart/add',
+    validate(cartAddSchema),
+    CartCtl.add);
+
+router.post('/customer/cart/update-qty',
+    validate(cartUpdateQtySchema),
+    CartCtl.updateQty);
+
+router.post('/customer/cart/remove-item',
+    validate(cartRemoveItemSchema),
+    CartCtl.removeItem);
+
+router.post('/customer/cart/clear',
+    validate(cartClearSchema),
+    CartCtl.clear);
+
+router.post('/customer/cart/set-mode',
+    validate(cartSetModeSchema),
+    CartCtl.setMode);
+
+router.post('/customer/cart/set-address',
+    validate(cartSetAddressSchema),
+    CartCtl.setAddress);
+
+router.post('/customer/cart/set-schedule',
+    validate(cartSetScheduleSchema),
+    CartCtl.setSchedule);
+
+router.post('/customer/cart/set-instructions',
+    validate(cartSetInstructionsSchema),
+    CartCtl.setInstructions);
+
+router.post('/customer/cart/apply-coupon',
+    validate(cartApplyCouponSchema),
+    CartCtl.applyCoupon);
+
+router.post('/customer/cart/remove-coupon',
+    validate(cartRemoveCouponSchema),
+    CartCtl.removeCoupon);
+
+// ── Customer orders (place + list + detail) ─────────────────────────
+// Phase-2D ships only /place. List + detail land in Phase-2E.
+const OrderCtl = require('../Controllers/Customer/OrderController');
+const {
+    orderPlaceSchema,
+    orderListSchema,
+    orderDetailSchema,
+    orderStatusSchema,
+} = require('../Validators/order');
+
+router.post('/customer/order/place',
+    validate(orderPlaceSchema),
+    OrderCtl.place);
+
+router.get('/customer/orders',
+    validateQuery(orderListSchema),
+    OrderCtl.list);
+
+router.get('/customer/order',
+    validateQuery(orderDetailSchema),
+    OrderCtl.detail);
+
+router.get('/customer/order/status',
+    validateQuery(orderStatusSchema),
+    OrderCtl.status);
+
+// ── Customer payments (Stripe-backed) ───────────────────────────────
+// createIntent returns a Stripe PaymentIntent the browser confirms via
+// Stripe.js. Verification at order-place time happens inside
+// OrderController.place (server reads the intent + checks succeeded).
+const PaymentCtl = require('../Controllers/Customer/PaymentController');
+const { paymentIntentSchema } = require('../Validators/payment');
+
+router.post('/customer/payment/intent',
+    validate(paymentIntentSchema),
+    PaymentCtl.createIntent);
+
+// Stripe webhook — Stripe POSTs signed events here. No Joi validation:
+// the body is verified via HMAC against req.rawBody (set by the
+// express.json verify hook in api/index.js).
+router.post('/customer/payment/webhook',
+    PaymentCtl.webhook);
+
+// ── Customer saved payment methods (Stripe Customer + SetupIntents) ─
+// list pulls cards from Stripe at read time (no PAN stored locally);
+// setup returns a SetupIntent client_secret for Stripe.js confirm;
+// delete detaches the payment_method from the customer.
+const PaymentMethodCtl = require('../Controllers/Customer/PaymentMethodController');
+const { paymentMethodListSchema,
+        paymentMethodSetupSchema,
+        paymentMethodDeleteSchema } = require('../Validators/paymentMethod');
+
+router.get('/customer/payment-methods',
+    validateQuery(paymentMethodListSchema),
+    PaymentMethodCtl.list);
+
+router.post('/customer/payment-method/setup',
+    validate(paymentMethodSetupSchema),
+    PaymentMethodCtl.setupIntent);
+
+router.post('/customer/payment-method/delete',
+    validate(paymentMethodDeleteSchema),
+    PaymentMethodCtl.remove);
+
+// ── Merchant dashboard (staff-allowlist gated) ──────────────────────
+// Phase 4 ships with an env-driven allowlist (Helpers/merchant.js); a
+// proper mp_merchant_staff table comes in Phase-5.
+const MerchOrdersCtl = require('../Controllers/Merchant/OrdersController');
+const {
+    merchantOrdersSchema,
+    merchantOrderSchema,
+    merchantAdvanceSchema,
+} = require('../Validators/merchant');
+
+router.get('/merchant/orders',
+    validateQuery(merchantOrdersSchema),
+    MerchOrdersCtl.list);
+
+router.get('/merchant/order',
+    validateQuery(merchantOrderSchema),
+    MerchOrdersCtl.detail);
+
+router.post('/merchant/order/advance',
+    validate(merchantAdvanceSchema),
+    MerchOrdersCtl.advance);
+
 // ── Marketplace dashboard (public read-only feeds) ─────────────────
 // Powers the homepage restaurant grid + "For you" dish rail. Both are
 // filtered by company.is_marketplace=1 (+ products.show_marketplace=1

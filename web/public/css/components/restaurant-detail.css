@@ -194,6 +194,7 @@
 .rd-product__rating { display: inline-flex; align-items: center; gap: 3px; background: var(--color-bg-alt); border-radius: 6px; padding: 2px 6px; font-size: 0.72rem; font-weight: 700; }
 .rd-product__foot { margin-top: auto; display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
 .rd-product__price { font-weight: 800; font-size: 0.92rem; }
+.rd-product__price--na { color: var(--color-text-soft); font-weight: 600; font-size: 0.82rem; font-style: italic; }
 .rd-product__add { display: inline-flex; align-items: center; gap: 4px; background: #fff; border: 1px solid var(--color-primary); color: var(--color-primary); border-radius: 999px; padding: 5px 11px; font-weight: 700; cursor: pointer; font-size: 0.76rem; }
 .rd-product__add:hover { background: var(--color-primary); color: #fff; }
 

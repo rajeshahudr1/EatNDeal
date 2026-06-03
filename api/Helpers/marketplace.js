@@ -33,12 +33,14 @@
  * What:  Returns the "best" price for a product row, in priority order:
  *          1. marketplace_price (when > 0)  — the explicit marketplace listing
  *          2. online_platform_price (> 0)   — the existing webordering price
- *          3. price_after_tax (> 0)         — the in-store price
- *          4. 0                             — fallback
- * Why:   Many existing rows haven't been re-priced for marketplace yet
- *        — zero marketplace_price means "use the regular price". Per
- *        the user decision, the dashboard prefers showing SOMETHING
- *        over an embarrassing empty grid.
+ *          3. price_after_tax (> 0)         — the in-store / base price
+ *          4. 0                             — fallback (genuinely no price)
+ *
+ * Why:   Many existing rows haven't been re-priced for marketplace yet.
+ *        Falling back to the regular base price keeps the catalog full
+ *        instead of blanking out 28% of dishes; rows where every column
+ *        is 0 surface as £0.00 — the customer sees the price for what
+ *        it is and the add-to-cart guard still blocks the line.
  * Type:  READ (pure).
  */
 function pickPrice(row) {
@@ -315,6 +317,35 @@ function normalisePostcode(pc) {
 }
 
 /**
+ * loadActiveBranch
+ *
+ * What:  Returns the canonical row for ONE branch id, joined to its
+ *        company, with the marketplace-eligibility scope chain applied.
+ *        Used by every endpoint that touches a cart's branch — cart
+ *        get/set-mode/set-address, order place, payment intent, webhook.
+ *        Returns null when the branch is missing / soft-deleted / its
+ *        company is offline.
+ *
+ *        Centralises the 4-line eligibility chain that was duplicated
+ *        across 7 controllers — single source of truth.
+ * Type:  READ.
+ *
+ * Usage: const branch = await M.loadActiveBranch(cart.branch_id);
+ *        if (!branch) return H.errorResponse(res, 'Restaurant unavailable.', 404);
+ */
+async function loadActiveBranch(branchId) {
+    const { db } = require('../config/db');
+    if (!branchId) { return null; }
+    const row = await db('branch as b')
+        .innerJoin('company as c', 'c.id', 'b.company_id')
+        .where('b.id', branchId)
+        .modify(eligibleCompanyScope, 'c')
+        .modify(eligibleBranchScope,  'b')
+        .first('b.*');
+    return row || null;
+}
+
+/**
  * matchDeliveryZone
  *
  * What:   Given a customer postcode and a branch's delivery zones
@@ -542,5 +573,6 @@ module.exports = {
     normaliseName,
     eligibleCompanyScope,
     eligibleBranchScope,
+    loadActiveBranch,
     toRestaurantCard,
 };

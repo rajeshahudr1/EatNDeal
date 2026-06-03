@@ -170,6 +170,53 @@
                 return;
             }
 
+            // Addresses tab — everything stays on the page. Add opens a
+            // blank inline form; Edit prefills it with the card's row;
+            // Cancel hides; Delete confirms then posts. Save submits
+            // the form to /address/save and reloads.
+            if (t.closest('[data-action="acct-add-address"]')) {
+                ev.preventDefault();
+                openInlineAddressForm(null);
+                return;
+            }
+            var editBtn = t.closest('[data-action="acct-edit-address"]');
+            if (editBtn) {
+                ev.preventDefault();
+                var card = editBtn.closest('[data-address-id]');
+                openInlineAddressForm(readAddressFromCard(card));
+                return;
+            }
+            if (t.closest('[data-action="acct-cancel-address"]')) {
+                ev.preventDefault();
+                closeInlineAddressForm();
+                return;
+            }
+            var delBtn = t.closest('[data-action="acct-delete-address"]');
+            if (delBtn) {
+                ev.preventDefault();
+                var dcard = delBtn.closest('[data-address-id]');
+                deleteAddress(dcard ? dcard.getAttribute('data-address-id') : null);
+                return;
+            }
+            if (t.closest('[data-action="acct-delete-from-form"]')) {
+                ev.preventDefault();
+                var idForm = document.querySelector('[data-af-id]');
+                deleteAddress(idForm ? idForm.value : null);
+                return;
+            }
+
+            // Payment Methods tab actions.
+            if (t.closest('[data-action="acct-add-pm"]'))    { ev.preventDefault(); openPaymentForm();    return; }
+            if (t.closest('[data-action="acct-cancel-pm"]')) { ev.preventDefault(); closePaymentForm();   return; }
+            if (t.closest('[data-action="acct-save-pm"]'))   { ev.preventDefault(); savePaymentMethod(); return; }
+            var pmDel = t.closest('[data-action="acct-delete-pm"]');
+            if (pmDel) {
+                ev.preventDefault();
+                var pmCard = pmDel.closest('[data-pm-id]');
+                deletePaymentMethod(pmCard ? pmCard.getAttribute('data-pm-id') : null);
+                return;
+            }
+
             // Sidebar tabs / cards without a destination yet → friendly
             // "coming soon" toast. The wired tabs (My Profile, Addresses,
             // Help & Support) use real links / data-action instead.
@@ -181,6 +228,470 @@
                 return;
             }
         });
+    }
+
+    // ── Inline-addresses helpers ───────────────────────────────────
+    // The whole flow lives on the page — no modal. Add toggles a blank
+    // form, Edit prefills it, Save POSTs to /address/save, Delete posts
+    // to /address/delete. Reloads on success so the server-rendered
+    // card list and the header-chip stay in sync without DOM patching.
+
+    function $$(sel, ctx) { return (ctx || document).querySelector(sel); }
+    function getFormRoot() { return $$('[data-acct-addr-form]'); }
+    function getForm()     { return $$('[data-acct-form]'); }
+
+    function readAddressFromCard(card) {
+        if (!card) { return null; }
+        try {
+            var raw = card.getAttribute('data-address') || '';
+            if (!raw) { return null; }
+            return JSON.parse(decodeURIComponent(raw));
+        } catch (e) { return null; }
+    }
+
+    function setFieldValue(form, name, value) {
+        var el = form.querySelector('[name="' + name + '"]');
+        if (el) { el.value = value == null ? '' : String(value); }
+    }
+
+    // Split a stored "+44 1234567890" contact into { dial, number }.
+    // Matches the popup's storage shape so existing rows render
+    // back correctly on edit.
+    function splitContact(raw) {
+        var s = String(raw || '').trim();
+        if (!s) { return { dial: '44', number: '' }; }
+        var m = s.match(/^\+?(\d{1,4})[\s\-]+(.+)$/);
+        if (m) { return { dial: m[1], number: m[2].replace(/\D/g, '') }; }
+        return { dial: '44', number: s.replace(/\D/g, '') };
+    }
+
+    function openInlineAddressForm(addr) {
+        var wrap = getFormRoot();
+        var form = getForm();
+        if (!wrap || !form) { return; }
+        form.reset();
+        setFormError('');
+
+        var titleEl  = $$('[data-acct-form-title]');
+        var deleteBtn = $$('[data-action="acct-delete-from-form"]');
+        var defaultCheckbox = form.querySelector('[data-af-default]');
+        var dialSel  = form.querySelector('[data-af-dial]');
+        var contact  = form.querySelector('[data-af-contact]');
+
+        if (addr && addr.id) {
+            if (titleEl) { titleEl.textContent = 'Edit address'; }
+            setFieldValue(form, 'id',                    addr.id);
+            setFieldValue(form, 'latitude',              addr.latitude);
+            setFieldValue(form, 'longitude',             addr.longitude);
+            setFieldValue(form, 'address',               addr.address || '');
+            setFieldValue(form, 'post_code',             addr.postCode || '');
+            setFieldValue(form, 'address_type',          addr.addressType || '');
+            setFieldValue(form, 'additional_details',    addr.additionalDetails || '');
+            setFieldValue(form, 'delivery_instructions', addr.deliveryInstructions || '');
+            setFieldValue(form, 'label',                 addr.label || '');
+            var c = splitContact(addr.contactNo);
+            if (dialSel) {
+                // Default to +44 if the stored dial isn't in the list.
+                var hasOpt = false;
+                for (var i = 0; i < dialSel.options.length; i++) {
+                    if (dialSel.options[i].value === c.dial) { hasOpt = true; break; }
+                }
+                dialSel.value = hasOpt ? c.dial : '44';
+            }
+            if (contact) { contact.value = c.number; }
+            if (defaultCheckbox) { defaultCheckbox.checked = !!addr.isDefault; }
+            if (deleteBtn) { deleteBtn.hidden = false; }
+        } else {
+            if (titleEl) { titleEl.textContent = 'Add new address'; }
+            if (dialSel) { dialSel.value = '44'; }
+            if (contact) { contact.value = ''; }
+            if (deleteBtn) { deleteBtn.hidden = true; }
+        }
+
+        wrap.hidden = false;
+        wrap.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        var firstField = form.querySelector('[name="address"]');
+        if (firstField) { window.setTimeout(function () { firstField.focus(); }, 200); }
+    }
+
+    function closeInlineAddressForm() {
+        var wrap = getFormRoot();
+        if (!wrap) { return; }
+        wrap.hidden = true;
+        setFormError('');
+    }
+
+    function setFormError(msg) {
+        var box = $$('[data-acct-form-error]');
+        if (!box) { return; }
+        if (msg) { box.textContent = msg; box.hidden = false; }
+        else     { box.textContent = '';  box.hidden = true; }
+    }
+
+    function bindAddressFormSubmit() {
+        var form = getForm();
+        if (!form || form.dataset.bound === '1') { return; }
+        form.dataset.bound = '1';
+        form.addEventListener('submit', function (ev) {
+            ev.preventDefault();
+            saveInlineAddress();
+        });
+    }
+
+    // Stash a toast in sessionStorage to be shown after the next page
+    // reload — the address-form flow does soft reloads on success
+    // because the card list is server-rendered, so toasts shown right
+    // before reload get clobbered. This survives the round trip.
+    function flashAfterReload(type, message) {
+        try {
+            sessionStorage.setItem('acct.flash', JSON.stringify({ type: type, msg: message, ts: Date.now() }));
+        } catch (e) { /* sessionStorage disabled — fall through */ }
+    }
+    function consumePendingFlash() {
+        var raw = null;
+        try { raw = sessionStorage.getItem('acct.flash'); } catch (e) { return; }
+        if (!raw) { return; }
+        try { sessionStorage.removeItem('acct.flash'); } catch (e) { /* ignore */ }
+        var pending;
+        try { pending = JSON.parse(raw); } catch (e) { return; }
+        if (!pending || !pending.msg) { return; }
+        // Drop anything older than 10 s — guards against a stale entry
+        // surviving a tab being parked.
+        if (Date.now() - (Number(pending.ts) || 0) > 10000) { return; }
+        if (window.EatNDealUi && window.EatNDealUi.showToast) {
+            window.EatNDealUi.showToast(pending.type || 'success', pending.msg);
+        }
+    }
+
+    function toast(type, msg) {
+        if (window.EatNDealUi && window.EatNDealUi.showToast) {
+            window.EatNDealUi.showToast(type, msg);
+        }
+    }
+
+    function saveInlineAddress() {
+        var form = getForm();
+        if (!form) { return; }
+        var saveBtn = form.querySelector('[data-acct-form-save]');
+        var address = (form.querySelector('[name="address"]') || {}).value || '';
+        if (!address.trim()) {
+            setFormError('Please enter an address.');
+            toast('error', 'Please enter an address.');
+            var first = form.querySelector('[name="address"]');
+            if (first) { first.focus(); }
+            return;
+        }
+        // Contact number — optional, but if entered must be 6-15 digits.
+        // Stored as "+<dial> <number>" so the country code travels with
+        // the row (mirrors the popup's storage format).
+        var contactEl = form.querySelector('[data-af-contact]');
+        var dialEl    = form.querySelector('[data-af-dial]');
+        var rawNum    = contactEl ? contactEl.value.replace(/\D/g, '') : '';
+        if (rawNum && (rawNum.length < 6 || rawNum.length > 15)) {
+            setFormError('Please enter a valid contact number (6–15 digits).');
+            toast('error', 'Please enter a valid contact number (6–15 digits).');
+            if (contactEl) { contactEl.focus(); }
+            return;
+        }
+        var dial = (dialEl && dialEl.value) ? dialEl.value : '44';
+        var contactCombined = rawNum ? ('+' + dial + ' ' + rawNum) : '';
+
+        setFormError('');
+        if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Saving…'; }
+
+        // Build the payload from the form. Empty optional fields are
+        // dropped so the API's Joi schema doesn't reject `id=''` (it's
+        // an upsert: no id → INSERT, id present → UPDATE).
+        var body = {};
+        var fd = new FormData(form);
+        fd.forEach(function (value, key) {
+            if (value === '' || value == null) { return; }
+            body[key] = value;
+        });
+        // The contact input + dial select live OUTSIDE the named-field
+        // pipeline (they don't carry a name=); attach the combined
+        // value here so it goes over the wire as contact_no.
+        if (contactCombined) { body.contact_no = contactCombined; }
+        body.is_default = form.querySelector('[data-af-default]') && form.querySelector('[data-af-default]').checked ? 1 : 0;
+
+        var isEdit = !!body.id;
+
+        fetch('/address/save', {
+            method:      'POST',
+            credentials: 'same-origin',
+            headers:     { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+            body:        JSON.stringify(body),
+        }).then(function (r) { return r.json().catch(function () { return null; }); })
+          .then(function (env) {
+              if (!env) {
+                  setFormError('Could not reach the server.');
+                  toast('error', 'Could not reach the server.');
+                  return;
+              }
+              if (env.status === 401) {
+                  window.location.href = '/signin?next=' + encodeURIComponent('/account?tab=addresses');
+                  return;
+              }
+              if (env.status !== 200) {
+                  var msg = (env.data && env.data.errors && env.data.errors[0] && env.data.errors[0].msg) || env.msg || 'Could not save the address.';
+                  setFormError(msg);
+                  toast('error', msg);
+                  return;
+              }
+              flashAfterReload('success', isEdit ? 'Address updated.' : 'Address added.');
+              window.location.reload();
+          })
+          .catch(function () {
+              setFormError('Could not reach the server.');
+              toast('error', 'Could not reach the server.');
+          })
+          .then(function () {
+              if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save address'; }
+          });
+    }
+
+    function deleteAddress(id) {
+        if (!id) { return; }
+        var confirmer = (window.EatNDealUi && window.EatNDealUi.confirmDialog)
+            ? window.EatNDealUi.confirmDialog
+            : function (o) { return Promise.resolve(window.confirm(o && o.message || 'Delete this address?')); };
+        confirmer({
+            title:       'Delete this address?',
+            message:     'You can always add it again later.',
+            okLabel:     'Delete',
+            cancelLabel: 'Keep it',
+        }).then(function (ok) {
+            if (!ok) { return; }
+            var card = document.querySelector('[data-address-id="' + id + '"]');
+            if (card) { card.classList.add('is-busy'); }
+            fetch('/address/delete', {
+                method:      'POST',
+                credentials: 'same-origin',
+                headers:     { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                body:        JSON.stringify({ id: id }),
+            }).then(function (r) { return r.json().catch(function () { return null; }); })
+              .then(function (env) {
+                  if (!env || env.status !== 200) {
+                      if (card) { card.classList.remove('is-busy'); }
+                      toast('error', (env && env.msg) || 'Could not delete the address.');
+                      return;
+                  }
+                  flashAfterReload('success', 'Address deleted.');
+                  window.location.reload();
+              })
+              .catch(function () {
+                  if (card) { card.classList.remove('is-busy'); }
+                  toast('error', 'Could not reach the server.');
+              });
+        });
+    }
+
+    // ── Payment Methods tab ────────────────────────────────────────
+    // Saved-card flow: click "Add new card" → fetch a SetupIntent →
+    // mount Stripe Elements once → user enters PAN/exp/CVC → confirm →
+    // reload so the server-rendered list shows the new row.
+    // Stripe.js v3 is loaded once on demand (no preload on every page).
+
+    var __stripe = null;
+    var __elements = null;
+    var __cardElement = null;
+    var __stripeClientSecret = null;
+
+    function getPmRoot()      { return document.querySelector('[data-acct-pm]'); }
+    function getPmFormWrap()  { return document.querySelector('[data-acct-pm-form]'); }
+    function setPmError(msg) {
+        var box = document.querySelector('[data-acct-pm-error]');
+        if (!box) { return; }
+        if (msg) { box.textContent = msg; box.hidden = false; }
+        else     { box.textContent = '';  box.hidden = true; }
+    }
+
+    // Load Stripe.js v3 once and cache the handle. Resolves with the
+    // window.Stripe constructor; rejects if the script can't be loaded
+    // (offline, CSP blocked, etc.).
+    function loadStripeJs() {
+        if (window.Stripe) { return Promise.resolve(window.Stripe); }
+        return new Promise(function (resolve, reject) {
+            var s = document.createElement('script');
+            s.src = 'https://js.stripe.com/v3/';
+            s.async = true;
+            s.onload  = function () { resolve(window.Stripe); };
+            s.onerror = function () { reject(new Error('Could not load Stripe.js')); };
+            document.head.appendChild(s);
+        });
+    }
+
+    function ensureStripe(publishableKey) {
+        if (__stripe) { return Promise.resolve(__stripe); }
+        var key = publishableKey
+            || (getPmRoot() && getPmRoot().getAttribute('data-stripe-key'))
+            || '';
+        if (!key) { return Promise.reject(new Error('Stripe is not configured.')); }
+        return loadStripeJs().then(function (Stripe) {
+            __stripe = Stripe(key);
+            return __stripe;
+        });
+    }
+
+    function ensureCardElement() {
+        if (__cardElement) { return __cardElement; }
+        if (!__stripe) { return null; }
+        var mount = document.querySelector('[data-pm-mount]');
+        if (!mount) { return null; }
+        __elements = __stripe.elements();
+        __cardElement = __elements.create('card', {
+            hidePostalCode: true,
+            style: {
+                base:    { fontSize: '15px', color: '#0f172a', '::placeholder': { color: '#94a3b8' } },
+                invalid: { color: '#e5252a' },
+            },
+        });
+        __cardElement.mount(mount);
+        __cardElement.on('change', function (event) {
+            setPmError(event.error ? event.error.message : '');
+        });
+        return __cardElement;
+    }
+
+    function openPaymentForm() {
+        var wrap = getPmFormWrap();
+        if (!wrap) { return; }
+        setPmError('');
+        wrap.hidden = false;
+        wrap.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+        // Start Stripe + a fresh SetupIntent in parallel so the user can
+        // start typing as soon as Elements paints.
+        Promise.all([
+            ensureStripe().then(function () { ensureCardElement(); }),
+            fetch('/payment-method/setup', {
+                method:      'POST',
+                credentials: 'same-origin',
+                headers:     { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                body:        JSON.stringify({}),
+            }).then(function (r) { return r.json().catch(function () { return null; }); })
+              .then(function (env) {
+                  if (!env || env.status !== 200 || !env.data) {
+                      throw new Error((env && env.msg) || 'Could not start the card setup.');
+                  }
+                  __stripeClientSecret = env.data.clientSecret;
+              }),
+        ]).catch(function (err) {
+            setPmError((err && err.message) || 'Could not open the card form.');
+        });
+    }
+
+    function closePaymentForm() {
+        var wrap = getPmFormWrap();
+        if (!wrap) { return; }
+        wrap.hidden = true;
+        setPmError('');
+        // Stripe.js doesn't expose a clean teardown for a single Element;
+        // we keep it mounted so reopening is instant. Card field stays
+        // pristine because Stripe's iframe clears on its own when hidden.
+    }
+
+    function savePaymentMethod() {
+        if (!__stripe || !__cardElement) {
+            setPmError('Card form is not ready yet — please try again.');
+            return;
+        }
+        if (!__stripeClientSecret) {
+            setPmError('Card setup expired — close and try again.');
+            return;
+        }
+        var saveBtn = document.querySelector('[data-action="acct-save-pm"]');
+        if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Saving…'; }
+        setPmError('');
+
+        __stripe.confirmCardSetup(__stripeClientSecret, {
+            payment_method: { card: __cardElement },
+        }).then(function (result) {
+            if (result.error) {
+                setPmError(result.error.message || 'Card declined.');
+                if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save card'; }
+                return;
+            }
+            // Success — Stripe has attached the new payment_method to the
+            // customer. Reload so the server-rendered list refreshes.
+            flashAfterReload('success', 'Card saved.');
+            window.location.reload();
+        }).catch(function () {
+            setPmError('Could not save the card. Please try again.');
+            if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save card'; }
+        });
+    }
+
+    function deletePaymentMethod(pmId) {
+        if (!pmId) { return; }
+        var confirmer = (window.EatNDealUi && window.EatNDealUi.confirmDialog)
+            ? window.EatNDealUi.confirmDialog
+            : function (o) { return Promise.resolve(window.confirm(o && o.message || 'Remove this card?')); };
+        confirmer({
+            title:       'Remove this card?',
+            message:     'You can always add it again later.',
+            okLabel:     'Remove',
+            cancelLabel: 'Keep it',
+        }).then(function (ok) {
+            if (!ok) { return; }
+            var card = document.querySelector('[data-pm-id="' + pmId + '"]');
+            if (card) { card.classList.add('is-busy'); }
+            fetch('/payment-method/delete', {
+                method:      'POST',
+                credentials: 'same-origin',
+                headers:     { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                body:        JSON.stringify({ payment_method_id: pmId }),
+            }).then(function (r) { return r.json().catch(function () { return null; }); })
+              .then(function (env) {
+                  if (!env || env.status !== 200) {
+                      if (card) { card.classList.remove('is-busy'); }
+                      toast('error', (env && env.msg) || 'Could not remove the card.');
+                      return;
+                  }
+                  flashAfterReload('success', 'Card removed.');
+                  window.location.reload();
+              })
+              .catch(function () {
+                  if (card) { card.classList.remove('is-busy'); }
+                  toast('error', 'Could not reach the server.');
+              });
+        });
+    }
+
+    // Contact input — digits only as the user types (popup-parity).
+    function bindContactDigitsOnly() {
+        var el = document.querySelector('[data-af-contact]');
+        if (!el || el.dataset.bound === '1') { return; }
+        el.dataset.bound = '1';
+        var strip = function () {
+            var raw = el.value || '';
+            var clean = raw.replace(/\D/g, '');
+            if (clean !== raw) {
+                var caret = el.selectionStart || clean.length;
+                var before = raw.slice(0, caret).replace(/\D/g, '').length;
+                el.value = clean;
+                try { el.setSelectionRange(before, before); } catch (e) { /* ignore */ }
+            }
+        };
+        el.addEventListener('input', strip);
+        el.addEventListener('paste', function () { window.setTimeout(strip, 0); });
+        el.addEventListener('keydown', function (ev) {
+            if (ev.ctrlKey || ev.metaKey || ev.altKey || ev.key.length > 1) { return; }
+            if (!/^[0-9]$/.test(ev.key)) { ev.preventDefault(); }
+        });
+    }
+
+    // Late-bound: the form mounts only on the addresses tab, but the
+    // page JS runs on every account tab — guard the lookup.
+    function bootAddressesTab() {
+        bindAddressFormSubmit();
+        bindContactDigitsOnly();
+        consumePendingFlash();
+    }
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', bootAddressesTab);
+    } else {
+        bootAddressesTab();
     }
 
     // ── Custom dropdown (gender) ───────────────────────────────────
@@ -304,6 +815,15 @@
 
     function onReady() {
         cacheRefs();
+
+        // Delegated click handlers — must run on EVERY account tab so
+        // the Addresses tab's Add / Edit / Delete buttons work even
+        // when the profile form isn't present. The handler internally
+        // narrows by [data-action] so it's harmless on other tabs.
+        bindFieldActions();
+
+        // Everything below is profile-tab-only; bail when the form
+        // isn't on the page.
         if (!form) { return; }
 
         if (phoneInput) {
@@ -317,7 +837,6 @@
         form.addEventListener('change', markDirty);
         form.addEventListener('submit', onSubmit);
 
-        bindFieldActions();
         bindCustomSelects();
 
         // Avatar file picker → upload on selection.

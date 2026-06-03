@@ -24,6 +24,7 @@
 <% var imgs = (p.images && p.images.length) ? p.images : (p.image ? [p.image] : []); %>
 <% var sym = brand.currencySymbol; %>
 <div class="pd" data-product
+     data-product-id="<%= p.id %>"
      data-base-price="<%= (typeof p.basePrice === 'number' ? p.basePrice : 0) %>"
      data-currency="<%= sym %>"
      data-name="<%= p.name %>"

@@ -42,6 +42,7 @@
 .pd__stars { display: inline-flex; align-items: center; gap: 4px; color: #f59e0b; }
 .pd__rating-count { color: var(--color-text-soft); font-weight: 500; }
 .pd__price { font-size: 1.5rem; font-weight: 800; margin: 0 0 var(--space-2); }
+.pd__price--na { font-size: 1rem; font-style: italic; color: var(--color-text-soft); }
 .pd__desc { color: var(--color-text-soft); line-height: 1.5; margin: 0 0 var(--space-5); }
 
 /* ── Option groups ─────────────────────────────────────────────────── */

@@ -1,0 +1,182 @@
+<%#
+  views/order/detail.ejs
+
+  What:  Full marketplace order receipt + status page. Server-rendered
+         from /api/v1/customer/order/:id (loadDetail), so a refresh
+         shows the latest status without any client-side polling.
+
+  Data:  OrderController.detailPage passes `order` (or null when not
+         found / not this customer's).
+
+  Design: PWA-responsive. Desktop: items left, summary right. Phone:
+          stacked. Same primary-soft styling vocabulary as the cart.
+-%>
+<% if (!order) { %>
+<section class="order-detail">
+    <div class="order-detail__missing">
+        <h1>Order not found</h1>
+        <p>This order doesn't exist or isn't on your account.</p>
+        <a class="btn btn--primary" href="/account?tab=orders">View my orders</a>
+    </div>
+</section>
+<% } else { %>
+<section class="order-detail">
+
+    <%# Header — restaurant name + order number + status pill -%>
+    <header class="order-detail__head" data-order-root data-order-id="<%= order.id %>" data-order-terminal="<%= order.progress && order.progress.isTerminal ? '1' : '0' %>">
+        <div class="order-detail__head-text">
+            <p class="order-detail__crumbs"><a href="/account?tab=orders">My orders</a> &rsaquo; <%= order.number || ('#' + order.id) %></p>
+            <h1 class="order-detail__title"><%= order.restaurant.name || 'Order' %></h1>
+            <% if (order.createdAt) { %>
+            <p class="order-detail__sub">Placed <span data-utc="<%= order.createdAt %>"><%= new Date(order.createdAt).toLocaleString() %></span></p>
+            <% } %>
+        </div>
+        <span class="order-detail__status order-detail__status--<%= order.statusClass %>" data-order-status-pill><%= order.statusLabel %></span>
+    </header>
+
+    <%# Live tracking timeline — Order placed → Accepted → Preparing →
+        Out for delivery → Delivered (mode-dependent). Cancelled state
+        replaces the whole block with a red strike. Polling refreshes
+        the state classes + ETA every ~30s (see /js/ui/order-track.js). -%>
+    <% var prog = order.progress || { steps: [], isCancelled: false, isTerminal: false }; %>
+    <section class="order-track" data-order-track aria-label="Order tracking">
+        <% if (prog.isCancelled) { %>
+            <div class="order-track__cancelled">
+                <span class="order-track__cancelled-icon" aria-hidden="true">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+                </span>
+                <p>This order was cancelled.</p>
+            </div>
+        <% } else { %>
+            <header class="order-track__head">
+                <h2 class="order-track__current" data-order-current><%= prog.currentLabel %></h2>
+                <% if (prog.isTerminal) { %>
+                    <p class="order-track__eta order-track__eta--done" data-order-eta-line>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+                        <%= order.serveType === 2 ? 'Picked up. Enjoy!' : 'Delivered. Enjoy!' %>
+                    </p>
+                <% } else if (order.etaMinutes != null) { %>
+                    <p class="order-track__eta" data-order-eta-line>
+                        <%= order.serveType === 2 ? 'Ready in' : 'Arriving in' %>
+                        <strong data-order-eta data-eta-min="<%= order.etaMinutes %>">~<%= order.etaLabel || (order.etaMinutes + ' min') %></strong>
+                    </p>
+                <% } %>
+            </header>
+
+            <ol class="order-track__steps" role="list" data-order-steps>
+                <% prog.steps.forEach(function (s, i) { %>
+                <li class="order-track__step order-track__step--<%= s.state %>" data-step="<%= s.key %>">
+                    <span class="order-track__dot" aria-hidden="true">
+                        <% if (s.state === 'done') { %>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                        <% } else { %>
+                            <%= i + 1 %>
+                        <% } %>
+                    </span>
+                    <span class="order-track__label"><%= s.label %></span>
+                </li>
+                <% }); %>
+            </ol>
+        <% } %>
+    </section>
+
+    <div class="order-detail__grid">
+
+        <%# Left column — items + delivery/collection info -%>
+        <div class="order-detail__main">
+
+            <%# ETA / Schedule chip -%>
+            <% if (order.scheduledTime && order.isPreOrder) { %>
+            <div class="order-detail__chip order-detail__chip--info">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>
+                Pre-order scheduled for <%= order.scheduledTime %>
+            </div>
+            <% } %>
+
+            <%# Items list -%>
+            <ol class="order-items" role="list" aria-label="Items in this order">
+                <% order.items.forEach(function (it) { %>
+                <li class="order-item">
+                    <div class="order-item__body">
+                        <p class="order-item__name"><%= it.qty %> × <%= it.name %></p>
+                        <% if (it.modifiers && it.modifiers.length) { %>
+                        <p class="order-item__mods"><%= it.modifiers.map(function (m) { return m.name; }).filter(Boolean).join(' · ') %></p>
+                        <% } %>
+                        <% if (it.remark) { %>
+                        <p class="order-item__remark"><%= it.remark %></p>
+                        <% } %>
+                    </div>
+                    <span class="order-item__price"><%= brand.currencySymbol %><%= (it.linePrice || 0).toFixed(2) %></span>
+                </li>
+                <% }); %>
+            </ol>
+
+            <%# Customer note -%>
+            <% if (order.remark) { %>
+            <p class="order-detail__note"><strong>Note:</strong> <%= order.remark %></p>
+            <% } %>
+
+            <%# Delivery / Collection info -%>
+            <section class="order-detail__info">
+                <h2 class="order-detail__section-title"><%= order.serveType === 2 ? 'Collection' : 'Delivery' %></h2>
+                <% if (order.serveType === 2) { %>
+                <p class="order-detail__line"><strong>Pick up from:</strong> <%= order.restaurant.address || order.restaurant.name %></p>
+                <% if (order.restaurant.phone) { %><p class="order-detail__line"><strong>Phone:</strong> <%= order.restaurant.phone %></p><% } %>
+                <% } else { %>
+                <p class="order-detail__line"><strong>Deliver to:</strong> <%= order.deliveryAddress || '—' %></p>
+                <% if (order.dropOffLabel) { %>
+                <p class="order-detail__line"><strong>Drop-off:</strong> <%= order.dropOffLabel %></p>
+                <% } %>
+                <% if (order.driverInstructions) { %>
+                <p class="order-detail__line"><strong>Instructions:</strong> <%= order.driverInstructions %></p>
+                <% } %>
+                <% } %>
+                <% if (order.deliveryEstimatedTime) { %>
+                <p class="order-detail__line"><strong>Estimated time:</strong> <%= order.deliveryEstimatedTime %><% if (order.advancedOrderWaitingTimeMin) { %> (+<%= order.advancedOrderWaitingTimeMin %> min queue)<% } %></p>
+                <% } %>
+            </section>
+
+            <%# Customer info -%>
+            <section class="order-detail__info">
+                <h2 class="order-detail__section-title">Contact</h2>
+                <% if (order.customerName)   { %><p class="order-detail__line"><strong>Name:</strong> <%= order.customerName %></p><% } %>
+                <% if (order.customerEmail)  { %><p class="order-detail__line"><strong>Email:</strong> <%= order.customerEmail %></p><% } %>
+                <% if (order.customerNumber) { %><p class="order-detail__line"><strong>Phone:</strong> <%= order.customerNumber %></p><% } %>
+            </section>
+        </div>
+
+        <%# Right column — summary panel -%>
+        <aside class="order-detail__summary" aria-label="Order summary">
+            <h2 class="order-detail__section-title">Bill summary</h2>
+            <dl class="order-detail__rows">
+                <div class="order-detail__row"><dt>Subtotal</dt><dd><%= brand.currencySymbol %><%= order.subTotal.toFixed(2) %></dd></div>
+                <% if (order.bagCharge > 0)     { %><div class="order-detail__row"><dt>Bag charge</dt><dd><%= brand.currencySymbol %><%= order.bagCharge.toFixed(2) %></dd></div><% } %>
+                <% if (order.serviceCharge > 0) { %><div class="order-detail__row"><dt>Service charge</dt><dd><%= brand.currencySymbol %><%= order.serviceCharge.toFixed(2) %></dd></div><% } %>
+                <% if (order.charityAmount > 0) { %><div class="order-detail__row"><dt>Charity</dt><dd><%= brand.currencySymbol %><%= order.charityAmount.toFixed(2) %></dd></div><% } %>
+                <% if (order.serveType === 3) { %>
+                <div class="order-detail__row"><dt>Delivery</dt><dd><%= (order.freeDelivery || order.deliveryFees === 0) ? 'Free' : (brand.currencySymbol + order.deliveryFees.toFixed(2)) %></dd></div>
+                <% } %>
+                <% if (order.discount > 0) { %>
+                <div class="order-detail__row order-detail__row--discount"><dt>Discount</dt><dd>−<%= brand.currencySymbol %><%= order.discount.toFixed(2) %></dd></div>
+                <% } %>
+                <div class="order-detail__row order-detail__row--total"><dt>Total</dt><dd><%= brand.currencySymbol %><%= order.grandTotal.toFixed(2) %></dd></div>
+            </dl>
+
+            <% if (order.payment) { %>
+            <p class="order-detail__pay">
+                <strong>Payment:</strong> <%= order.payment.method %>
+                <span class="order-detail__pay-status order-detail__pay-status--<%= order.payment.status.toLowerCase() %>"><%= order.payment.status %></span>
+            </p>
+            <% } %>
+
+            <div class="order-detail__cta">
+                <% if (order.restaurant.slug) { %>
+                <a class="btn btn--ghost" href="/?restaurant=<%= encodeURIComponent(order.restaurant.slug) %>">Order again</a>
+                <% } %>
+                <a class="btn btn--ghost" href="/account?tab=orders">All orders</a>
+            </div>
+        </aside>
+    </div>
+
+</section>
+<% } %>

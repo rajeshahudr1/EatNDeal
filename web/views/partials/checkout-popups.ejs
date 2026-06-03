@@ -1,0 +1,447 @@
+<%#
+  views/partials/checkout-popups.ejs
+
+  What:  Four fullscreen popups (sheets) that the redesigned cart page
+         mounts for in-flow editing — keeps the customer on /cart instead
+         of bouncing to /account or losing scroll position.
+
+           1. Address popup (data-ckt-addr) — list of saved addresses
+              + "Manage addresses" link.
+           2. Schedule popup (data-ckt-sched) — ASAP/Schedule tabs +
+              datetime-local input + Save.
+           3. Promo popup (data-ckt-promo) — applied chip OR code-entry
+              form. Apply / Remove reuse the existing data-action hooks.
+           4. Payment popup (data-ckt-pay) — Cash radio + every saved
+              card row + "New card" row that reveals the Stripe Elements
+              field. Save card consent + secure-by-Stripe blurb live here.
+
+  Pattern: Same .ckt-popup shell (backdrop + sheet + header + body +
+           footer) used by every sheet. JS in /js/ui/checkout-popups.js
+           opens / closes them via data-action="ckt-open-*" + data-action=
+           "ckt-popup-close". The original /js/ui/cart.js handlers run as
+           before — applying a coupon, switching mode, picking an address,
+           saving the schedule, etc. are all unchanged.
+
+  Used:  Included from views/cart/index.ejs only (not in the layout —
+         these popups only make sense on the cart page).
+-%>
+<% var sym = brand.currencySymbol; %>
+
+<%# ════════════════════ Review / confirm order popup ════════════════════ %>
+<%# Opened by "Continue to payment". Shows fulfilment + schedule +
+    payment + the full total breakdown so the customer confirms
+    everything before the order is placed. "Place order" fires the
+    real cart-checkout flow (cash → place; card → Stripe confirm). %>
+<div class="ckt-popup" data-ckt-popup="confirm" hidden role="dialog" aria-modal="true" aria-labelledby="ckt-confirm-title">
+    <div class="ckt-popup__backdrop" data-action="ckt-popup-close" aria-hidden="true"></div>
+    <div class="ckt-popup__sheet" role="document">
+        <header class="ckt-popup__head">
+            <button type="button" class="ckt-popup__close" data-action="ckt-popup-close" aria-label="Close">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+            <h2 id="ckt-confirm-title" class="ckt-popup__title">Review your order</h2>
+            <span class="ckt-popup__hint"></span>
+        </header>
+        <div class="ckt-popup__body">
+            <ul class="ckt-review" role="list">
+                <li class="ckt-review__row">
+                    <span class="ckt-review__label"><%= cart.serveType === 2 ? 'Pickup from' : 'Deliver to' %></span>
+                    <span class="ckt-review__value">
+                        <% if (cart.serveType === 2) { %>
+                            <%= (typeof cart_restaurant !== 'undefined' && cart_restaurant && cart_restaurant.address) ? cart_restaurant.address : ((typeof cart_restaurant !== 'undefined' && cart_restaurant) ? cart_restaurant.name : 'Restaurant') %>
+                        <% } else { %>
+                            <%= cart.deliveryAddress || '—' %>
+                        <% } %>
+                    </span>
+                </li>
+                <% if (cart.serveType === 3 && cart.dropOffLabel) { %>
+                <li class="ckt-review__row">
+                    <span class="ckt-review__label">Drop-off</span>
+                    <span class="ckt-review__value"><%= cart.dropOffLabel %><% if (cart.driverInstructions) { %> · <%= cart.driverInstructions %><% } %></span>
+                </li>
+                <% } %>
+                <li class="ckt-review__row">
+                    <span class="ckt-review__label">When</span>
+                    <span class="ckt-review__value">
+                        <% if (cart.isPreOrder && cart.preOrderTime) { %>
+                            Scheduled for <%= new Date(cart.preOrderTime).toLocaleString() %>
+                        <% } else { %>
+                            ASAP — <%= cart.serveType === 2 ? 'pickup' : 'deliver' %> as soon as ready
+                        <% } %>
+                    </span>
+                </li>
+                <li class="ckt-review__row">
+                    <span class="ckt-review__label">Payment</span>
+                    <%# Filled by JS on open (the method can change without
+                        a reload via the payment popup). %>
+                    <span class="ckt-review__value" data-ckt-confirm-pay>—</span>
+                </li>
+                <li class="ckt-review__row">
+                    <span class="ckt-review__label">Items</span>
+                    <span class="ckt-review__value"><%= cart.totalQty %> item<%= cart.totalQty === 1 ? '' : 's' %></span>
+                </li>
+            </ul>
+
+            <dl class="ckt-review__totals">
+                <div class="ckt-totals__row">
+                    <dt>Subtotal</dt><dd><%= sym %><%= cart.subTotal.toFixed(2) %></dd>
+                </div>
+                <% if (cart.serveType === 3) { %>
+                <div class="ckt-totals__row">
+                    <dt>Delivery fee</dt>
+                    <dd><% if (cart.freeDelivery || cart.deliveryFees === 0) { %><span class="ckt-totals__free">Free</span><% } else { %><%= sym %><%= cart.deliveryFees.toFixed(2) %><% } %></dd>
+                </div>
+                <% } %>
+                <% if (cart.bagCharge > 0 || cart.serviceCharge > 0 || cart.charityAmount > 0) { %>
+                <div class="ckt-totals__row">
+                    <dt>Other fees</dt><dd><%= sym %><%= (cart.bagCharge + cart.serviceCharge + cart.charityAmount).toFixed(2) %></dd>
+                </div>
+                <% } %>
+                <% if (cart.discount > 0) { %>
+                <div class="ckt-totals__row ckt-totals__row--discount">
+                    <dt><%= cart.promocode || 'Discount' %></dt><dd>− <%= sym %><%= cart.discount.toFixed(2) %></dd>
+                </div>
+                <% } %>
+                <div class="ckt-totals__row ckt-totals__row--total">
+                    <dt>Total</dt><dd><%= sym %><%= cart.grandtotal.toFixed(2) %></dd>
+                </div>
+            </dl>
+        </div>
+        <footer class="ckt-popup__foot">
+            <button type="button" class="ckt-popup__cancel" data-action="ckt-popup-close">Back</button>
+            <button type="button" class="ckt-popup__apply" data-action="cart-checkout">
+                <span class="ckt-confirm-cta__label">Place order</span>
+                <span> · <%= sym %><%= cart.grandtotal.toFixed(2) %></span>
+            </button>
+        </footer>
+    </div>
+</div>
+
+<%# ════════════════════ Address popup ════════════════════ %>
+<div class="ckt-popup" data-ckt-popup="address" hidden role="dialog" aria-modal="true" aria-labelledby="ckt-addr-title">
+    <div class="ckt-popup__backdrop" data-action="ckt-popup-close" aria-hidden="true"></div>
+    <div class="ckt-popup__sheet" role="document">
+        <header class="ckt-popup__head">
+            <button type="button" class="ckt-popup__close" data-action="ckt-popup-close" aria-label="Close">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+            <h2 id="ckt-addr-title" class="ckt-popup__title">Choose a delivery address</h2>
+            <span class="ckt-popup__hint"></span>
+        </header>
+        <div class="ckt-popup__body">
+            <% if (!addrList.length) { %>
+                <p class="ckt-popup__empty">You don't have any saved addresses yet.</p>
+                <a class="btn btn--primary ckt-popup__add" href="/account?tab=addresses">+ Add an address</a>
+            <% } else { %>
+                <ul class="ckt-list" role="list" data-cart-address-list>
+                    <% addrList.forEach(function (a) {
+                        // Single source of truth — the `selected` row the
+                        // cart EJS already resolved. Avoids a second,
+                        // diverging heuristic that mis-highlighted rows.
+                        var sel = selected && String(selected.id) === String(a.id);
+                    %>
+                        <li class="ckt-list__row">
+                            <button type="button" class="ckt-list__btn<%= sel ? ' is-selected' : '' %>" data-action="cart-set-address" data-address-id="<%= a.id %>">
+                                <span class="ckt-list__icon" aria-hidden="true">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s7-7.5 7-13a7 7 0 0 0-14 0c0 5.5 7 13 7 13z"/><circle cx="12" cy="9" r="2.5"/></svg>
+                                </span>
+                                <span class="ckt-list__body">
+                                    <span class="ckt-list__title">
+                                        <% if (a.label) { %><%= a.label %><% } else { %>Address<% } %>
+                                        <% if (a.isDefault) { %><span class="ckt-list__tag">Default</span><% } %>
+                                    </span>
+                                    <span class="ckt-list__sub"><%= [a.address, a.postCode].filter(Boolean).join(', ') %></span>
+                                </span>
+                                <span class="ckt-list__mark" aria-hidden="true"></span>
+                            </button>
+                        </li>
+                    <% }); %>
+                </ul>
+                <a class="ckt-popup__link" href="/account?tab=addresses">+ Manage addresses</a>
+            <% } %>
+        </div>
+    </div>
+</div>
+
+<%# ════════════════════ Schedule popup ════════════════════ %>
+<%# data-cart-sched is on the SHEET (not just the body) so BOTH the
+    tabs/panel (in the body) AND the Save button (in the footer) resolve
+    to the same root — onSchedSave reads the date input via this root,
+    and the Save button lives in the footer, outside the body. %>
+<div class="ckt-popup" data-ckt-popup="schedule" hidden role="dialog" aria-modal="true" aria-labelledby="ckt-sched-title">
+    <div class="ckt-popup__backdrop" data-action="ckt-popup-close" aria-hidden="true"></div>
+    <div class="ckt-popup__sheet" role="document" data-cart-sched>
+        <header class="ckt-popup__head">
+            <button type="button" class="ckt-popup__close" data-action="ckt-popup-close" aria-label="Close">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+            <h2 id="ckt-sched-title" class="ckt-popup__title">When would you like it?</h2>
+            <span class="ckt-popup__hint"></span>
+        </header>
+        <div class="ckt-popup__body">
+            <div class="ckt-popup__tabs" role="tablist">
+                <button type="button" class="ckt-popup__tab<%= cart.isPreOrder ? '' : ' is-active' %>" data-action="cart-sched-asap" role="tab" aria-selected="<%= cart.isPreOrder ? 'false' : 'true' %>">ASAP</button>
+                <button type="button" class="ckt-popup__tab<%= cart.isPreOrder ? ' is-active' : '' %>" data-action="cart-sched-pick" role="tab" aria-selected="<%= cart.isPreOrder ? 'true' : 'false' %>">Schedule</button>
+            </div>
+            <div class="ckt-popup__field" data-cart-sched-panel<%= cart.isPreOrder ? '' : ' hidden' %>>
+                <label for="ckt-sched-input" class="ckt-popup__label">Pick a date &amp; time</label>
+                <input type="datetime-local" id="ckt-sched-input" class="ckt-popup__input" data-cart-sched-input value="<%= schedDefault %>" min="<%= schedMin %>">
+            </div>
+            <% if (cart.isPreOrder && cart.preOrderTime) { %>
+                <p class="ckt-popup__hint-row" data-cart-sched-time>Currently scheduled for <%= new Date(cart.preOrderTime).toLocaleString() %></p>
+            <% } %>
+        </div>
+        <footer class="ckt-popup__foot">
+            <button type="button" class="ckt-popup__cancel" data-action="ckt-popup-close">Cancel</button>
+            <button type="button" class="ckt-popup__apply" data-action="cart-sched-save">Save</button>
+        </footer>
+    </div>
+</div>
+
+<%# ════════════════════ Drop-off options popup ════════════════════ %>
+<%
+    var dropOpts = [
+        { v: 'hand_to_me',     label: 'Hand it to me' },
+        { v: 'meet_at_door',   label: 'Meet at my door' },
+        { v: 'meet_outside',   label: 'Meet outside' },
+        { v: 'meet_reception', label: 'Meet at reception' },
+        { v: 'leave_at_door',  label: 'Leave at my door' }
+    ];
+    var curDrop = cart.dropOffOption || '';
+%>
+<div class="ckt-popup" data-ckt-popup="instructions" hidden role="dialog" aria-modal="true" aria-labelledby="ckt-instr-title">
+    <div class="ckt-popup__backdrop" data-action="ckt-popup-close" aria-hidden="true"></div>
+    <div class="ckt-popup__sheet" role="document">
+        <header class="ckt-popup__head">
+            <button type="button" class="ckt-popup__close" data-action="ckt-popup-close" aria-label="Close">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+            <h2 id="ckt-instr-title" class="ckt-popup__title">Drop-off options</h2>
+            <span class="ckt-popup__hint"></span>
+        </header>
+        <div class="ckt-popup__body" data-ckt-instr-root>
+            <ul class="ckt-list" role="list">
+                <% dropOpts.forEach(function (o) { %>
+                    <li class="ckt-list__row">
+                        <button type="button" class="ckt-list__btn<%= curDrop === o.v ? ' is-selected' : '' %>" data-action="ckt-instr-pick" data-dropoff="<%= o.v %>">
+                            <span class="ckt-list__icon" aria-hidden="true">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                            </span>
+                            <span class="ckt-list__body">
+                                <span class="ckt-list__title"><%= o.label %></span>
+                            </span>
+                            <span class="ckt-list__mark" aria-hidden="true"></span>
+                        </button>
+                    </li>
+                <% }); %>
+            </ul>
+            <div class="ckt-popup__field" style="margin-top:16px;">
+                <label for="ckt-instr-input" class="ckt-popup__label">Instructions for delivery person</label>
+                <textarea id="ckt-instr-input" class="ckt-popup__input" data-ckt-instr-text rows="3" maxlength="200" placeholder="e.g. Gate code 4521, knock instead of ringing"><%= cart.driverInstructions || '' %></textarea>
+            </div>
+        </div>
+        <footer class="ckt-popup__foot">
+            <button type="button" class="ckt-popup__cancel" data-action="ckt-popup-close">Cancel</button>
+            <button type="button" class="ckt-popup__apply" data-action="ckt-instr-save">Save</button>
+        </footer>
+    </div>
+</div>
+
+<%# ════════════════════ Promo popup ════════════════════ %>
+<div class="ckt-popup" data-ckt-popup="promo" hidden role="dialog" aria-modal="true" aria-labelledby="ckt-promo-title">
+    <div class="ckt-popup__backdrop" data-action="ckt-popup-close" aria-hidden="true"></div>
+    <div class="ckt-popup__sheet" role="document">
+        <header class="ckt-popup__head">
+            <button type="button" class="ckt-popup__close" data-action="ckt-popup-close" aria-label="Close">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+            <h2 id="ckt-promo-title" class="ckt-popup__title">Promotions</h2>
+            <span class="ckt-popup__hint"></span>
+        </header>
+        <%# ── List view: applied chip (if any) + code box + the FULL
+            available-promos list (always shown so the customer can see
+            and swap offers even when one is already applied). ── %>
+        <div class="ckt-popup__body" data-cart-coupon data-ckt-promo-list>
+            <% if (cart.promocode) { %>
+                <div class="ckt-popup__chip">
+                    <span class="ckt-popup__chip-icon" aria-hidden="true">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41 13.42 20.58a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+                    </span>
+                    <div class="ckt-popup__chip-body">
+                        <p class="ckt-popup__chip-name"><%= cart.promocode %> <span class="ckt-popup__chip-applied">Applied</span></p>
+                        <p class="ckt-popup__chip-sub">
+                            <% if (cart.discount > 0) { %>−<%= sym %><%= cart.discount.toFixed(2) %> off<% } %>
+                            <% if (cart.freeDelivery) { %><%= cart.discount > 0 ? ' · ' : '' %>Free delivery<% } %>
+                        </p>
+                    </div>
+                    <button type="button" class="ckt-popup__chip-remove" data-action="cart-remove-coupon" aria-label="Remove coupon">×</button>
+                </div>
+            <% } %>
+
+            <%# Code entry — applies any code (incl. ones not in the list,
+                e.g. shared from a friend / another product). %>
+            <form class="ckt-popup__field" data-cart-coupon-form onsubmit="return false;">
+                <div class="ckt-popup__input-row">
+                    <input type="text" id="ckt-promo-input" class="ckt-popup__input" data-cart-coupon-input maxlength="40" placeholder="Enter promo code" autocomplete="off" autocapitalize="characters">
+                    <button type="submit" class="ckt-popup__apply ckt-popup__apply--inline" data-action="cart-apply-coupon">Apply</button>
+                </div>
+            </form>
+
+            <%# Available promos for THIS restaurant — Select applies the
+                code; Details opens the detail sub-view. Applying a
+                different code replaces any one already on the cart. %>
+            <% if (promoList && promoList.length) { %>
+                <div class="ckt-promos">
+                    <h3 class="ckt-promos__title">Your available promos</h3>
+                    <p class="ckt-promos__sub">Limit of one per order</p>
+                    <% promoList.forEach(function (p) {
+                        var isApplied = cart.promocode && String(cart.promocode).toLowerCase() === String(p.code).toLowerCase();
+                    %>
+                        <div class="ckt-promo<%= p.eligible ? '' : ' is-locked' %><%= isApplied ? ' is-applied' : '' %>"
+                             data-ckt-promo-id="<%= p.id %>"
+                             data-promo='<%= encodeURIComponent(JSON.stringify(p)) %>'>
+                            <div class="ckt-promo__main">
+                                <span class="ckt-promo__icon" aria-hidden="true">
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41 13.42 20.58a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+                                </span>
+                                <div class="ckt-promo__body">
+                                    <p class="ckt-promo__headline"><%= p.discountLabel %><% if (p.freeDelivery) { %> · Free delivery<% } %></p>
+                                    <p class="ckt-promo__meta">
+                                        <%= p.expiryLabel %><% if (p.minOrderLabel) { %> · <%= p.minOrderLabel %><% } %>
+                                    </p>
+                                    <% if (!p.eligible && p.ineligibleReason) { %>
+                                        <p class="ckt-promo__locked"><%= p.ineligibleReason %></p>
+                                    <% } %>
+                                </div>
+                            </div>
+                            <div class="ckt-promo__actions">
+                                <% if (isApplied) { %>
+                                    <button type="button" class="ckt-promo__select is-applied" data-action="cart-remove-coupon">Remove</button>
+                                <% } else { %>
+                                    <button type="button" class="ckt-promo__select" data-action="ckt-promo-select" data-code="<%= p.code %>"<%= p.eligible ? '' : ' disabled' %>>Select</button>
+                                <% } %>
+                                <button type="button" class="ckt-promo__details" data-action="ckt-promo-details">Details</button>
+                            </div>
+                        </div>
+                    <% }); %>
+                </div>
+            <% } else if (!cart.promocode) { %>
+                <p class="ckt-popup__hint-row">No promotions available for this restaurant right now. Got a code? Enter it above.</p>
+            <% } %>
+        </div>
+
+        <%# ── Detail sub-view: one promo's full terms ── %>
+        <div class="ckt-popup__body ckt-promo-detail" data-ckt-promo-detail hidden>
+            <h2 class="ckt-promo-detail__headline" data-ckt-detail-headline></h2>
+            <div class="ckt-promo-detail__group">
+                <h4 class="ckt-promo-detail__label">Expiry</h4>
+                <p class="ckt-promo-detail__value" data-ckt-detail-expiry></p>
+            </div>
+            <div class="ckt-promo-detail__group">
+                <h4 class="ckt-promo-detail__label">Location</h4>
+                <p class="ckt-promo-detail__value">Valid for this restaurant only</p>
+            </div>
+            <div class="ckt-promo-detail__group">
+                <h4 class="ckt-promo-detail__label">Details</h4>
+                <p class="ckt-promo-detail__value" data-ckt-detail-body></p>
+            </div>
+            <footer class="ckt-popup__foot">
+                <button type="button" class="ckt-popup__cancel" data-action="ckt-promo-detail-back">Back</button>
+                <button type="button" class="ckt-popup__apply" data-action="ckt-promo-detail-select" data-code="">Select</button>
+            </footer>
+        </div>
+    </div>
+</div>
+
+<%# ════════════════════ Payment popup ════════════════════ %>
+<div class="ckt-popup" data-ckt-popup="payment" hidden role="dialog" aria-modal="true" aria-labelledby="ckt-pay-title">
+    <div class="ckt-popup__backdrop" data-action="ckt-popup-close" aria-hidden="true"></div>
+    <div class="ckt-popup__sheet ckt-popup__sheet--pay" role="document">
+        <header class="ckt-popup__head">
+            <button type="button" class="ckt-popup__close" data-action="ckt-popup-close" aria-label="Close">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+            <h2 id="ckt-pay-title" class="ckt-popup__title">Choose payment method</h2>
+            <span class="ckt-popup__hint"></span>
+        </header>
+        <div class="ckt-popup__body">
+            <ul class="ckt-list" role="list">
+                <%# Cash (always) %>
+                <li class="ckt-list__row">
+                    <button type="button" class="ckt-list__btn" data-action="ckt-pick-pay" data-pay-mode="cash">
+                        <span class="ckt-list__icon" aria-hidden="true">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="3"/></svg>
+                        </span>
+                        <span class="ckt-list__body">
+                            <span class="ckt-list__title">Cash</span>
+                            <span class="ckt-list__sub">Pay on <%= cart.serveType === 2 ? 'pickup' : 'delivery' %></span>
+                        </span>
+                        <span class="ckt-list__mark" aria-hidden="true"></span>
+                    </button>
+                </li>
+
+                <%# Saved cards %>
+                <% if (stripeOn && payList.length) { %>
+                    <% payList.forEach(function (c) {
+                        var brand = (c.brand || 'card').replace(/\b\w/g, function (s){ return s.toUpperCase(); });
+                        var exp = (c.expMonth && c.expYear) ? (String(c.expMonth).padStart(2,'0') + '/' + String(c.expYear).slice(-2)) : '';
+                    %>
+                    <li class="ckt-list__row">
+                        <button type="button" class="ckt-list__btn" data-action="ckt-pick-pay" data-pay-mode="card:<%= c.id %>">
+                            <span class="ckt-list__icon" aria-hidden="true">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+                            </span>
+                            <span class="ckt-list__body">
+                                <span class="ckt-list__title"><%= brand %> •••• <%= c.last4 %></span>
+                                <% if (exp) { %><span class="ckt-list__sub">Expires <%= exp %></span><% } %>
+                            </span>
+                            <span class="ckt-list__mark" aria-hidden="true"></span>
+                        </button>
+                    </li>
+                    <% }); %>
+                <% } %>
+
+                <%# New card row — reveals Stripe Elements + save consent %>
+                <% if (stripeOn) { %>
+                <li class="ckt-list__row">
+                    <button type="button" class="ckt-list__btn" data-action="ckt-pick-pay" data-pay-mode="new-card">
+                        <span class="ckt-list__icon" aria-hidden="true">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                        </span>
+                        <span class="ckt-list__body">
+                            <span class="ckt-list__title">Add a new card</span>
+                            <span class="ckt-list__sub">Securely saved with Stripe</span>
+                        </span>
+                        <span class="ckt-list__mark" aria-hidden="true"></span>
+                    </button>
+                </li>
+                <% } %>
+            </ul>
+
+            <%# New-card form (Stripe Elements mount + save consent) — shown
+                only when the New Card row is picked. Marked with data-stripe-mount
+                so /js/ui/cart.js's existing ensureCardElement() targets it. %>
+            <% if (stripeOn) { %>
+            <div class="ckt-popup__card" data-cart-card-panel hidden>
+                <div class="ckt-popup__field">
+                    <label class="ckt-popup__label">Card details</label>
+                    <div class="ckt-popup__stripe" data-stripe-mount></div>
+                    <p class="ckt-popup__err" data-stripe-error role="alert" hidden></p>
+                </div>
+                <label class="ckt-popup__check">
+                    <input type="checkbox" data-cart-save-card>
+                    <span>Save this card for future orders</span>
+                </label>
+                <p class="ckt-popup__secure">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                    Encrypted and processed by Stripe — your card is never stored on our servers.
+                </p>
+            </div>
+            <% } %>
+        </div>
+        <footer class="ckt-popup__foot">
+            <button type="button" class="ckt-popup__cancel" data-action="ckt-popup-close">Cancel</button>
+            <button type="button" class="ckt-popup__apply" data-action="ckt-apply-pay">Use this method</button>
+        </footer>
+    </div>
+</div>

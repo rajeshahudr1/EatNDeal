@@ -731,6 +731,15 @@ async function index(req, res, next) {
         //                        'restaurant'  single restaurant + its menu
         //   selected_restaurant: the restaurant object (when viewMode='restaurant')
         view_mode:           viewMode,
+        // Show the header search + mobile search/filter row on every
+        // browse surface this controller serves — default home feed,
+        // the all-restaurants / all-cuisines grids, search results and
+        // a single restaurant's menu — but NOT on the product-detail
+        // page (viewMode === 'product'), where there is a single item
+        // and nothing to search. The pre-location landing page renders
+        // 'site/location' (separate branch) and never sets this, so it
+        // inherits the default OFF.
+        show_search:         viewMode !== 'product',
         selected_restaurant: liveRestaurant,
         // Restaurant page: left-rail menu categories + product sections.
         menu_categories:     liveMenuCategories,

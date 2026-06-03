@@ -76,6 +76,18 @@
     background: var(--color-primary); color: #fff;
     border-radius: 8px; font-size: 0.65rem; font-weight: 700;
     display: grid; place-items: center;
+    transition: transform 200ms ease, background 200ms ease;
+}
+/* Pulse + brief shadow when an item is added — `is-bumping` toggled by
+   /js/ui/cart.js after each successful add-to-cart. */
+.header-quick__badge.is-bumping {
+    animation: cart-badge-bump 600ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+@keyframes cart-badge-bump {
+    0%   { transform: scale(1);    box-shadow: 0 0 0 0   rgba(229, 37, 42, 0.55); }
+    30%  { transform: scale(1.4);  box-shadow: 0 0 0 8px rgba(229, 37, 42, 0);    }
+    60%  { transform: scale(0.92); }
+    100% { transform: scale(1);    box-shadow: 0 0 0 0   rgba(229, 37, 42, 0);    }
 }
 .site-header__ordernow { white-space: nowrap; }
 /* Mobile: keep ONLY the Cart icon from the quick cluster in the top

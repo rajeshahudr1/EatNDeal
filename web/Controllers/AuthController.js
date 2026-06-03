@@ -355,16 +355,28 @@ async function accountPage(req, res) {
         }
     } catch (e) { /* keep the session copy */ }
 
-    // Profile stats. rewardPoints comes from the real loyalty_points;
-    // orders / favourites / offers aren't tracked for marketplace
-    // customers yet (no customer↔orders link), so they're honest zeros
-    // until those features land.
+    // Profile stats — fetched in parallel on every render so the
+    // counts at the bottom of the My Profile card are accurate even
+    // when the customer hasn't opened the Orders / Favourites tabs
+    // yet. Each call is wrapped in its own try/catch so one slow or
+    // failing endpoint can't blank the whole stats row.
     const stats = {
         orders:       0,
         favourites:   0,
         rewardPoints: Number(user.loyalty_points) || 0,
         offers:       0,
     };
+    const statQS = new URLSearchParams({ customer_id: String(user.id) });
+    const [ordersStatRes, favsStatRes] = await Promise.all([
+        callApi(req, 'GET', '/api/v1/customer/orders?'     + statQS.toString()).catch(() => null),
+        callApi(req, 'GET', '/api/v1/customer/favourites?' + statQS.toString()).catch(() => null),
+    ]);
+    if (ordersStatRes && ordersStatRes.body && ordersStatRes.body.status === 200 && ordersStatRes.body.data) {
+        stats.orders = (ordersStatRes.body.data.orders || []).length;
+    }
+    if (favsStatRes && favsStatRes.body && favsStatRes.body.status === 200 && favsStatRes.body.data) {
+        stats.favourites = (favsStatRes.body.data.favourites || []).length;
+    }
 
     // Which account tab is active. Only "profile" has a real screen today;
     // the rest render a placeholder panel (with the tab highlighted) until
@@ -402,10 +414,50 @@ async function accountPage(req, res) {
         stats.favourites = favourites.length;
     }
 
+    // Orders tab — fetch the customer's marketplace orders (newest
+    // first, paginated). Same envelope handling as favourites.
+    let orders = null;
+    if (activeTab === 'orders') {
+        try {
+            const qs = new URLSearchParams({ customer_id: String(user.id), limit: '20' });
+            const oRes = await callApi(req, 'GET', '/api/v1/customer/orders?' + qs.toString());
+            orders = (oRes.body && oRes.body.status === 200 && oRes.body.data && oRes.body.data.orders) || [];
+        } catch (e) { orders = []; }
+        stats.orders = orders.length;
+    }
+
+    // Addresses tab — fetch the customer's saved-address book so the
+    // tab renders the live list inline (same cards + actions the
+    // location modal shows, no popup needed).
+    let addresses = null;
+    if (activeTab === 'addresses') {
+        try {
+            const qs = new URLSearchParams({ customer_id: String(user.id) });
+            const aRes = await callApi(req, 'GET', '/api/v1/customer/addresses?' + qs.toString());
+            addresses = (aRes.body && aRes.body.status === 200 && aRes.body.data && aRes.body.data.addresses) || [];
+        } catch (e) { addresses = []; }
+    }
+
+    // Payment Methods tab — pull saved cards from Stripe via the api.
+    // Returns an empty list when Stripe isn't configured OR the customer
+    // has never saved one; the UI handles both with the same empty state.
+    let paymentMethods = null;
+    if (activeTab === 'payment') {
+        try {
+            const qs = new URLSearchParams({ customer_id: String(user.id) });
+            const pmRes = await callApi(req, 'GET', '/api/v1/customer/payment-methods?' + qs.toString());
+            paymentMethods = (pmRes.body && pmRes.body.status === 200 && pmRes.body.data && pmRes.body.data.paymentMethods) || [];
+        } catch (e) { paymentMethods = []; }
+    }
+
     return res.render('account/index', {
         page_title:       TABS[activeTab],
         _layoutFile:      '../_layout',
-        active_nav:       'profile',
+        // The account page hosts both the Profile area and the Orders
+        // tab (the bottom-nav "Orders" item routes here via /orders).
+        // Highlight the matching bottom-nav icon: Orders when the orders
+        // tab is open, otherwise Profile.
+        active_nav:       activeTab === 'orders' ? 'orders' : 'profile',
         extra_js:         '/js/pages/account.js',
         // Full site chrome (header + footer) like the mockup, but NO promo
         // strip on this page.
@@ -416,6 +468,9 @@ async function accountPage(req, res) {
         active_tab:       activeTab,
         active_tab_label: TABS[activeTab],
         favourites:       favourites,
+        orders:           orders,
+        addresses:        addresses,
+        payment_methods:  paymentMethods,
     });
 }
 

@@ -127,15 +127,18 @@
     --header-height-mobile:  64px;
     --container-max:         1200px;
 
-    /* z-index scale */
+    /* z-index scale
+     * Strict ordering: page chrome < modals < dialogs < toasts.
+     * The product modal hardcodes 1100 for layering against a future
+     * second-level sheet (its nested .pm-group sits at z:3 INSIDE
+     * the 1100 stacking context). Dialog and toast must beat 1100
+     * so a confirm dialog OR an error message fired from inside a
+     * popup still reaches the customer — otherwise they render
+     * behind the modal and the customer sees nothing happen. */
     --z-header:       50;
     --z-modal:        100;
-    /* Toast sits ABOVE everything — modals, drawers, loader, dialogs.
-     * Otherwise a "saved" / "error" message issued while a modal is
-     * open would render behind the modal and the user wouldn't see
-     * it. 200 leaves headroom for new layers without rearrange. */
-    --z-toast:        200;
-    --z-dialog:       110;
+    --z-dialog:       1200;
+    --z-toast:        1300;
 }
 
 /* ── Reset ──────────────────────────────────────────────────────────── */

@@ -1,0 +1,179 @@
+<%#
+  views/merchant/order-detail.ejs
+
+  What:  Full single-order receipt + status timeline + advance buttons
+         on the merchant side. Same data shape Orders.loadDetail returns
+         for the customer side (we reuse the loader server-side), with
+         nextActions appended so the merchant sees the right buttons.
+
+  Data:  MerchantController.detailPage passes `order` (or null) +
+         `blocked` flag for non-staff users.
+
+  Reuses:
+    • .order-track timeline markup + CSS from customer-side detail
+      (same progress shape).
+    • .merchant-order__actions + .merchant-btn classes from the
+      dashboard cards.
+    • [data-action="merchant-advance"] click handler from /js/ui/merchant.js
+      (already mounted globally — patches the row + reloads on success).
+-%>
+<section class="merchant" data-merchant-root>
+
+    <% if (blocked) { %>
+        <div class="merchant__blocked">
+            <h1>Merchant dashboard</h1>
+            <p><%= blockedMsg %></p>
+        </div>
+    <% } else if (!order) { %>
+        <div class="merchant__blocked">
+            <h1>Order not found</h1>
+            <p>This order doesn't exist or isn't on your company's account.</p>
+            <a class="btn btn--primary" href="/merchant">Back to dashboard</a>
+        </div>
+    <% } else { %>
+
+        <%# Header — crumbs + restaurant + status pill -%>
+        <header class="merchant-detail__head" data-order-id="<%= order.id %>">
+            <div class="merchant-detail__head-text">
+                <p class="merchant-detail__crumbs"><a href="/merchant">Dashboard</a> &rsaquo; <%= order.number || ('#' + order.id) %></p>
+                <h1 class="merchant-detail__title">Order <%= order.number || ('#' + order.id) %></h1>
+                <% if (order.createdAt) { %>
+                <p class="merchant-detail__sub">Placed <span data-utc="<%= order.createdAt %>"><%= new Date(order.createdAt).toLocaleString() %></span></p>
+                <% } %>
+            </div>
+            <span class="merchant-order__status merchant-order__status--<%= order.statusClass %>" data-status-pill><%= order.statusLabel %></span>
+        </header>
+
+        <%# Timeline (same component as the customer's tracker — same
+            data, same colour story; merchant sees the live progress as
+            it advances). -%>
+        <% var prog = order.progress || { steps: [], isCancelled: false, isTerminal: false }; %>
+        <section class="order-track" aria-label="Order tracking">
+            <% if (prog.isCancelled) { %>
+                <div class="order-track__cancelled">
+                    <span class="order-track__cancelled-icon" aria-hidden="true">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+                    </span>
+                    <p>Cancelled.</p>
+                </div>
+            <% } else { %>
+                <header class="order-track__head">
+                    <h2 class="order-track__current"><%= prog.currentLabel %></h2>
+                    <% if (!prog.isTerminal && order.etaMinutes != null) { %>
+                        <p class="order-track__eta">
+                            <%= order.serveType === 2 ? 'Ready in' : 'Arriving in' %>
+                            <strong>~<%= order.etaLabel || (order.etaMinutes + ' min') %></strong>
+                        </p>
+                    <% } %>
+                </header>
+                <ol class="order-track__steps" role="list">
+                    <% prog.steps.forEach(function (s, i) { %>
+                    <li class="order-track__step order-track__step--<%= s.state %>" data-step="<%= s.key %>">
+                        <span class="order-track__dot" aria-hidden="true">
+                            <% if (s.state === 'done') { %>
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                            <% } else { %><%= i + 1 %><% } %>
+                        </span>
+                        <span class="order-track__label"><%= s.label %></span>
+                    </li>
+                    <% }); %>
+                </ol>
+            <% } %>
+        </section>
+
+        <%# Action buttons — same handler the dashboard uses. -%>
+        <% if (order.nextActions && order.nextActions.length) { %>
+        <section class="merchant-detail__actions">
+            <% order.nextActions.forEach(function (a) { %>
+                <button type="button"
+                        class="merchant-btn<%= a.danger ? ' merchant-btn--danger' : ' merchant-btn--primary' %>"
+                        data-action="merchant-advance"
+                        data-order-id="<%= order.id %>"
+                        data-expected-status="<%= order.status %>"
+                        data-next-status="<%= a.status %>"><%= a.label %></button>
+            <% }); %>
+        </section>
+        <% } %>
+
+        <div class="merchant-detail__grid">
+
+            <%# Left — items + delivery + customer details -%>
+            <div class="merchant-detail__main">
+
+                <%# Items -%>
+                <section class="merchant-detail__card">
+                    <h2 class="merchant-detail__card-title">Items</h2>
+                    <ol class="order-items" role="list">
+                        <% order.items.forEach(function (it) { %>
+                        <li class="order-item">
+                            <div class="order-item__body">
+                                <p class="order-item__name"><%= it.qty %> × <%= it.name %></p>
+                                <% if (it.modifiers && it.modifiers.length) { %>
+                                <p class="order-item__mods"><%= it.modifiers.map(function (m) { return m.name; }).filter(Boolean).join(' · ') %></p>
+                                <% } %>
+                                <% if (it.remark) { %><p class="order-item__remark"><%= it.remark %></p><% } %>
+                            </div>
+                            <span class="order-item__price"><%= brand.currencySymbol %><%= (it.linePrice || 0).toFixed(2) %></span>
+                        </li>
+                        <% }); %>
+                    </ol>
+                    <% if (order.remark) { %>
+                        <p class="merchant-detail__note"><strong>Customer note:</strong> <%= order.remark %></p>
+                    <% } %>
+                </section>
+
+                <%# Delivery / Collection -%>
+                <section class="merchant-detail__card">
+                    <h2 class="merchant-detail__card-title"><%= order.serveType === 2 ? 'Collection' : 'Delivery' %></h2>
+                    <% if (order.serveType === 2) { %>
+                        <p class="merchant-detail__line"><strong>Collect from:</strong> <%= order.restaurant.address || order.restaurant.name %></p>
+                    <% } else { %>
+                        <p class="merchant-detail__line"><strong>Deliver to:</strong> <%= order.deliveryAddress || '—' %></p>
+                    <% } %>
+                    <% if (order.isPreOrder && order.scheduledTime) { %>
+                        <p class="merchant-detail__line"><strong>Pre-order time:</strong> <%= order.scheduledTime %></p>
+                    <% } %>
+                    <% if (order.deliveryEstimatedTime) { %>
+                        <p class="merchant-detail__line"><strong>Quote:</strong> <%= order.deliveryEstimatedTime %><% if (order.advancedOrderWaitingTimeMin) { %> (+<%= order.advancedOrderWaitingTimeMin %> min queue)<% } %></p>
+                    <% } %>
+                </section>
+
+                <%# Customer contact -%>
+                <section class="merchant-detail__card">
+                    <h2 class="merchant-detail__card-title">Customer</h2>
+                    <% if (order.customerName)   { %><p class="merchant-detail__line"><strong>Name:</strong> <%= order.customerName %></p><% } %>
+                    <% if (order.customerNumber) { %><p class="merchant-detail__line"><strong>Phone:</strong> <a href="tel:<%= order.customerNumber %>"><%= order.customerNumber %></a></p><% } %>
+                    <% if (order.customerEmail)  { %><p class="merchant-detail__line"><strong>Email:</strong> <%= order.customerEmail %></p><% } %>
+                </section>
+            </div>
+
+            <%# Right — bill summary + payment -%>
+            <aside class="merchant-detail__summary">
+                <h2 class="merchant-detail__card-title">Bill</h2>
+                <dl class="order-detail__rows">
+                    <div class="order-detail__row"><dt>Subtotal</dt><dd><%= brand.currencySymbol %><%= order.subTotal.toFixed(2) %></dd></div>
+                    <% if (order.bagCharge > 0)     { %><div class="order-detail__row"><dt>Bag charge</dt><dd><%= brand.currencySymbol %><%= order.bagCharge.toFixed(2) %></dd></div><% } %>
+                    <% if (order.serviceCharge > 0) { %><div class="order-detail__row"><dt>Service charge</dt><dd><%= brand.currencySymbol %><%= order.serviceCharge.toFixed(2) %></dd></div><% } %>
+                    <% if (order.charityAmount > 0) { %><div class="order-detail__row"><dt>Charity</dt><dd><%= brand.currencySymbol %><%= order.charityAmount.toFixed(2) %></dd></div><% } %>
+                    <% if (order.serveType === 3) { %>
+                    <div class="order-detail__row"><dt>Delivery</dt><dd><%= (order.freeDelivery || order.deliveryFees === 0) ? 'Free' : (brand.currencySymbol + order.deliveryFees.toFixed(2)) %></dd></div>
+                    <% } %>
+                    <% if (order.discount > 0) { %>
+                    <div class="order-detail__row order-detail__row--discount"><dt>Discount</dt><dd>−<%= brand.currencySymbol %><%= order.discount.toFixed(2) %></dd></div>
+                    <% } %>
+                    <div class="order-detail__row order-detail__row--total"><dt>Total</dt><dd><%= brand.currencySymbol %><%= order.grandTotal.toFixed(2) %></dd></div>
+                </dl>
+
+                <% if (order.payment) { %>
+                <p class="order-detail__pay">
+                    <strong>Payment:</strong> <%= order.payment.method %>
+                    <span class="order-detail__pay-status order-detail__pay-status--<%= order.payment.status.toLowerCase() %>"><%= order.payment.status %></span>
+                </p>
+                <% } %>
+            </aside>
+
+        </div>
+
+    <% } %>
+
+</section>

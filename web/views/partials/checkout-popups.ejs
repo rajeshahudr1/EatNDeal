@@ -92,18 +92,29 @@
                     <dd><% if (cart.freeDelivery || cart.deliveryFees === 0) { %><span class="ckt-totals__free">Free</span><% } else { %><%= sym %><%= cart.deliveryFees.toFixed(2) %><% } %></dd>
                 </div>
                 <% } %>
-                <% if (cart.bagCharge > 0 || cart.serviceCharge > 0 || cart.charityAmount > 0) { %>
+                <% if (cart.bagCharge > 0 || cart.serviceCharge > 0) { %>
                 <div class="ckt-totals__row">
-                    <dt>Other fees</dt><dd><%= sym %><%= (cart.bagCharge + cart.serviceCharge + cart.charityAmount).toFixed(2) %></dd>
+                    <dt>Other fees</dt><dd><%= sym %><%= (cart.bagCharge + cart.serviceCharge).toFixed(2) %></dd>
                 </div>
                 <% } %>
+                <div class="ckt-totals__row ckt-totals__row--charity" data-ckt-confirm-charity-row<%= cart.charityAmount > 0 ? '' : ' hidden' %>>
+                    <dt>Charity contribution</dt><dd data-ckt-confirm-charity-amt><%= sym %><%= cart.charityAmount.toFixed(2) %></dd>
+                </div>
                 <% if (cart.discount > 0) { %>
                 <div class="ckt-totals__row ckt-totals__row--discount">
                     <dt><%= cart.promocode || 'Discount' %></dt><dd>− <%= sym %><%= cart.discount.toFixed(2) %></dd>
                 </div>
                 <% } %>
+                <%# Card service charge — shown + added to the total only when
+                    a card is the selected payment (checkout-popups.js toggles
+                    it). Cash orders never carry it. %>
+                <div class="ckt-totals__row ckt-totals__row--cardcharge" data-ckt-confirm-cardcharge-row hidden>
+                    <dt>Card service charge</dt><dd data-ckt-confirm-cardcharge-amt><%= sym %><%= (cart.cardServiceCharge || 0).toFixed(2) %></dd>
+                </div>
                 <div class="ckt-totals__row ckt-totals__row--total">
-                    <dt>Total</dt><dd><%= sym %><%= cart.grandtotal.toFixed(2) %></dd>
+                    <dt>Total</dt><dd data-ckt-confirm-total
+                        data-ckt-base-grand="<%= cart.grandtotal.toFixed(2) %>"
+                        data-ckt-card-charge="<%= (cart.cardServiceCharge || 0).toFixed(2) %>"><%= sym %><%= cart.grandtotal.toFixed(2) %></dd>
                 </div>
             </dl>
         </div>
@@ -111,7 +122,7 @@
             <button type="button" class="ckt-popup__cancel" data-action="ckt-popup-close">Back</button>
             <button type="button" class="ckt-popup__apply" data-action="cart-checkout">
                 <span class="ckt-confirm-cta__label">Place order</span>
-                <span> · <%= sym %><%= cart.grandtotal.toFixed(2) %></span>
+                <span data-ckt-confirm-cta-total> · <%= sym %><%= cart.grandtotal.toFixed(2) %></span>
             </button>
         </footer>
     </div>

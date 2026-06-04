@@ -32,12 +32,14 @@ const OrderStatus  = require('../../Helpers/orderStatus');
 const OrderAdvance = require('../../Helpers/orderAdvance');
 const { db }       = require('../../config/db');
 
-// State → array of order_status codes filter.
+// State → array of order_status codes filter (canonical legacy codes;
+// '' = completed). Defensive old codes (3/7/8/11/0) kept so any
+// pre-existing row still lands in the right bucket.
 const STATE_BUCKETS = Object.freeze({
-    live:      ['3', '4', '5', '6', '7', '10', '11'],
-    completed: ['8'],
-    cancelled: ['0', '2', '9'],
-    all:       null,   // no filter
+    live:      ['4', '5', '10', '6', '3', '7', '11'],  // placed/accepted/confirmed/ready-or-otw
+    completed: ['', '8'],                              // '' = completed sentinel
+    cancelled: ['1', '2', '9', '0'],                   // refund / cancelled / void
+    all:       null,                                   // no filter
 });
 
 /**
@@ -101,8 +103,8 @@ async function list(req, res) {
             id:           String(r.id),
             number:       r.order_number || '',
             status:       String(r.order_status || ''),
-            statusLabel:  Orders.statusLabel(r.order_status),
-            statusClass:  Orders.statusClass(r.order_status),
+            statusLabel:  Orders.statusLabel(r.order_status, r.serve_type),
+            statusClass:  Orders.statusClass(r.order_status, r.serve_type),
             serveType:    Number(r.serve_type) || 0,
             grandTotal:   Number(r.grand_total) || 0,
             totalQty:     Number(r.total_qty)   || 0,
@@ -169,7 +171,7 @@ async function detail(req, res) {
  *          • `next_status` is one of OrderAdvance.nextActions(order).
  *          • `expected_status` matches the order's CURRENT status — so
  *            two concurrent merchant tabs can't both click "Accept" and
- *            land us at "Preparing" without going through "Accepted".
+ *            skip a stage without going through the expected status.
  *
  *        The actual write uses UPDATE … WHERE order_status = expected,
  *        so even without the JS guard a race results in 0 rows
@@ -218,8 +220,8 @@ async function advance(req, res) {
             order: {
                 id:          String(refreshed.id),
                 status:      String(refreshed.order_status),
-                statusLabel: Orders.statusLabel(refreshed.order_status),
-                statusClass: Orders.statusClass(refreshed.order_status),
+                statusLabel: Orders.statusLabel(refreshed.order_status, refreshed.serve_type),
+                statusClass: Orders.statusClass(refreshed.order_status, refreshed.serve_type),
                 progress:    OrderStatus.progressForOrder(refreshed),
                 etaMinutes:  OrderStatus.etaMinutesFromNow(refreshed),
                 nextActions: OrderAdvance.nextActions(refreshed),

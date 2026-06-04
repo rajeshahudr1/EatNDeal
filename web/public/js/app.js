@@ -39,6 +39,61 @@
         bindOrderModeToggle();
         bindDrawerStubs();
         bindScrollHide();
+        bindReorder();
+    }
+
+    /**
+     * bindReorder
+     *
+     * What:   Click handler for the "Reorder" button on the order-detail
+     *         page. POSTs to /order/:id/reorder (the api clones the past
+     *         order's items into a fresh cart) and, on success, sends the
+     *         customer to /cart. A note about any items that couldn't be
+     *         re-added (now unavailable) is stashed for the cart page to
+     *         surface as a toast.
+     * Type:   WRITE (creates a cart server-side).
+     */
+    function bindReorder() {
+        document.addEventListener('click', function (ev) {
+            var btn = ev.target.closest && ev.target.closest('[data-action="order-reorder"]');
+            if (!btn || btn.disabled) { return; }
+            ev.preventDefault();
+            var orderId = btn.getAttribute('data-order-id');
+            if (!orderId) { return; }
+            var orig = btn.textContent;
+            btn.disabled = true;
+            btn.textContent = 'Adding…';
+            fetch('/order/' + encodeURIComponent(orderId) + '/reorder', {
+                method:      'POST',
+                credentials: 'same-origin',
+                headers:     { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                body:        '{}',
+            }).then(function (r) {
+                return r.json().catch(function () { return null; });
+            }).then(function (env) {
+                if (env && env.status === 401) {
+                    window.location.href = '/signin?next=' + encodeURIComponent('/order/' + orderId);
+                    return;
+                }
+                if (!env || env.status !== 200) {
+                    if (window.EatNDealUi && window.EatNDealUi.showToast) {
+                        window.EatNDealUi.showToast('error', (env && env.msg) || 'Could not reorder.');
+                    }
+                    btn.disabled = false;
+                    btn.textContent = orig;
+                    return;
+                }
+                // Carry the result message (incl. any skipped items) to /cart.
+                try { sessionStorage.setItem('reorder.msg', env.msg || ''); } catch (e) { /* ignore */ }
+                window.location.href = '/cart';
+            }).catch(function () {
+                if (window.EatNDealUi && window.EatNDealUi.showToast) {
+                    window.EatNDealUi.showToast('error', 'Could not reorder. Please try again.');
+                }
+                btn.disabled = false;
+                btn.textContent = orig;
+            });
+        });
     }
 
     /**

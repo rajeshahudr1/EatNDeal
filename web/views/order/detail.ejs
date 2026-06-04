@@ -34,10 +34,14 @@
         <span class="order-detail__status order-detail__status--<%= order.statusClass %>" data-order-status-pill><%= order.statusLabel %></span>
     </header>
 
-    <%# Live tracking timeline — Order placed → Accepted → Preparing →
-        Out for delivery → Delivered (mode-dependent). Cancelled state
-        replaces the whole block with a red strike. Polling refreshes
-        the state classes + ETA every ~30s (see /js/ui/order-track.js). -%>
+    <%# Live tracking timeline (mode-dependent, no Preparing stage):
+          DELIVERY: Order placed → Confirmed → Out for delivery → Delivered
+          PICKUP:   Order placed → Accepted  → Ready to collect → Collected
+        Cancelled / refunded / voided replaces the whole block with a red
+        strike. Polling refreshes the state classes + ETA every ~30s and
+        stops once the order is completed/cancelled (see
+        /js/ui/order-track.js). Stages come straight from order.progress
+        (api/Helpers/orderStatus.js) so this markup never hard-codes them. -%>
     <% var prog = order.progress || { steps: [], isCancelled: false, isTerminal: false }; %>
     <section class="order-track" data-order-track aria-label="Order tracking">
         <% if (prog.isCancelled) { %>
@@ -45,7 +49,9 @@
                 <span class="order-track__cancelled-icon" aria-hidden="true">
                     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
                 </span>
-                <p>This order was cancelled.</p>
+                <% var __end = prog.currentLabel === 'Refunded' ? 'refunded'
+                              : (prog.currentLabel === 'Void' ? 'voided' : 'cancelled'); %>
+                <p>This order was <%= __end %>.</p>
             </div>
         <% } else { %>
             <header class="order-track__head">
@@ -152,6 +158,7 @@
                 <div class="order-detail__row"><dt>Subtotal</dt><dd><%= brand.currencySymbol %><%= order.subTotal.toFixed(2) %></dd></div>
                 <% if (order.bagCharge > 0)     { %><div class="order-detail__row"><dt>Bag charge</dt><dd><%= brand.currencySymbol %><%= order.bagCharge.toFixed(2) %></dd></div><% } %>
                 <% if (order.serviceCharge > 0) { %><div class="order-detail__row"><dt>Service charge</dt><dd><%= brand.currencySymbol %><%= order.serviceCharge.toFixed(2) %></dd></div><% } %>
+                <% if (order.cardServiceCharge > 0) { %><div class="order-detail__row"><dt>Card service charge</dt><dd><%= brand.currencySymbol %><%= order.cardServiceCharge.toFixed(2) %></dd></div><% } %>
                 <% if (order.charityAmount > 0) { %><div class="order-detail__row"><dt>Charity</dt><dd><%= brand.currencySymbol %><%= order.charityAmount.toFixed(2) %></dd></div><% } %>
                 <% if (order.serveType === 3) { %>
                 <div class="order-detail__row"><dt>Delivery</dt><dd><%= (order.freeDelivery || order.deliveryFees === 0) ? 'Free' : (brand.currencySymbol + order.deliveryFees.toFixed(2)) %></dd></div>
@@ -170,8 +177,11 @@
             <% } %>
 
             <div class="order-detail__cta">
+                <%# Reorder — clones THIS order's items into a fresh cart and
+                    sends the customer to /cart (handled in /js/app.js). %>
+                <button type="button" class="btn btn--primary" data-action="order-reorder" data-order-id="<%= order.id %>">Reorder</button>
                 <% if (order.restaurant.slug) { %>
-                <a class="btn btn--ghost" href="/?restaurant=<%= encodeURIComponent(order.restaurant.slug) %>">Order again</a>
+                <a class="btn btn--ghost" href="/?restaurant=<%= encodeURIComponent(order.restaurant.slug) %>">View restaurant</a>
                 <% } %>
                 <a class="btn btn--ghost" href="/account?tab=orders">All orders</a>
             </div>

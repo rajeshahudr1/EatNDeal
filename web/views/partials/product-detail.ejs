@@ -29,8 +29,7 @@
      data-currency="<%= sym %>"
      data-name="<%= p.name %>"
      data-image="<%= p.image || '' %>"
-     data-instock="<%= p.inStock === false ? '0' : '1' %>"
-     data-stock-qty="<%= (typeof p.stockQty === 'number' ? p.stockQty : 0) %>">
+     data-available="<%= p.available === false ? '0' : '1' %>">
 
     <%# Breadcrumb %>
     <nav class="pd-crumbs" aria-label="Breadcrumb">
@@ -70,16 +69,19 @@
                 <% if (p.ratingCount) { %><span class="pd__rating-count">(<%= p.ratingCount %>+)</span><% } %>
             </p>
             <p class="pd__price"><%= sym %><%= (typeof p.basePrice === 'number' ? p.basePrice : 0).toFixed(2) %></p>
-            <%# Stock status — out of stock, an exact count, or "Available". %>
-            <% if (p.inStock === false) { %>
+            <%# Availability — status-driven badge (no stock). Sold out /
+                Unavailable today / Available from <date> show greyed; an
+                available item shows a subtle "Available". %>
+            <% var av = p.availability || { available: (p.available !== false), soldOut: false, label: 'Available' }; %>
+            <% if (av.soldOut) { %>
                 <p class="pd__stock pd__stock--out">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
-                    Out of stock — currently unavailable
+                    Sold out
                 </p>
-            <% } else if (typeof p.stockQty === 'number' && p.stockQty > 0) { %>
-                <p class="pd__stock pd__stock--in">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
-                    <%= p.stockQty %> stock available
+            <% } else if (av.available === false) { %>
+                <p class="pd__stock pd__stock--out">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+                    <%= av.label %>
                 </p>
             <% } else { %>
                 <p class="pd__stock pd__stock--in">
@@ -189,9 +191,13 @@
                 <div class="pd-order__totals">
                     <div class="pd-order__row"><span>Subtotal</span><span data-subtotal><%= sym %><%= (typeof p.basePrice === 'number' ? p.basePrice : 0).toFixed(2) %></span></div>
                 </div>
-                <button type="button" class="pd-add pd-add--panel" data-action="pd-add">
-                    <span>Add to cart</span>
-                    <span class="pd-add__total" data-total><%= sym %><%= (typeof p.basePrice === 'number' ? p.basePrice : 0).toFixed(2) %></span>
+                <%# Add is disabled when the item isn't available (sold out
+                    / unavailable today / unavailable until). The badge above
+                    tells the customer why; product.js keeps this in sync. %>
+                <% var pdUnavail = (p.available === false); %>
+                <button type="button" class="pd-add pd-add--panel<%= pdUnavail ? ' is-disabled' : '' %>" data-action="pd-add" <%= pdUnavail ? 'disabled' : '' %>>
+                    <span><%= pdUnavail ? ((p.availability && p.availability.soldOut) ? 'Sold out' : 'Unavailable') : 'Add to cart' %></span>
+                    <% if (!pdUnavail) { %><span class="pd-add__total" data-total><%= sym %><%= (typeof p.basePrice === 'number' ? p.basePrice : 0).toFixed(2) %></span><% } %>
                 </button>
             </div>
         </aside>
@@ -199,9 +205,9 @@
 
     <%# Sticky add bar — mobile only (the right panel carries Add on desktop) %>
     <div class="pd-bar">
-        <button type="button" class="pd-add" data-action="pd-add">
-            <span>Add to cart</span>
-            <span class="pd-add__total" data-total><%= sym %><%= (typeof p.basePrice === 'number' ? p.basePrice : 0).toFixed(2) %></span>
+        <button type="button" class="pd-add<%= pdUnavail ? ' is-disabled' : '' %>" data-action="pd-add" <%= pdUnavail ? 'disabled' : '' %>>
+            <span><%= pdUnavail ? ((p.availability && p.availability.soldOut) ? 'Sold out' : 'Unavailable') : 'Add to cart' %></span>
+            <% if (!pdUnavail) { %><span class="pd-add__total" data-total><%= sym %><%= (typeof p.basePrice === 'number' ? p.basePrice : 0).toFixed(2) %></span><% } %>
         </button>
     </div>
 </div>

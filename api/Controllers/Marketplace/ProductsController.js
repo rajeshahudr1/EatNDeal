@@ -28,6 +28,7 @@ const { db }   = require('../../config/db');
 const distance  = require('../../Helpers/distance');
 const M         = require('../../Helpers/marketplace');
 const OrderTime = require('../../Helpers/orderTime');
+const A         = require('../../Helpers/availability');
 
 /**
  * resolveMpCategoryId
@@ -552,33 +553,34 @@ async function detail(req, res) {
             )
             .where('p.id', productId)
             .andWhere('p.show_marketplace', 1)
-            .andWhere('p.status', '1')
+            // DETAIL surface: show Available + the temporary states
+            // (Sold out / Unavailable today / Unavailable until) greyed
+            // with a badge; plain Unavailable ('0') + Deleted ('2') stay
+            // filtered out. Availability is computed below, not from stock.
+            .whereIn('p.status', A.SURFACE_STATUSES)
             .modify(M.eligibleCompanyScope, 'c')
             .select(
                 'p.id as product_id', 'p.name as product_name', 'p.product_description',
-                'p.veg_non_veg', 'p.marketplace_price', 'p.online_platform_price', 'p.price_after_tax', 'p.track_stock_level',
+                'p.veg_non_veg', 'p.marketplace_price', 'p.online_platform_price', 'p.price_after_tax',
                 'c.id as company_id', 'c.business_name', 'c.domain_name', 'pi.url as image_url',
-                db.raw("EXISTS (SELECT 1 FROM product_sold_out so WHERE so.product_id = p.id AND so.is_sold::text = '1') AS is_sold_out"),
-                db.raw("(SELECT COALESCE(SUM(si.quantity::numeric), 0) FROM product_store_inventory si WHERE si.product_id = p.id) AS stock_qty"),
+                ...A.selectColumns(db, 'p'),
             )
             .first();
         if (!row) { return H.errorResponse(res, 'Product not found.', 404); }
 
         const name = String(row.product_name || '').trim();
-        const tracks = Number(row.track_stock_level) === 1;
-        const stockQty = row.stock_qty != null ? Number(row.stock_qty) : 0;
-        const outOfStock = !!row.is_sold_out || (tracks && stockQty <= 0);
+        const avail = A.evaluate(row);
         const product = {
             id:          String(row.product_id),
             name,
             slug:        M.slugify(name),
             description: String(row.product_description || '').trim() || null,
             basePrice:   M.pickPrice(row),
-            inStock:     !outOfStock,
-            // Counted inventory exposed for every product (see restaurant
-            // detail). tracksStock tells the view whether it's authoritative.
-            stockQty:    stockQty,
-            tracksStock: tracks,
+            // Availability — status-driven (no stock). `availability` is the
+            // full verdict ({available, soldOut, state, label}); `available`
+            // is the convenience boolean the web uses to disable Add.
+            availability: avail,
+            available:    avail.available,
             veg:         M.isVegProduct(row),
             image:       M.yiiImageUrl('product', row.company_id, row.image_url) || null,
             tint:        M.tintFor(row.product_id),

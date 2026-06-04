@@ -210,9 +210,14 @@
                 </div>
                 <ul class="rd-products" role="list">
                     <% s.products.forEach(function (p) { %>
-                        <li class="rd-product<%= p.inStock === false ? ' is-soldout' : '' %>" data-slug="<%= p.slug %>">
+                        <%# Availability — status-driven (no stock). Unavailable
+                            items (sold out / unavailable today / until) stay in
+                            the menu but greyed with a badge + Add disabled. %>
+                        <% var av = p.availability || { available: (p.available !== false), soldOut: false, label: 'Available' }; %>
+                        <% var unavail = (av.available === false); %>
+                        <li class="rd-product<%= unavail ? ' is-soldout' : '' %>" data-slug="<%= p.slug %>">
                             <div class="rd-product__media" data-tint="<%= p.tint %>">
-                                <% if (p.inStock === false) { %><span class="rd-product__soldout">Out of stock</span><% } %>
+                                <% if (unavail) { %><span class="rd-product__soldout"><%= av.soldOut ? 'Sold out' : 'Unavailable' %></span><% } %>
                                 <% if (p.image) { %><img src="<%= p.image %>" alt="" loading="lazy" data-img-fallback><% } else { %><span class="rd-product__initial" aria-hidden="true"><%= p.initial %></span><% } %>
                                 <% if (p.veg) { %><span class="veg-marker veg-marker--veg" aria-label="Vegetarian"></span><% } else { %><span class="veg-marker veg-marker--non-veg" aria-label="Non-vegetarian"></span><% } %>
                                 <% if (p.isFeatured) { %><span class="rd-product__badge">Bestseller</span><% } %>
@@ -222,17 +227,17 @@
                                 <p class="rd-product__meta">
                                     <span class="rd-product__rating"><svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg> <%= p.rating %></span>
                                 </p>
-                                <%# Stock line on EVERY product: out of stock, an exact
-                                    count when we have one, or just "Available". %>
-                                <% if (p.inStock === false) { %>
+                                <%# Availability badge: Sold out / the precise reason
+                                    (e.g. "Available from 5 Jun") / or "Available". %>
+                                <% if (av.soldOut) { %>
                                     <span class="rd-product__stockline rd-product__stockline--out">
                                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
-                                        Out of stock
+                                        Sold out
                                     </span>
-                                <% } else if (typeof p.stockQty === 'number' && p.stockQty > 0) { %>
-                                    <span class="rd-product__stockline rd-product__stockline--in">
-                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
-                                        <%= p.stockQty %> stock available
+                                <% } else if (unavail) { %>
+                                    <span class="rd-product__stockline rd-product__stockline--out">
+                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+                                        <%= av.label %>
                                     </span>
                                 <% } else { %>
                                     <span class="rd-product__stockline rd-product__stockline--in">
@@ -242,8 +247,8 @@
                                 <% } %>
                                 <div class="rd-product__foot">
                                     <span class="rd-product__price"><%= sym %><%= (typeof p.price === 'number' ? p.price : 0).toFixed(2) %></span>
-                                    <% if (p.inStock === false) { %>
-                                        <span class="rd-product__oos">Sold out</span>
+                                    <% if (unavail) { %>
+                                        <span class="rd-product__oos"><%= av.soldOut ? 'Sold out' : 'Unavailable' %></span>
                                     <% } else { %>
                                         <button type="button" class="rd-product__add" data-action="rd-add" data-id="<%= p.id %>" data-name="<%= p.name %>">
                                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>

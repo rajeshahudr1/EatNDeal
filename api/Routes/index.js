@@ -268,6 +268,9 @@ const {
     cartSetInstructionsSchema,
     cartApplyCouponSchema,
     cartRemoveCouponSchema,
+    cartApplyVoucherSchema,
+    cartRemoveVoucherSchema,
+    cartSetCharitySchema,
 } = require('../Validators/cart');
 
 router.get('/customer/cart',
@@ -322,6 +325,18 @@ router.post('/customer/cart/remove-coupon',
     validate(cartRemoveCouponSchema),
     CartCtl.removeCoupon);
 
+router.post('/customer/cart/apply-voucher',
+    validate(cartApplyVoucherSchema),
+    CartCtl.applyVoucher);
+
+router.post('/customer/cart/remove-voucher',
+    validate(cartRemoveVoucherSchema),
+    CartCtl.removeVoucher);
+
+router.post('/customer/cart/set-charity',
+    validate(cartSetCharitySchema),
+    CartCtl.setCharity);
+
 // ── Customer orders (place + list + detail) ─────────────────────────
 // Phase-2D ships only /place. List + detail land in Phase-2E.
 const OrderCtl = require('../Controllers/Customer/OrderController');
@@ -330,6 +345,7 @@ const {
     orderListSchema,
     orderDetailSchema,
     orderStatusSchema,
+    orderReorderSchema,
 } = require('../Validators/order');
 
 router.post('/customer/order/place',
@@ -347,6 +363,10 @@ router.get('/customer/order',
 router.get('/customer/order/status',
     validateQuery(orderStatusSchema),
     OrderCtl.status);
+
+router.post('/customer/order/reorder',
+    validate(orderReorderSchema),
+    OrderCtl.reorder);
 
 // ── Customer payments (Stripe-backed) ───────────────────────────────
 // createIntent returns a Stripe PaymentIntent the browser confirms via

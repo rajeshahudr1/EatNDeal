@@ -305,8 +305,9 @@
                 <span class="ckt-row__icon" aria-hidden="true">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41 13.42 20.58a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
                 </span>
+                <% var couponApplied = (cart.promocode && cart.discountSource === 'coupon'); %>
                 <div class="ckt-row__body">
-                    <% if (cart.promocode) { %>
+                    <% if (couponApplied) { %>
                         <p class="ckt-row__title"><%= cart.promocode %></p>
                         <p class="ckt-row__sub">
                             <% if (cart.discount > 0) { %>− <%= sym %><%= cart.discount.toFixed(2) %><% } %>
@@ -320,7 +321,80 @@
                         <p class="ckt-row__sub">Have a promo code? Apply it for instant savings.</p>
                     <% } %>
                 </div>
-                <button type="button" class="ckt-row__edit" data-action="ckt-open-promo"><%= cart.promocode ? 'Edit' : 'Add' %></button>
+                <button type="button" class="ckt-row__edit" data-action="ckt-open-promo"><%= couponApplied ? 'Edit' : 'Add' %></button>
+            </div>
+
+            <%# Voucher — a SEPARATE box for customer reward vouchers
+                (mutually exclusive with a coupon). Mirrors the legacy
+                "Have a Voucher?" box. Shows the applied voucher + Remove,
+                or a code input. %>
+            <div class="ckt-voucher" data-cart-voucher>
+                <% if (cart.discountSource === 'voucher') { %>
+                    <div class="ckt-voucher__applied">
+                        <div class="ckt-voucher__info">
+                            <p class="ckt-voucher__code">🎟️ <%= cart.promocode %></p>
+                            <% if (cart.discount > 0) { %><p class="ckt-voucher__sub">− <%= sym %><%= cart.discount.toFixed(2) %></p><% } %>
+                        </div>
+                        <button type="button" class="ckt-voucher__remove" data-action="cart-remove-voucher">Remove</button>
+                    </div>
+                <% } else { %>
+                    <p class="ckt-voucher__title">🎟️ Have a Voucher?</p>
+                    <div class="ckt-voucher__row">
+                        <input type="text" class="ckt-voucher__input" data-cart-voucher-input placeholder="Enter voucher code" autocomplete="off" maxlength="10" spellcheck="false">
+                        <button type="button" class="ckt-voucher__apply" data-action="cart-apply-voucher">Apply</button>
+                    </div>
+                <% } %>
+            </div>
+
+            <%# Charity contribution — No / % tiers / Custom. The chosen
+                amount is ADDED to the total and donated to the restaurant.
+                Mirrors the legacy "Add a Charity Contribution" selector. %>
+            <%
+                var charityAmt = cart.charityAmount || 0;
+                var charitySub = cart.subTotal || 0;
+                var charityTiers = cart.charityTiers || [5, 10, 15];
+                // Which % tier (if any) the current amount matches (±1p).
+                var activeTier = null;
+                charityTiers.forEach(function (pct) {
+                    var tierAmt = Math.round(charitySub * pct / 100 * 100) / 100;
+                    if (charityAmt > 0 && Math.abs(tierAmt - charityAmt) < 0.01) { activeTier = pct; }
+                });
+                var charityIsNo     = charityAmt <= 0;
+                var charityIsCustom = (!charityIsNo && activeTier === null);
+            %>
+            <div class="ckt-charity" data-cart-charity data-sub="<%= charitySub %>">
+                <p class="ckt-charity__title">💚 Add a Charity Contribution</p>
+                <div class="ckt-charity__btns" role="group" aria-label="Charity contribution">
+                    <button type="button" class="ckt-charity__btn<%= charityIsNo ? ' is-active' : '' %>" data-action="cart-charity" data-charity-mode="no">No</button>
+                    <% charityTiers.forEach(function (pct) { %>
+                        <button type="button" class="ckt-charity__btn<%= activeTier === pct ? ' is-active' : '' %>" data-action="cart-charity" data-charity-mode="pct" data-charity-pct="<%= pct %>"><%= pct %>%</button>
+                    <% }); %>
+                    <button type="button" class="ckt-charity__btn<%= charityIsCustom ? ' is-active' : '' %>" data-action="cart-charity" data-charity-mode="custom">Custom</button>
+                </div>
+                <div class="ckt-charity__custom" data-charity-custom<%= charityIsCustom ? '' : ' hidden' %>>
+                    <span class="ckt-charity__cur"><%= sym %></span>
+                    <input type="number" class="ckt-charity__input" data-charity-input min="0" step="0.01" inputmode="decimal" placeholder="0.00" value="<%= charityIsCustom ? charityAmt.toFixed(2) : '' %>">
+                    <button type="button" class="ckt-charity__apply" data-action="cart-charity-custom">Add</button>
+                </div>
+            </div>
+
+            <%# Donated banner — total going to charity = the company's
+                automatic donation (fixCharityDiscount) + the customer's
+                contribution. Shown whenever ANYTHING is being donated —
+                including when the customer picks "No" but the company
+                still donates its fixed share. Patched in-place by cart.js. %>
+            <div class="ckt-donated" data-cart-donated<%= cart.donatedTotal > 0 ? '' : ' hidden' %>>
+                <div class="ckt-donated__left">
+                    <span class="ckt-donated__icon" aria-hidden="true">❤️</span>
+                    <div>
+                        <p class="ckt-donated__title">Thank You for Your Contribution!</p>
+                        <p class="ckt-donated__sub">This amount will be donated</p>
+                    </div>
+                </div>
+                <div class="ckt-donated__badge">
+                    <span class="ckt-donated__label">DONATED</span>
+                    <span class="ckt-donated__amt" data-cart-donated-amt><%= sym %><%= cart.donatedTotal.toFixed(2) %></span>
+                </div>
             </div>
 
             <%# Order total breakdown %>
@@ -343,24 +417,47 @@
                         </dd>
                     </div>
                     <% } %>
-                    <% if (cart.bagCharge > 0 || cart.serviceCharge > 0 || cart.charityAmount > 0) { %>
+                    <% if (cart.bagCharge > 0 || cart.serviceCharge > 0) { %>
                     <div class="ckt-totals__row">
                         <dt>Other fees</dt>
-                        <dd><%= sym %><%= (cart.bagCharge + cart.serviceCharge + cart.charityAmount).toFixed(2) %></dd>
+                        <dd><%= sym %><%= (cart.bagCharge + cart.serviceCharge).toFixed(2) %></dd>
                     </div>
                     <% } %>
+                    <div class="ckt-totals__row ckt-totals__row--charity" data-cart-charity-row<%= cart.charityAmount > 0 ? '' : ' hidden' %>>
+                        <dt>Charity contribution</dt>
+                        <dd data-cart-charity-amt><%= sym %><%= cart.charityAmount.toFixed(2) %></dd>
+                    </div>
                     <% if (cart.discount > 0) { %>
                     <div class="ckt-totals__row ckt-totals__row--discount">
                         <dt><%= cart.discountSource === 'auto' ? 'Auto-discount' : (cart.discountSource === 'voucher' ? 'Voucher' : 'Discount') %></dt>
                         <dd>− <%= sym %><%= cart.discount.toFixed(2) %></dd>
                     </div>
                     <% } %>
+                    <%# Card service charge — shown + added to the total only
+                        when a card is the selected payment (cart.js toggles
+                        it on payment change). Cash/COD carry none. %>
+                    <div class="ckt-totals__row ckt-totals__row--cardcharge" data-cart-cardcharge-row hidden>
+                        <dt>Card service charge</dt>
+                        <dd data-cart-cardcharge-amt><%= sym %><%= cart.cardServiceCharge.toFixed(2) %></dd>
+                    </div>
                     <div class="ckt-totals__row ckt-totals__row--total">
                         <dt>Total</dt>
-                        <dd><%= sym %><%= cart.grandtotal.toFixed(2) %></dd>
+                        <dd data-cart-grandtotal
+                            data-base-grand="<%= cart.grandtotal.toFixed(2) %>"
+                            data-card-charge="<%= cart.cardServiceCharge.toFixed(2) %>"><%= sym %><%= cart.grandtotal.toFixed(2) %></dd>
                     </div>
                 </dl>
             </div>
+
+            <%# Card-payment surcharge note — the exact amount is added to
+                the total at the review step (and charged by Stripe) when a
+                card is the chosen payment. Cash never carries it. %>
+            <% if (cart.cardServiceCharge > 0) { %>
+            <p class="ckt-card-note">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+                Paying by card adds a <%= sym %><%= cart.cardServiceCharge.toFixed(2) %> service charge.
+            </p>
+            <% } %>
 
             <p class="ckt-legal">By placing your order, you agree to take full responsibility for it once it's delivered. Orders containing alcohol or other restricted items may not be eligible.</p>
         </aside>
@@ -370,7 +467,7 @@
         view while the customer scrolls the long left column. Opens the
         same review-order confirmation popup. -%>
     <button type="button" class="ckt-sticky-cta" data-action="ckt-open-confirm" aria-hidden="true">
-        <span>Continue · <%= sym %><%= cart.grandtotal.toFixed(2) %></span>
+        <span data-cart-cta-total>Continue · <%= sym %><%= cart.grandtotal.toFixed(2) %></span>
     </button>
 
     <%- include('../partials/checkout-popups', {

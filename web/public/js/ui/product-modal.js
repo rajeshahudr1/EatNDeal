@@ -233,11 +233,14 @@
 
     function buildContentHtml() {
         var p = product;
+        // Availability badge — status-driven (no stock). Sold out /
+        // Unavailable today / Available from <date> show greyed.
+        var av = p.availability || { available: (p.available !== false), soldOut: false, label: 'Available' };
         var stockLine = '';
-        if (p.inStock === false) {
-            stockLine = '<p class="pm-stock pm-stock--out">Out of stock — currently unavailable</p>';
-        } else if (typeof p.stockQty === 'number' && p.stockQty > 0) {
-            stockLine = '<p class="pm-stock pm-stock--in">' + esc(p.stockQty) + ' stock available</p>';
+        if (av.soldOut) {
+            stockLine = '<p class="pm-stock pm-stock--out">Sold out</p>';
+        } else if (av.available === false) {
+            stockLine = '<p class="pm-stock pm-stock--out">' + esc(av.label || 'Unavailable') + '</p>';
         }
         var desc = p.description ? '<p class="pm-desc">' + esc(p.description) + '</p>' : '';
         var groupSections = groups.map(buildGroupSection).join('');
@@ -548,10 +551,8 @@
     function step(delta) {
         var next = qty + delta;
         if (next < 1) { next = 1; }
-        if (product && typeof product.stockQty === 'number' && product.stockQty > 0 && next > product.stockQty) {
-            toast('error', 'Only ' + product.stockQty + ' available.');
-            return;
-        }
+        // Soft per-line cap (no stock counting).
+        if (next > 99) { return; }
         qty = next;
         updateTotals();
     }
@@ -586,7 +587,8 @@
 
     function addToCart(btn) {
         if (!product) { return; }
-        if (product.inStock === false) { toast('error', 'This item is out of stock.'); return; }
+        var av = product.availability || { available: (product.available !== false), soldOut: false };
+        if (av.available === false) { toast('error', av.soldOut ? 'This item is sold out.' : 'This item is currently unavailable.'); return; }
         var miss = firstMissingRequiredGroup();
         if (miss) {
             toast('error', 'Please choose: ' + miss.name + '.');

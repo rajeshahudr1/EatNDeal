@@ -22,9 +22,8 @@
     function toast(type, msg) { if (window.EatNDealUi && window.EatNDealUi.showToast) { window.EatNDealUi.showToast(type, msg); } }
 
     var root, basePrice = 0, sym = '£', qty = 1;
-    // Upper bound for the stepper. When the product has a real counted
-    // stock (> 0) the user can't add more than that; otherwise it's a
-    // soft cap of 99 (made-to-order items with no inventory count).
+    // Soft upper bound for the stepper (no stock counting — availability
+    // is status-driven, see /api Helpers/availability.js).
     var maxQty = 99;
 
     function applyTints(scope) {
@@ -135,10 +134,9 @@
             var dec = ev.target.closest && ev.target.closest('[data-action="pd-qty-dec"]');
             if (!inc && !dec) { return; }
             ev.preventDefault();
-            // Hard stop at the available stock — can't add an 8th when only
-            // 7 are in stock.
+            // Soft cap on the per-line quantity.
             if (inc && qty >= maxQty) {
-                toast('info', 'Only ' + maxQty + ' in stock.');
+                toast('info', 'Maximum ' + maxQty + ' per item.');
                 return;
             }
             qty = Math.max(1, Math.min(maxQty, qty + (inc ? 1 : -1)));
@@ -172,18 +170,17 @@
     // live price total — all view-only concerns.
 
     /**
-     * applyStock — when the product is out of stock, disable the Add
-     * buttons and relabel them so the user can browse but not order.
+     * applyAvailability — when the product isn't available (status-driven:
+     * sold out / unavailable today / unavailable until), keep the Add
+     * buttons disabled so the user can browse but not order. The server
+     * already renders them disabled with the right label + badge; this is
+     * the client-side belt-and-braces (and covers any future hydration).
      */
-    function applyStock() {
-        if (root.getAttribute('data-instock') !== '0') { return; }
+    function applyAvailability() {
+        if (root.getAttribute('data-available') !== '0') { return; }
         qa('[data-action="pd-add"]', root).forEach(function (btn) {
             btn.disabled = true;
             btn.classList.add('is-disabled');
-            var label = btn.querySelector('span');
-            if (label) { label.textContent = 'Out of stock'; }
-            var total = btn.querySelector('[data-total]');
-            if (total) { total.textContent = ''; }
         });
     }
 
@@ -192,9 +189,8 @@
         if (!root) { return; }
         basePrice = parseFloat(root.getAttribute('data-base-price')) || 0;
         sym = root.getAttribute('data-currency') || '£';
-        // Counted stock caps the stepper; 0 (untracked) → soft cap of 99.
-        var stock = parseInt(root.getAttribute('data-stock-qty'), 10);
-        maxQty = (isFinite(stock) && stock > 0) ? stock : 99;
+        // No stock counting — the stepper just uses a soft cap of 99.
+        maxQty = 99;
 
         bindImageFallback();
         applyTints();
@@ -209,7 +205,7 @@
         // initial display flag is derived from `is_default`.
         syncLinkedGroups();
         recompute();
-        applyStock();
+        applyAvailability();
         syncIncState();
     }
 

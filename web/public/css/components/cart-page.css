@@ -506,3 +506,145 @@
     .ckt-popup__title { font-size: 1rem; }
     .ckt-popup__close { width: 32px; height: 32px; }
 }
+
+/* ── Charity contribution ─────────────────────────────────────────── *
+ * Green "Add a Charity Contribution" selector (No / % tiers / Custom) +
+ * the "DONATED" banner. Mirrors the legacy checkout's charity section. */
+.ckt-charity {
+    margin-top: 14px;
+    padding: 14px 16px;
+    border: 1px solid var(--color-border);
+    border-radius: 14px;
+    background: #fff;
+}
+.ckt-charity__title {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--color-text);
+    margin: 0 0 12px;
+}
+.ckt-charity__btns { display: flex; flex-wrap: wrap; gap: 8px; }
+.ckt-charity__btn {
+    flex: 1 1 auto;
+    min-width: 54px;
+    padding: 0.5rem 0.7rem;
+    border: 1px solid #cfe9dd;
+    border-radius: 999px;
+    background: #f1faf5;
+    color: #0f6e56;
+    font-weight: 600;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+.ckt-charity__btn:hover { border-color: #16a34a; }
+.ckt-charity__btn.is-active { background: #16a34a; border-color: #16a34a; color: #fff; }
+.ckt-charity__custom { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
+.ckt-charity__custom[hidden] { display: none; }
+.ckt-charity__cur { font-weight: 700; color: var(--color-text-muted); }
+.ckt-charity__input {
+    flex: 1;
+    min-width: 0;
+    padding: 0.5rem 0.7rem;
+    border: 1px solid var(--color-border);
+    border-radius: 10px;
+    font-size: 0.95rem;
+}
+.ckt-charity__input:focus-visible { outline: none; border-color: #16a34a; box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.15); }
+.ckt-charity__apply {
+    flex: 0 0 auto;
+    padding: 0.5rem 1rem;
+    border: 0;
+    border-radius: 10px;
+    background: #16a34a;
+    color: #fff;
+    font-weight: 600;
+    cursor: pointer;
+}
+.ckt-charity__apply:hover { background: #0f8a4d; }
+
+.ckt-donated {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-top: 12px;
+    padding: 12px 16px;
+    border-radius: 14px;
+    background: linear-gradient(135deg, #16a34a, #0f8a4d);
+    color: #fff;
+}
+.ckt-donated__left { display: flex; align-items: center; gap: 12px; }
+.ckt-donated__icon { font-size: 1.4rem; line-height: 1; }
+.ckt-donated__title { font-size: 0.95rem; font-weight: 700; margin: 0; }
+.ckt-donated__sub { font-size: 0.8rem; opacity: 0.9; margin: 0; }
+.ckt-donated__badge { display: flex; flex-direction: column; align-items: flex-end; }
+.ckt-donated__label { font-size: 0.62rem; letter-spacing: 0.08em; opacity: 0.85; }
+.ckt-donated__amt { font-size: 1.1rem; font-weight: 800; }
+.ckt-totals__row--charity dd { color: #0f6e56; font-weight: 600; }
+/* These rows/banners are display:flex, so the bare [hidden] attribute
+ * (UA display:none) loses the specificity fight — force it for the
+ * in-place charity toggle. */
+.ckt-donated[hidden], .ckt-totals__row[hidden] { display: none !important; }
+
+/* ── Voucher box ──────────────────────────────────────────────────── *
+ * A separate "Have a Voucher?" box (customer reward codes), distinct
+ * from the coupon/promo row. Mirrors the legacy voucher card. */
+.ckt-voucher {
+    margin-top: 14px;
+    padding: 14px 16px;
+    border: 1px solid var(--color-border);
+    border-radius: 14px;
+    background: #fff;
+}
+.ckt-voucher__title { font-size: 0.95rem; font-weight: 700; color: var(--color-text); margin: 0 0 10px; }
+.ckt-voucher__row { display: flex; gap: 8px; }
+.ckt-voucher__input {
+    flex: 1;
+    min-width: 0;
+    padding: 0.55rem 0.8rem;
+    border: 1px solid var(--color-border);
+    border-radius: 10px;
+    font-size: 0.95rem;
+    text-transform: uppercase;
+}
+.ckt-voucher__input:focus-visible { outline: none; border-color: var(--color-primary); box-shadow: 0 0 0 3px rgba(229, 37, 42, 0.12); }
+.ckt-voucher__input::placeholder { text-transform: none; }
+.ckt-voucher__apply {
+    flex: 0 0 auto;
+    padding: 0.55rem 1.1rem;
+    border: 0;
+    border-radius: 10px;
+    background: var(--color-text);
+    color: #fff;
+    font-weight: 700;
+    cursor: pointer;
+}
+.ckt-voucher__apply:hover { background: #000; }
+.ckt-voucher__applied { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.ckt-voucher__code { font-size: 0.95rem; font-weight: 700; color: var(--color-text); margin: 0; }
+.ckt-voucher__sub { font-size: 0.82rem; color: #0f6e56; font-weight: 600; margin: 2px 0 0; }
+.ckt-voucher__remove {
+    flex: 0 0 auto;
+    padding: 0.4rem 0.8rem;
+    border: 1px solid var(--color-border);
+    border-radius: 999px;
+    background: #fff;
+    color: var(--color-primary);
+    font-weight: 600;
+    font-size: 0.85rem;
+    cursor: pointer;
+}
+.ckt-voucher__remove:hover { border-color: var(--color-primary); background: var(--color-primary); color: #fff; }
+
+/* Card-payment surcharge note + review-popup line. */
+.ckt-card-note {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.8rem;
+    color: var(--color-text-muted);
+    margin: 10px 2px 0;
+}
+.ckt-card-note svg { color: var(--color-primary); flex: 0 0 auto; }
+.ckt-totals__row--cardcharge[hidden] { display: none !important; }

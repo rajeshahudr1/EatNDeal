@@ -149,4 +149,19 @@ async function status(req, res) {
     return relay(res, apiRes);
 }
 
-module.exports = { place, confirmation, detailPage, ordersPage, list, status };
+/**
+ * reorder — POST /order/:id/reorder
+ *
+ * Clones a past order into a fresh cart (api does the work). order_id
+ * comes from the URL; customer_id is injected from the session. Relays
+ * the JSON envelope; the client redirects to /cart on success.
+ */
+async function reorder(req, res) {
+    const user = needUser(req, res);
+    if (!user) { return; }
+    const payload = { customer_id: user.id, order_id: String(req.params.id || '').replace(/[^0-9]/g, '') };
+    const apiRes  = await callApi(req, 'POST', '/api/v1/customer/order/reorder', payload);
+    return relay(res, apiRes);
+}
+
+module.exports = { place, confirmation, detailPage, ordersPage, list, status, reorder };

@@ -237,10 +237,15 @@ function lineSubtotal(item) {
  *           sub_total      = Σ lineSubtotal(item)
  *           total_qty      = Σ item.product_qty
  *           bag_charge     = ceil(total_qty / online_per_bag_qty) × online_bag_charge   (delivery only)
- *           charity_amount = (fix_charity_percentage / 100) × sub_total
+ *           charity_amount = kept as-is on cart — the CUSTOMER's chosen
+ *                            contribution (set by /cart/set-charity); added
+ *                            to the total and donated to the company
+ *           fix_charity_discount = (fix_charity_percentage / 100) × sub_total
+ *                            — the COMPANY's auto-donation; shown in the
+ *                            "DONATED" banner but NOT added to the total
  *           service_charge = service_charge_online_order             (flat from branch)
  *           delivery_fees  = kept as-is on cart (set by /cart/set-address)
- *           discount       = kept as-is on cart (set by /cart/apply-coupon)
+ *           discount       = kept as-is on cart (coupon OR voucher)
  *           grandtotal     = sub_total + delivery_fees + service_charge_amount
  *                          + bag_charge + charity_amount − discount
  *
@@ -272,12 +277,25 @@ async function recomputeTotals(cartId) {
         }
     }
 
-    // Charity (% of sub-total). 0 when the branch hasn't set a percentage.
-    const charityPct = branch ? (Number(branch.fix_charity_percentage) || 0) : 0;
-    const charityAmt = Math.round((subTotal * charityPct / 100) * 100) / 100;
+    // Charity contribution — the CUSTOMER's chosen donation (set via
+    // /cart/set-charity: No / a % tier / Custom). Preserved across
+    // recomputes (like delivery_fees) and ADDED to the grand total; the
+    // customer pays it and it's donated to the company. NOT auto-charged.
+    const charityAmt = Number(cart.charity_amount) || 0;
 
-    // Service charge — flat per-order figure from branch config.
-    const serviceCharge = branch ? (Number(branch.service_charge_online_order) || 0) : 0;
+    // Fixed charity — the COMPANY's automatic donation = branch
+    // fix_charity_percentage % of sub-total. Shown to the customer as the
+    // "DONATED" banner but NOT added to the total (the company donates it
+    // from its own margin). Mirrors the legacy fix_charity_discount.
+    const fixCharityPct = branch ? (Number(branch.fix_charity_percentage) || 0) : 0;
+    const fixCharity    = Math.round((subTotal * fixCharityPct / 100) * 100) / 100;
+
+    // Service charge — CARD-ONLY (not part of the payment-agnostic base
+    // total). Cash / COD orders carry NO service charge. When the customer
+    // pays by card, the surcharge is added at payment time from
+    // company_stripe_settings (see Cart.cardServiceCharge), shown in the
+    // review popup + on the order. So the base cart total here keeps it 0.
+    const serviceCharge = 0;
 
     // Keep the previously-set delivery_fees; recompute discount based
     // on what's active. The caller that DOES want to change
@@ -320,6 +338,7 @@ async function recomputeTotals(cartId) {
         total_qty:             totalQty,
         bag_charge:            round2(bagCharge),
         charity_amount:        round2(charityAmt),
+        fix_charity_discount:  round2(fixCharity),
         service_charge_amount: round2(serviceCharge),
         discount_id:           discountId,
         discount:              round2(discount),
@@ -767,6 +786,120 @@ async function clearCoupon(cartId, branch) {
 }
 
 /**
+ * setVoucher
+ *
+ * What:  Applies a validated customer voucher to the cart. Writes
+ *        voucher_id + promocode + discount, and clears coupon_id /
+ *        discount_id (a voucher is mutually exclusive with a coupon and
+ *        wins over any auto-discount). Vouchers never grant free delivery.
+ *        recomputeTotals runs after, folding cart.discount into the
+ *        grandtotal (clamped to sub_total).
+ * Type:  WRITE.
+ */
+async function setVoucher(cartId, voucher, discount) {
+    if (!cartId || !voucher) { return; }
+    await db('cart').where({ id: cartId }).update({
+        voucher_id:    voucher.id,
+        coupon_id:     0,                 // voucher + coupon are mutually exclusive
+        discount_id:   0,                 // clears any active auto-discount
+        promocode:     voucher.code || null,
+        discount:      round2(discount),
+        free_delivery: 0,                 // vouchers don't waive delivery
+    });
+}
+
+/**
+ * clearVoucher
+ *
+ * What:  Removes the applied voucher (voucher_id / promocode / discount).
+ *        No delivery-fee restoration needed — vouchers never zero the
+ *        delivery fee. recomputeTotals (run by the caller) re-evaluates
+ *        any auto-discount that should now apply instead.
+ * Type:  WRITE.
+ */
+async function clearVoucher(cartId) {
+    if (!cartId) { return; }
+    await db('cart').where({ id: cartId }).update({
+        voucher_id: 0,
+        promocode:  null,
+        discount:   0,
+    });
+}
+
+// Default charity contribution tiers (% of sub-total) shown on the
+// checkout when the branch hasn't configured its own quick_tips rows.
+// Matches the legacy 5 / 10 / 15 quick-tip buttons.
+const CHARITY_TIERS_DEFAULT = [5, 10, 15];
+// Sanity ceiling on a custom charity so a fat-fingered / tampered value
+// can't blow up the grand total.
+const CHARITY_MAX = 1000;
+
+/**
+ * getCharityTiers
+ *
+ * What:  The charity % tiers to show on the checkout for a branch. Reads
+ *        the legacy per-branch quick_tips rows (value = percentage); falls
+ *        back to the default 5/10/15 when none are configured so the
+ *        selector always works. Returns up to 3 positive integers.
+ * Type:  READ.
+ */
+async function getCharityTiers(branchId, companyId) {
+    if (!branchId) { return CHARITY_TIERS_DEFAULT.slice(); }
+    try {
+        const rows = await db('quick_tips')
+            .where({ branch_id: branchId, company_id: companyId })
+            .orderBy('id', 'asc')
+            .limit(3)
+            .select('value');
+        const tiers = rows
+            .map((r) => Math.round(Number(r.value) || 0))
+            .filter((n) => n > 0);
+        return tiers.length ? tiers : CHARITY_TIERS_DEFAULT.slice();
+    } catch (_) {
+        // quick_tips unavailable → fall back to the defaults.
+        return CHARITY_TIERS_DEFAULT.slice();
+    }
+}
+
+/**
+ * setCharity
+ *
+ * What:  Writes the customer's chosen charity contribution onto the cart
+ *        (No → 0, a % tier or a custom amount). Clamped to [0, CHARITY_MAX]
+ *        and rounded to 2 dp. recomputeTotals (run by the caller's
+ *        respondWithCart tail) folds it into the grand total.
+ * Type:  WRITE.
+ */
+async function setCharity(cartId, amount) {
+    if (!cartId) { return; }
+    const amt = Math.max(0, Math.min(round2(Number(amount) || 0), CHARITY_MAX));
+    await db('cart').where({ id: cartId }).update({ charity_amount: amt });
+}
+
+/**
+ * cardServiceCharge
+ *
+ * What:  The per-company CARD-payment surcharge (£), read from
+ *        company_stripe_settings.service_charge for an ENABLED row.
+ *        Applied ONLY when the customer pays by card (Stripe) — cash
+ *        orders never carry it. Returns 0 when the company has no enabled
+ *        Stripe settings. Mirrors the legacy CompanyStripeSettings
+ *        service_charge that the old checkout adds when Stripe is picked.
+ * Type:  READ.
+ */
+async function cardServiceCharge(companyId) {
+    if (!companyId) { return 0; }
+    try {
+        const row = await db('company_stripe_settings')
+            .where({ company_id: companyId, is_enable: 1 })
+            .first('service_charge');
+        return row ? round2(Number(row.service_charge) || 0) : 0;
+    } catch (_) {
+        return 0;
+    }
+}
+
+/**
  * removeLineItem
  *
  * What:  Soft-deletes a cart_details row (`is_deleted=1`) and removes its
@@ -790,7 +923,9 @@ async function removeLineItem(lineItemId) {
  *        into camelCase so the UI stays clean.
  * Type:  READ (pure).
  */
-function publicCartView(cart, items) {
+function publicCartView(cart, items, opts) {
+    const charityAmount = Number(cart.charity_amount) || 0;
+    const fixCharity    = Number(cart.fix_charity_discount) || 0;
     return {
         id:               String(cart.id),
         localId:          cart.localID || '',
@@ -801,7 +936,18 @@ function publicCartView(cart, items) {
         bagCharge:        Number(cart.bag_charge)     || 0,
         deliveryFees:     Number(cart.delivery_fees)  || 0,
         serviceCharge:    Number(cart.service_charge_amount) || 0,
-        charityAmount:    Number(cart.charity_amount) || 0,
+        // Charity — the customer's chosen contribution (added to the total)
+        // and the company's automatic donation (fixCharityDiscount, NOT
+        // added). donatedTotal is what the "DONATED" banner shows. tiers
+        // are the % quick-buttons for the selector.
+        charityAmount:    charityAmount,
+        fixCharityDiscount: fixCharity,
+        donatedTotal:     round2(charityAmount + fixCharity),
+        charityTiers:     (opts && Array.isArray(opts.charityTiers)) ? opts.charityTiers : CHARITY_TIERS_DEFAULT,
+        // Card-payment surcharge (company_stripe_settings.service_charge),
+        // added to the total ONLY when the customer pays by card. 0 for
+        // cash. The UI bumps the total + shows a line when card is picked.
+        cardServiceCharge: (opts && typeof opts.cardServiceCharge === 'number') ? opts.cardServiceCharge : 0,
         discount:         Number(cart.discount)       || 0,
         // Where the discount came from — UI labels it differently.
         //   'coupon'  → customer-entered code        (cart.coupon_id > 0)
@@ -881,6 +1027,11 @@ module.exports = {
     setInstructions,
     setCoupon,
     clearCoupon,
+    setVoucher,
+    clearVoucher,
+    setCharity,
+    getCharityTiers,
+    cardServiceCharge,
     publicCartView,
     round2,
     DROP_OFF_OPTIONS,

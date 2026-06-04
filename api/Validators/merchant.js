@@ -26,9 +26,9 @@ const customerIdRule = idRule.required().messages({
 
 // ── GET /merchant/orders ──────────────────────────────────────────
 // Lists the company's marketplace orders. Optional state filter:
-//   'live'      (default)  pending + accepted + preparing + out + ready
-//   'completed'            delivered
-//   'cancelled'            cancelled
+//   'live'      (default)  placed + accepted/confirmed + ready/out-for-delivery
+//   'completed'            completed ('' sentinel)
+//   'cancelled'            cancelled / refunded / voided
 //   'all'                  any status
 const merchantOrdersSchema = Joi.object({
     customer_id: customerIdRule,
@@ -47,11 +47,17 @@ const merchantOrderSchema = Joi.object({
 // Body: customer_id, order_id, expected_status (the status the UI saw
 // when it rendered the button — used for the atomic UPDATE WHERE),
 // next_status (the value the button transitions to).
+//
+// next_status allows '' — the COMPLETED sentinel (orders.order_status is
+// VARCHAR and a finished order is stored as the empty string), which the
+// "Mark delivered" / "Mark picked up" button sends. Joi rejects empty
+// strings on a required string by default, so we opt in with .allow('').
+// expected_status is always an active code (4/5/10/6), never empty.
 const merchantAdvanceSchema = Joi.object({
     customer_id:     customerIdRule,
     order_id:        idRule.required(),
     expected_status: Joi.string().trim().max(3).required(),
-    next_status:     Joi.string().trim().max(3).required(),
+    next_status:     Joi.string().trim().max(3).allow('').required(),
 });
 
 module.exports = {

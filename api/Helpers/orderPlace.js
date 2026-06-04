@@ -12,17 +12,15 @@
  *           3.  orders_items_sub             (one per cart_sub_details)
  *           4.  orders_payments              (the chosen method)
  *           5.  order_delivery_details       (only when delivery)
- *           6.  product_store_inventory      (decrement per tracked line)
- *           7.  cart                         (mark is_open = 0)
+ *           6.  cart                         (mark is_open = 0)
  *
  *        ALL inside a single Knex transaction. Any step throws ⇒
  *        rollback ⇒ caller relays a friendly 422 to the customer; nothing
  *        partial lands in the DB.
  *
- *        Stock decrement uses SELECT … FOR UPDATE to serialise concurrent
- *        place-order calls so two customers can't claim the same last
- *        unit. Non-tracked products (track_stock_level ≠ 1) skip the
- *        inventory step.
+ *        There is NO stock/inventory step — product availability is
+ *        driven by the legacy status enum (see Helpers/availability.js),
+ *        not a counted quantity, so nothing is reserved or decremented.
  *
  *        Timing is filled from Helpers/orderTime:
  *           orders.delivery_estimated_time            ← branch's HH:MM:SS string
@@ -44,29 +42,24 @@ const OrderTime    = require('./orderTime');
 /**
  * loadItemsForPlace
  *
- * What:  Same line items Cart.loadLineItems returns, but each row also
- *        carries `track_stock_level` so the placeOrder transaction
- *        knows which products to decrement inventory for.
- *        Both controllers (sync /order/place + async Stripe webhook
- *        recovery) call this — keeps the join logic DRY.
+ * What:  The cart's line items for the place-order write. Thin pass-through
+ *        to Cart.loadLineItems — kept as a named export because both
+ *        callers (sync /order/place + the async Stripe webhook recovery)
+ *        use it, and so the shape stays in one place.
+ *
+ *        NOTE: this used to also join products.track_stock_level so the
+ *        transaction could decrement inventory. Stock is gone — product
+ *        availability is status-driven (see Helpers/availability.js) — so
+ *        there is no inventory step and no extra join.
  * Type:  READ.
  */
 async function loadItemsForPlace(cartId) {
-    const items = await Cart.loadLineItems(cartId);
-    if (!items.length) { return []; }
-    const ids = Array.from(new Set(items.map((it) => it.product_id)));
-    const tracks = await db('products')
-        .whereIn('id', ids)
-        .select('id', 'track_stock_level');
-    const byId = new Map(tracks.map((r) => [String(r.id), Number(r.track_stock_level) || 0]));
-    return items.map((it) => Object.assign({}, it, {
-        track_stock_level: byId.get(String(it.product_id)) || 0,
-    }));
+    return Cart.loadLineItems(cartId);
 }
 
-const STATUS_PENDING       = '4';  // legacy convention — staff has to accept
-const STATUS_AUTO_ACCEPTED = '5';  // delivery auto-accept (branch flag)
-const STATUS_AUTO_PICKUP   = '10'; // pickup auto-accept
+const STATUS_PENDING        = '4';  // legacy convention — staff has to accept
+const STATUS_ACCEPTED_PICKUP    = '5';  // pickup / in-store accept (serve_type ≠ 3)
+const STATUS_CONFIRMED_DELIVERY = '10'; // delivery accept (serve_type = 3)
 const CART_CLOSED          = 0;
 const CREATED_FROM_WEB     = '2';  // legacy enum (1=app-iOS, 2=web, 3=app-Android)
 const PAYMENT_STATUS_PENDING = 0;  // 0 = unpaid; cash collected on delivery
@@ -98,45 +91,18 @@ function generateOrderNumber(now) {
  *
  * What:  Picks the initial `orders.order_status` value. Legacy branch
  *        config has `auto_acc_off_orders` flag — when set, online
- *        orders skip the "Pending" stage and land directly in
- *        Accepted. We honour that flag when present.
+ *        orders skip the "Placed/awaiting-accept" stage and land
+ *        directly in the accepted state. We honour that flag when present.
+ *
+ *        Accept code matches the live POS exactly: DELIVERY (serve_type
+ *        = 3) → 10 (confirmed, awaiting dispatch); everything else
+ *        (pickup / in-store) → 5. (This was previously inverted.)
  * Type:  READ (pure).
  */
 function resolveOrderStatus(branch, serveType) {
     const autoAccept = Number(branch && branch.auto_acc_off_orders) === 1;
     if (!autoAccept) { return STATUS_PENDING; }
-    return Number(serveType) === 2 ? STATUS_AUTO_PICKUP : STATUS_AUTO_ACCEPTED;
-}
-
-/**
- * decrementInventory
- *
- * What:  Subtracts `qty` from the first product_store_inventory row
- *        with enough on hand. Throws when nothing matches so the
- *        outer transaction rolls back. FOR UPDATE locks the row so
- *        concurrent place-order calls serialise — two customers can't
- *        both grab the last unit.
- *
- *        Made-to-order products (track_stock_level ≠ 1) skip this
- *        function entirely (caller filters).
- * Type:  WRITE (inside a transaction).
- */
-async function decrementInventory(trx, productId, qty) {
-    const row = await trx('product_store_inventory')
-        .where('product_id', productId)
-        .andWhere('quantity', '>=', qty)
-        .orderBy('id', 'asc')
-        .forUpdate()
-        .first();
-    if (!row) {
-        const err = new Error('stock_unavailable');
-        err.code = 'stock_unavailable';
-        err.productId = productId;
-        throw err;
-    }
-    await trx('product_store_inventory')
-        .where('id', row.id)
-        .update({ quantity: trx.raw('quantity - ?', [qty]) });
+    return Number(serveType) === 3 ? STATUS_CONFIRMED_DELIVERY : STATUS_ACCEPTED_PICKUP;
 }
 
 /**
@@ -183,16 +149,17 @@ async function placeOrder({ customer, cart, branch, items, paymentOption, custom
         Number(cart.serve_type) === 2 ? 'pickup' : 'delivery',
     );
 
-    return db.transaction(async (trx) => {
-        // ── 1. Inventory: decrement per tracked line FIRST so a stock
-        // race is caught before any other write happens. ───────────────
-        for (const it of items) {
-            if (Number(it.track_stock_level) === 1) {
-                await decrementInventory(trx, it.product_id, Number(it.product_qty) || 0);
-            }
-        }
+    // Card-payment surcharge — only for card (payment_option 2), read from
+    // the same source as createIntent so the recorded total matches what
+    // Stripe actually charged. Cash orders carry 0.
+    const isCard       = Number(paymentOption) === 2;
+    const cardCharge   = isCard ? await Cart.cardServiceCharge(cart.company_id) : 0;
+    const grandTotal   = Math.round(((Number(cart.grandtotal) || 0) + cardCharge) * 100) / 100;
 
-        // ── 2. Sequential internal_order_id per branch. ─────────────
+    return db.transaction(async (trx) => {
+        // ── 1. Sequential internal_order_id per branch. ─────────────
+        // (No inventory step — product availability is status-driven, not
+        // stock-counted, so there is nothing to decrement / reserve.)
         const lastRow = await trx('orders')
             .where('branch_id', branch.id)
             .max('internal_order_id as max')
@@ -213,7 +180,7 @@ async function placeOrder({ customer, cart, branch, items, paymentOption, custom
             }
         }
 
-        // ── 3. orders row ───────────────────────────────────────────
+        // ── 2. orders row ───────────────────────────────────────────
         const [order] = await trx('orders').insert({
             is_marketplace:    1,
             user_id:           customer.id,
@@ -231,14 +198,17 @@ async function placeOrder({ customer, cart, branch, items, paymentOption, custom
             coupon_id:         Number(cart.coupon_id)     || 0,
             voucher_id:        Number(cart.voucher_id)    || 0,
             free_delivery:     Number(cart.free_delivery) || 0,
-            grand_total:       Number(cart.grandtotal)    || 0,
+            grand_total:       grandTotal,
             paid_amount:       0,
             delivery_fees:     Number(cart.delivery_fees) || 0,
             delivery_address:  cart.delivery_address || null,
             bag_charge:        Number(cart.bag_charge)    || 0,
             service_charge_amount: Number(cart.service_charge_amount) || 0,
             service_charge_rate:   Number(cart.service_charge_rate)   || 0,
+            // Card surcharge (0 for cash) — what Stripe added on top.
+            stripe_service_charge: cardCharge,
             charity_amount:    Number(cart.charity_amount) || 0,
+            fix_charity_discount: Number(cart.fix_charity_discount) || 0,
             customer_first_name: customer.firstname || '',
             customer_last_name:  customer.lastname  || '',
             customer_email:      customer.email     || '',
@@ -264,7 +234,7 @@ async function placeOrder({ customer, cart, branch, items, paymentOption, custom
             // created_at / updated_at default to NOW.
         }).returning('*');
 
-        // ── 4. orders_items + orders_items_sub ──────────────────────
+        // ── 3. orders_items + orders_items_sub ──────────────────────
         // NB: legacy orders_items doesn't carry category_id — we keep
         // that on cart_details only.
         for (const it of items) {
@@ -309,7 +279,7 @@ async function placeOrder({ customer, cart, branch, items, paymentOption, custom
             }
         }
 
-        // ── 5. orders_payments ──────────────────────────────────────
+        // ── 4. orders_payments ──────────────────────────────────────
         // FK is `orders_id` (NOT order_id) per the legacy schema.
         // payment_status is varchar — '0' pending, '1' paid.
         // payment_transaction_id stores the Stripe PaymentIntent id
@@ -320,7 +290,7 @@ async function placeOrder({ customer, cart, branch, items, paymentOption, custom
             company_id:             cart.company_id,
             invoice_id:             Math.floor(now.getTime() / 1000),
             payment_id:             Number(paymentOption) || 1,
-            payment_amount:         Number(cart.grandtotal) || 0,
+            payment_amount:         grandTotal,
             payment_status:         paidNow ? '1' : '0',
             payment_transaction_id: paymentIntentId || null,
             payment_type:           Number(paymentOption) === 2 ? 'Card' : 'Cash',
@@ -329,14 +299,15 @@ async function placeOrder({ customer, cart, branch, items, paymentOption, custom
             created_by:             customer.id,
         });
 
-        // If card payment succeeded, also stamp the order row's paid_amount.
+        // If card payment succeeded, also stamp the order row's paid_amount
+        // with the surcharge-inclusive total Stripe actually captured.
         if (paidNow) {
             await trx('orders').where({ id: order.id }).update({
-                paid_amount: Number(cart.grandtotal) || 0,
+                paid_amount: grandTotal,
             });
         }
 
-        // ── 6. order_delivery_details (delivery only) ───────────────
+        // ── 5. order_delivery_details (delivery only) ───────────────
         // Legacy schema links via `invoice_id` (matching orders.invoice_id)
         // — no order_id column. Stores delivery routing info; the
         // customer's delivery address is already on orders.delivery_address.
@@ -351,8 +322,18 @@ async function placeOrder({ customer, cart, branch, items, paymentOption, custom
             });
         }
 
-        // ── 7. Close the cart ───────────────────────────────────────
+        // ── 6. Close the cart ───────────────────────────────────────
         await trx('cart').where({ id: cart.id }).update({ is_open: CART_CLOSED });
+
+        // ── 7. Burn a single-use voucher ────────────────────────────
+        // If the cart carried a customer voucher, flip it to used so it
+        // can't be redeemed again (no-op for multi-use vouchers). Inside
+        // the txn so a rolled-back order never consumes the voucher.
+        if (Number(cart.voucher_id) > 0) {
+            await trx('customer_voucher')
+                .where({ id: cart.voucher_id, used_once: 1 })
+                .update({ is_used: 1 });
+        }
 
         return order;
     });

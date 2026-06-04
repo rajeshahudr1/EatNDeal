@@ -35,6 +35,7 @@ const Orders       = require('../../Helpers/orders');
 const OrderStatus  = require('../../Helpers/orderStatus');
 const Payments     = require('../../Helpers/payments');
 const M            = require('../../Helpers/marketplace');
+const A            = require('../../Helpers/availability');
 const { db }       = require('../../config/db');
 
 /**
@@ -64,17 +65,15 @@ async function place(req, res) {
             return H.errorResponse(res, 'Your cart is empty.', 404);
         }
 
-        // 3. Strict revalidate — stock, price drift, coupon, address,
-        //    min-order, pre-order time.
+        // 3. Strict revalidate — availability, price drift, coupon,
+        //    address, min-order, pre-order time.
         const v = await CartCheck.validate(open.id, customerId, { level: CartCheck.LEVEL.PLACE });
         if (!v.ok) {
             return H.errorResponse(res, v.errors[0].msg, 422, { errors: v.errors });
         }
 
-        // 4. Live items + branch (validate already loaded them but
-        // we re-read to be defensive about row freshness — and we need
-        // track_stock_level on each line for the inventory decrement,
-        // which validate didn't return on the row).
+        // 4. Live items + branch (validate already loaded them but we
+        // re-read to be defensive about row freshness).
         const items = await OrderPlace.loadItemsForPlace(open.id);
         if (!items.length) {
             return H.errorResponse(res, 'Your cart is empty.', 422);
@@ -106,7 +105,13 @@ async function place(req, res) {
                         'Payment hasn\'t completed yet. Please try again.', 422,
                         { stripeStatus: intent && intent.status });
                 }
-                const expectedMinor = Math.round((Number(v.cart.grandtotal) || 0) * 100);
+                // Card payments include the company's card service charge
+                // on top of the cart total — the SAME figure createIntent
+                // charged and orderPlace records (one source: company_stripe
+                // _settings via Cart.cardServiceCharge). Compare against
+                // grandtotal + that surcharge so they line up.
+                const cardCharge    = await Cart.cardServiceCharge(v.cart.company_id);
+                const expectedMinor = Math.round(((Number(v.cart.grandtotal) || 0) + cardCharge) * 100);
                 if (Number(intent.amount) !== expectedMinor) {
                     return H.errorResponse(res,
                         'Payment amount doesn\'t match your cart total. Please refresh and try again.', 422);
@@ -125,28 +130,20 @@ async function place(req, res) {
             }
         }
 
-        // 5b. The big one — single transaction.
-        let order;
-        try {
-            order = await OrderPlace.placeOrder({
-                customer,
-                cart:           v.cart,
-                branch,
-                items,
-                paymentOption:  b.payment_option || 1,
-                paymentIntentId,
-                paymentSucceeded,
-                customerNote:   b.customer_note || '',
-            });
-        } catch (txErr) {
-            // Race-time stock failure surfaces as a friendly 422.
-            if (txErr && txErr.code === 'stock_unavailable') {
-                return H.errorResponse(res,
-                    'One of your items just sold out. Please refresh your cart and try again.', 422,
-                    { code: 'stock_unavailable', productId: txErr.productId });
-            }
-            throw txErr;
-        }
+        // 5b. The big one — single transaction. Availability is validated
+        // up front by cartValidate(PLACE); there is no stock step inside
+        // placeOrder, so any throw here is a real error → the outer catch
+        // returns the generic 500.
+        const order = await OrderPlace.placeOrder({
+            customer,
+            cart:           v.cart,
+            branch,
+            items,
+            paymentOption:  b.payment_option || 1,
+            paymentIntentId,
+            paymentSucceeded,
+            customerNote:   b.customer_note || '',
+        });
 
         // 6. Build a slim response — UI redirects to /order/<id>.
         const eta = OrderTime.formatRange(
@@ -269,4 +266,105 @@ async function status(req, res) {
     }
 }
 
-module.exports = { place, list, detail, status };
+/**
+ * reorder
+ *
+ * What:  POST /api/v1/customer/order/reorder — clones a PAST order's
+ *        items into a fresh open cart, then returns the cart (the web
+ *        layer redirects to /cart). Mirrors the legacy webordering
+ *        actionReorder, adapted to the marketplace:
+ *          • the order must be THIS customer's marketplace order
+ *          • the branch must still be active
+ *          • each line is re-fetched + re-PRICED at the current price and
+ *            availability-checked (status-driven); items that are now
+ *            unavailable / removed / off-marketplace are SKIPPED (not
+ *            blocking) and reported back so the UI can note them
+ *          • free-gift lines are not re-added (legacy parity)
+ *          • any existing open cart is closed first so reorder REPLACES it
+ *            (no two open carts / branch conflicts)
+ * Type:  WRITE.
+ *
+ * Body:   customer_id, order_id
+ * Output: 200 { cart, skipped[], reordered } or 422 when nothing is addable.
+ */
+async function reorder(req, res) {
+    try {
+        const customerId = req.body.customer_id;
+        const orderId    = req.body.order_id;
+
+        const { error } = await customers.loadMarketplaceCustomer(customerId);
+        if (error) { return H.errorResponse(res, error.msg, error.status); }
+
+        const order = await db('orders')
+            .where({ id: orderId, user_id: customerId, is_marketplace: 1 })
+            .first('id', 'branch_id', 'company_id', 'serve_type');
+        if (!order) { return H.errorResponse(res, 'Order not found.', 404); }
+
+        const branch = await M.loadActiveBranch(order.branch_id);
+        if (!branch) { return H.errorResponse(res, 'This restaurant is no longer available.', 422); }
+
+        const orderItems = await db('orders_items').where({ order_id: order.id }).orderBy('id', 'asc');
+        if (!orderItems.length) { return H.errorResponse(res, 'This order has no items to reorder.', 422); }
+
+        // Fresh cart: close any existing open cart so reorder replaces it.
+        await db('cart').where({ user_id: customerId, is_marketplace: 1, is_open: 1 }).update({ is_open: 0 });
+        const cart = await Cart.getOrCreateCart({
+            customerId, branchId: order.branch_id, companyId: order.company_id, serveType: order.serve_type,
+        });
+
+        const skipped = [];
+        let added = 0;
+        for (const it of orderItems) {
+            if (Number(it.is_free_item) === 1) { continue; }   // don't re-add free gifts
+
+            const product = await db('products as p')
+                .where('p.id', it.product_id)
+                .andWhere('p.show_marketplace', 1)
+                .whereIn('p.status', A.SURFACE_STATUSES)
+                .first('p.id', 'p.name', 'p.company_id', 'p.marketplace_price',
+                       'p.online_platform_price', 'p.price_after_tax', ...A.selectColumns(db, 'p'));
+            if (!product || !A.evaluate(product).available) {
+                skipped.push(it.product_name || (product && product.name) || 'An item');
+                continue;
+            }
+
+            const subs = await db('orders_items_sub').where({ orders_items_id: it.id });
+            const options = subs.map((s) => ({
+                id:                s.modifier_option_id,
+                modifier_group_id: s.modifier_id,
+                option_name:       s.modifier_option_name || s.modifier_name || '',
+                price_tax_include: Number(s.amount) || 0,
+            }));
+            await Cart.addItem({
+                cartId:    cart.id,
+                product:   { id: product.id, name: product.name, company_id: product.company_id },
+                qty:       Number(it.product_qty) || 1,
+                unitPrice: M.pickPrice(product),
+                options,
+                remark:    it.remark || null,
+            });
+            added += 1;
+        }
+
+        if (added === 0) {
+            await Cart.closeCart(cart.id);
+            return H.errorResponse(res, 'None of the items in this order are available right now.', 422);
+        }
+
+        await Cart.recomputeTotals(cart.id);
+        const fresh = await Cart.loadCartById(cart.id);
+        const items = await Cart.loadLineItems(cart.id);
+        const view  = Cart.publicCartView(fresh, items);
+
+        const msg = skipped.length
+            ? ('Order added to your cart — ' + skipped.length + ' item' + (skipped.length === 1 ? '' : 's')
+                + ' couldn\'t be re-added (unavailable).')
+            : 'Order added to your cart.';
+        return H.successResponse(res, { cart: view, skipped, reordered: added }, msg);
+    } catch (err) {
+        H.log.error('order.reorder', err && err.message);
+        return H.errorResponse(res, MSG.server.oops, 500);
+    }
+}
+
+module.exports = { place, list, detail, status, reorder };

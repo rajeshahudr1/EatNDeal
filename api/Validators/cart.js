@@ -159,6 +159,40 @@ const cartSetInstructionsSchema = Joi.object({
         .messages({ 'string.max': 'Delivery instructions are too long.' }),
 });
 
+// ── POST /customer/cart/apply-voucher ──────────────────────────────
+// Customer-specific reward voucher. Code is up to 10 chars (legacy
+// customer_voucher.voucher_code max). Validation + discount math run in
+// Helpers/vouchers.validate().
+const cartApplyVoucherSchema = Joi.object({
+    customer_id: customerIdRule,
+    code:        Joi.string().trim().min(1).max(10).required()
+        .messages({
+            'string.empty': 'Enter a voucher code.',
+            'string.max':   'Voucher code is too long.',
+            'any.required': 'Enter a voucher code.',
+        }),
+});
+
+// ── POST /customer/cart/remove-voucher ─────────────────────────────
+const cartRemoveVoucherSchema = Joi.object({
+    customer_id: customerIdRule,
+});
+
+// ── POST /customer/cart/set-charity ────────────────────────────────
+// The customer's chosen charity contribution amount (No → 0, a % tier of
+// sub-total, or a Custom £). The helper clamps + rounds; here we just
+// bound it to a sane non-negative range.
+const cartSetCharitySchema = Joi.object({
+    customer_id:    customerIdRule,
+    charity_amount: Joi.number().min(0).max(1000).required()
+        .messages({
+            'number.base': 'Enter a valid charity amount.',
+            'number.min':  'Charity amount can\'t be negative.',
+            'number.max':  'That charity amount is too large.',
+            'any.required': 'Enter a charity amount.',
+        }),
+});
+
 module.exports = {
     cartGetSchema,
     cartAddSchema,
@@ -171,4 +205,7 @@ module.exports = {
     cartSetInstructionsSchema,
     cartApplyCouponSchema,
     cartRemoveCouponSchema,
+    cartApplyVoucherSchema,
+    cartRemoveVoucherSchema,
+    cartSetCharitySchema,
 };

@@ -26,39 +26,17 @@ const { db } = require('../config/db');
 const M      = require('./marketplace');
 const OrderStatus = require('./orderStatus');
 
-// Legacy `orders.order_status` enum. Unknown codes ⇒ 'Processing'.
-const STATUS_LABELS = Object.freeze({
-    '0':  'Cancelled',
-    '1':  'Placed',
-    '2':  'Cancelled',
-    '3':  'New',
-    '4':  'Pending',
-    '5':  'Accepted',
-    '6':  'Preparing',
-    '7':  'Out for delivery',
-    '8':  'Completed',
-    '9':  'Cancelled',
-    '10': 'Accepted',
-    '11': 'Ready for pickup',
-});
-
-// CSS-class hook so the orders list can colour status pills consistently.
-const STATUS_CLASSES = Object.freeze({
-    completed: ['8'],
-    cancelled: ['0', '2', '9'],
-    pending:   ['3', '4'],
-});
-
-function statusLabel(code) {
-    return STATUS_LABELS[String(code)] || 'Processing';
+// Status label/class come from the SINGLE source of truth in
+// orderStatus.js (getStatusMeta). They are thin delegates so the
+// orders list, detail header and merchant board all read one map.
+// serve_type is forwarded because code 6 is dual-meaning (delivery →
+// "Out for delivery", pickup → "Ready to collect").
+function statusLabel(code, serveType) {
+    return OrderStatus.getStatusMeta(code, serveType).label;
 }
 
-function statusClass(code) {
-    const s = String(code);
-    if (STATUS_CLASSES.completed.indexOf(s) !== -1) { return 'completed'; }
-    if (STATUS_CLASSES.cancelled.indexOf(s) !== -1) { return 'cancelled'; }
-    if (STATUS_CLASSES.pending.indexOf(s)   !== -1) { return 'pending'; }
-    return 'active';
+function statusClass(code, serveType) {
+    return OrderStatus.getStatusMeta(code, serveType).class;
 }
 
 /**
@@ -119,8 +97,8 @@ async function listForCustomer(customerId, opts) {
             id:           String(r.id),
             number:       r.order_number || '',
             status:       String(r.order_status || ''),
-            statusLabel:  statusLabel(r.order_status),
-            statusClass:  statusClass(r.order_status),
+            statusLabel:  statusLabel(r.order_status, r.serve_type),
+            statusClass:  statusClass(r.order_status, r.serve_type),
             serveType:    Number(r.serve_type)  || 0,
             grandTotal:   Number(r.grand_total) || 0,
             totalQty:     Number(r.total_qty)   || 0,
@@ -199,8 +177,8 @@ async function loadDetail(orderId, customerId) {
         id:               String(order.id),
         number:           order.order_number || '',
         status:           String(order.order_status || ''),
-        statusLabel:      statusLabel(order.order_status),
-        statusClass:      statusClass(order.order_status),
+        statusLabel:      statusLabel(order.order_status, order.serve_type),
+        statusClass:      statusClass(order.order_status, order.serve_type),
         // Progress timeline + ETA — first paint of /order/:id has it
         // ready; the polling endpoint refreshes the same fields.
         progress:         OrderStatus.progressForOrder(order),
@@ -211,6 +189,7 @@ async function loadDetail(orderId, customerId) {
         subTotal:         Number(order.sub_total)             || 0,
         deliveryFees:     Number(order.delivery_fees)         || 0,
         serviceCharge:    Number(order.service_charge_amount) || 0,
+        cardServiceCharge: Number(order.stripe_service_charge) || 0,
         bagCharge:        Number(order.bag_charge)            || 0,
         charityAmount:    Number(order.charity_amount)        || 0,
         discount:         Number(order.discount)              || 0,

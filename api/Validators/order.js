@@ -67,9 +67,20 @@ const orderDetailSchema = Joi.object({
 // The detail page polls this every ~30 s and stops when isTerminal.
 const orderStatusSchema = orderDetailSchema;
 
+// ── POST /customer/order/reorder ───────────────────────────────────
+// Clones a past order's items into a fresh open cart (mirrors the
+// legacy webordering actionReorder). order_id comes in the body.
+const orderReorderSchema = Joi.object({
+    customer_id: customerIdRule,
+    order_id:    idRule.required().messages({
+        'any.required': 'Order id is required.',
+    }),
+});
+
 module.exports = {
     orderPlaceSchema,
     orderListSchema,
     orderDetailSchema,
     orderStatusSchema,
+    orderReorderSchema,
 };

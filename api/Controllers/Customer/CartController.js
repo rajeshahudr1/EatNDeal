@@ -31,7 +31,9 @@ const customers = require('../../Helpers/customerLookup');
 const Cart      = require('../../Helpers/cart');
 const CartCheck = require('../../Helpers/cartValidate');
 const Coupons   = require('../../Helpers/coupons');
+const Vouchers  = require('../../Helpers/vouchers');
 const M         = require('../../Helpers/marketplace');
+const A         = require('../../Helpers/availability');
 const { db }    = require('../../config/db');
 
 /**
@@ -77,7 +79,7 @@ async function get(req, res) {
         // last write, the stored grandtotal would be stale. One UPDATE.
         await Cart.recomputeTotals(open.id);
 
-        // Validate at READ level. Cheap-path: skips per-item stock checks
+        // Validate at READ level. Cheap-path: skips per-item availability checks
         // (those fire on every WRITE).
         const v = await CartCheck.validate(open.id, customerId, { level: CartCheck.LEVEL.READ });
         if (!v.ok) {
@@ -86,7 +88,13 @@ async function get(req, res) {
         }
 
         const items = await Cart.loadLineItems(open.id);
-        const view  = Cart.publicCartView(v.cart, items);
+        // Charity % tiers for the selector — branch-configured (quick_tips)
+        // or the default 5/10/15. Only needed on the page-render path.
+        const charityTiers = await Cart.getCharityTiers(open.branch_id, open.company_id);
+        // Card-payment surcharge for this company (added only when paying
+        // by card) — the page shows it + bumps the total when card picked.
+        const cardServiceCharge = await Cart.cardServiceCharge(open.company_id);
+        const view  = Cart.publicCartView(v.cart, items, { charityTiers, cardServiceCharge });
 
         return H.successResponse(res, {
             cart:     view,
@@ -106,7 +114,8 @@ async function get(req, res) {
  *        derived from the product server-side. Full validation chain:
  *
  *           1. Customer authed + active.
- *           2. Product still marketplace-eligible + in stock + not sold out.
+ *           2. Product still marketplace-eligible + available (status-driven:
+ *              not sold out / unavailable / unavailable today / until).
  *           3. Each selected modifier option still active AND linked to
  *              THIS product via modifier_group_products (status='1').
  *           4. Branch-conflict: if the customer already has an open cart
@@ -136,36 +145,34 @@ async function add(req, res) {
         const { error } = await customers.loadMarketplaceCustomer(customerId);
         if (error) { return H.errorResponse(res, error.msg, error.status); }
 
-        // 2. Product snapshot — eligibility + stock + sold-out in one
-        // round trip. Joined to company so we can apply the marketplace
-        // scope filter on the same query.
+        // 2. Product snapshot — eligibility + availability in one round
+        // trip. Joined to company so we can apply the marketplace scope
+        // filter on the same query. Surface statuses only (Available +
+        // the temporary states); Unavailable('0')/Deleted('2') → no row.
         const product = await db('products as p')
             .innerJoin('company as c', 'c.id', 'p.company_id')
             .where('p.id', b.product_id)
             .andWhere('p.show_marketplace', 1)
-            .andWhere('p.status', '1')
+            .whereIn('p.status', A.SURFACE_STATUSES)
             .modify(M.eligibleCompanyScope, 'c')
             .select(
-                'p.id', 'p.name', 'p.company_id', 'p.track_stock_level',
+                'p.id', 'p.name', 'p.company_id',
                 'p.marketplace_price', 'p.online_platform_price', 'p.price_after_tax',
                 'c.business_name',
-                db.raw("EXISTS (SELECT 1 FROM product_sold_out so WHERE so.product_id = p.id AND so.is_sold::text = '1') AS is_sold_out"),
-                db.raw('(SELECT COALESCE(SUM(si.quantity::numeric), 0) FROM product_store_inventory si WHERE si.product_id = p.id) AS stock_qty'),
+                ...A.selectColumns(db, 'p'),
             )
             .first();
         if (!product) {
             return H.errorResponse(res, 'This item is no longer available.', 404);
         }
-        if (product.is_sold_out) {
-            return H.errorResponse(res, '"' + product.name + '" is sold out.', 422);
+        // Availability — status-driven (no stock). Reject sold-out /
+        // unavailable items server-side even though the UI disables Add.
+        const avail = A.evaluate(product);
+        if (!avail.available) {
+            return H.errorResponse(res,
+                '"' + product.name + '" is ' + (avail.soldOut ? 'sold out' : 'currently unavailable') + '.', 422);
         }
         const qty = Number(b.qty) || 1;
-        const tracks = Number(product.track_stock_level) === 1;
-        const stockQty = Number(product.stock_qty) || 0;
-        if (tracks && qty > stockQty) {
-            return H.errorResponse(res,
-                'Only ' + stockQty + ' "' + product.name + '" left.', 422);
-        }
 
         // 3. Resolve the canonical branch for this company (lowest live id —
         // same rule the marketplace listing uses).
@@ -322,11 +329,11 @@ async function respondWithCart(res, cartId, customerId, successMsg) {
  *           • customer authed
  *           • cart open + owned
  *           • line item belongs to this cart
- *           • new qty available in stock (when product tracks stock)
- *           • product still marketplace-eligible (catches "removed mid-session")
+ *           • product still marketplace-eligible + available (status-driven)
  *
- *        Stock cap: re-queries `product_store_inventory` SUM so an admin's
- *        mid-session stock drop is honoured without the client knowing.
+ *        Availability is re-read live so an admin marking the item
+ *        Unavailable / Sold Out mid-session is honoured on the next qty
+ *        change without the client knowing.
  * Type:  WRITE.
  *
  * Body:   customer_id, item_id, qty
@@ -347,24 +354,19 @@ async function updateQty(req, res) {
         const line = await Cart.loadOwnedLineItem(open.id, b.item_id);
         if (!line) { return H.errorResponse(res, 'That item is not in your cart.', 404); }
 
-        // Stock cap — re-read live (not the snapshot stored on the row).
-        const stockRow = await db('products as p')
+        // Availability re-check — re-read live (not the snapshot on the
+        // row). Status-driven (no stock count): block raising the qty of a
+        // now-unavailable / sold-out item.
+        const availRow = await db('products as p')
             .where('p.id', line.product_id)
-            .first(
-                'p.name', 'p.track_stock_level',
-                db.raw("EXISTS (SELECT 1 FROM product_sold_out so WHERE so.product_id = p.id AND so.is_sold::text = '1') AS is_sold_out"),
-                db.raw('(SELECT COALESCE(SUM(si.quantity::numeric), 0) FROM product_store_inventory si WHERE si.product_id = p.id) AS stock_qty'),
-            );
-        if (!stockRow) {
+            .first('p.name', ...A.selectColumns(db, 'p'));
+        if (!availRow) {
             return H.errorResponse(res, 'That item is no longer available.', 422);
         }
-        if (stockRow.is_sold_out) {
-            return H.errorResponse(res, '"' + stockRow.name + '" is sold out.', 422);
-        }
-        const tracks = Number(stockRow.track_stock_level) === 1;
-        const stock  = Number(stockRow.stock_qty) || 0;
-        if (tracks && newQty > stock) {
-            return H.errorResponse(res, 'Only ' + stock + ' "' + stockRow.name + '" left.', 422);
+        const avail = A.evaluate(availRow);
+        if (!avail.available) {
+            return H.errorResponse(res,
+                '"' + availRow.name + '" is ' + (avail.soldOut ? 'sold out' : 'currently unavailable') + '.', 422);
         }
 
         await Cart.updateLineQty(line.id, newQty);
@@ -689,6 +691,98 @@ async function removeCoupon(req, res) {
 }
 
 /**
+ * applyVoucher
+ *
+ * What:  Validates a customer voucher code (Helpers/vouchers.validate —
+ *        must be issued to THIS signed-in customer at this branch/company,
+ *        not expired, not used) then writes it onto the cart (voucher_id +
+ *        promocode + discount, clearing any coupon). A voucher and a
+ *        coupon are mutually exclusive.
+ * Type:  WRITE.
+ *
+ * Body:   customer_id, code
+ */
+async function applyVoucher(req, res) {
+    try {
+        const customerId = req.body.customer_id;
+        const code       = req.body.code;
+
+        const { error } = await customers.loadMarketplaceCustomer(customerId);
+        if (error) { return H.errorResponse(res, error.msg, error.status); }
+
+        const open = await Cart.findOpenCart(customerId);
+        if (!open) { return H.errorResponse(res, 'Your cart is no longer available.', 404); }
+
+        const v = await Vouchers.validate(code, open, customerId);
+        if (!v.ok) { return H.errorResponse(res, v.error, 422, { code: v.code }); }
+
+        await Cart.setVoucher(open.id, v.voucher, v.discount);
+        return respondWithCart(res, open.id, customerId,
+            'Voucher applied — £' + v.discount.toFixed(2) + ' off.');
+    } catch (err) {
+        H.log.error('cart.applyVoucher', err && err.message);
+        return H.errorResponse(res, MSG.server.oops, 500);
+    }
+}
+
+/**
+ * removeVoucher
+ *
+ * What:  Clears the cart's applied voucher (voucher_id / promocode /
+ *        discount). recomputeTotals then re-evaluates any auto-discount.
+ * Type:  WRITE.
+ */
+async function removeVoucher(req, res) {
+    try {
+        const customerId = req.body.customer_id;
+
+        const { error } = await customers.loadMarketplaceCustomer(customerId);
+        if (error) { return H.errorResponse(res, error.msg, error.status); }
+
+        const open = await Cart.findOpenCart(customerId);
+        if (!open) { return H.errorResponse(res, 'Your cart is no longer available.', 404); }
+
+        await Cart.clearVoucher(open.id);
+        return respondWithCart(res, open.id, customerId, 'Voucher removed.');
+    } catch (err) {
+        H.log.error('cart.removeVoucher', err && err.message);
+        return H.errorResponse(res, MSG.server.oops, 500);
+    }
+}
+
+/**
+ * setCharity
+ *
+ * What:  Saves the customer's chosen charity contribution onto the open
+ *        cart. The client sends the resolved amount (No → 0, a % tier of
+ *        sub-total, or a Custom £ value); the helper clamps + rounds it.
+ *        recomputeTotals folds it into the grand total and the donated
+ *        banner reflects it (+ the company's automatic fix-charity).
+ * Type:  WRITE.
+ *
+ * Body:   customer_id, charity_amount
+ */
+async function setCharity(req, res) {
+    try {
+        const customerId = req.body.customer_id;
+
+        const { error } = await customers.loadMarketplaceCustomer(customerId);
+        if (error) { return H.errorResponse(res, error.msg, error.status); }
+
+        const open = await Cart.findOpenCart(customerId);
+        if (!open) { return H.errorResponse(res, 'Your cart is no longer available.', 404); }
+
+        await Cart.setCharity(open.id, req.body.charity_amount);
+        const amt = Number(req.body.charity_amount) || 0;
+        const msg = amt > 0 ? 'Thank you for your contribution!' : 'Charity contribution removed.';
+        return respondWithCart(res, open.id, customerId, msg);
+    } catch (err) {
+        H.log.error('cart.setCharity', err && err.message);
+        return H.errorResponse(res, MSG.server.oops, 500);
+    }
+}
+
+/**
  * count
  *
  * What:  Lightweight cart-count probe — returns `{ count }` only. Used
@@ -758,4 +852,4 @@ async function promotions(req, res) {
     }
 }
 
-module.exports = { get, count, promotions, add, updateQty, removeItem, clear, setMode, setAddress, setSchedule, setInstructions, applyCoupon, removeCoupon };
+module.exports = { get, count, promotions, add, updateQty, removeItem, clear, setMode, setAddress, setSchedule, setInstructions, applyCoupon, removeCoupon, applyVoucher, removeVoucher, setCharity };

@@ -36,6 +36,7 @@ const MSG            = require('../../Helpers/messages');
 const { db }         = require('../../config/db');
 const distance       = require('../../Helpers/distance');
 const M              = require('../../Helpers/marketplace');
+const A              = require('../../Helpers/availability');
 const Offers         = require('../../Helpers/offers');
 const OrderTime      = require('../../Helpers/orderTime');
 const Favourites     = require('../Customer/FavouriteController');
@@ -644,23 +645,22 @@ async function detail(req, res) {
             )
             .where('p.company_id', companyId)
             .andWhere('p.show_marketplace', 1)
-            .andWhere('p.status', '1')
+            // Restaurant menu surface: show Available + the temporary
+            // states (Sold out / Unavailable today / Unavailable until)
+            // greyed with a badge; plain Unavailable ('0') + Deleted ('2')
+            // stay hidden. Availability is status-driven (no stock).
+            .whereIn('p.status', A.SURFACE_STATUSES)
             .andWhere('ppc.status', '1')
             .orderBy([{ column: 'p.is_featured', order: 'desc' }, { column: 'p.is_recommended', order: 'desc' }, { column: 'p.id', order: 'asc' }])
             .select(
                 'p.id as product_id', 'p.name as product_name', 'p.veg_non_veg',
                 'p.marketplace_price', 'p.online_platform_price', 'p.price_after_tax',
-                'p.is_recommended', 'p.is_featured', 'p.track_stock_level', 'ppc.category_id', 'pi.url as image_url',
-                db.raw("EXISTS (SELECT 1 FROM product_sold_out so WHERE so.product_id = p.id AND so.is_sold::text = '1') AS is_sold_out"),
-                db.raw("(SELECT COALESCE(SUM(si.quantity::numeric), 0) FROM product_store_inventory si WHERE si.product_id = p.id) AS stock_qty"),
+                'p.is_recommended', 'p.is_featured', 'ppc.category_id', 'pi.url as image_url',
+                ...A.selectColumns(db, 'p'),
             );
 
         const mapProd = (r) => {
-            // Out of stock when explicitly marked sold-out, OR it tracks
-            // stock and the counted quantity has run out.
-            const tracks = Number(r.track_stock_level) === 1;
-            const qty    = r.stock_qty != null ? Number(r.stock_qty) : 0;
-            const outOfStock = !!r.is_sold_out || (tracks && qty <= 0);
+            const avail = A.evaluate(r);
             return {
                 id:            String(r.product_id),
                 name:          String(r.product_name || '').trim(),
@@ -670,14 +670,10 @@ async function detail(req, res) {
                 veg:           M.isVegProduct(r),
                 isFeatured:    Number(r.is_featured) === 1,
                 isRecommended: Number(r.is_recommended) === 1,
-                inStock:       !outOfStock,
-                // Counted inventory across the company's stores. Exposed
-                // for EVERY product so the restaurant page can show a
-                // real "N stock available" line. `tracksStock` tells the
-                // view whether that number is authoritative (made-to-order
-                // items don't track inventory → number isn't meaningful).
-                stockQty:      qty,
-                tracksStock:   tracks,
+                // Availability — status-driven (no stock). Full verdict +
+                // convenience boolean for the menu card / Add button.
+                availability:  avail,
+                available:     avail.available,
                 image:         M.yiiImageUrl('product', companyId, r.image_url) || null,
                 tint:          M.tintFor(r.product_id),
                 initial:       M.initialFor(r.product_name),

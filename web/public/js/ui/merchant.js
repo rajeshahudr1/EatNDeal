@@ -59,7 +59,10 @@
         var orderId        = btn.getAttribute('data-order-id');
         var expectedStatus = btn.getAttribute('data-expected-status');
         var nextStatus     = btn.getAttribute('data-next-status');
-        if (!orderId || !expectedStatus || !nextStatus) { return; }
+        // nextStatus is '' for the final "Mark delivered / picked up" step
+        // (COMPLETED is the empty-string sentinel), so guard on null
+        // (attribute absent), NOT falsiness — '' is a valid target.
+        if (!orderId || !expectedStatus || nextStatus == null) { return; }
 
         // "Cancel order" needs a confirm — it's a destructive action.
         if (btn.classList.contains('merchant-btn--danger')) {

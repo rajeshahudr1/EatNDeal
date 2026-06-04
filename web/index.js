@@ -534,11 +534,15 @@ app.post('/cart/set-schedule', CartController.setSchedule);
 app.post('/cart/set-instructions', CartController.setInstructions);
 app.post('/cart/apply-coupon', CartController.applyCoupon);
 app.post('/cart/remove-coupon',CartController.removeCoupon);
+app.post('/cart/apply-voucher', CartController.applyVoucher);
+app.post('/cart/remove-voucher',CartController.removeVoucher);
+app.post('/cart/set-charity',  CartController.setCharity);
 
 // ── Orders (signed-in marketplace customers only) ───────────────────
 // Phase-2D: /place writes the order; /:id/confirm renders the stub page.
 // Phase-2E will add /orders (list) + /order/:id (full detail).
 app.post('/order/place',           OrderController.place);
+app.post('/order/:id/reorder',     OrderController.reorder);
 app.get ('/orders',                OrderController.ordersPage);
 app.get ('/order/:id/confirm',     OrderController.confirmation);
 app.get ('/orders/data',           OrderController.list);

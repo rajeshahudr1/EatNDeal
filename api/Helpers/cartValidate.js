@@ -39,6 +39,7 @@
 const { db }    = require('../config/db');
 const M         = require('./marketplace');
 const Cart      = require('./cart');
+const A         = require('./availability');
 
 // Validation levels the caller can ask for. Heavier checks (stock, prices)
 // are skipped on cheap reads so a noisy "open the cart page" doesn't fan
@@ -145,15 +146,15 @@ async function validate(cartId, customerId, ctx) {
     if (items.length) {
         const productIds = Array.from(new Set(items.map((it) => it.product_id)));
 
-        // Per-product live snapshot (status / show_marketplace / current
-        // best price / stock / sold-out flag) — one round trip.
+        // Per-product live snapshot (show_marketplace / current best price
+        // / availability) — one round trip. Availability columns (status,
+        // is_sold_out, unavailable_until) come from the shared helper.
         const prods = await db('products as p')
             .whereIn('p.id', productIds)
             .select(
-                'p.id', 'p.name', 'p.status', 'p.show_marketplace', 'p.track_stock_level',
+                'p.id', 'p.name', 'p.show_marketplace',
                 'p.marketplace_price', 'p.online_platform_price', 'p.price_after_tax',
-                db.raw("EXISTS (SELECT 1 FROM product_sold_out so WHERE so.product_id = p.id AND so.is_sold::text = '1') AS is_sold_out"),
-                db.raw('(SELECT COALESCE(SUM(si.quantity::numeric), 0) FROM product_store_inventory si WHERE si.product_id = p.id) AS stock_qty'),
+                ...A.selectColumns(db, 'p'),
             );
         const prodById = new Map(prods.map((p) => [String(p.id), p]));
 
@@ -181,20 +182,18 @@ async function validate(cartId, customerId, ctx) {
                 pushErr(out, 'item.removed', '"' + (it.product_name || 'An item') + '" is no longer available. Please remove it.', ctxField);
                 continue;
             }
-            if (String(p.status) !== '1' || Number(p.show_marketplace) !== 1) {
+            if (Number(p.show_marketplace) !== 1) {
                 pushErr(out, 'item.unavailable', '"' + p.name + '" is unavailable. Please remove it from your cart.', ctxField);
                 continue;
             }
 
-            // Sold-out / stock.
-            const tracks = Number(p.track_stock_level) === 1;
-            const stockQty = Number(p.stock_qty) || 0;
-            const lineQty  = Number(it.product_qty) || 0;
-            if (p.is_sold_out) {
-                pushErr(out, 'item.sold_out', '"' + p.name + '" is sold out.', ctxField);
-            } else if (tracks && lineQty > stockQty) {
-                pushErr(out, 'item.over_stock',
-                    'Only ' + stockQty + ' "' + p.name + '" left. Reduce the quantity to continue.', ctxField);
+            // Availability — status-driven (Sold out / Unavailable today /
+            // Unavailable until / Unavailable). No stock counting.
+            const avail = A.evaluate(p);
+            if (!avail.available) {
+                pushErr(out, avail.soldOut ? 'item.sold_out' : 'item.unavailable',
+                    '"' + p.name + '" is ' + (avail.soldOut ? 'sold out' : 'currently unavailable') + '. Please remove it from your cart.', ctxField);
+                continue;
             }
 
             // Price drift — the stored unit price must still match the

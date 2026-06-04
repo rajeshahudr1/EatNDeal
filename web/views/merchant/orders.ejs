@@ -4,10 +4,12 @@
   What:  Merchant dashboard — list of marketplace orders for the
          signed-in staff member's company. Pills filter by state
          (live / completed / cancelled). Each card shows the order's
-         current status + the merchant-facing actions
-         (Accept / Start preparing / Mark out / Mark delivered /
-          Cancel). /js/ui/merchant.js wires the buttons + polls every
-         15 s for new pending orders.
+         current status + the merchant-facing actions. The action
+         labels come from the API (OrderAdvance.nextActions), e.g.
+         delivery: Accept → Mark out for delivery → Mark delivered;
+         pickup: Accept → Mark ready → Mark picked up; plus Cancel.
+         /js/ui/merchant.js wires the buttons + polls every 15 s for
+         new pending orders.
 
   Data:  MerchantController.dashboardPage passes `orders` (array of
          summary rows from /api/v1/merchant/orders) + `state` + a

@@ -12,15 +12,26 @@
  *             (we merge progress + eta in there too so the first paint
  *             is data-complete).
  *
- *        Two timelines:
- *           DELIVERY: placed → accepted → preparing → out-for-delivery → delivered
- *           PICKUP:   placed → accepted → preparing → ready → picked-up
+ *        Two timelines (Preparing removed — that stage doesn't exist in
+ *        the live system):
+ *           DELIVERY: placed → confirmed → out-for-delivery → delivered
+ *           PICKUP:   placed → accepted  → ready-to-collect → completed
  *
- *        Status codes follow the legacy `orders.order_status` enum:
- *           3/4 = pending     5 = accepted (delivery)
- *           6   = preparing   7 = out for delivery     8 = delivered/picked-up
- *           10  = accepted (pickup)                    11 = ready for pickup
- *           0/2/9 = cancelled (terminal at any step)
+ *        Status codes are the CANONICAL legacy `orders.order_status` enum
+ *        (VARCHAR; '' = completed). Confirmed against the live POS source:
+ *           4  = placed              (awaiting accept)
+ *           5  = accepted            (PICKUP / in-store — serve_type ≠ 3)
+ *           10 = confirmed           (DELIVERY accept — serve_type = 3)
+ *           6  = ready-to-collect    (pickup)  /  out-for-delivery (delivery)
+ *           '' = completed           (terminal sentinel — empty string)
+ *           1  = refund · 2 = cancelled · 9 = void   (terminal badges)
+ *
+ *        NOTE: code 6 is DUAL-MEANING — its label depends on serve_type
+ *        (delivery → "Out for delivery", pickup → "Ready to collect"),
+ *        so getStatusMeta() takes serve_type. Accept is 10 for delivery
+ *        and 5 for pickup (delivery needs the extra "awaiting dispatch"
+ *        state). This file is the SINGLE source of truth for the
+ *        code → {label,class,terminal} mapping; orders.js delegates here.
  *
  *        ETA = order.created_at + base_minutes(branch.delivery_waiting_time
  *        copied to orders.delivery_estimated_time) + advanced_order_waiting_time_minute.
@@ -31,37 +42,97 @@
 
 const M = require('./marketplace');
 
-// Canonical timelines per service mode. Each step carries:
-//   key     — stable id the UI uses to colour the step
-//   codes   — legacy order_status values that map to this step
-//   label   — customer-facing wording
-const TIMELINES = Object.freeze({
-    delivery: [
-        { key: 'placed',      codes: ['3', '4'], label: 'Order placed' },
-        { key: 'accepted',    codes: ['5'],      label: 'Accepted' },
-        { key: 'preparing',   codes: ['6'],      label: 'Preparing' },
-        { key: 'out_for_del', codes: ['7'],      label: 'Out for delivery' },
-        { key: 'delivered',   codes: ['8'],      label: 'Delivered' },
-    ],
-    pickup: [
-        { key: 'placed',      codes: ['3', '4'], label: 'Order placed' },
-        { key: 'accepted',    codes: ['10'],     label: 'Accepted' },
-        { key: 'preparing',   codes: ['6'],      label: 'Preparing' },
-        { key: 'ready',       codes: ['11'],     label: 'Ready for pickup' },
-        { key: 'picked_up',   codes: ['8'],      label: 'Picked up' },
-    ],
+// serve_type: 3 = delivery; everything else (1 in-store, 2 pickup) takes
+// the non-delivery / pickup path. This is the ONLY thing serve_type
+// changes about status (the accept code + code-6's meaning + which
+// timeline renders).
+function isDelivery(serveType) {
+    return Number(serveType) === 3;
+}
+
+// Canonical status codes (orders.order_status is VARCHAR; '' = completed).
+const STATUS = Object.freeze({
+    PLACED:    '4',   // awaiting accept
+    ACCEPTED:  '5',   // pickup / in-store accept (serve_type ≠ 3)
+    CONFIRMED: '10',  // delivery accept (serve_type = 3) — awaiting dispatch
+    READY:     '6',   // pickup: ready to collect | delivery: out for delivery
+    COMPLETED: '',    // terminal sentinel
+    REFUND:    '1',   // terminal
+    CANCELLED: '2',   // terminal
+    VOID:      '9',   // terminal
 });
 
-const CANCELLED_CODES = ['0', '2', '9'];
+// Codes that render with the "cancelled" pill colour (the bad terminals).
+// COMPLETED ('') is terminal too but is the GOOD end state, so it is not
+// in here — it keeps the "completed" colour and stays on the timeline.
+const CANCELLED_CODES = ['0', '1', '2', '9'];
+
+/**
+ * getStatusMeta
+ *
+ * What:  THE single code → {label, class, terminal} map. `class` is one of
+ *        pending | active | completed | cancelled (drives the pill colour
+ *        in the list, detail header + merchant board). Code 6 is
+ *        dual-meaning so the label branches on serve_type.
+ *
+ *        Forward codes we WRITE: 4, 5, 10, 6, '' (+ terminals 1/2/9).
+ *        The phantom 3/7/8/11/0 are NOT written any more but are mapped
+ *        defensively so any pre-existing row still shows a real label.
+ * Type:  READ (pure).
+ */
+function getStatusMeta(code, serveType) {
+    const s = String(code == null ? '' : code);
+    switch (s) {
+        case '4':  return { label: 'Order placed',  class: 'pending',   terminal: false };
+        case '5':  return { label: 'Accepted',      class: 'active',    terminal: false };
+        case '10': return { label: 'Confirmed',     class: 'active',    terminal: false };
+        case '6':  return isDelivery(serveType)
+            ? { label: 'Out for delivery', class: 'active', terminal: false }
+            : { label: 'Ready to collect', class: 'active', terminal: false };
+        case '':   return { label: 'Completed',     class: 'completed', terminal: true  };
+        case '1':  return { label: 'Refunded',      class: 'cancelled', terminal: true  };
+        case '2':  return { label: 'Cancelled',     class: 'cancelled', terminal: true  };
+        case '9':  return { label: 'Void',          class: 'cancelled', terminal: true  };
+        // ── Defensive aliases for codes we no longer write ───────────
+        case '3':  return { label: 'Order placed',  class: 'pending',   terminal: false };
+        case '7':  return { label: 'Out for delivery', class: 'active', terminal: false };
+        case '8':  return { label: 'Completed',     class: 'completed', terminal: true  };
+        case '11': return { label: 'Ready to collect', class: 'active', terminal: false };
+        case '0':  return { label: 'Cancelled',     class: 'cancelled', terminal: true  };
+        default:   return { label: 'Processing',    class: 'active',    terminal: false };
+    }
+}
+
+// Canonical timelines per service mode (Preparing removed). Each step:
+//   key   — stable id the UI uses to colour the step
+//   codes — order_status values that light this step (first match wins).
+//           Both accept codes (5 & 10) are listed on the accept step in
+//           BOTH modes so a row written with either still lights it.
+//   label — customer-facing wording for that mode.
+const TIMELINES = Object.freeze({
+    delivery: [
+        { key: 'placed',     codes: ['4', '3'],  label: 'Order placed' },
+        { key: 'confirmed',  codes: ['10', '5'], label: 'Confirmed' },
+        { key: 'on_the_way', codes: ['6', '7'],  label: 'Out for delivery' },
+        { key: 'delivered',  codes: ['', '8'],   label: 'Delivered' },
+    ],
+    pickup: [
+        { key: 'placed',    codes: ['4', '3'],   label: 'Order placed' },
+        { key: 'accepted',  codes: ['5', '10'],  label: 'Accepted' },
+        { key: 'ready',     codes: ['6', '11'],  label: 'Ready to collect' },
+        { key: 'collected', codes: ['', '8'],    label: 'Collected' },
+    ],
+});
 
 /**
  * timelineFor
  *
  * What:  Returns the canonical step list for the order's service mode.
+ *        Delivery iff serve_type === 3; otherwise the pickup timeline.
  * Type:  READ (pure).
  */
 function timelineFor(serveType) {
-    return Number(serveType) === 2 ? TIMELINES.pickup : TIMELINES.delivery;
+    return isDelivery(serveType) ? TIMELINES.delivery : TIMELINES.pickup;
 }
 
 /**
@@ -82,14 +153,19 @@ function timelineFor(serveType) {
  * Type:  READ (pure).
  */
 function progressForOrder(order) {
-    const mode = Number(order && order.serve_type) === 2 ? 'pickup' : 'delivery';
-    const timeline = timelineFor(order && order.serve_type);
+    const serveType = order && order.serve_type;
+    const mode = isDelivery(serveType) ? 'delivery' : 'pickup';
+    const timeline = timelineFor(serveType);
     const code = String((order && order.order_status) || '');
+    const meta = getStatusMeta(code, serveType);
+    // 1/2/9 (refund/cancel/void) are off-timeline bad terminals shown as a
+    // cancelled bar. COMPLETED ('') is terminal but stays ON the timeline
+    // (its last step is "current"), so it is NOT in CANCELLED_CODES.
     const cancelled = CANCELLED_CODES.indexOf(code) !== -1;
 
-    // Find which timeline step the current code belongs to. Pending /
-    // placed (3 or 4) hits index 0; unrecognised codes fall through to 0
-    // so the customer always sees SOME step lit up.
+    // Find which timeline step the current code belongs to. Placed (4)
+    // hits index 0; cancelled / unrecognised codes fall through to 0 so
+    // the customer always sees SOME step lit up under the cancelled bar.
     let idx = -1;
     for (let i = 0; i < timeline.length; i++) {
         if (timeline[i].codes.indexOf(code) !== -1) { idx = i; break; }
@@ -109,9 +185,12 @@ function progressForOrder(order) {
     return {
         mode,
         currentKey:   timeline[idx].key,
-        currentLabel: cancelled ? 'Cancelled' : timeline[idx].label,
+        // For a bad terminal show the real word (Cancelled/Refunded/Void);
+        // otherwise the current stage's friendly label.
+        currentLabel: cancelled ? meta.label : timeline[idx].label,
         isCancelled:  cancelled,
-        isTerminal:   cancelled || code === '8',
+        // Poller stops on ANY terminal — the bad ones AND completed ('').
+        isTerminal:   cancelled || meta.terminal,
         steps,
     };
 }
@@ -190,12 +269,14 @@ function formatEtaLabel(min) {
  * Type:  READ.
  */
 function statusSummary(order) {
-    const orders = require('./orders');
+    // Use the canonical mapper directly (no round-trip through orders.js)
+    // so the label/class honour serve_type (code 6 is dual-meaning).
+    const meta = getStatusMeta(order.order_status, order.serve_type);
     const progress = progressForOrder(order);
     return {
         status:        String(order.order_status || ''),
-        statusLabel:   orders.statusLabel(order.order_status),
-        statusClass:   orders.statusClass(order.order_status),
+        statusLabel:   meta.label,
+        statusClass:   meta.class,
         progress,
         etaMinutes:    etaMinutesFromNow(order),
         etaLabel:      formatEtaLabel(etaMinutesFromNow(order)),
@@ -205,8 +286,11 @@ function statusSummary(order) {
 }
 
 module.exports = {
+    STATUS,
     TIMELINES,
     CANCELLED_CODES,
+    isDelivery,
+    getStatusMeta,
     timelineFor,
     progressForOrder,
     deliveredAt,

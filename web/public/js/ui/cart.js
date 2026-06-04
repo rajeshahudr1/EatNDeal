@@ -516,6 +516,174 @@
         });
     }
 
+    // ── Voucher (customer reward codes; separate from coupons) ──────
+    function onApplyVoucher(ev, btn) {
+        ev.preventDefault();
+        var panel = btn.closest('[data-cart-voucher]');
+        var input = panel && panel.querySelector('[data-cart-voucher-input]');
+        var code  = input ? input.value.trim() : '';
+        if (!code) { toast('error', 'Enter a voucher code.'); return; }
+        btn.disabled = true;
+        postCart('/cart/apply-voucher', { code: code }).then(function (env) {
+            handleEnvelope(env, { reload: true });
+            if (!env || env.status !== 200) { btn.disabled = false; }
+        });
+    }
+    function onRemoveVoucher(ev, btn) {
+        ev.preventDefault();
+        btn.disabled = true;
+        postCart('/cart/remove-voucher', {}).then(function (env) {
+            handleEnvelope(env, { reload: true });
+            if (!env || env.status !== 200) { btn.disabled = false; }
+        });
+    }
+
+    // ── Charity contribution (No / % tiers / Custom) ────────────────
+    function charityRoot() { return document.querySelector('[data-cart-charity]'); }
+
+    function setCharityActive(btn) {
+        var root = charityRoot();
+        if (!root) { return; }
+        var btns = root.querySelectorAll('.ckt-charity__btn');
+        for (var i = 0; i < btns.length; i++) {
+            btns[i].classList.toggle('is-active', btns[i] === btn);
+        }
+    }
+
+    // Currency symbol for in-place money patches (set on <body> by the
+    // layout via data-currency-symbol). Falls back to £.
+    function curSym() {
+        return (document.body && document.body.getAttribute('data-currency-symbol')) || '£';
+    }
+    function fmtMoney(n) { return curSym() + (Number(n) || 0).toFixed(2); }
+
+    // ── Card service charge (card-only) on the main bill ────────────
+    // True when the selected payment is any card (new or saved).
+    function cardSelected() {
+        try { return readPayMode().kind !== 'cash'; } catch (e) { return false; }
+    }
+    // Re-render the MAIN bill total = base grand + (card ? card charge : 0)
+    // and toggle the "Card service charge" row. Driven by the selected
+    // payment AND charity changes (both keep data-base-grand current).
+    // Cash / COD shows the base total with no service charge.
+    function renderMainTotal() {
+        var totalEl = document.querySelector('[data-cart-grandtotal]');
+        if (!totalEl) { return; }
+        var base   = parseFloat(totalEl.getAttribute('data-base-grand')) || 0;
+        var cc     = parseFloat(totalEl.getAttribute('data-card-charge')) || 0;
+        var isCard = cardSelected();
+        var row = document.querySelector('[data-cart-cardcharge-row]');
+        if (row) { row.hidden = !(isCard && cc > 0); }
+        var total = base + ((isCard && cc > 0) ? cc : 0);
+        totalEl.textContent = fmtMoney(total);
+        var cta = document.querySelector('[data-cart-cta-total]');
+        if (cta) { cta.textContent = 'Continue · ' + fmtMoney(total); }
+    }
+    // Wire the main-bill total to react to payment-method changes: the
+    // payment popup / tabs flip [data-cart-pay] data-ckt-pay-mode, which we
+    // observe. Runs once on the cart page.
+    function initCardChargeSync() {
+        if (!document.querySelector('[data-cart-grandtotal]')) { return; }
+        renderMainTotal();
+        var payRow = document.querySelector('[data-cart-pay]');
+        if (payRow && window.MutationObserver) {
+            new MutationObserver(function () { renderMainTotal(); })
+                .observe(payRow, { attributes: true, attributeFilter: ['data-ckt-pay-mode'] });
+        }
+    }
+
+    // Patch the bill in place from a fresh cart view — the charity row,
+    // the DONATED banner (company auto-donation + the customer's choice;
+    // stays visible on "No" when the company still donates), the grand
+    // total and the sticky CTA. No page reload, so the active button
+    // state set optimistically in onCharity survives.
+    function applyCharityToBill(cart) {
+        if (!cart) { return; }
+        var row = document.querySelector('[data-cart-charity-row]');
+        if (row) {
+            var rowAmt = row.querySelector('[data-cart-charity-amt]');
+            if (rowAmt) { rowAmt.textContent = fmtMoney(cart.charityAmount); }
+            row.hidden = !(Number(cart.charityAmount) > 0);
+        }
+        var don = document.querySelector('[data-cart-donated]');
+        if (don) {
+            var donAmt = don.querySelector('[data-cart-donated-amt]');
+            if (donAmt) { donAmt.textContent = fmtMoney(cart.donatedTotal); }
+            don.hidden = !(Number(cart.donatedTotal) > 0);
+        }
+        // Update the BASE grand on the total element, then re-render the
+        // displayed total (which adds the card service charge when a card
+        // is the selected payment).
+        var gt = document.querySelector('[data-cart-grandtotal]');
+        if (gt) { gt.setAttribute('data-base-grand', (Number(cart.grandtotal) || 0).toFixed(2)); }
+        renderMainTotal();
+
+        // Keep the review/confirm popup's totals in sync too, so opening it
+        // after a charity change never shows a stale total.
+        var pRow = document.querySelector('[data-ckt-confirm-charity-row]');
+        if (pRow) {
+            var pAmt = pRow.querySelector('[data-ckt-confirm-charity-amt]');
+            if (pAmt) { pAmt.textContent = fmtMoney(cart.charityAmount); }
+            pRow.hidden = !(Number(cart.charityAmount) > 0);
+        }
+        var pTotal = document.querySelector('[data-ckt-confirm-total]');
+        if (pTotal) {
+            // Update the BASE grand the confirm popup adds the card charge
+            // onto (fillConfirmPayment recomputes the shown total on open).
+            pTotal.setAttribute('data-ckt-base-grand', (Number(cart.grandtotal) || 0).toFixed(2));
+            pTotal.textContent = fmtMoney(cart.grandtotal);
+        }
+        var pCta = document.querySelector('[data-ckt-confirm-cta-total]');
+        if (pCta) { pCta.textContent = ' · ' + fmtMoney(cart.grandtotal); }
+    }
+
+    function saveCharity(amount, btn) {
+        if (btn) { btn.disabled = true; }
+        postCart('/cart/set-charity', { charity_amount: amount }).then(function (env) {
+            // Quiet success (no toast on every tap); patch the bill in place.
+            if (handleEnvelope(env, { successToast: false })) {
+                applyCharityToBill(env.data && env.data.cart);
+            }
+            if (btn) { btn.disabled = false; }
+        });
+    }
+
+    function onCharity(ev, btn) {
+        ev.preventDefault();
+        var mode   = btn.getAttribute('data-charity-mode');
+        var root   = charityRoot();
+        var custom = root && root.querySelector('[data-charity-custom]');
+
+        // Custom → just reveal the input; we write once they enter a value.
+        if (mode === 'custom') {
+            setCharityActive(btn);
+            if (custom) { custom.hidden = false; }
+            var inp = custom && custom.querySelector('[data-charity-input]');
+            if (inp) { inp.focus(); }
+            return;
+        }
+        if (custom) { custom.hidden = true; }
+
+        var amount = 0;
+        if (mode === 'pct') {
+            var sub = parseFloat(root && root.getAttribute('data-sub')) || 0;
+            var pct = parseFloat(btn.getAttribute('data-charity-pct')) || 0;
+            amount = Math.round(sub * pct / 100 * 100) / 100;
+        }
+        setCharityActive(btn);
+        saveCharity(amount, btn);
+    }
+
+    function onCharityCustom(ev, btn) {
+        ev.preventDefault();
+        var root = charityRoot();
+        var inp  = root && root.querySelector('[data-charity-input]');
+        var raw  = inp ? String(inp.value).replace(/[^0-9.]/g, '') : '';
+        var amount = parseFloat(raw);
+        if (!isFinite(amount) || amount <= 0) { toast('error', 'Enter a charity amount.'); return; }
+        saveCharity(Math.round(amount * 100) / 100, btn);
+    }
+
     // ── Payment method picker + Stripe ──────────────────────────────
     // The cart UI carries [data-cart-pay] with a [data-stripe-key]
     // attribute. We lazy-init Stripe.js Elements when the customer
@@ -647,6 +815,8 @@
             setHint('Pay with cash on ' + (cashLabel()) + '.');
             setError('');
         }
+        // Card adds the service charge; cash removes it.
+        renderMainTotal();
     }
 
     function cashLabel() {
@@ -820,6 +990,15 @@
         // Only refresh when a header badge actually exists — pages that
         // hide the header (signin/OTP) skip this gracefully.
         if (document.querySelector('[data-cart-count]')) { refreshCartBadge(); }
+        // Cart page: sync the bill total with the selected payment (card
+        // service charge) on load + whenever the payment method changes.
+        initCardChargeSync();
+        // Surface a just-completed "Reorder" result (incl. any skipped
+        // items) once we land on /cart.
+        try {
+            var rmsg = sessionStorage.getItem('reorder.msg');
+            if (rmsg) { sessionStorage.removeItem('reorder.msg'); toast('success', rmsg); }
+        } catch (e) { /* ignore */ }
     }
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', onReady);
@@ -852,6 +1031,10 @@
             case 'cart-sched-save':     return onSchedSave(ev, btn);
             case 'cart-apply-coupon':   return onApplyCoupon(ev, btn);
             case 'cart-remove-coupon':  return onRemoveCoupon(ev, btn);
+            case 'cart-apply-voucher':  return onApplyVoucher(ev, btn);
+            case 'cart-remove-voucher': return onRemoveVoucher(ev, btn);
+            case 'cart-charity':        return onCharity(ev, btn);
+            case 'cart-charity-custom': return onCharityCustom(ev, btn);
             case 'cart-set-pay':        return onCartSetPay(ev, btn);
             case 'cart-checkout':       return onCartCheckout(ev, btn);
         }

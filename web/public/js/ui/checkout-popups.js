@@ -66,13 +66,30 @@
     }
 
     // Mirror the live payment-row label into the review popup so the
-    // confirmation always shows the method the customer actually picked.
+    // confirmation always shows the method the customer actually picked,
+    // and add the company's CARD service charge to the total when the
+    // selected method is a card (cash never carries it).
     function fillConfirmPayment() {
         var row = $('[data-cart-pay]');
         var out = $('[data-ckt-confirm-pay]');
-        if (!out) { return; }
         var titleEl = row && row.querySelector('[data-ckt-pay-title]');
-        out.textContent = titleEl ? titleEl.textContent : 'Cash';
+        if (out) { out.textContent = titleEl ? titleEl.textContent : 'Cash'; }
+
+        var totalEl = $('[data-ckt-confirm-total]');
+        if (!totalEl) { return; }
+        var mode   = row && row.getAttribute('data-ckt-pay-mode');
+        var isCard = !!mode && mode !== 'cash';            // new-card | card:<id>
+        var base   = parseFloat(totalEl.getAttribute('data-ckt-base-grand')) || 0;
+        var charge = parseFloat(totalEl.getAttribute('data-ckt-card-charge')) || 0;
+        var sym    = (document.body && document.body.getAttribute('data-currency-symbol')) || '£';
+
+        var ccRow = $('[data-ckt-confirm-cardcharge-row]');
+        if (ccRow) { ccRow.hidden = !(isCard && charge > 0); }
+
+        var total = base + ((isCard && charge > 0) ? charge : 0);
+        totalEl.textContent = sym + total.toFixed(2);
+        var cta = $('[data-ckt-confirm-cta-total]');
+        if (cta) { cta.textContent = ' · ' + sym + total.toFixed(2); }
     }
 
     function close() {

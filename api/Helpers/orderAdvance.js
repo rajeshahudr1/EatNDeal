@@ -5,21 +5,25 @@
  *
  * What:  Status-transition rules for the merchant dashboard.
  *
- *        Two flows the merchant controls:
+ *        Two flows the merchant controls (codes match the live POS;
+ *        Preparing removed, completion is '' not 8):
  *
- *          DELIVERY:
- *            Pending (4)  → Accepted (5)
- *            Accepted     → Preparing (6)
- *            Preparing    → Out for delivery (7)
- *            Out          → Delivered (8)
- *            (any)        → Cancelled (9)
+ *          DELIVERY (serve_type = 3):
+ *            Placed (4)   → Confirmed (10)
+ *            Confirmed    → Out for delivery (6)
+ *            Out          → Delivered / Completed ('')
+ *            (active)     → Cancelled (2)
  *
- *          PICKUP:
- *            Pending (4)  → Accepted (10)
- *            Accepted     → Preparing (6)
- *            Preparing    → Ready for pickup (11)
- *            Ready        → Picked up (8)
- *            (any)        → Cancelled (9)
+ *          PICKUP / in-store (serve_type ≠ 3):
+ *            Placed (4)   → Accepted (5)
+ *            Accepted     → Ready to collect (6)
+ *            Ready        → Picked up / Completed ('')
+ *            (active)     → Cancelled (2)
+ *
+ *        Note code 6 is the same value in both modes — its meaning
+ *        (out-for-delivery vs ready-to-collect) is decided by serve_type,
+ *        exactly like the legacy system. Completion writes the empty
+ *        string '' (the legacy COMPLETED sentinel), NOT 8.
  *
  *        `nextActions(order)` returns the UI-ready list of buttons the
  *        merchant should see right now (label + target status). The
@@ -27,8 +31,9 @@
  *        update atomically — UPDATE ... WHERE order_status = current,
  *        so two concurrent merchant clicks can't double-advance.
  *
- *        Cancelled is treated separately so merchant + customer agree:
- *        once cancelled, no further transitions allowed.
+ *        Cancel writes 2 (CANCELLED) — matching the legacy
+ *        actionCancelorder; once any terminal ('' / 1 / 2 / 9) is
+ *        reached, no further transitions are offered.
  *
  * Type:  READ + WRITE.
  * Used:  api/Controllers/Merchant/OrdersController.js · advance / cancel
@@ -36,35 +41,34 @@
 
 const { db } = require('../config/db');
 
-const STATUS_PENDING        = '4';
-const STATUS_ACCEPTED_DEL   = '5';
-const STATUS_PREPARING      = '6';
-const STATUS_OUT            = '7';
-const STATUS_DELIVERED      = '8';
-const STATUS_CANCELLED      = '9';
-const STATUS_ACCEPTED_PICK  = '10';
-const STATUS_READY          = '11';
+const STATUS_PLACED    = '4';   // awaiting accept
+const STATUS_ACCEPTED  = '5';   // pickup / in-store accept (serve_type ≠ 3)
+const STATUS_CONFIRMED = '10';  // delivery accept (serve_type = 3)
+const STATUS_READY     = '6';   // pickup: ready to collect | delivery: out for delivery
+const STATUS_COMPLETED = '';    // delivered / picked up (terminal sentinel)
+const STATUS_CANCELLED = '2';   // cancelled (terminal)
+
+// Every terminal code — no forward/cancel actions once here.
+// ('' completed · 1 refund · 2 cancelled · 9 void)
+const TERMINAL = new Set([STATUS_COMPLETED, '1', STATUS_CANCELLED, '9']);
 
 // Per-mode transition graph. Each key is the current status; value is
 // an array of valid next steps {status, label}.
 const DELIVERY_NEXT = Object.freeze({
-    [STATUS_PENDING]:      [{ status: STATUS_ACCEPTED_DEL, label: 'Accept' }],
-    [STATUS_ACCEPTED_DEL]: [{ status: STATUS_PREPARING,    label: 'Start preparing' }],
-    [STATUS_PREPARING]:    [{ status: STATUS_OUT,          label: 'Mark out for delivery' }],
-    [STATUS_OUT]:          [{ status: STATUS_DELIVERED,    label: 'Mark delivered' }],
+    [STATUS_PLACED]:    [{ status: STATUS_CONFIRMED, label: 'Accept' }],
+    [STATUS_CONFIRMED]: [{ status: STATUS_READY,     label: 'Mark out for delivery' }],
+    [STATUS_READY]:     [{ status: STATUS_COMPLETED, label: 'Mark delivered' }],
 });
 
 const PICKUP_NEXT = Object.freeze({
-    [STATUS_PENDING]:       [{ status: STATUS_ACCEPTED_PICK, label: 'Accept' }],
-    [STATUS_ACCEPTED_PICK]: [{ status: STATUS_PREPARING,     label: 'Start preparing' }],
-    [STATUS_PREPARING]:     [{ status: STATUS_READY,         label: 'Mark ready' }],
-    [STATUS_READY]:         [{ status: STATUS_DELIVERED,     label: 'Mark picked up' }],
+    [STATUS_PLACED]:   [{ status: STATUS_ACCEPTED, label: 'Accept' }],
+    [STATUS_ACCEPTED]: [{ status: STATUS_READY,    label: 'Mark ready' }],
+    [STATUS_READY]:    [{ status: STATUS_COMPLETED, label: 'Mark picked up' }],
 });
 
-// Cancelled is reachable from anywhere EXCEPT after delivered/cancelled.
+// Cancellable from any active (non-terminal) state.
 const CANCELLABLE = new Set([
-    STATUS_PENDING, STATUS_ACCEPTED_DEL, STATUS_ACCEPTED_PICK,
-    STATUS_PREPARING, STATUS_OUT, STATUS_READY,
+    STATUS_PLACED, STATUS_ACCEPTED, STATUS_CONFIRMED, STATUS_READY,
 ]);
 
 /**
@@ -74,14 +78,15 @@ const CANCELLABLE = new Set([
  *        for one order, given its current status + service mode.
  *        Includes the forward step (if any) AND a "Cancel" entry when
  *        applicable. Empty array for terminal orders.
+ *        Delivery iff serve_type === 3; otherwise the pickup graph.
  * Type:  READ (pure).
  */
 function nextActions(order) {
     if (!order) { return []; }
     const code = String(order.order_status || '');
-    if (code === STATUS_DELIVERED || code === STATUS_CANCELLED) { return []; }
+    if (TERMINAL.has(code)) { return []; }
 
-    const graph = Number(order.serve_type) === 2 ? PICKUP_NEXT : DELIVERY_NEXT;
+    const graph = Number(order.serve_type) === 3 ? DELIVERY_NEXT : PICKUP_NEXT;
     const forward = graph[code] || [];
     const out = forward.slice();
     if (CANCELLABLE.has(code)) {
@@ -128,14 +133,13 @@ async function advance(orderId, currentStatus, nextStatus, staffCustomerId) {
 }
 
 module.exports = {
-    STATUS_PENDING,
-    STATUS_ACCEPTED_DEL,
-    STATUS_PREPARING,
-    STATUS_OUT,
-    STATUS_DELIVERED,
-    STATUS_CANCELLED,
-    STATUS_ACCEPTED_PICK,
+    STATUS_PLACED,
+    STATUS_ACCEPTED,
+    STATUS_CONFIRMED,
     STATUS_READY,
+    STATUS_COMPLETED,
+    STATUS_CANCELLED,
+    TERMINAL,
     nextActions,
     isValidNext,
     advance,

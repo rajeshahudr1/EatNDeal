@@ -66,10 +66,15 @@ async function createIntent(req, res) {
         const cart = await Cart.loadActiveCart(open.id, customerId);
         if (!cart) { return H.errorResponse(res, 'Your cart is no longer available.', 404); }
 
-        const amount = Number(cart.grandtotal) || 0;
-        if (amount <= 0) {
+        const baseAmount = Number(cart.grandtotal) || 0;
+        if (baseAmount <= 0) {
             return H.errorResponse(res, 'Add at least one item before paying.', 422);
         }
+        // Card payments add the company's service charge (cash never does).
+        // Charge base + surcharge so Stripe collects the exact card total;
+        // orderPlace records the same figures from the same source.
+        const cardCharge = await Cart.cardServiceCharge(cart.company_id);
+        const amount = Cart.round2(baseAmount + cardCharge);
 
         try {
             // Bind the intent to the customer's Stripe Customer so
@@ -87,6 +92,7 @@ async function createIntent(req, res) {
                     customer_id: String(customerId),
                     company_id:  String(cart.company_id || ''),
                     branch_id:   String(cart.branch_id  || ''),
+                    card_service_charge: String(cardCharge),
                     is_marketplace: '1',
                 },
             });

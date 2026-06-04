@@ -39,7 +39,7 @@ const { db } = require('../config/db');
 const H      = require('./helper');
 
 const TABLE              = 'customer_otp';
-const DEFAULT_EXPIRY_SEC = 60;
+const DEFAULT_EXPIRY_SEC = 300;   // 5 minutes — 60s was too tight to even type the code in
 const DEFAULT_DEMO_CODE  = '123456';
 const OTP_LENGTH         = 6;
 
@@ -92,18 +92,30 @@ function normaliseContact(raw) {
 }
 
 /**
+ * expirySeconds
+ *
+ * What:  The OTP lifetime in seconds — OTP_EXPIRY_SECONDS env or the
+ *        300s default.
+ * Type:  READ.
+ */
+function expirySeconds() {
+    return Number(process.env.OTP_EXPIRY_SECONDS) > 0
+        ? Number(process.env.OTP_EXPIRY_SECONDS)
+        : DEFAULT_EXPIRY_SEC;
+}
+
+/**
  * expiryDate
  *
- * What:  Returns a JS Date `OTP_EXPIRY_SECONDS` in the future (default 60s).
- * Why:   1-minute window matches the Yii system. Knex will format it for
- *        Postgres' timestamp column.
+ * What:  A JS Date `expirySeconds()` in the future — used ONLY for the
+ *        send response's `expires_in` countdown. The value actually STORED
+ *        in customer_otp is computed on the DB clock (now() + interval),
+ *        see generateAndSend, so the stored expiry can't drift with the
+ *        server's timezone.
  * Type:  READ.
  */
 function expiryDate() {
-    const secs = Number(process.env.OTP_EXPIRY_SECONDS) > 0
-        ? Number(process.env.OTP_EXPIRY_SECONDS)
-        : DEFAULT_EXPIRY_SEC;
-    return new Date(Date.now() + secs * 1000);
+    return new Date(Date.now() + expirySeconds() * 1000);
 }
 
 /**
@@ -192,7 +204,8 @@ async function generateAndSend({ countryCode, contactNo }) {
     const provider = activeProvider();
     const contact  = normaliseContact(contactNo);
     const country  = normaliseContact(countryCode);
-    const expireAt = expiryDate();
+    const secs     = expirySeconds();
+    const expireAt = expiryDate();   // for the response countdown only
 
     const otp = provider === 'demo'
         ? String(process.env.OTP_DEMO_CODE || DEFAULT_DEMO_CODE)
@@ -208,7 +221,12 @@ async function generateAndSend({ countryCode, contactNo }) {
         country_code: country,
         contact_no:   contact,
         otp,
-        expire_at:    expireAt,
+        // Compute expiry on the DB CLOCK (now() + interval), NOT a JS Date.
+        // expire_at is `timestamp without time zone`, so inserting a JS Date
+        // saved the SERVER's local wall-clock — on a non-UTC server that
+        // made the DB-side `expire_at > now()` check wrong. now()+interval
+        // keeps it consistent with created_at (both UTC).
+        expire_at:    db.raw("now() + (? * interval '1 second')", [secs]),
         created_at:   db.fn.now(),
         updated_at:   db.fn.now(),
     });
@@ -220,7 +238,7 @@ async function generateAndSend({ countryCode, contactNo }) {
     }
 
     // Live: ship via Connexa.
-    const message  = `Your EatNDeal verification code is ${otp}. It expires in 1 minute.`;
+    const message  = `Your EatNDeal verification code is ${otp}. It expires in 5 minutes.`;
     const fullPhone = `+${country}${contact}`;
     const result   = await sendConnexa(fullPhone, message);
 
@@ -258,18 +276,19 @@ async function verify({ countryCode, contactNo, otp }) {
     const country = normaliseContact(countryCode);
     const code    = String(otp || '').trim();
 
+    // Expiry is checked DB-side (`expire_at > now()`) so it stays correct
+    // regardless of the server's timezone — a JS `new Date(expire_at)`
+    // comparison broke because expire_at is a timezone-naive column.
     const row = await db(TABLE)
         .where({ country_code: country, contact_no: contact, otp: code })
+        .andWhere('expire_at', '>', db.fn.now())
         .orderBy('id', 'desc')
         .first();
 
     if (!row) {
-        return { ok: false, reason: 'mismatch' };
-    }
-    if (new Date(row.expire_at).getTime() < Date.now()) {
-        // Expired rows are stale — clean them up so the table doesn't grow.
-        await db(TABLE).where({ id: row.id }).del();
-        return { ok: false, reason: 'expired' };
+        // No match OR expired — deliberately ONE outcome (the API surfaces a
+        // single "invalid or expired" message so wording can't leak which).
+        return { ok: false, reason: 'invalid' };
     }
 
     // Single-use: consume on success.

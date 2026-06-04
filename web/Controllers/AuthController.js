@@ -212,7 +212,14 @@ async function startOtp(req, res) {
         req.flash('success', 'Demo OTP: ' + apiRes.body.data.dev_otp);
     }
 
-    return res.redirect('/signin?step=otp');
+    // Persist the session (pendingAuth + flash) BEFORE redirecting. The
+    // file-backed store writes async, so a bare redirect races the next
+    // GET /signin?step=otp — which then finds no pendingAuth and bounces
+    // straight back to step 1 (only the flash shows, the OTP page never
+    // loads). Saving first guarantees the OTP page sees the pending number.
+    return req.session.save(function () {
+        res.redirect('/signin?step=otp');
+    });
 }
 
 /**
@@ -265,12 +272,19 @@ async function verifyOtp(req, res) {
         req.session.user        = data.customer;
         req.session.pendingAuth = null;
         req.flash('success', 'Welcome back, ' + (data.customer.firstname || '').trim() + '.');
-        return redirectAfterSave(req, res, safeNext(pending.next));
+        // Save before redirect so the landing page sees the logged-in user
+        // (same async-store race as startOtp).
+        return req.session.save(function () {
+            redirectAfterSave(req, res, safeNext(pending.next));
+        });
     }
 
-    // 'new' or 'pending' → ask for Personal Details.
+    // 'new' or 'pending' → ask for Personal Details. Save first so the
+    // step=profile page finds otp_verified=true (it gates on it).
     req.session.pendingAuth = { ...pending, otp_verified: true, dev_otp: null };
-    return res.redirect('/signin?step=profile');
+    return req.session.save(function () {
+        res.redirect('/signin?step=profile');
+    });
 }
 
 /**
@@ -322,7 +336,10 @@ async function saveProfile(req, res) {
     req.session.user        = body.data.customer;
     req.session.pendingAuth = null;
     req.flash('success', 'Welcome to ' + (res.locals.brand && res.locals.brand.name ? res.locals.brand.name : 'EatNDeal') + ', ' + firstname + '.');
-    return redirectAfterSave(req, res, safeNext(pending.next));
+    // Save before redirect so the landing page is already signed-in.
+    return req.session.save(function () {
+        redirectAfterSave(req, res, safeNext(pending.next));
+    });
 }
 
 /**

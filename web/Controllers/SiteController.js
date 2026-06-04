@@ -740,6 +740,10 @@ async function index(req, res, next) {
         // 'site/location' (separate branch) and never sets this, so it
         // inherits the default OFF.
         show_search:         viewMode !== 'product',
+        // Delivery/Pickup header toggle shows on every browse surface this
+        // controller serves — home, restaurants/cuisines grids, a single
+        // restaurant, AND the product page.
+        show_mode_toggle:    true,
         selected_restaurant: liveRestaurant,
         // Restaurant page: left-rail menu categories + product sections.
         menu_categories:     liveMenuCategories,

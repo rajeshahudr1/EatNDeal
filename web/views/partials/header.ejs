@@ -137,7 +137,11 @@
             paints the active segment) so no JS is needed. Default
             = Delivery. Persisted/handled server-side later. %>
         <%# Reflect the mode the user chose on the location page
-            (stored on user_location.mode). Defaults to delivery. %>
+            (stored on user_location.mode). Defaults to delivery.
+            Shown ONLY on the browse surfaces (home / restaurant / product)
+            via show_mode_toggle — hidden on cart / account / orders / etc.
+            The local is always defined (defaults false in web/index.js). %>
+        <% if (show_mode_toggle) { %>
         <% var orderMode = (user_location && user_location.mode === 'pickup') ? 'pickup' : 'delivery'; %>
         <div class="mode-toggle" role="radiogroup" aria-label="Delivery or pickup">
             <input type="radio" name="order-mode" id="mode-delivery" value="delivery" <%= orderMode === 'delivery' ? 'checked' : '' %>>
@@ -145,6 +149,7 @@
             <input type="radio" name="order-mode" id="mode-pickup" value="pickup" <%= orderMode === 'pickup' ? 'checked' : '' %>>
             <label for="mode-pickup">Pickup</label>
         </div>
+        <% } %>
 
         <%# Quick-access cluster (desktop) — Rewards · Orders · Cart,
             matching the mockup. Icon + label stacked. Cart carries a

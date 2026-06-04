@@ -134,7 +134,7 @@
 
 .order-detail__head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); margin-bottom: var(--space-4); }
 .order-detail__head-text { min-width: 0; }
-.order-detail__crumbs { font-size: 0.82rem; color: var(--color-text-soft); margin: 0 0 4px; }
+.order-detail__crumbs { font-size: 0.82rem; color: var(--color-text-soft); margin: 0 0 4px; overflow-wrap: anywhere; }
 .order-detail__crumbs a { color: var(--color-text-soft); text-decoration: none; }
 .order-detail__crumbs a:hover { color: var(--color-primary); }
 .order-detail__title { font-size: 1.6rem; font-weight: 800; margin: 0; }
@@ -211,4 +211,14 @@
     .order-detail__title { font-size: 1.3rem; }
     .order-item { padding: var(--space-3); }
     .orders-card { padding: var(--space-3); }
+    /* More room between the (long) order-number breadcrumb and the status
+       pill so they never run into each other. */
+    .order-detail__head { gap: var(--space-4); }
+}
+
+/* Account → My Orders on mobile: the focused account layout drops the
+   page's side padding, so the cards would touch the screen edges. Pad the
+   list to line up with the "My Orders" title bar. */
+@media (max-width: 767px) {
+    .orders-list { padding: 0 var(--space-4); }
 }

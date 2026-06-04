@@ -417,6 +417,11 @@ app.use((req, res, next) => {
     // (see SiteController.index). Always-defined so the header + layout
     // can read it directly with no typeof guard.
     res.locals.show_search = false;
+    // Delivery / Pickup mode toggle in the header — only relevant while
+    // browsing the marketplace (home / restaurant / product). Default OFF;
+    // SiteController.index opts in. Hidden on cart / account / orders /
+    // merchant / offers / static / signin.
+    res.locals.show_mode_toggle = false;
     // Stripe publishable key — exposed to the cart so the checkout
     // flow can mount Elements without a round trip just to discover
     // whether card payments are enabled. Empty string when the env

@@ -243,31 +243,20 @@
 @media (max-width: 899px) {
     .ckt-sticky-cta {
         display: flex; align-items: center; justify-content: center;
-        position: fixed; left: 12px; right: 12px;
-        /* 768–899px: no bottom-nav (it hides at >=768px), so a small
-           offset is enough. The ≤767px rule below raises it to clear
-           the nav. */
-        bottom: calc(12px + env(safe-area-inset-bottom, 0));
-        z-index: 65;
+        /* IN-FLOW (not fixed) — sits at the bottom of the cart and scrolls
+           WITH the page instead of floating over the content. Full width
+           minus side gutters; the bottom margin clears the safe-area, and
+           #app-main's padding (bottom-nav.css) clears the mobile nav. */
+        margin: 16px 12px calc(16px + env(safe-area-inset-bottom, 0));
         background: #1a1a1a; color: #fff;
         border: 0; border-radius: 999px;
         padding: 16px 20px; font-size: 1rem; font-weight: 800;
         cursor: pointer;
-        box-shadow: 0 10px 30px rgba(0,0,0,0.18);
+        box-shadow: 0 6px 18px rgba(0,0,0,0.14);
         min-height: 52px;
     }
-    /* Hide the in-flow CTA on mobile — sticky one takes over. */
+    /* Hide the in-flow desktop CTA on mobile — the bottom button takes over. */
     .cart-page__side .ckt-cta { display: none; }
-}
-/* ≤767px: the bottom-nav is present (signed-in users). Lift the CTA
-   above it (~64px nav + its own safe-area inset + an 8px gap). */
-@media (max-width: 767px) {
-    .ckt-sticky-cta {
-        bottom: calc(72px + env(safe-area-inset-bottom, 0));
-    }
-    /* Reserve scroll room so the totals/legal aren't hidden behind the
-       CTA + nav stack. */
-    .cart-page { padding-bottom: 150px; }
 }
 
 /* ══════════════════════════════════════════════════════════════════

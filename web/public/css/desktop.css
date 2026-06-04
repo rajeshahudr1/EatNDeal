@@ -31,9 +31,14 @@
 }
 /* Layout: [brand] [location] [search] ……… [mode-toggle][quick][auth]
  * The search sits left-of-centre at a capped width (doesn't grow);
- * `margin-left:auto` on the first right-cluster item (mode-toggle)
- * eats the remaining space so Delivery/Pickup · Rewards · Orders ·
- * Cart · Sign in all hug the RIGHT edge. */
+ * an auto left-margin on the FIRST right-cluster item eats the remaining
+ * space so Offers · Cart · Profile (+ the Delivery/Pickup toggle when
+ * present) all hug the RIGHT edge. The search box AND the mode-toggle are
+ * now hidden on many pages (cart / account / orders / …), so the auto
+ * margin must live on a STABLE right-cluster element. We default it to
+ * `.header-quick` (always present on desktop); when the mode-toggle IS
+ * shown it precedes header-quick, so it takes the auto margin and the
+ * header-quick after it resets to 0 — keeping the whole cluster grouped. */
 .site-header__brand,
 .site-header__location,
 .mode-toggle,
@@ -44,7 +49,9 @@
     min-width: 120px;
     margin: 0 var(--space-3);
 }
+.site-header__inner .header-quick { margin-left: auto; }
 .site-header__inner .mode-toggle { margin-left: auto; }
+.site-header__inner .mode-toggle ~ .header-quick { margin-left: 0; }
 
 .site-header__nav      { display: flex; gap: var(--space-6); justify-content: flex-end; }
 .site-header__menu-btn { display: none; }

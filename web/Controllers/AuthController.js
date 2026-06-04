@@ -450,6 +450,19 @@ async function accountPage(req, res) {
         } catch (e) { paymentMethods = []; }
     }
 
+    // Profile tab — load the optional "About You" preferences so the
+    // "Complete your profile" section renders pre-filled. Best-effort:
+    // null (no row / not enabled / failed) just shows an empty form.
+    let about = null;
+    if (activeTab === 'profile') {
+        try {
+            const abRes = await callApi(req, 'GET', '/api/v1/auth/about?customer_id=' + encodeURIComponent(user.id));
+            if (abRes.body && abRes.body.status === 200 && abRes.body.data) {
+                about = abRes.body.data.about || null;
+            }
+        } catch (e) { about = null; }
+    }
+
     return res.render('account/index', {
         page_title:       TABS[activeTab],
         _layoutFile:      '../_layout',
@@ -471,6 +484,7 @@ async function accountPage(req, res) {
         orders:           orders,
         addresses:        addresses,
         payment_methods:  paymentMethods,
+        account_about:    about,
     });
 }
 
@@ -527,18 +541,9 @@ async function updateProfile(req, res) {
         payload.country_code = country;
         payload.contact_no   = contact;
     }
-    // Date of birth — HTML date input gives YYYY-MM-DD. Forward only a
-    // valid value (or empty to clear); the api validates the format.
-    const dob = String((req.body && req.body.birthdate) || '').trim();
-    if (/^\d{4}-\d{2}-\d{2}$/.test(dob) || dob === '') {
-        payload.birthdate = dob;
-    }
-    // Gender — forward the known options (api validates + persists only
-    // once the customer.gender column exists).
-    const gender = String((req.body && req.body.gender) || '').trim().toLowerCase();
-    if (['male', 'female', 'other', 'na', ''].indexOf(gender) !== -1) {
-        payload.gender = gender;
-    }
+    // NOTE: gender + date-of-birth are NOT sent here anymore — they're
+    // saved into customer_profile via /auth/update-about below (forwarded
+    // in aboutPayload). Only name / email / phone live on the customer row.
 
     const apiRes = await callApi(req, 'POST', '/api/v1/auth/update-profile', payload);
 
@@ -561,6 +566,47 @@ async function updateProfile(req, res) {
     }
 
     req.session.user = body.data.customer;
+
+    // Optional "About You" preferences — present only when the profile
+    // form's section was rendered (hidden about_present=1). Forwarded to
+    // the api, which sanitises every value against the allowed option
+    // lists. Best-effort: a failure here doesn't undo the profile save —
+    // it just surfaces a soft warning. (gender / DOB / photo are NOT here —
+    // they were saved above on the customer row.)
+    if (String((req.body && req.body.about_present) || '') === '1') {
+        const arr = function (v) { return Array.isArray(v) ? v : (v == null || v === '' ? [] : [v]); };
+        const aboutPayload = {
+            customer_id:                  user.id,
+            // gender + dob now save into customer_profile (the basic-card
+            // Gender/DOB controls post into this same form).
+            gender:                       String((req.body && req.body.gender) || '').trim().toLowerCase(),
+            dob:                          String((req.body && req.body.birthdate) || '').trim(),
+            anniversary_date:             String((req.body && req.body.anniversary_date) || '').trim(),
+            favorite_food_category:       arr(req.body && req.body.favorite_food_category),
+            other_food_category:          String((req.body && req.body.other_food_category) || '').trim(),
+            order_type:                   String((req.body && req.body.order_type) || '').trim(),
+            takeaway_frequency:           String((req.body && req.body.takeaway_frequency) || '').trim(),
+            offer_time:                   arr(req.body && req.body.offer_time),
+            hear_about_us:                String((req.body && req.body.hear_about_us) || '').trim(),
+            work_in_hospitality_industry: String((req.body && req.body.work_in_hospitality_industry) || '').trim(),
+            family_size:                  String((req.body && req.body.family_size) || '').trim(),
+            has_children:                 String((req.body && req.body.has_children) || '').trim(),
+            is_student:                   String((req.body && req.body.is_student) || '').trim(),
+            work_nearby:                  String((req.body && req.body.work_nearby) || '').trim(),
+            marketing_preferences:        arr(req.body && req.body.marketing_preferences),
+        };
+        try {
+            const abRes = await callApi(req, 'POST', '/api/v1/auth/update-about', aboutPayload);
+            if (!abRes.body || abRes.body.status !== 200) {
+                req.flash('error', (abRes.body && abRes.body.msg) || 'Your details were saved, but some preferences could not be.');
+                return res.redirect('/account');
+            }
+        } catch (e) {
+            req.flash('error', 'Your details were saved, but your preferences could not be saved — please try again.');
+            return res.redirect('/account');
+        }
+    }
+
     req.flash('success', 'Your profile has been updated.');
     return res.redirect('/account');
 }
@@ -745,21 +791,29 @@ async function uploadAvatar(req, res) {
 /**
  * signOut
  *
- * What:  Clears the session user + pending auth and bounces home. Mounted
- *        on POST so it can't be triggered by a stray <img src> or link.
+ * What:  Signs the customer out and bounces home — but KEEPS the chosen
+ *        delivery/pickup location so the home page shows the restaurant
+ *        feed, not the "Step 1 of 3" location picker. The location isn't
+ *        tied to the account (the guest already picked it), so wiping it on
+ *        logout just made people re-enter their postcode for no reason.
+ *        Mounted on POST so it can't be triggered by a stray <img src>.
  * Type:  WRITE.
  */
 function signOut(req, res) {
     if (!req.session) { return res.redirect('/'); }
-    // DESTROY the session (not just null the user) and clear the cookie
-    // before redirecting. With the file-backed session store a plain
-    // `user = null` + immediate redirect races the async disk write, so
-    // the next page load could still read the old session and keep showing
-    // the username until a manual refresh. Destroying in the callback
-    // guarantees the store is cleared before we send the user home.
-    req.session.destroy(function () {
-        res.clearCookie(process.env.SESSION_NAME || 'eatndeal_web', { path: '/' });
-        res.redirect('/');
+    // Stash the location, then REGENERATE the session (fresh id — drops the
+    // signed-in user + everything else, a clean sign-out) and re-attach
+    // only that location. regenerate()'s callback runs AFTER the store
+    // write, so there's no stale-session race (the reason the old code
+    // destroyed the whole session instead of nulling the user).
+    const loc = req.session.userLocation || null;
+    req.session.regenerate(function (err) {
+        if (!err && loc && req.session) { req.session.userLocation = loc; }
+        const done = function () { res.redirect('/'); };
+        if (req.session && typeof req.session.save === 'function') {
+            return req.session.save(done);
+        }
+        return done();
     });
 }
 

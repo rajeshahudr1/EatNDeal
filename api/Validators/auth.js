@@ -221,7 +221,8 @@ const updateAvatarSchema = Joi.object({
 });
 
 // ── /auth/me ──────────────────────────────────────────────────────
-// Re-fetch the current customer by id (web /account re-hydration).
+// Re-fetch the current customer by id (web /account re-hydration). Also
+// reused as the query schema for GET /auth/about (same single param).
 const meSchema = Joi.object({
     customer_id: Joi.alternatives()
         .try(Joi.number().integer().positive(), Joi.string().pattern(/^[0-9]+$/))
@@ -232,6 +233,53 @@ const meSchema = Joi.object({
         }),
 });
 
+// ── /auth/update-about ────────────────────────────────────────────
+// The optional "About You" marketplace profile (customer_profile).
+// EVERY field is optional. Helpers/customerProfile.js does the final
+// sanitising against the allowed option lists + JSON serialisation, so Joi
+// here only enforces shape / length / known tokens — never "required".
+//
+// NOTE: gender, date-of-birth and photo are NOT part of this payload —
+// they live on the `customer` row (handled by /auth/update-profile +
+// /auth/update-avatar) and must not be duplicated here.
+const yesNoRule = Joi.any().valid('0', '1', 0, 1, '').allow(null);
+const multiRule = function (allowed) {
+    return Joi.array().items(Joi.string().valid(...allowed)).single().allow(null);
+};
+const updateAboutSchema = Joi.object({
+    customer_id: Joi.alternatives()
+        .try(Joi.number().integer().positive(), Joi.string().pattern(/^[0-9]+$/))
+        .required()
+        .messages({
+            'any.required':       'Customer id is required.',
+            'alternatives.match': 'Customer id is not valid.',
+        }),
+    // gender + dob moved here from the customer row (customer.gender
+    // migration dropped) — saved into customer_profile.gender / .dob.
+    gender: Joi.string().trim().valid('male', 'female', 'other', 'na').allow('', null)
+        .messages({ 'any.only': 'Please choose a valid gender option.' }),
+    dob: Joi.string().trim().pattern(/^\d{4}-\d{2}-\d{2}$/).allow('', null)
+        .messages({ 'string.pattern.base': 'Please enter a valid date of birth.' }),
+    anniversary_date: Joi.string().trim().pattern(/^\d{4}-\d{2}-\d{2}$/).allow('', null)
+        .messages({ 'string.pattern.base': 'Please enter a valid anniversary date.' }),
+    favorite_food_category: multiRule(['pizzas', 'kebabs', 'burgers', 'grill_food', 'desserts', 'curries', 'chinese', 'english', 'other']),
+    other_food_category: Joi.string().trim().max(255).allow('', null)
+        .messages({ 'string.max': 'That food name is too long.' }),
+    order_type: Joi.string().trim().valid('collection', 'delivery', 'eat_in').allow('', null),
+    takeaway_frequency: Joi.string().trim().valid('weekly', 'monthly', 'occasionally').allow('', null),
+    offer_time: multiRule(['lunch', 'afternoon', 'evening', 'late_night', 'weekdays', 'weekends']),
+    hear_about_us: Joi.string().trim().valid('tiktok', 'facebook', 'instagram', 'friend', 'google', 'walk_in').allow('', null),
+    work_in_hospitality_industry: yesNoRule,
+    family_size: Joi.alternatives()
+        .try(Joi.number().integer().min(0).max(99), Joi.string().pattern(/^[0-9]{0,2}$/))
+        .allow('', null)
+        .messages({ 'alternatives.match': 'Please enter a valid family size.' }),
+    has_children: yesNoRule,
+    is_student:   yesNoRule,
+    work_nearby:  yesNoRule,
+    marketing_preferences: multiRule(['exclusive_discounts', 'birthday_rewards', 'early_access_offers', 'sms_updates', 'whatsapp_offers']),
+});
+
 module.exports = {
     sendOtpSchema,
     verifyOtpSchema,
@@ -239,5 +287,6 @@ module.exports = {
     updateProfileSchema,
     updateAvatarSchema,
     meSchema,
+    updateAboutSchema,
     socialSigninSchema,
 };

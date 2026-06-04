@@ -117,6 +117,42 @@
     border-right: 1px solid var(--color-border-soft);
 }
 
+/* ── "Complete your profile" / About You card ──────────────────────── *
+ * Optional preferences (customer_profile). Its controls are attached to
+ * #account-form via form="account-form", so the single "Update Profile"
+ * button saves them together with the basic fields. Reuses .pf-field /
+ * .pf-select; adds pill groups for the multi-select + yes/no questions. */
+.acct-about {
+    background: #fff; border: 1px solid var(--color-border-soft); border-radius: 18px;
+    padding: var(--space-5); margin-top: var(--space-5); min-width: 0;
+}
+.acct-about__title { font-size: 1.15rem; font-weight: 800; margin: 0; }
+.acct-about__sub { color: var(--color-text-soft); margin: 4px 0 var(--space-5); font-size: 0.9rem; }
+.acct-about__grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-5); align-items: start; }
+.acct-about__field { min-width: 0; }
+.acct-about__field--full { grid-column: 1 / -1; }
+.acct-about__flabel { display: block; font-size: 0.85rem; font-weight: 700; color: var(--color-text); margin-bottom: 10px; }
+
+/* Pills — checkbox (multi-select) + radio (yes/no). The native control is
+   visually hidden; the <span> is the tappable pill. The .is-on class (set
+   server-side + toggled by account.js) covers webviews without :has(). */
+.pf-pills { display: flex; flex-wrap: wrap; gap: 8px; }
+.pf-pill { position: relative; display: inline-flex; margin: 0; cursor: pointer; }
+.pf-pill input { position: absolute; opacity: 0; width: 0; height: 0; }
+.pf-pill span {
+    display: inline-flex; align-items: center; justify-content: center;
+    padding: 9px 15px; border: 1px solid var(--color-border); border-radius: 999px;
+    font-size: 0.9rem; font-weight: 600; color: var(--color-text); background: #fff;
+    user-select: none; transition: border-color 140ms ease, background 140ms ease, color 140ms ease;
+}
+.pf-pill:hover span { border-color: var(--color-primary); }
+.pf-pill.is-on span,
+.pf-pill input:checked ~ span {
+    border-color: var(--color-primary); background: var(--color-primary-soft); color: var(--color-primary);
+}
+.pf-pill input:focus-visible ~ span { box-shadow: 0 0 0 3px rgba(229, 37, 42, 0.18); }
+.pf-pills--yn .pf-pill span { min-width: 78px; }
+
 /* ── Actions ────────────────────────────────────────────────────────── */
 .acct-actions { display: flex; gap: var(--space-3); margin: var(--space-5) 0; }
 .acct-logout-form { margin: 0; }
@@ -344,7 +380,8 @@
     /* Force a single column + clamp everything to the viewport width so the
        page can never scroll/cut sideways on a phone. */
     .acct { grid-template-columns: 1fr !important; padding: var(--space-3) var(--space-3) var(--space-10); gap: var(--space-4); overflow-x: hidden; }
-    .acct-nav, .acct-main, .acct-card, .acct-fields, .acct-stats, .acct-safe, .acct-actions, .acct-nav__list { max-width: 100%; }
+    .acct-nav, .acct-main, .acct-card, .acct-fields, .acct-stats, .acct-safe, .acct-actions, .acct-nav__list, .acct-about { max-width: 100%; }
+    .acct-about__grid { grid-template-columns: 1fr; }
 
     .acct-nav { position: static; }
     /* All tabs stay reachable on mobile as a swipeable pill row. */
@@ -385,6 +422,10 @@
     .acct { display: block; padding: 0 0 132px; background: #f3f4f6; min-height: 100dvh; overflow-x: hidden; }
     /* No tabs / desktop heading / stats / safety on the focused screen. */
     .acct-nav, .acct-head, .acct-stats, .acct-safe { display: none !important; }
+
+    /* About-You card sits below the profile sheet — give it side margins +
+       a softer radius so it reads as a card on the full-bleed app screen. */
+    .acct-about { margin: var(--space-4) var(--space-3) 0; border-radius: 16px; padding: var(--space-4); }
 
     /* Back bar. */
     .acct-mobilebar { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3) var(--space-4) 0; }

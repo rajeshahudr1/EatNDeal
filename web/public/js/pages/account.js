@@ -839,6 +839,37 @@
 
         bindCustomSelects();
 
+        // ── "Complete your profile" (About You) ────────────────────────
+        // The section sits OUTSIDE #account-form (its controls use
+        // form="account-form"), so their change events don't bubble to the
+        // form — bind them here to keep the Update button + pill look in
+        // sync: fill the chosen pills, clear radio siblings, and reveal the
+        // "Other food" text box only when "Other" is ticked.
+        var aboutCard = document.querySelector('[data-about]');
+        if (aboutCard) {
+            aboutCard.addEventListener('change', function (ev) {
+                var input = ev.target;
+                if (input && (input.type === 'checkbox' || input.type === 'radio')) {
+                    if (input.type === 'radio') {
+                        var group = input.closest('.pf-pills');
+                        if (group) {
+                            var labels = group.querySelectorAll('.pf-pill');
+                            for (var i = 0; i < labels.length; i++) { labels[i].classList.remove('is-on'); }
+                        }
+                    }
+                    var label = input.closest('.pf-pill');
+                    if (label) { label.classList.toggle('is-on', input.checked); }
+
+                    if (input.name === 'favorite_food_category' && input.value === 'other') {
+                        var other = document.querySelector('[data-other-food]');
+                        if (other) { other.hidden = !input.checked; }
+                    }
+                }
+                markDirty();
+            });
+            aboutCard.addEventListener('input', markDirty);
+        }
+
         // Avatar file picker → upload on selection.
         var avatarInput = document.querySelector('[data-avatar-input]');
         if (avatarInput) {

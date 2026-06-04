@@ -181,6 +181,7 @@ const {
     updateProfileSchema,
     updateAvatarSchema,
     meSchema,
+    updateAboutSchema,
     socialSigninSchema,
 }             = require('../Validators/auth');
 
@@ -207,6 +208,17 @@ router.get('/auth/me',
 router.post('/auth/update-avatar',
     validate(updateAvatarSchema),
     AuthCtl.updateAvatar);
+
+// Optional "About You" marketplace profile (customer_profile) backing
+// the account page's "Complete your profile" section. Reuses meSchema for
+// the GET (single customer_id query param).
+router.get('/auth/about',
+    validateQuery(meSchema),
+    AuthCtl.getAbout);
+
+router.post('/auth/update-about',
+    validate(updateAboutSchema),
+    AuthCtl.updateAbout);
 
 router.post('/auth/social-signin',
     validate(socialSigninSchema),

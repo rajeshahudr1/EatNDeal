@@ -18,15 +18,19 @@
     var fullName = [account_user.firstname, account_user.lastname].filter(Boolean).join(' ');
     var initial  = (account_user.firstname || account_user.email || '?').charAt(0).toUpperCase();
 
+    // gender + dob now come from customer_profile (account_about), not the
+    // customer row — though their controls still sit in the basic card.
+    var __ab = (typeof account_about !== 'undefined' && account_about) ? account_about : null;
+
     var dobValue = '';
-    var bd = String(account_user.birthdate || '').trim();
+    var bd = String((__ab && __ab.dob) || '').trim();
     if (/^\d{4}-\d{2}-\d{2}$/.test(bd)) { dobValue = bd; }
     else { var m = bd.match(/^(\d{2})[\/\-](\d{2})[\/\-](\d{4})$/); if (m) { dobValue = m[3] + '-' + m[2] + '-' + m[1]; } }
 
     var currentDial = account_user.country_code ? '+' + account_user.country_code : '+44';
     var hasMobile   = !!account_user.contact_no;
     var hasEmail    = !!account_user.email;
-    var __gender    = String(account_user.gender || '').toLowerCase();
+    var __gender    = String((__ab && __ab.gender) || '').toLowerCase();
     var __genders   = [['', 'Select'], ['male', 'Male'], ['female', 'Female'], ['other', 'Other'], ['na', 'Prefer not to say']];
     var __selG      = __genders.find(function (g) { return g[0] === __gender && g[0] !== ''; });
     var st          = (typeof account_stats !== 'undefined' && account_stats) ? account_stats : { orders: 0, favourites: 0, rewardPoints: 0, offers: 0 };
@@ -504,6 +508,115 @@
                 </div>
             </div>
         </form>
+
+        <%#
+            "Complete your profile" — optional About-You preferences
+            (customer_profile). It lives OUTSIDE #account-form in the DOM
+            but every control carries form="account-form", so the single
+            "Update Profile" button below saves the basic fields AND these
+            together. Gender / DOB / photo are NOT here — they're in the
+            profile card above (on the customer row).
+        -%>
+        <%
+            var ab = (typeof account_about !== 'undefined' && account_about) ? account_about : null;
+            function abArr(k){ return (ab && Array.isArray(ab[k])) ? ab[k] : []; }
+            function abStr(k){ return (ab && ab[k] != null) ? String(ab[k]) : ''; }
+            function abYN(k){ return (ab && ab[k] !== null && ab[k] !== undefined && ab[k] !== '') ? String(ab[k]) : ''; }
+            function esc(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+
+            var FOOD_CATS   = [['pizzas','Pizzas'],['kebabs','Kebabs'],['burgers','Burgers'],['grill_food','Grill Food'],['desserts','Desserts'],['curries','Curries'],['chinese','Chinese'],['english','English'],['other','Other']];
+            var ORDER_TYPES = [['collection','Collection'],['delivery','Delivery'],['eat_in','Eat In']];
+            var TAKE_FREQ   = [['weekly','Weekly'],['monthly','Monthly'],['occasionally','Occasionally']];
+            var OFFER_TIMES = [['lunch','Lunch'],['afternoon','Afternoon'],['evening','Evening'],['late_night','Late Night'],['weekdays','Weekdays'],['weekends','Weekends']];
+            var HEAR_US     = [['tiktok','TikTok'],['facebook','Facebook'],['instagram','Instagram'],['friend','Friend'],['google','Google'],['walk_in','Walk In']];
+            var MKT_PREFS   = [['exclusive_discounts','Exclusive Discounts'],['birthday_rewards','Birthday Rewards'],['early_access_offers','Early Access Offers'],['sms_updates','SMS Updates'],['whatsapp_offers','WhatsApp Offers']];
+
+            // Single-select — reuses the existing pf-select component + JS.
+            function pfSelect(name, labelTxt, opts, current){
+                var sel = null;
+                for (var i=0;i<opts.length;i++){ if(opts[i][0]===current && current!==''){ sel=opts[i]; break; } }
+                var h = '<div class="pf-field pf-field--select acct-about__field" data-pf-select>';
+                h += '<label class="pf-field__label" id="ab-'+esc(name)+'-label">'+esc(labelTxt)+'</label>';
+                h += '<button type="button" class="pf-field__control pf-select__btn" data-pf-select-btn aria-haspopup="listbox" aria-expanded="false" aria-labelledby="ab-'+esc(name)+'-label">';
+                h += '<span class="pf-select__value'+(sel?'':' is-placeholder')+'" data-pf-select-value>'+(sel?esc(sel[1]):'Select')+'</span>';
+                h += '<svg class="pf-select__chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>';
+                h += '</button>';
+                h += '<ul class="pf-select__menu" role="listbox" aria-labelledby="ab-'+esc(name)+'-label" data-pf-select-menu hidden>';
+                for (var j=0;j<opts.length;j++){ var o=opts[j]; h += '<li class="pf-select__opt'+(o[0]===current?' is-selected':'')+'" role="option" data-value="'+esc(o[0])+'" aria-selected="'+(o[0]===current?'true':'false')+'">'+esc(o[1])+'</li>'; }
+                h += '</ul>';
+                h += '<input type="hidden" name="'+esc(name)+'" id="ab-'+esc(name)+'" value="'+esc(sel?sel[0]:'')+'" form="account-form">';
+                h += '</div>';
+                return h;
+            }
+            // Multi-select as checkbox "pills" — repeat-name params → array.
+            function pfPills(name, labelTxt, opts, selected){
+                var h = '<div class="acct-about__field acct-about__field--full"><span class="acct-about__flabel">'+esc(labelTxt)+'</span><div class="pf-pills">';
+                for (var i=0;i<opts.length;i++){ var o=opts[i]; var on = selected.indexOf(o[0])!==-1;
+                    h += '<label class="pf-pill'+(on?' is-on':'')+'"><input type="checkbox" name="'+esc(name)+'" value="'+esc(o[0])+'"'+(on?' checked':'')+' form="account-form"><span>'+esc(o[1])+'</span></label>';
+                }
+                h += '</div></div>';
+                return h;
+            }
+            // Yes/No as radio "pills" — none checked = "not set" (null).
+            function pfYesNo(name, labelTxt, current){
+                var opts = [['1','Yes'],['0','No']];
+                var h = '<div class="acct-about__field acct-about__yn"><span class="acct-about__flabel">'+esc(labelTxt)+'</span><div class="pf-pills pf-pills--yn">';
+                for (var i=0;i<opts.length;i++){ var o=opts[i]; var on = current===o[0];
+                    h += '<label class="pf-pill'+(on?' is-on':'')+'"><input type="radio" name="'+esc(name)+'" value="'+esc(o[0])+'"'+(on?' checked':'')+' form="account-form"><span>'+esc(o[1])+'</span></label>';
+                }
+                h += '</div></div>';
+                return h;
+            }
+
+            var favsSel   = abArr('favorite_food_category');
+            var showOther = favsSel.indexOf('other') !== -1;
+        %>
+        <section class="acct-about" data-about>
+            <h3 class="acct-about__title">Complete your profile</h3>
+            <p class="acct-about__sub">Tell us a little about you for tastier recommendations and the odd birthday treat. Everything here is optional.</p>
+
+            <input type="hidden" name="about_present" value="1" form="account-form">
+
+            <div class="acct-about__grid">
+                <%# Anniversary %>
+                <div class="pf-field acct-about__field">
+                    <label class="pf-field__label" for="ab-anniversary">Anniversary</label>
+                    <div class="pf-field__control">
+                        <input id="ab-anniversary" class="pf-field__input pf-field__input--date" type="date" name="anniversary_date" value="<%= abStr('anniversary_date') %>" max="<%= (new Date()).toISOString().slice(0,10) %>" form="account-form">
+                    </div>
+                </div>
+
+                <%# Family size %>
+                <div class="pf-field acct-about__field">
+                    <label class="pf-field__label" for="ab-family">Family Size</label>
+                    <div class="pf-field__control">
+                        <input id="ab-family" class="pf-field__input" type="number" name="family_size" value="<%= abStr('family_size') %>" min="0" max="99" inputmode="numeric" placeholder="e.g. 4" form="account-form">
+                    </div>
+                </div>
+
+                <%- pfSelect('order_type', 'Preferred Order Type', ORDER_TYPES, abStr('order_type')) %>
+                <%- pfSelect('takeaway_frequency', 'How Often You Order', TAKE_FREQ, abStr('takeaway_frequency')) %>
+                <%- pfSelect('hear_about_us', 'How You Heard About Us', HEAR_US, abStr('hear_about_us')) %>
+
+                <%- pfPills('favorite_food_category', 'Favourite Food', FOOD_CATS, favsSel) %>
+
+                <%# Other food — visible only when "Other" is among the picks %>
+                <div class="pf-field acct-about__field acct-about__field--full" data-other-food <%= showOther ? '' : 'hidden' %>>
+                    <label class="pf-field__label" for="ab-otherfood">Other Favourite Food</label>
+                    <div class="pf-field__control">
+                        <input id="ab-otherfood" class="pf-field__input" type="text" name="other_food_category" value="<%= abStr('other_food_category') %>" maxlength="255" placeholder="Tell us what" form="account-form">
+                    </div>
+                </div>
+
+                <%- pfPills('offer_time', 'Best Time For Offers', OFFER_TIMES, abArr('offer_time')) %>
+                <%- pfPills('marketing_preferences', 'Marketing Preferences', MKT_PREFS, abArr('marketing_preferences')) %>
+
+                <%- pfYesNo('has_children', 'Have Children', abYN('has_children')) %>
+                <%- pfYesNo('is_student', 'Student', abYN('is_student')) %>
+                <%- pfYesNo('work_nearby', 'Work Nearby', abYN('work_nearby')) %>
+                <%- pfYesNo('work_in_hospitality_industry', 'Interested in Hospitality Work', abYN('work_in_hospitality_industry')) %>
+            </div>
+        </section>
 
         <%# Actions %>
         <div class="acct-actions">

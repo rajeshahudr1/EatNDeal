@@ -24,10 +24,12 @@
  *                + actionVerifyOtp.
  */
 
+const crypto       = require('node:crypto');
 const H            = require('../../Helpers/helper');
 const MSG          = require('../../Helpers/messages');
 const otp          = require('../../Helpers/otpSender');
 const customers    = require('../../Helpers/customerLookup');
+const profile      = require('../../Helpers/customerProfile');
 const social       = require('../../Helpers/socialAuth');
 const { db }       = require('../../config/db');
 
@@ -388,7 +390,10 @@ async function saveProfile(req, res) {
  */
 async function updateProfile(req, res) {
     try {
-        const { customer_id, firstname, lastname, email, country_code, contact_no, birthdate, gender } = req.body;
+        // gender + date-of-birth are NOT updated here anymore — they live
+        // on customer_profile now (saved via /auth/update-about). Only the
+        // photo (customer.image) remains a customer-row profile field.
+        const { customer_id, firstname, lastname, email, country_code, contact_no } = req.body;
 
         const row = await db('customer')
             .where({ id: customer_id })
@@ -427,16 +432,6 @@ async function updateProfile(req, res) {
             updated_at:        db.fn.now(),
             server_updated_at: db.fn.now(),
         };
-        // Date of birth — optional. Only overwrite when the field is
-        // present in the request (empty string clears it).
-        if (birthdate !== undefined) {
-            update.birthdate = birthdate || null;
-        }
-        // Gender — optional, and only written once the column exists
-        // (guarded so the update never breaks before the migration runs).
-        if (gender !== undefined && await customerHasGender()) {
-            update.gender = gender || null;
-        }
 
         if (wantsContact) {
             const cleanCountry = Number(customers.normalisePhone(country_code)) || 0;
@@ -550,6 +545,111 @@ async function me(req, res) {
         return H.successResponse(res, { customer: customers.publicView(row) });
     } catch (err) {
         H.log.error('auth.me', err && err.message);
+        return H.errorResponse(res, MSG.server.oops, 500);
+    }
+}
+
+/**
+ * getAbout
+ *
+ * What:  Returns the marketplace customer's optional "About You" profile
+ *        (customer_profile) for the /account "Complete your profile"
+ *        section — multi-selects decoded to arrays, dates as YYYY-MM-DD.
+ *        Returns { about: null, enabled: false } when the migration hasn't
+ *        run yet, and { about: null, enabled: true } when it has but the
+ *        customer hasn't filled anything — the form handles both as "empty".
+ *
+ *        Gender / DOB / photo are NOT here — they ride on /auth/me
+ *        (customer.gender / birthdate / image) and stay there.
+ * Type:  READ.
+ *
+ * Inputs:  req.query.customer_id
+ * Output:  200 envelope, data = { about: {...}|null, enabled: bool }
+ */
+async function getAbout(req, res) {
+    try {
+        const { customer_id } = req.query;
+        const guard = await customers.loadMarketplaceCustomer(customer_id);
+        if (guard.error) { return H.errorResponse(res, guard.error.msg, guard.error.status); }
+
+        if (!(await profile.tableExists())) {
+            return H.successResponse(res, { about: null, enabled: false });
+        }
+        const row = await db(profile.TABLE)
+            .where({ customer_id })
+            .whereNull('deleted_at')
+            .first();
+        return H.successResponse(res, { about: profile.view(row), enabled: true });
+    } catch (err) {
+        H.log.error('auth.getAbout', err && err.message);
+        return H.errorResponse(res, MSG.server.oops, 500);
+    }
+}
+
+/**
+ * updateAbout
+ *
+ * What:  Upserts the "About You" profile (customer_profile) for the
+ *        signed-in marketplace customer. One row per customer — updates it
+ *        if present, inserts (with a fresh uuid) otherwise. Every field is
+ *        optional; Helpers/customerProfile.js sanitises + JSON-serialises
+ *        the values, so only known tokens reach the DB.
+ * Type:  WRITE.
+ *
+ * Inputs:  req.body.customer_id (required) + any About-You fields.
+ * Output:  200 envelope, data = { about: {...} } (the fresh saved view).
+ */
+async function updateAbout(req, res) {
+    try {
+        const { customer_id } = req.body;
+        const guard = await customers.loadMarketplaceCustomer(customer_id);
+        if (guard.error) { return H.errorResponse(res, guard.error.msg, guard.error.status); }
+
+        if (!(await profile.tableExists())) {
+            return H.errorResponse(
+                res,
+                'Profile preferences aren’t enabled yet — run the customer_profile migrations.',
+                422,
+            );
+        }
+
+        const write = profile.buildWrite(req.body);
+
+        const existing = await db(profile.TABLE)
+            .where({ customer_id })
+            .whereNull('deleted_at')
+            .first();
+
+        if (existing) {
+            await db(profile.TABLE)
+                .where({ id: existing.id })
+                .update(Object.assign({}, write, {
+                    updated_by: customer_id,
+                    updated_at: db.fn.now(),
+                }));
+        } else {
+            await db(profile.TABLE).insert(Object.assign({}, write, {
+                uuid:        crypto.randomUUID(),
+                company_id:  profile.MARKETPLACE_COMPANY_ID, // NOT NULL col; 0 = marketplace (no tenant)
+                customer_id: customer_id,
+                created_by:  customer_id,
+                created_at:  db.fn.now(),
+                updated_at:  db.fn.now(),
+            }));
+            // FIRST-TIME profile completion. The legacy system fires an
+            // event_cashback reward here (event_type=2 "profile_complete").
+            // The Node loyalty engine isn't built yet — when it lands, award
+            // the reward at THIS point. Left as a deliberate marker.
+            // TODO(loyalty): CustomerRewards.event({ customerId, event: 'profile_complete' })
+        }
+
+        const fresh = await db(profile.TABLE)
+            .where({ customer_id })
+            .whereNull('deleted_at')
+            .first();
+        return H.successResponse(res, { about: profile.view(fresh) }, MSG.resource.updated);
+    } catch (err) {
+        H.log.error('auth.updateAbout', err && err.message);
         return H.errorResponse(res, MSG.server.oops, 500);
     }
 }
@@ -714,4 +814,4 @@ async function socialSignin(req, res) {
     }
 }
 
-module.exports = { sendOtp, verifyOtp, saveProfile, updateProfile, updateAvatar, me, socialSignin };
+module.exports = { sendOtp, verifyOtp, saveProfile, updateProfile, updateAvatar, me, getAbout, updateAbout, socialSignin };

@@ -445,6 +445,29 @@ function eligibleBranchScope(qb, alias) {
 }
 
 /**
+ * avgRatingSubq
+ *
+ * What:  Correlated subquery that yields a company's average published
+ *        review rating (1-dp) as `avg_rating`, or NULL when it has no
+ *        reviews. toRestaurantCard reads `row.avg_rating`, so EVERY card
+ *        query (home grid, favourites rail, account favourites…) must
+ *        SELECT this — otherwise the card silently shows no rating even
+ *        for a restaurant that has reviews.
+ * Why:   One definition so a new card surface can't forget it (the
+ *        favourites rail did, which hid real ratings).
+ * Type:  READ (query fragment). `alias` is the company table alias.
+ */
+function avgRatingSubq(dbi, alias) {
+    const a = alias || 'c';
+    return dbi.raw(
+        `(SELECT ROUND(AVG(rr.rating)::numeric, 1)
+            FROM review_rating rr
+           WHERE rr.company_id = ${a}.id
+             AND rr.publish_online = 1) AS avg_rating`
+    );
+}
+
+/**
  * toRestaurantCard
  *
  * What:  Canonical (company,branch) row → public card shape. ONE definition
@@ -520,7 +543,7 @@ function toRestaurantCard(row, opts) {
         slug:             row.domain_name ? slugify(row.domain_name) : slugify(name, companyId),
         name,
         cuisines:         cuisinesFor({ business_category: row.business_category }),
-        rating:           avgRating != null ? avgRating : 4.4,
+        rating:           avgRating,   // null when no published reviews — UI hides the badge (no fake number)
         isOpen:           isOpenNow(row),
         tint:             tintFor(companyId),
         initial:          initialFor(name),
@@ -573,6 +596,7 @@ module.exports = {
     normaliseName,
     eligibleCompanyScope,
     eligibleBranchScope,
+    avgRatingSubq,
     loadActiveBranch,
     toRestaurantCard,
 };

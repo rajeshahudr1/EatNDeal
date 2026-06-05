@@ -22,7 +22,22 @@
 <% var cats = (typeof menu_categories !== 'undefined' && menu_categories) ? menu_categories : []; %>
 <% var secs = (typeof menu_sections   !== 'undefined' && menu_sections)   ? menu_sections   : []; %>
 <% var sym  = brand.currencySymbol; %>
+<% var __rv = (typeof restaurant_reviews !== 'undefined' && restaurant_reviews) ? restaurant_reviews : null; %>
 <div class="rd" data-restaurant data-rslug="<%= r.slug %>">
+
+    <%# Mobile-only rating bar — sits right under the search box (top of the
+        restaurant content) and opens the reviews modal. Desktop uses the
+        rail card + hero rating instead. Dynamic: only when reviews exist. %>
+    <% if (__rv && __rv.count) { %>
+    <button type="button" class="rd-ratingbar" data-action="open-reviews" aria-label="See ratings and reviews">
+        <span class="rd-ratingbar__star">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            <strong><%= __rv.average %></strong>
+        </span>
+        <span class="rd-ratingbar__count"><%= __rv.count %> ratings &amp; reviews</span>
+        <svg class="rd-ratingbar__chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+    </button>
+    <% } %>
 
     <%# ── Hero ───────────────────────────────────────────────────── %>
     <section class="rd-hero">
@@ -43,7 +58,7 @@
                     <svg class="rd-hero__verified" width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2 4 5v6c0 5 8 11 8 11s8-6 8-11V5l-8-3z" fill="none" stroke="currentColor" stroke-width="2"/><path d="m9 12 2 2 4-4" fill="none" stroke="currentColor" stroke-width="2"/></svg>
                 </h1>
                 <p class="rd-hero__meta">
-                    <span class="rd-hero__rating"><svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg> <%= r.rating %><% if (r.ratingCount) { %> <span class="rd-hero__rating-count">(<%= r.ratingCount %>+)</span><% } %></span>
+                    <% if (r.rating) { %><span class="rd-hero__rating rd-hero__rating--btn" data-action="open-reviews" role="button" tabindex="0" aria-label="See ratings and reviews"><svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg> <%= r.rating %><% if (r.ratingCount) { %> <span class="rd-hero__rating-count">(<%= r.ratingCount %>+)</span><% } %></span><% } %>
                     <% if ((r.cuisines || []).length) { %><span class="rd-hero__dot">·</span><span><%= (r.cuisines || []).slice(0, 3).join(', ') %></span><% } %>
                 </p>
                 <% if (r.address) { %><p class="rd-hero__address"><%= r.address %></p><% } %>
@@ -225,10 +240,12 @@
                             <div class="rd-product__body">
                                 <h3 class="rd-product__name"><%= p.name %></h3>
                                 <p class="rd-product__meta">
-                                    <span class="rd-product__rating"><svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg> <%= p.rating %></span>
+                                    <% if (p.rating) { %><span class="rd-product__rating"><svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg> <%= p.rating %></span><% } %>
                                 </p>
-                                <%# Availability badge: Sold out / the precise reason
-                                    (e.g. "Available from 5 Jun") / or "Available". %>
+                                <%# Availability badge — ONLY when there's something to
+                                    flag (Sold out / the precise reason e.g. "Available
+                                    from 5 Jun"). An available item shows nothing — no
+                                    redundant "Available" line. %>
                                 <% if (av.soldOut) { %>
                                     <span class="rd-product__stockline rd-product__stockline--out">
                                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
@@ -238,11 +255,6 @@
                                     <span class="rd-product__stockline rd-product__stockline--out">
                                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
                                         <%= av.label %>
-                                    </span>
-                                <% } else { %>
-                                    <span class="rd-product__stockline rd-product__stockline--in">
-                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
-                                        Available
                                     </span>
                                 <% } %>
                                 <div class="rd-product__foot">
@@ -303,6 +315,70 @@
                 </li>
             </ul>
         </div>
+
+        <%# Customer reviews — published post-order ratings (stars + text +
+            optional food photo), from /api/v1/marketplace/reviews. %>
+        <% if (__rv && __rv.count) { %>
+        <%# Compact rail card — top reviews preview + "View all" opens the modal. %>
+        <div class="rd-card rd-reviews">
+            <h3 class="rd-card__subtitle">
+                Ratings &amp; reviews
+                <% if (__rv.average) { %><span class="rd-reviews__avg">&#9733; <%= __rv.average %></span> <span class="rd-reviews__count">(<%= __rv.count %>)</span><% } %>
+            </h3>
+            <ul class="rd-reviews__list rd-reviews__list--preview">
+                <% (__rv.reviews || []).slice(0, 5).forEach(function (rev) { %>
+                <li class="rd-review">
+                    <div class="rd-review__head">
+                        <span class="rd-review__name"><%= rev.customerName %></span>
+                        <span class="rd-review__stars" aria-label="<%= rev.rating %> out of 5">
+                            <% for (var k = 1; k <= 5; k++) { %><span class="<%= rev.rating >= k ? 'is-on' : '' %>">&#9733;</span><% } %>
+                        </span>
+                    </div>
+                    <% if (rev.review) { %><p class="rd-review__text"><%= rev.review %></p><% } %>
+                    <% if (rev.photo) { %><img class="rd-review__photo" src="<%= rev.photo %>" alt="Review photo" loading="lazy"><% } %>
+                </li>
+                <% }); %>
+            </ul>
+            <button type="button" class="rd-reviews__viewall" data-action="open-reviews">View all <%= __rv.count %> reviews</button>
+        </div>
+        <% } %>
     </aside>
+
+    <%# ── Ratings & reviews modal — full sort / star-filter / load-more
+        experience. Opened by the rail's "View all" OR the hero rating (the
+        primary entry on phones, near the top). Lives OUTSIDE the rail so
+        hiding the rail card on phones doesn't hide it. JS: reviews-list.js. -%>
+    <% if (__rv && __rv.count) { %>
+    <div class="reviews-modal" data-reviews-modal data-company-id="<%= r.id %>" hidden aria-hidden="true">
+        <div class="reviews-modal__backdrop" data-action="close-reviews"></div>
+        <div class="reviews-modal__panel" role="dialog" aria-modal="true" aria-labelledby="reviews-modal-title">
+            <header class="reviews-modal__head">
+                <h2 class="reviews-modal__title" id="reviews-modal-title">Ratings &amp; reviews
+                    <% if (__rv.average) { %><span class="rd-reviews__avg">&#9733; <%= __rv.average %></span> <span class="rd-reviews__count">(<%= __rv.count %>)</span><% } %>
+                </h2>
+                <button type="button" class="reviews-modal__close" data-action="close-reviews" aria-label="Close">&times;</button>
+            </header>
+            <div class="reviews-modal__controls">
+                <div class="rd-reviews__sort" role="tablist" aria-label="Sort reviews" data-rv-sort>
+                    <button type="button" class="rd-reviews__sort-btn is-active" data-sort="recent">All</button>
+                    <button type="button" class="rd-reviews__sort-btn" data-sort="best">Best first</button>
+                    <button type="button" class="rd-reviews__sort-btn" data-sort="worst">Critical</button>
+                </div>
+                <div class="rd-reviews__filter" aria-label="Filter by stars" data-rv-stars>
+                    <button type="button" class="rd-reviews__chip is-active" data-star="">All</button>
+                    <% [5, 4, 3, 2, 1].forEach(function (s) { %>
+                    <button type="button" class="rd-reviews__chip" data-star="<%= s %>"><%= s %>&#9733; <span class="rd-reviews__chip-n">(<%= (__rv.breakdown && __rv.breakdown[s]) || 0 %>)</span></button>
+                    <% }); %>
+                </div>
+            </div>
+            <div class="reviews-modal__body">
+                <div class="rd-reviews__loader" data-rv-loader hidden><span class="rv-spinner" aria-hidden="true"></span> Loading reviews…</div>
+                <ul class="rd-reviews__list" data-rv-list></ul>
+                <p class="rd-reviews__empty" data-rv-empty hidden>No reviews with this rating yet.</p>
+                <button type="button" class="rd-reviews__more" data-rv-more hidden>Load more reviews</button>
+            </div>
+        </div>
+    </div>
+    <% } %>
 </div>
 <% } %>

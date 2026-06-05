@@ -255,7 +255,7 @@ async function list(req, res) {
                 id:              String(r.product_id),
                 name,
                 priceFrom:       M.pickPrice(r),
-                rating:          4.5,                       // TODO: derive from review_rating table
+                rating:          null,                      // no per-dish reviews → no rating (UI hides the badge)
                 deliveryMinutes: t.delivery,
                 pickupMinutes:   t.pickup,
                 restaurant:      String(r.company_name || '').trim(),

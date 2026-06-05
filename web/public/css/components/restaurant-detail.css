@@ -344,3 +344,110 @@
     .rd-hero__name { font-size: 1.15rem; }
     .rd-tab { padding: 8px 10px; font-size: 0.85rem; }
 }
+
+/* ── Customer reviews card (right rail) ─────────────────────────────── */
+.rd-reviews .rd-card__subtitle { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.rd-reviews__avg { color: #f5a623; font-weight: 800; }
+.rd-reviews__count { color: var(--color-text-soft); font-weight: 600; font-size: 0.85rem; }
+.rd-reviews__list { list-style: none; margin: var(--space-2) 0 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-3); }
+.rd-review { border-top: 1px solid var(--color-border-soft); padding-top: var(--space-3); }
+.rd-review:first-child { border-top: 0; padding-top: 0; }
+.rd-review__head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.rd-review__name { font-weight: 700; font-size: 0.9rem; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rd-review__stars { flex: 0 0 auto; letter-spacing: 1px; color: var(--color-border); font-size: 0.9rem; }
+.rd-review__stars .is-on { color: #f5a623; }
+.rd-review__text { margin: 6px 0 0; font-size: 0.88rem; color: var(--color-text); line-height: 1.45; }
+.rd-review__photo { margin-top: 8px; width: 100%; max-height: 200px; object-fit: cover; border-radius: 12px; display: block; }
+
+/* Reviews controls — sort tabs + star-filter chips + load more. */
+.rd-reviews__sort { display: flex; gap: 6px; margin: var(--space-3) 0 8px; }
+.rd-reviews__sort-btn {
+    flex: 1 1 auto; border: 1px solid var(--color-border); background: #fff; color: var(--color-text-soft);
+    border-radius: 999px; padding: 6px 8px; font-size: 0.78rem; font-weight: 700; cursor: pointer; white-space: nowrap;
+    transition: border-color 120ms ease, background 120ms ease, color 120ms ease;
+}
+.rd-reviews__sort-btn:hover { border-color: var(--color-primary); }
+.rd-reviews__sort-btn.is-active { background: var(--color-primary); border-color: var(--color-primary); color: #fff; }
+
+.rd-reviews__filter { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: var(--space-2); }
+.rd-reviews__chip {
+    border: 1px solid var(--color-border); background: #fff; color: var(--color-text);
+    border-radius: 999px; padding: 5px 10px; font-size: 0.78rem; font-weight: 700; cursor: pointer;
+    transition: border-color 120ms ease, background 120ms ease, color 120ms ease;
+}
+.rd-reviews__chip:hover { border-color: var(--color-primary); }
+.rd-reviews__chip.is-active { background: var(--color-primary-soft); border-color: var(--color-primary); color: var(--color-primary); }
+.rd-reviews__chip-n { color: var(--color-text-soft); font-weight: 600; font-size: 0.72rem; }
+.rd-reviews__chip.is-active .rd-reviews__chip-n { color: var(--color-primary); }
+
+.rd-reviews__empty { margin: var(--space-3) 0 0; color: var(--color-text-soft); font-size: 0.85rem; text-align: center; }
+.rd-reviews__more {
+    margin-top: var(--space-3); width: 100%; border: 1px solid var(--color-border); background: #fff;
+    color: var(--color-primary); border-radius: 10px; padding: 9px 12px; font-weight: 800; font-size: 0.85rem; cursor: pointer;
+}
+.rd-reviews__more:hover { background: var(--color-primary-soft); border-color: var(--color-primary); }
+.rd-reviews__more[hidden] { display: none; }
+.rd-reviews.is-loading { opacity: 0.6; pointer-events: none; }
+
+/* Rail: "View all" button + top-5 preview list. */
+.rd-reviews__viewall {
+    margin-top: var(--space-3); width: 100%; border: 1px solid var(--color-border); background: #fff;
+    color: var(--color-primary); border-radius: 10px; padding: 9px 12px; font-weight: 800; font-size: 0.85rem; cursor: pointer;
+}
+.rd-reviews__viewall:hover { background: var(--color-primary-soft); border-color: var(--color-primary); }
+.rd-reviews__list--preview .rd-review__photo { max-height: 150px; }
+
+/* Hero rating → tappable (opens the reviews modal — the phone entry). */
+.rd-hero__rating--btn { cursor: pointer; }
+.rd-hero__rating--btn:hover { text-decoration: underline; }
+
+/* ── Ratings & reviews modal ────────────────────────────────────────── */
+.reviews-modal { position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center; justify-content: center; padding: var(--space-4); }
+.reviews-modal[hidden] { display: none; }
+.reviews-modal__backdrop { position: absolute; inset: 0; background: rgba(17,17,17,0.55); }
+.reviews-modal__panel {
+    position: relative; z-index: 1; width: 100%; max-width: 520px; max-height: 88vh;
+    background: #fff; border-radius: var(--radius-xl, 20px); display: flex; flex-direction: column; overflow: hidden;
+    box-shadow: var(--shadow-2); animation: reviews-modal-pop 140ms ease;
+}
+@keyframes reviews-modal-pop { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.reviews-modal__head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); padding: var(--space-5) var(--space-5) var(--space-3); }
+.reviews-modal__title { font-size: 1.2rem; font-weight: 800; margin: 0; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.reviews-modal__close { flex: 0 0 auto; width: 34px; height: 34px; border: 0; background: var(--color-bg-alt); border-radius: 50%; font-size: 1.4rem; line-height: 1; cursor: pointer; color: var(--color-text); }
+.reviews-modal__close:hover { background: rgba(0,0,0,0.08); color: var(--color-primary); }
+.reviews-modal__controls { padding: 0 var(--space-5) var(--space-3); border-bottom: 1px solid var(--color-border-soft); }
+.reviews-modal__controls .rd-reviews__sort { margin-top: 0; }
+.reviews-modal__body { padding: var(--space-4) var(--space-5) var(--space-5); overflow-y: auto; }
+.reviews-modal__body .rd-reviews__list { margin-top: 0; }
+.reviews-modal.is-loading { opacity: 0.85; }
+
+/* Reviews fetch spinner (open / sort / filter / load-more). */
+.rd-reviews__loader { display: flex; align-items: center; justify-content: center; gap: 8px; padding: var(--space-5) 0; color: var(--color-text-soft); font-size: 0.9rem; font-weight: 600; }
+.rd-reviews__loader[hidden] { display: none; }
+.rv-spinner { width: 18px; height: 18px; border: 2px solid var(--color-border); border-top-color: var(--color-primary); border-radius: 50%; animation: rv-spin 0.6s linear infinite; flex: 0 0 auto; }
+@keyframes rv-spin { to { transform: rotate(360deg); } }
+
+/* Phone: hide the rail card (hero rating opens the modal) + full-screen sheet. */
+/* Mobile rating bar — sits under the search box (top of the restaurant
+   content) + opens the reviews modal. Hidden on desktop (rail card + hero
+   rating handle it there). */
+.rd-ratingbar { display: none; }
+
+@media (max-width: 900px) {
+    .rd-reviews { display: none; }
+    .rd-ratingbar {
+        order: 0; display: flex; align-items: center; gap: 8px; width: 100%;
+        margin: 0 0 var(--space-3); padding: 11px 14px; cursor: pointer;
+        background: #fff; border: 1px solid var(--color-border-soft); border-radius: 14px;
+        font: inherit; text-align: left; box-shadow: var(--shadow-1);
+    }
+    .rd-ratingbar:active { background: var(--color-bg-alt); }
+    .rd-ratingbar__star { display: inline-flex; align-items: center; gap: 4px; color: #f5a623; font-weight: 800; flex: 0 0 auto; }
+    .rd-ratingbar__star strong { color: var(--color-text); }
+    .rd-ratingbar__count { flex: 1 1 auto; min-width: 0; color: var(--color-text-soft); font-weight: 600; font-size: 0.9rem; }
+    .rd-ratingbar__chev { flex: 0 0 auto; color: var(--color-text-soft); }
+}
+@media (max-width: 600px) {
+    .reviews-modal { padding: 0; align-items: stretch; }
+    .reviews-modal__panel { max-width: none; max-height: none; height: 100%; border-radius: 0; }
+}

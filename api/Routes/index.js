@@ -380,6 +380,17 @@ router.post('/customer/order/reorder',
     validate(orderReorderSchema),
     OrderCtl.reorder);
 
+// ── Post-order reviews ──────────────────────────────────────────────
+// The customer rates (1–5) + writes text + optional photo for one of their
+// orders (saved to review_rating, one per order). The public list (read by
+// the restaurant page) is registered with the marketplace routes below.
+const ReviewCtl = require('../Controllers/Customer/ReviewController');
+const { submitReviewSchema, listReviewsSchema } = require('../Validators/review');
+
+router.post('/customer/review',
+    validate(submitReviewSchema),
+    ReviewCtl.submit);
+
 // ── Customer payments (Stripe-backed) ───────────────────────────────
 // createIntent returns a Stripe PaymentIntent the browser confirms via
 // Stripe.js. Verification at order-place time happens inside
@@ -484,6 +495,11 @@ router.get('/marketplace/search',
 
 // Active store-offer banners across marketplace restaurants (home rail).
 router.get('/marketplace/offers', RestaurantsCtl.offers);
+
+// Published reviews for one restaurant (+ average + count) — restaurant page.
+router.get('/marketplace/reviews',
+    validateQuery(listReviewsSchema),
+    ReviewCtl.listForRestaurant);
 
 // ── Future namespaces ──────────────────────────────────────────────
 // router.use('/customer',   require('./customer'));

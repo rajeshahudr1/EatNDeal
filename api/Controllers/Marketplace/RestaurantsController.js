@@ -589,7 +589,7 @@ async function detail(req, res) {
             branchId:        String(row.branch_id),
             isFavourite:     detailFavSet.has(String(row.company_id)),
             cuisines:        M.cuisinesFor({ business_category: row.business_category }),
-            rating:          avgRating != null ? avgRating : 4.4,
+            rating:          avgRating,   // null when no published reviews — UI hides the badge
             ratingCount:     row.rating_count != null ? Number(row.rating_count) : 0,
             isOpen:          M.isOpenNow(row),
             distanceKm:      km != null ? km : null,
@@ -666,7 +666,10 @@ async function detail(req, res) {
                 name:          String(r.product_name || '').trim(),
                 slug:          M.slugify(r.product_name),
                 price:         M.pickPrice(r),
-                rating:        avgRating != null ? avgRating : 4.5,
+                // Products have no per-dish reviews, so no real rating — null
+                // hides the badge (we don't show the restaurant's avg as a
+                // fake per-product rating).
+                rating:        null,
                 veg:           M.isVegProduct(r),
                 isFeatured:    Number(r.is_featured) === 1,
                 isRecommended: Number(r.is_recommended) === 1,

@@ -207,6 +207,27 @@ const avatarUpload = multer({
 // Exposed so the route wiring below can use it.
 app.locals.avatarUpload = avatarUpload;
 
+// ── Review photo uploads ───────────────────────────────────────
+// Optional food photo on a post-order review. Stored on the web disk
+// (web/runtime/review-images, gitignored) + served from the web origin so
+// the strict img-src 'self' CSP allows it; the api stores only the relative
+// path in review_rating.review_photo. Mirrors the avatar flow.
+const REVIEW_IMG_DIR = path.join(__dirname, 'runtime', 'review-images');
+try { fs.mkdirSync(REVIEW_IMG_DIR, { recursive: true }); } catch (e) { /* ignore */ }
+app.use('/review-images', express.static(REVIEW_IMG_DIR, { maxAge: ENV === 'production' ? '7d' : 0, fallthrough: true }));
+const reviewUpload = multer({
+    storage: multer.diskStorage({
+        destination: (req, file, cb) => cb(null, REVIEW_IMG_DIR),
+        filename: (req, file, cb) => {
+            const uid = (req.session && req.session.user && req.session.user.id) || 'anon';
+            const ext = ({ 'image/png': '.png', 'image/jpeg': '.jpg', 'image/webp': '.webp', 'image/gif': '.gif' })[file.mimetype] || '.img';
+            cb(null, 'rv-' + uid + '-' + Date.now() + ext);
+        },
+    }),
+    limits: { fileSize: 4 * 1024 * 1024 },   // 4 MB
+    fileFilter: (req, file, cb) => cb(null, /^image\/(png|jpe?g|webp|gif)$/.test(file.mimetype)),
+});
+
 // ── Session ────────────────────────────────────────────────────
 // Server-side session (the cookie carries only the session id). The
 // data is persisted to disk (session-file-store) under runtime/sessions
@@ -494,6 +515,10 @@ app.get('/product/json', async (req, res) => {
 // Offers page — all restaurants' active offers, grouped per restaurant.
 app.get('/offers', SiteController.offersPage);
 
+// Restaurant reviews panel data (sort / star filter / load-more) — JSON
+// proxy used by /js/ui/reviews-list.js.
+app.get('/restaurant-reviews', SiteController.restaurantReviews);
+
 // ── Location (works WITHOUT login — stored on the web session) ──
 // Picked locations live on req.session.userLocation. Every page render
 // reads it via res.locals.user_location and the header chip + hero
@@ -603,6 +628,21 @@ app.post('/account/avatar', (req, res) => {
             return res.status(200).json({ status: 400, show: true, msg });
         }
         return AuthController.uploadAvatar(req, res);
+    });
+});
+
+// Post-order review submit (multipart — rating + text + optional food photo).
+// multer stores the photo on the web disk; the controller forwards the
+// rating/text/path to the api. Wrapper turns multer errors into JSON.
+app.post('/order/:id/review', (req, res) => {
+    reviewUpload.single('photo')(req, res, (err) => {
+        if (err) {
+            const msg = err.code === 'LIMIT_FILE_SIZE'
+                ? 'Photo must be under 4 MB.'
+                : 'Could not upload that photo. Please try a PNG or JPG.';
+            return res.status(200).json({ status: 400, show: true, msg });
+        }
+        return OrderController.submitReview(req, res);
     });
 });
 

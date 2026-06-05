@@ -537,10 +537,10 @@
                   '<h3 class="restaurant-card__name">' + escHtml(r.name) + '</h3>' +
                   '<p  class="restaurant-card__cuisines">' + cuisines + '</p>' +
                   '<div class="restaurant-card__meta">' +
-                    '<span class="restaurant-card__rating" aria-label="Rating ' + escHtml(r.rating) + ' out of 5">' +
+                    (r.rating ? ('<span class="restaurant-card__rating" aria-label="Rating ' + escHtml(r.rating) + ' out of 5">' +
                       '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg> ' +
                       escHtml(r.rating) +
-                    '</span>' + time + dist +
+                    '</span>') : '') + time + dist +
                   '</div>' +
                 '</div>' +
               '</a>' +
@@ -573,10 +573,10 @@
                   '<h3 class="dish-card__name">' + escHtml(d.name) + '</h3>' +
                   '<p  class="dish-card__from">From ' + escHtml(d.restaurant) + '</p>' +
                   '<div class="dish-card__meta">' +
-                    '<span class="dish-card__rating" aria-label="Rating ' + escHtml(d.rating) + ' out of 5">' +
+                    (d.rating ? ('<span class="dish-card__rating" aria-label="Rating ' + escHtml(d.rating) + ' out of 5">' +
                       '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg> ' +
                       escHtml(d.rating) +
-                    '</span>' + time +
+                    '</span>') : '') + time +
                   '</div>' +
                   '<p  class="dish-card__price">' + escHtml(symbol) + price + '</p>' +
                 '</div>' +

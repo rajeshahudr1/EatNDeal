@@ -176,10 +176,23 @@
             </p>
             <% } %>
 
+            <%# Your existing review (if any) — a small stars summary. %>
+            <% if (order.review) { %>
+            <div class="order-detail__myreview" data-my-review>
+                <span class="order-detail__myreview-label">Your review</span>
+                <span class="order-detail__myreview-stars" data-my-review-stars aria-label="<%= order.review.rating %> out of 5">
+                    <% for (var rs = 1; rs <= 5; rs++) { %><span class="<%= order.review.rating >= rs ? 'is-on' : '' %>">★</span><% } %>
+                </span>
+            </div>
+            <% } %>
+
             <div class="order-detail__cta">
                 <%# Reorder — clones THIS order's items into a fresh cart and
                     sends the customer to /cart (handled in /js/app.js). %>
                 <button type="button" class="btn btn--primary" data-action="order-reorder" data-order-id="<%= order.id %>">Reorder</button>
+                <% if (order.reviewable) { %>
+                <button type="button" class="btn btn--ghost" data-action="open-review" data-review-btn><%= order.review ? 'Edit your review' : 'Rate & Review' %></button>
+                <% } %>
                 <% if (order.restaurant.slug) { %>
                 <a class="btn btn--ghost" href="/?restaurant=<%= encodeURIComponent(order.restaurant.slug) %>">View restaurant</a>
                 <% } %>
@@ -187,6 +200,43 @@
             </div>
         </aside>
     </div>
+
+    <%# ── Rate & Review modal ─────────────────────────────────────────
+        Stars + text + an OPTIONAL food photo, posted (multipart) to
+        /order/:id/review via /js/ui/review.js. Pre-filled when the order
+        already has a review (edit). Only rendered for reviewable orders. -%>
+    <% if (order.reviewable) { %>
+    <div class="review-modal" data-review-modal hidden aria-hidden="true">
+        <div class="review-modal__backdrop" data-action="close-review"></div>
+        <div class="review-modal__panel" role="dialog" aria-modal="true" aria-labelledby="review-modal-title">
+            <button type="button" class="review-modal__close" data-action="close-review" aria-label="Close">&times;</button>
+            <h2 class="review-modal__title" id="review-modal-title">Rate your order</h2>
+            <p class="review-modal__sub"><%= order.restaurant.name %></p>
+
+            <form class="review-form" data-review-form data-review-url="/order/<%= order.id %>/review" enctype="multipart/form-data" novalidate>
+                <div class="review-stars" data-review-stars role="radiogroup" aria-label="Star rating">
+                    <% for (var s = 1; s <= 5; s++) { %>
+                    <button type="button" class="review-star<%= (order.review && order.review.rating >= s) ? ' is-on' : '' %>" data-star="<%= s %>" aria-label="<%= s %> star<%= s > 1 ? 's' : '' %>">&#9733;</button>
+                    <% } %>
+                </div>
+                <input type="hidden" name="rating" value="<%= order.review ? order.review.rating : 0 %>" data-review-rating>
+
+                <textarea class="review-form__text" name="review" rows="4" maxlength="1500" placeholder="Tell others about the food, packaging &amp; delivery…"><%= order.review ? order.review.review : '' %></textarea>
+
+                <div class="review-form__photo">
+                    <img class="review-form__preview" src="<%= (order.review && order.review.photo) ? order.review.photo : '' %>" alt="Your photo" data-review-preview<%= (order.review && order.review.photo) ? '' : ' hidden' %>>
+                    <label class="review-form__photo-btn">
+                        <input type="file" name="photo" accept="image/png,image/jpeg,image/webp,image/gif" data-review-photo hidden>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                        <span><%= (order.review && order.review.photo) ? 'Change photo' : 'Add a food photo' %></span>
+                    </label>
+                </div>
+
+                <button type="submit" class="btn btn--primary btn--block review-form__submit" data-review-submit><%= order.review ? 'Update review' : 'Submit review' %></button>
+            </form>
+        </div>
+    </div>
+    <% } %>
 
 </section>
 <% } %>

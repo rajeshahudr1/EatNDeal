@@ -75,6 +75,10 @@ async function list(req, res) {
                 'b.start_time', 'b.end_time', 'b.open_as_usual', 'b.closed_until',
                 'b.delivery_waiting_time',
                 'b.pickup_waiting_time',
+                // Real average rating (NULL when no reviews) — toRestaurantCard
+                // reads row.avg_rating; without this the favourites rail showed
+                // no rating even for restaurants that have reviews.
+                M.avgRatingSubq(db, 'c'),
             )
             .orderBy([{ column: 'c.id', order: 'asc' }, { column: 'b.id', order: 'asc' }, { column: 'f.id', order: 'desc' }]);
 

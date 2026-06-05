@@ -14,6 +14,8 @@
  *        Both routes are login-required.
  */
 
+const fs                     = require('node:fs');
+const path                   = require('node:path');
 const { callApi }            = require('../Helpers/apiClient');
 const { requireUser, relay } = require('../Helpers/authProxy');
 
@@ -164,4 +166,38 @@ async function reorder(req, res) {
     return relay(res, apiRes);
 }
 
-module.exports = { place, confirmation, detailPage, ordersPage, list, status, reorder };
+/**
+ * submitReview — POST /order/:id/review  (multipart)
+ *
+ * multer (in index.js) has already stored the optional food photo on the
+ * web disk + set req.file; rating + text arrive in req.body. We forward
+ * { customer_id, order_id, rating, review, photo } to the api. On a failed
+ * save we bin the orphaned upload so the folder doesn't grow. Returns the
+ * api JSON envelope (the order page's review JS reads data.review).
+ */
+async function submitReview(req, res) {
+    const user = (req.session && req.session.user) || null;
+    if (!user) { return res.status(200).json({ status: 401, show: true, msg: 'Please sign in to leave a review.' }); }
+
+    const orderId   = String(req.params.id || '').replace(/[^0-9]/g, '');
+    const photoPath = req.file ? '/review-images/' + req.file.filename : '';
+
+    const payload = {
+        customer_id: user.id,
+        order_id:    orderId,
+        rating:      Number((req.body && req.body.rating) || 0),
+        review:      String((req.body && req.body.review) || '').trim(),
+    };
+    // Only send a photo when a NEW one was uploaded — omitting it on an edit
+    // keeps whatever photo was there before.
+    if (photoPath) { payload.photo = photoPath; }
+
+    const apiRes = await callApi(req, 'POST', '/api/v1/customer/review', payload);
+    const body   = apiRes.body || {};
+    if (body.status !== 200 && req.file) {
+        try { fs.unlinkSync(path.join(__dirname, '..', 'runtime', 'review-images', req.file.filename)); } catch (e) { /* ignore */ }
+    }
+    return relay(res, apiRes);
+}
+
+module.exports = { place, confirmation, detailPage, ordersPage, list, status, reorder, submitReview };

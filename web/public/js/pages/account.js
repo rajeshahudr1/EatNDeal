@@ -773,6 +773,8 @@
 
         var fd = new FormData();
         fd.append('avatar', file);
+        var ui = window.EatNDealUi;
+        if (ui && ui.showLoader) { ui.showLoader({ label: 'Uploading photo…' }); }
         try {
             var resp = await fetch('/account/avatar', { method: 'POST', credentials: 'same-origin', body: fd });
             var body = await resp.json();
@@ -784,6 +786,8 @@
             }
         } catch (e) {
             toastA('warn', 'Could not upload right now — please check your connection.');
+        } finally {
+            if (ui && ui.hideLoader) { ui.hideLoader(); }
         }
     }
     function toastA(type, msg) { if (window.EatNDealUi && window.EatNDealUi.showToast) { window.EatNDealUi.showToast(type, msg); } }

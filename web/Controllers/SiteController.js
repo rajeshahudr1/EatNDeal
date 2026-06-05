@@ -284,6 +284,7 @@ async function index(req, res, next) {
     let liveRestaurant     = null;   // populated only when viewMode === 'restaurant'
     let liveMenuCategories = [];     // restaurant page: left-rail menu
     let liveSections       = [];     // restaurant page: products grouped by category
+    let liveReviews        = null;   // restaurant page: published customer reviews (+ avg + count)
     let liveOffers         = null;   // restaurant page: active offers (banners/coupons/discounts)
     let liveProduct        = null;   // product page: the product
     let liveProductGroups  = [];     // product page: selectable option groups
@@ -359,6 +360,15 @@ async function index(req, res, next) {
                 liveMenuCategories = dd ? (dd.categories || []) : [];
                 liveSections       = dd ? (dd.sections   || []) : [];
                 liveOffers         = dd ? (dd.offers     || null) : null;
+                // Published customer reviews for this restaurant (separate
+                // call — keeps the detail endpoint lean). Best-effort.
+                if (liveRestaurant && liveRestaurant.id) {
+                    try {
+                        const rv = await callApi(req, 'GET',
+                            '/api/v1/marketplace/reviews?sort=best&limit=5&company_id=' + encodeURIComponent(liveRestaurant.id));
+                        liveReviews = (rv.body && rv.body.status === 200 && rv.body.data) || null;
+                    } catch (e) { liveReviews = null; }
+                }
             } else if (viewMode === 'product') {
                 // Single-product page — product + its selectable option
                 // groups (sizes / toppings / add-ons) from the api.
@@ -748,6 +758,7 @@ async function index(req, res, next) {
         // Restaurant page: left-rail menu categories + product sections.
         menu_categories:     liveMenuCategories,
         menu_sections:       liveSections,
+        restaurant_reviews:  liveReviews,
         restaurant_offers:   liveOffers,
         // Product page: the product + its selectable option groups + related.
         product:             liveProduct,
@@ -791,4 +802,25 @@ async function offersPage(req, res, next) {
     }
 }
 
-module.exports = { index, offersPage };
+/**
+ * restaurantReviews — GET /restaurant-reviews
+ *
+ * JSON proxy for the restaurant page's reviews panel (sort / star filter /
+ * load-more pagination). Forwards the query to the api and relays its
+ * envelope so /js/ui/reviews-list.js can fetch from the web origin.
+ * Type: READ.
+ */
+async function restaurantReviews(req, res) {
+    try {
+        const qs = new URLSearchParams();
+        ['company_id', 'sort', 'stars', 'offset', 'limit'].forEach((k) => {
+            if (req.query[k] != null && req.query[k] !== '') { qs.set(k, String(req.query[k])); }
+        });
+        const apiRes = await callApi(req, 'GET', '/api/v1/marketplace/reviews?' + qs.toString());
+        return res.status(200).json(apiRes.body || { status: 502, show: false, msg: 'Could not load reviews.' });
+    } catch (e) {
+        return res.status(200).json({ status: 500, show: false, msg: 'Could not load reviews.' });
+    }
+}
+
+module.exports = { index, offersPage, restaurantReviews };

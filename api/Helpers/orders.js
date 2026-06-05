@@ -25,6 +25,7 @@
 const { db } = require('../config/db');
 const M      = require('./marketplace');
 const OrderStatus = require('./orderStatus');
+const reviews     = require('./reviews');
 
 // Status label/class come from the SINGLE source of truth in
 // orderStatus.js (getStatusMeta). They are thin delegates so the
@@ -173,8 +174,15 @@ async function loadDetail(orderId, customerId) {
 
     const restName = String(order.business_name || '').trim();
 
+    // The customer's own review for this order (null until they leave one).
+    // `reviewable` gates the "Rate & Review" CTA — any non-cancelled order.
+    const reviewRow  = await reviews.forOrder(orderId, customerId);
+    const reviewable = ['0', '1', '2', '9'].indexOf(String(order.order_status || '')) === -1;
+
     return {
         id:               String(order.id),
+        review:           reviews.publicView(reviewRow),
+        reviewable:       reviewable,
         number:           order.order_number || '',
         status:           String(order.order_status || ''),
         statusLabel:      statusLabel(order.order_status, order.serve_type),

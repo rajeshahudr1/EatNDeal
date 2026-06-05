@@ -64,10 +64,12 @@
         <div class="pd__main">
             <span class="pd-veg <%= p.veg ? 'is-veg' : 'is-nonveg' %>" aria-label="<%= p.veg ? 'Vegetarian' : 'Non-vegetarian' %>"></span>
             <h1 class="pd__name"><%= p.name %></h1>
+            <% if (p.rating) { %>
             <p class="pd__rating">
                 <span class="pd__stars"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg> <%= p.rating %></span>
                 <% if (p.ratingCount) { %><span class="pd__rating-count">(<%= p.ratingCount %>+)</span><% } %>
             </p>
+            <% } %>
             <p class="pd__price"><%= sym %><%= (typeof p.basePrice === 'number' ? p.basePrice : 0).toFixed(2) %></p>
             <%# Availability — status-driven badge (no stock). Sold out /
                 Unavailable today / Available from <date> show greyed; an

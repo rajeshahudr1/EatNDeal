@@ -39,6 +39,38 @@
     </button>
     <% } %>
 
+    <%# Reward-card balance — the signed-in customer's usable reward at THIS
+        restaurant (loyalty, per company_id). Tap → Rewards wallet. Only > 0. %>
+    <% var __rb = (typeof restaurant_reward_balance !== 'undefined' && restaurant_reward_balance) ? Number(restaurant_reward_balance) : 0; %>
+    <% if (__rb > 0) { %>
+    <a class="rd-rewardbar" href="/account?tab=rewards">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+        <span>You have <strong><%= sym %><%= __rb.toFixed(2) %></strong> reward to use here</span>
+        <svg class="rd-rewardbar__chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+    </a>
+    <% } %>
+
+    <%# Order-streak progress — nudge toward the next reward (loyalty
+        product_streak). Stamp-card dots: <target> dots, first <current>
+        filled. "ready" = the next order earns the reward. Only when a rule
+        exists for this restaurant. %>
+    <% var __rs = (typeof restaurant_reward_streak !== 'undefined' && restaurant_reward_streak) ? restaurant_reward_streak : null; %>
+    <% if (__rs && __rs.target > 0) { %>
+    <div class="rd-streakbar<%= __rs.ready ? ' rd-streakbar--ready' : '' %>">
+        <span class="rd-streakbar__icon" aria-hidden="true">🎁</span>
+        <div class="rd-streakbar__body">
+            <% if (__rs.ready) { %>
+                <p class="rd-streakbar__title">Reward ready — your next order earns <%= __rs.rewardLabel %>!</p>
+            <% } else { %>
+                <p class="rd-streakbar__title"><%= __rs.remaining %> more order<%= __rs.remaining === 1 ? '' : 's' %> → <%= __rs.rewardLabel %> reward</p>
+            <% } %>
+            <span class="rd-streakbar__dots" aria-hidden="true">
+                <% for (var __i = 0; __i < __rs.target; __i++) { %><span class="rd-streakbar__dot<%= (__rs.ready || __i < __rs.current) ? ' is-on' : '' %>"></span><% } %>
+            </span>
+        </div>
+    </div>
+    <% } %>
+
     <%# ── Hero ───────────────────────────────────────────────────── %>
     <section class="rd-hero">
         <div class="rd-hero__media" data-tint="<%= r.tint %>">
@@ -257,8 +289,14 @@
                                         <%= av.label %>
                                     </span>
                                 <% } %>
+                                <% if (p.bogo && p.bogo.buyQty > 0 && p.bogo.getQty > 0) { %>
+                                    <span class="rd-product__bogo">🎁 Buy <%= p.bogo.buyQty %> Get <%= p.bogo.getQty %> Free</span>
+                                <% } %>
                                 <div class="rd-product__foot">
-                                    <span class="rd-product__price"><%= sym %><%= (typeof p.price === 'number' ? p.price : 0).toFixed(2) %></span>
+                                    <% if (typeof p.originalPrice === 'number' && p.originalPrice > 0) { %>
+                                        <span class="rd-product__price-was"><%= sym %><%= p.originalPrice.toFixed(2) %></span>
+                                    <% } %>
+                                    <span class="rd-product__price<%= (typeof p.originalPrice === 'number' && p.originalPrice > 0) ? ' rd-product__price--off' : '' %>"><%= sym %><%= (typeof p.price === 'number' ? p.price : 0).toFixed(2) %></span>
                                     <% if (unavail) { %>
                                         <span class="rd-product__oos"><%= av.soldOut ? 'Sold out' : 'Unavailable' %></span>
                                     <% } else { %>
@@ -293,10 +331,49 @@
                 <li class="rd-rinfo__row">
                     <span class="rd-rinfo__dot <%= r.isOpen ? 'is-open' : 'is-closed' %>"></span>
                     <span class="rd-rinfo__text">
-                        <span class="rd-rinfo__label"><%= r.isOpen ? 'Open now' : 'Closed' %></span>
-                        <% if (r.hours) { %><span class="rd-rinfo__sub"><%= r.hours %></span><% } %>
+                        <span class="rd-rinfo__label"><%= r.isOpen ? 'Open now' : (r.openStatus === 'preorder' ? 'Closed — pre-order' : 'Closed') %></span>
+                        <% if (!r.isOpen && r.closedMessage) { %>
+                            <span class="rd-rinfo__sub"><%= r.closedMessage %></span>
+                        <% } else if (!r.isOpen && r.opensAt) { %>
+                            <span class="rd-rinfo__sub">Opens at <%= r.opensAt %><% if (r.hours) { %> · <%= r.hours %><% } %></span>
+                        <% } else if (r.hours) { %>
+                            <span class="rd-rinfo__sub"><%= r.hours %></span>
+                        <% } %>
                     </span>
                 </li>
+
+                <%# Per-service availability — Delivery / Pickup / Pre-order
+                    (real open/closed from store_business_hours + ETA). %>
+                <li class="rd-rinfo__row">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+                    <span class="rd-rinfo__text">
+                        <span class="rd-rinfo__label">Delivery
+                            <span class="rd-rinfo__badge <%= r.deliveryOpen ? 'is-open' : 'is-closed' %>"><%= r.deliveryOpen ? 'Open' : 'Closed' %></span>
+                        </span>
+                        <% if (r.deliveryOpen && r.deliveryMinutes) { %><span class="rd-rinfo__sub"><%= r.deliveryMinutes %></span><% } %>
+                    </span>
+                </li>
+                <li class="rd-rinfo__row">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+                    <span class="rd-rinfo__text">
+                        <span class="rd-rinfo__label">Pickup
+                            <span class="rd-rinfo__badge <%= r.pickupOpen ? 'is-open' : 'is-closed' %>"><%= r.pickupOpen ? 'Open' : 'Closed' %></span>
+                        </span>
+                        <% if (r.pickupOpen && r.pickupMinutes) { %><span class="rd-rinfo__sub"><%= r.pickupMinutes %></span><% } %>
+                    </span>
+                </li>
+                <% if (r.preOrder) { %>
+                <li class="rd-rinfo__row">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                    <span class="rd-rinfo__text">
+                        <span class="rd-rinfo__label">Pre-order
+                            <span class="rd-rinfo__badge is-open">Available</span>
+                        </span>
+                        <span class="rd-rinfo__sub">Schedule for a later time</span>
+                    </span>
+                </li>
+                <% } %>
+
                 <% if (r.phone) { %>
                 <li class="rd-rinfo__row">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
@@ -314,6 +391,21 @@
                     <button type="button" class="rd-rinfo__text rd-rinfo__link" data-action="rd-report">Report a problem</button>
                 </li>
             </ul>
+        </div>
+
+        <%# Review & earn cashback — upload a screenshot of an external
+            (Google/Facebook) review → customer_review (pending POS approval).
+            Distinct from the post-order star reviews below. %>
+        <div class="rd-card rd-revcash">
+            <h3 class="rd-card__subtitle">🎁 Review us &amp; earn cashback</h3>
+            <p class="rd-revcash__sub">Reviewed us on Google or Facebook? Upload a screenshot to earn cashback once the restaurant verifies it.</p>
+            <form class="rd-revcash__form" method="post" action="/review-cashback" enctype="multipart/form-data">
+                <input type="hidden" name="company_id" value="<%= r.id %>">
+                <input type="hidden" name="redirect" value="/?restaurant=<%= encodeURIComponent(r.slug || r.id) %>">
+                <input type="file" name="photo" accept="image/*" class="rd-revcash__file" required>
+                <textarea name="notes" class="rd-revcash__notes" rows="2" maxlength="1000" placeholder="Add a note (optional)"></textarea>
+                <button type="submit" class="rd-revcash__btn">Submit for cashback</button>
+            </form>
         </div>
 
         <%# Customer reviews — published post-order ratings (stars + text +

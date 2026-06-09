@@ -67,6 +67,13 @@
                         <strong data-order-eta data-eta-min="<%= order.etaMinutes %>">~<%= order.etaLabel || (order.etaMinutes + ' min') %></strong>
                     </p>
                 <% } %>
+                <%# Driver + live status message — filled by order-track.js
+                    when the restaurant assigns a driver / posts an update. %>
+                <p class="order-track__driver" data-order-driver hidden>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="5.5" cy="17.5" r="3.5"/><circle cx="18.5" cy="17.5" r="3.5"/><path d="M15 17.5h-6m-3 0L8 6h4l3 6h3"/></svg>
+                    Driver: <strong data-order-driver-name></strong>
+                </p>
+                <p class="order-track__note" data-order-notification hidden></p>
             </header>
 
             <ol class="order-track__steps" role="list" data-order-steps>
@@ -193,6 +200,10 @@
                 <% if (order.reviewable) { %>
                 <button type="button" class="btn btn--ghost" data-action="open-review" data-review-btn><%= order.review ? 'Edit your review' : 'Rate & Review' %></button>
                 <% } %>
+                <%# Printable receipt (browser print → PDF). %>
+                <a class="btn btn--ghost" href="/order/<%= order.id %>/receipt">Receipt</a>
+                <%# Report an issue with this order (→ epos_complaints). %>
+                <button type="button" class="btn btn--ghost" data-action="open-issue">Report an issue</button>
                 <% if (order.restaurant.slug) { %>
                 <a class="btn btn--ghost" href="/?restaurant=<%= encodeURIComponent(order.restaurant.slug) %>">View restaurant</a>
                 <% } %>
@@ -237,6 +248,25 @@
         </div>
     </div>
     <% } %>
+
+    <%# Report-an-issue modal — a single note, posted to
+        /order/:id/report-issue (→ epos_complaints). The restaurant replies
+        from the POS; /js/ui/order-issue.js polls for it. %>
+    <div class="issue-modal" data-issue-modal data-order-id="<%= order.id %>" hidden aria-hidden="true">
+        <div class="issue-modal__backdrop" data-action="close-issue"></div>
+        <div class="issue-modal__panel" role="dialog" aria-modal="true" aria-labelledby="issue-modal-title">
+            <button type="button" class="issue-modal__close" data-action="close-issue" aria-label="Close">&times;</button>
+            <h2 class="issue-modal__title" id="issue-modal-title">Report an issue with your order</h2>
+            <p class="issue-modal__sub">Tell us what went wrong and the restaurant will get back to you.</p>
+            <textarea class="issue-modal__text" data-issue-text rows="5" maxlength="2000" placeholder="Describe the problem with your order…"></textarea>
+            <p class="issue-modal__err" data-issue-err hidden></p>
+            <div class="issue-modal__actions">
+                <button type="button" class="btn btn--ghost" data-action="close-issue">Cancel</button>
+                <button type="button" class="btn btn--primary" data-action="submit-issue">Submit</button>
+            </div>
+            <div class="issue-modal__reply" data-issue-reply hidden></div>
+        </div>
+    </div>
 
 </section>
 <% } %>

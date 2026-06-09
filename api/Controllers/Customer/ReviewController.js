@@ -126,4 +126,61 @@ async function listForRestaurant(req, res) {
     }
 }
 
-module.exports = { submit, listForRestaurant };
+/**
+ * submitCashbackReview — POST /customer/review-cashback
+ *
+ * What:  Customer submits a screenshot of an external (Google/Facebook)
+ *        review to earn cashback — the legacy customer_review flow (DISTINCT
+ *        from the post-order star reviews on review_rating). Stored
+ *        admin_status = 0 (pending); the RESTAURANT approves it in the POS,
+ *        which fires the review cashback (loyalty_review_cashback_rule).
+ *        Upsert per (customer, company, review_type).
+ * Type:  WRITE.
+ */
+async function submitCashbackReview(req, res) {
+    try {
+        const customerId = req.body.customer_id;
+        const companyId  = req.body.company_id;
+        const reviewType = Number(req.body.review_type) || 1;
+        const notes      = String(req.body.notes || '').trim().slice(0, 1000);
+        const photo      = String(req.body.photo || '').trim();
+
+        const { error } = await customers.loadMarketplaceCustomer(customerId);
+        if (error) { return H.errorResponse(res, error.msg, error.status); }
+        if (!companyId) { return H.errorResponse(res, 'Restaurant is required.', 422); }
+        if (!photo) { return H.errorResponse(res, 'Please attach a screenshot of your review.', 422); }
+
+        const existing = await db('customer_review')
+            .where({ customer_id: customerId, company_id: companyId, review_type: reviewType })
+            .first('id', 'admin_status');
+        if (existing) {
+            if (Number(existing.admin_status) === 1) {
+                return H.errorResponse(res, 'You have already earned cashback for this review.', 409);
+            }
+            await db('customer_review').where({ id: existing.id }).update({
+                notes: notes || null, review_photo: photo, admin_status: 0, reject_reason: null,
+                updated_by: customerId, updated_at: db.fn.now(),
+            });
+        } else {
+            await db('customer_review').insert({
+                uuid:         require('node:crypto').randomUUID(),
+                company_id:   companyId,
+                customer_id:  customerId,
+                review_type:  reviewType,
+                notes:        notes || null,
+                review_photo: photo,
+                admin_status: 0,
+                review_date:  db.raw('CURRENT_DATE'),
+                created_by:   customerId,
+                created_at:   db.fn.now(),
+            });
+        }
+        return H.successResponse(res, {},
+            'Thanks! Your review is submitted for verification — cashback is added once the restaurant approves it.');
+    } catch (err) {
+        H.log.error('review.submitCashback', err && err.message);
+        return H.errorResponse(res, MSG.server.oops, 500);
+    }
+}
+
+module.exports = { submit, listForRestaurant, submitCashbackReview };

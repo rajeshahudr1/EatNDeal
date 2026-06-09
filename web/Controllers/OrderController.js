@@ -200,4 +200,97 @@ async function submitReview(req, res) {
     return relay(res, apiRes);
 }
 
-module.exports = { place, confirmation, detailPage, ordersPage, list, status, reorder, submitReview };
+/**
+ * reportIssue — POST /order/:id/report-issue
+ *
+ * Forwards the customer's order-issue note to the api (→ epos_complaints).
+ */
+async function reportIssue(req, res) {
+    const user = needUser(req, res);
+    if (!user) { return; }
+    const payload = {
+        customer_id: user.id,
+        order_id:    String(req.params.id || '').replace(/[^0-9]/g, ''),
+        notes:       String((req.body && req.body.notes) || '').trim(),
+    };
+    const apiRes = await callApi(req, 'POST', '/api/v1/customer/order/report-issue', payload);
+    return relay(res, apiRes);
+}
+
+/**
+ * issueResponse — GET /order/:id/issue-response
+ *
+ * Slim pass-through the order page polls for the restaurant's reply.
+ */
+async function issueResponse(req, res) {
+    const user = needUser(req, res);
+    if (!user) { return; }
+    const orderId = String(req.params.id || '').replace(/[^0-9]/g, '');
+    const qs = new URLSearchParams({ customer_id: String(user.id), order_id: orderId });
+    const apiRes = await callApi(req, 'GET', '/api/v1/customer/order/issue-response?' + qs.toString());
+    return relay(res, apiRes);
+}
+
+/**
+ * receipt — GET /order/:id/receipt
+ *
+ * Standalone (bare) printable receipt for one order — the marketplace
+ * equivalent of the legacy Mpdf receipt. Customer prints / saves as PDF
+ * from the browser (Ctrl+P). Same order payload as the detail page.
+ */
+async function receipt(req, res, next) {
+    try {
+        const user = (req.session && req.session.user) || null;
+        if (!user) {
+            const here = '/order/' + encodeURIComponent(req.params.id || '') + '/receipt';
+            return res.redirect('/signin?next=' + encodeURIComponent(here));
+        }
+        const orderId = String(req.params.id || '').replace(/[^0-9]/g, '');
+        if (!orderId) { return res.status(404).render('errors/404'); }
+        const qs = new URLSearchParams({ customer_id: String(user.id), id: orderId });
+        const apiRes = await callApi(req, 'GET', '/api/v1/customer/order?' + qs.toString());
+        const order = (apiRes && apiRes.body && apiRes.body.status === 200 && apiRes.body.data && apiRes.body.data.order) || null;
+        if (!order) { return res.status(404).render('errors/404'); }
+        return res.render('order/receipt', {
+            page_title:       'Receipt — ' + (order.number || order.id),
+            _layoutFile:      '../_layout',
+            bare:             true,            // no header/footer/nav — clean print page
+            show_promo_strip: false,
+            order,
+        });
+    } catch (err) { next(err); }
+}
+
+/**
+ * submitCashbackReview — POST /review-cashback  (multipart)
+ *
+ * A customer uploads a screenshot of an external (Google/Facebook) review to
+ * earn cashback. multer stored the screenshot; we forward the path +
+ * company to the api (→ customer_review, pending POS approval), then redirect
+ * back to the restaurant page with a flash message.
+ */
+async function submitCashbackReview(req, res) {
+    const user = (req.session && req.session.user) || null;
+    const back = String((req.body && req.body.redirect) || req.get('referer') || '/');
+    if (!user) { return res.redirect('/signin?next=' + encodeURIComponent(back)); }
+
+    const photoPath = req.file ? '/review-images/' + req.file.filename : '';
+    const payload = {
+        customer_id: user.id,
+        company_id:  String((req.body && req.body.company_id) || '').replace(/[^0-9]/g, ''),
+        review_type: Number((req.body && req.body.review_type) || 1),
+        notes:       String((req.body && req.body.notes) || '').trim(),
+        photo:       photoPath,
+    };
+    const apiRes = await callApi(req, 'POST', '/api/v1/customer/review-cashback', payload);
+    const body   = apiRes.body || {};
+    if (body.status !== 200 && req.file) {
+        try { fs.unlinkSync(path.join(__dirname, '..', 'runtime', 'review-images', req.file.filename)); } catch (e) { /* ignore */ }
+    }
+    if (req.flash) {
+        req.flash(body.status === 200 ? 'success' : 'error', body.msg || (body.status === 200 ? 'Review submitted.' : 'Could not submit your review.'));
+    }
+    return res.redirect(back);
+}
+
+module.exports = { place, confirmation, detailPage, ordersPage, list, status, reorder, submitReview, reportIssue, issueResponse, receipt, submitCashbackReview };

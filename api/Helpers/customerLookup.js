@@ -144,7 +144,40 @@ function publicView(row) {
         image:         row.image != null ? String(row.image) : '',
         loyalty_points: Number(row.loyalty_points) || 0,
         is_registered: Number(row.is_registered) === 1,
+        // The customer's OWN referral code — shown on their Rewards
+        // "Invite & Earn" card so they can share it (legacy webordering
+        // shows it on the profile page). Safe to expose to the owner.
+        referral_code: row.referral_code || '',
     };
+}
+
+// ── Referral code generation (matches legacy common/helper
+//    generateReferralCode) ─────────────────────────────────────────
+// 8 uppercase chars from a set that omits the ambiguous I/O/0/1.
+const REFERRAL_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+function generateReferralCode(length = 8) {
+    const a = REFERRAL_CHARS.split('');
+    for (let i = a.length - 1; i > 0; i--) {            // Fisher-Yates (≈ PHP str_shuffle)
+        const j = Math.floor(Math.random() * (i + 1));
+        const t = a[i]; a[i] = a[j]; a[j] = t;
+    }
+    return a.slice(0, length).join('');
+}
+
+/**
+ * resolveReferrer — given a typed referral code, return the marketplace
+ * customer id that owns it (or null). Global (company_id NULL) lookup —
+ * the marketplace has one customer per person across all restaurants.
+ */
+async function resolveReferrer(referredCode) {
+    const code = String(referredCode || '').trim().toUpperCase();
+    if (!code) { return null; }
+    const { db } = require('../config/db');
+    const row = await db('customer')
+        .whereRaw('UPPER(referral_code) = ?', [code])
+        .whereNull('company_id')
+        .first('id');
+    return row ? String(row.id) : null;
 }
 
 /**
@@ -204,4 +237,6 @@ module.exports = {
     normalisePhone,
     loadMarketplaceCustomer,
     coerceNum,
+    generateReferralCode,
+    resolveReferrer,
 };

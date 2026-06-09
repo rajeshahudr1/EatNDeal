@@ -39,6 +39,11 @@ const { db } = require('../config/db');
 const TYPE_PERCENT = 1;
 const TYPE_FIXED   = 2;
 
+// coupon_type (legacy Coupon constants): 1 = basic (unlimited), 2 = one-time
+// (any customer, once ever), 3 = one-per-customer.
+const COUPON_TYPE_ONE_TIME     = 2;
+const COUPON_TYPE_ONE_PER_CUST = 3;
+
 /**
  * normaliseCode
  *
@@ -143,6 +148,26 @@ async function validate(rawCode, cart) {
             ok: false, code: 'coupon.min_order',
             error: 'Add at least £' + minOrder.toFixed(2) + ' to use this coupon (current total £' + subTotal.toFixed(2) + ').',
         };
+    }
+
+    // Usage limits — EXACT legacy webordering (Coupons::validate). Counted
+    // from the `orders` table (no separate ledger). One-time = used by anyone
+    // already; one-per-customer = used by THIS customer already.
+    const couponType = Number(coupon.coupon_type) || 1;
+    if (couponType === COUPON_TYPE_ONE_TIME) {
+        const usedRow = await db('orders').where({ coupon_id: coupon.id }).count({ c: '*' }).first();
+        if (Number(usedRow && usedRow.c) >= 1) {
+            return { ok: false, code: 'coupon.used', error: 'This coupon has already been used.' };
+        }
+    } else if (couponType === COUPON_TYPE_ONE_PER_CUST) {
+        const custId = cart.user_id;
+        if (!custId) {
+            return { ok: false, code: 'coupon.login', error: 'Please sign in to use this coupon.' };
+        }
+        const usedRow = await db('orders').where({ coupon_id: coupon.id, user_id: custId }).count({ c: '*' }).first();
+        if (Number(usedRow && usedRow.c) >= 1) {
+            return { ok: false, code: 'coupon.used', error: 'You have already used this coupon.' };
+        }
     }
 
     // Compute discount amount.

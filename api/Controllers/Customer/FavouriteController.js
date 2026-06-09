@@ -26,6 +26,7 @@ const customers = require('../../Helpers/customerLookup');
 const M         = require('../../Helpers/marketplace');
 const distance  = require('../../Helpers/distance');
 const OrderTime = require('../../Helpers/orderTime');
+const StoreHours = require('../../Helpers/storeHours');
 const { db }    = require('../../config/db');
 
 const TABLE          = 'mp_customer_favourite_restaurant';
@@ -73,6 +74,11 @@ async function list(req, res) {
                 'b.banner_image', 'b.business_image',
                 'b.direction_latitude as branch_lat', 'b.direction_longitude as branch_lng',
                 'b.start_time', 'b.end_time', 'b.open_as_usual', 'b.closed_until',
+                // Close-flag + per-service columns → real open/closed (storeHours).
+                'b.closed', 'b.closed_reopen_date', 'b.clossed_repoen_time', 'b.clossed_text',
+                'b.closed_for', 'b.closed_for_time',
+                'b.show_delivery_option', 'b.show_delivery_option_tab', 'b.delivery_closed_util_date',
+                'b.show_pickup_option', 'b.show_pickup_option_tab', 'b.pickup_closed_util_date',
                 'b.delivery_waiting_time',
                 'b.pickup_waiting_time',
                 // Real average rating (NULL when no reviews) — toRestaurantCard
@@ -92,14 +98,21 @@ async function list(req, res) {
 
         // Single batched call → per-branch formatted time labels.
         const timesByBranch = await OrderTime.computeForBranches(uniq);
+        // Real open/closed + hours (store_business_hours per service), batched.
+        const availByBranch = await StoreHours.availabilityForBranches(uniq);
 
         // Shared card mapper from Helpers/marketplace — same shape every
         // surface gets (home grid, account favourites tab, etc.).
-        const favourites = uniq.map((r) => M.toRestaurantCard(r, {
-            lat, lng,
-            times:       timesByBranch[String(r.branch_id)],
-            isFavourite: true,
-        }));
+        const favourites = uniq.map((r) => {
+            const card = M.toRestaurantCard(r, {
+                lat, lng,
+                times:       timesByBranch[String(r.branch_id)],
+                isFavourite: true,
+            });
+            const av = availByBranch.get(String(r.branch_id));
+            if (av) { card.isOpen = av.isOpen; card.openStatus = av.status; card.hours = av.hours; card.opensAt = av.reopenAt; }
+            return card;
+        });
 
         return H.successResponse(res, { favourites });
     } catch (err) {

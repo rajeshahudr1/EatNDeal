@@ -156,6 +156,13 @@ async function placeOrder({ customer, cart, branch, items, paymentOption, custom
     const cardCharge   = isCard ? await Cart.cardServiceCharge(cart.company_id) : 0;
     const grandTotal   = Math.round(((Number(cart.grandtotal) || 0) + cardCharge) * 100) / 100;
 
+    // Loyalty redeem is ALREADY subtracted from cart.grandtotal by
+    // recomputeTotals, so grandTotal above is the true payable. We record
+    // the redeemed figure on the order and consume the matching reward rows
+    // inside the transaction below. 0 / no-op when nothing was redeemed (or
+    // the cart column hasn't been migrated yet).
+    const usedCashback = Math.round((Number(cart.used_cashback) || 0) * 100) / 100;
+
     return db.transaction(async (trx) => {
         // ── 1. Sequential internal_order_id per branch. ─────────────
         // (No inventory step — product availability is status-driven, not
@@ -209,6 +216,7 @@ async function placeOrder({ customer, cart, branch, items, paymentOption, custom
             stripe_service_charge: cardCharge,
             charity_amount:    Number(cart.charity_amount) || 0,
             fix_charity_discount: Number(cart.fix_charity_discount) || 0,
+            used_cashback:     usedCashback,
             customer_first_name: customer.firstname || '',
             customer_last_name:  customer.lastname  || '',
             customer_email:      customer.email     || '',
@@ -233,6 +241,24 @@ async function placeOrder({ customer, cart, branch, items, paymentOption, custom
             updated_by:        customer.id,
             // created_at / updated_at default to NOW.
         }).returning('*');
+
+        // ── 2b. Loyalty redeem — spend the customer's reward balance ────
+        // FIFO inside this txn (rows locked FOR UPDATE) + writes the
+        // customer_used_rewards ledger. Must FULLY cover the amount the cart
+        // total was reduced by; if a concurrent checkout raced us and the
+        // live balance fell short, we roll the whole order back rather than
+        // under-charge the customer.
+        if (usedCashback > 0) {
+            const { consumed } = await require('./loyalty').consumeForRedeem(trx, {
+                customerId: customer.id,
+                companyId:  cart.company_id,
+                orderId:    order.id,
+                amount:     usedCashback,
+            });
+            if (Math.round(consumed * 100) / 100 < usedCashback) {
+                throw Object.assign(new Error('place.reward_short'), { code: 'place.reward_short' });
+            }
+        }
 
         // ── 3. orders_items + orders_items_sub ──────────────────────
         // NB: legacy orders_items doesn't carry category_id — we keep

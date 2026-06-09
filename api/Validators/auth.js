@@ -101,6 +101,8 @@ const saveProfileSchema = Joi.object({
             'string.email':  'Please enter a valid email address.',
             'string.max':    'Email is too long.',
         }),
+    // Optional "Invite & Earn" code a friend shared (legacy "Referred Code").
+    referred_code: Joi.string().trim().max(20).allow('', null).optional(),
 });
 
 // ── /auth/update-profile ──────────────────────────────────────────

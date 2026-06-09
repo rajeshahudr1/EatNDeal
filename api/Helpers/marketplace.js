@@ -54,6 +54,47 @@ function pickPrice(row) {
 }
 
 /**
+ * applyProductDiscount
+ *
+ * What:  Reduces a unit price by the product's own discount — EXACT legacy
+ *        webordering rule (CartController::actionAdd lines 711-720):
+ *          discount_type 1 = flat £ off  → price − discount_value
+ *          discount_type 2 = % off       → price − price·value/100
+ *          anything else / value ≤ 0     → no discount
+ *        Never below 0. discount_type/discount_value live on products.
+ * Type:  READ (pure).
+ */
+function applyProductDiscount(price, row) {
+    const base  = Number(price) || 0;
+    const type  = Number(row && row.discount_type) || 0;
+    const value = Number(row && row.discount_value) || 0;
+    if (value <= 0 || base <= 0) { return base; }
+    let net = base;
+    if (type === 1)      { net = base - value; }
+    else if (type === 2) { net = base - (base * value / 100); }
+    if (net < 0) { net = 0; }
+    return Math.round(net * 100) / 100;
+}
+
+/**
+ * discountedPrice — pickPrice with the product discount applied, plus the
+ * original (for the struck-through display). { original, final, hasDiscount,
+ * discountType, discountValue }.
+ * Type:  READ (pure).
+ */
+function discountedPrice(row) {
+    const original = pickPrice(row);
+    const final    = applyProductDiscount(original, row);
+    return {
+        original,
+        final,
+        hasDiscount:   final < original,
+        discountType:  Number(row && row.discount_type) || 0,
+        discountValue: Number(row && row.discount_value) || 0,
+    };
+}
+
+/**
  * tintFor
  *
  * What:  Returns a pastel hex colour from a small palette, deterministic
@@ -582,6 +623,8 @@ function deliveryMinutesFromWaiting(val) {
 
 module.exports = {
     pickPrice,
+    applyProductDiscount,
+    discountedPrice,
     tintFor,
     initialFor,
     isBranchOpen,

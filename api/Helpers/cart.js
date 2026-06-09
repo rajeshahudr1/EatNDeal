@@ -35,6 +35,24 @@ const M             = require('./marketplace');
 const OrderTime     = require('./orderTime');
 const AutoDiscount  = require('./autoDiscount');
 
+// ── Loyalty redeem column guard (cached) ────────────────────────────
+// `cart.used_cashback` ships via a legacy migration the operator runs
+// separately (php yii migrate). Until then the column is absent — so we
+// detect it ONCE and treat redeem as a no-op when it's missing, rather
+// than letting every cart recompute crash on an unknown column.
+let _hasUsedCashbackCol = null;
+async function hasUsedCashbackCol() {
+    if (_hasUsedCashbackCol !== null) { return _hasUsedCashbackCol; }
+    try {
+        const r = await db.raw(
+            "select 1 from information_schema.columns where table_name = 'cart' and column_name = 'used_cashback' limit 1",
+        );
+        const n = r && (r.rows ? r.rows.length : (Array.isArray(r) ? r.length : 0));
+        _hasUsedCashbackCol = n > 0;
+    } catch (e) { _hasUsedCashbackCol = false; }
+    return _hasUsedCashbackCol;
+}
+
 // Cart row state. (Legacy uses 1/0; this matches.)
 const CART_OPEN     = 1;
 const CART_DELETED  = 1;
@@ -329,11 +347,26 @@ async function recomputeTotals(cartId) {
         }
     }
 
-    const grandtotal = Math.round(
-        (subTotal + deliveryFees + serviceCharge + bagCharge + charityAmt - discount) * 100
-    ) / 100;
+    // ── Loyalty redeem ──────────────────────────────────────────────
+    // The cashback the customer chose to spend on THIS cart (set via
+    // /cart/apply-loyalty, stored on cart.used_cashback). Folded into the
+    // legacy formula AFTER the discount. Re-clamped on every recompute to
+    // the live balance + restaurant cap (items / sub-total may have shrunk
+    // since it was applied) AND to the pre-redeem payable, so the grand
+    // total can never drop below zero. No-op until the column is migrated.
+    const beforeRedeem = subTotal + deliveryFees + serviceCharge + bagCharge + charityAmt - discount;
+    const hasRedeemCol = await hasUsedCashbackCol();
+    let usedCashback = hasRedeemCol ? (Number(cart.used_cashback) || 0) : 0;
+    if (hasRedeemCol && usedCashback > 0) {
+        const cap = await require('./loyalty').maxRedeemable({
+            customerId: cart.user_id, companyId: cart.company_id, subTotal,
+        });
+        usedCashback = round2(Math.max(0, Math.min(usedCashback, cap, Math.max(0, beforeRedeem))));
+    }
 
-    await db('cart').where({ id: cartId }).update({
+    const grandtotal = round2(Math.max(0, beforeRedeem - usedCashback));
+
+    const patch = {
         sub_total:             round2(subTotal),
         total_qty:             totalQty,
         bag_charge:            round2(bagCharge),
@@ -342,8 +375,10 @@ async function recomputeTotals(cartId) {
         service_charge_amount: round2(serviceCharge),
         discount_id:           discountId,
         discount:              round2(discount),
-        grandtotal:            round2(grandtotal),
-    });
+        grandtotal:            grandtotal,
+    };
+    if (hasRedeemCol) { patch.used_cashback = usedCashback; }
+    await db('cart').where({ id: cartId }).update(patch);
 
     return db('cart').where({ id: cartId }).first();
 }
@@ -510,7 +545,13 @@ async function resolveDeliveryFee(cart, branch) {
         .select('postcode', 'charge', 'minimum_order', 'free_delivery_above');
     const zone = M.matchDeliveryZone(pc, rows);
     if (!zone) { return { fee: null, zone: null, deliverable: false }; }
-    return { fee: Number(zone.charge) || 0, zone: zone, deliverable: true };
+
+    // Membership-tier free delivery (loyalty) — a high-tier customer with
+    // free_delivery_lifetime delivers free regardless of the zone charge.
+    let freeByTier = false;
+    try { freeByTier = await require('./loyalty').getFreeDelivery(branch.company_id, cart.user_id); } catch (e) { freeByTier = false; }
+
+    return { fee: freeByTier ? 0 : (Number(zone.charge) || 0), zone: zone, deliverable: true, freeByTier };
 }
 
 /**
@@ -826,6 +867,36 @@ async function clearVoucher(cartId) {
     });
 }
 
+/**
+ * setUsedCashback
+ *
+ * What:  Records how much loyalty cashback the customer wants to redeem
+ *        against the cart (Phase 2 redeem). recomputeTotals (run by the
+ *        caller) re-clamps it to the live balance + cap and folds it into
+ *        grandtotal. No-op when the column hasn't been migrated yet.
+ *        Redeem is INDEPENDENT of coupon/voucher — it can stack with them
+ *        (mirrors legacy, where used_cashback is separate from discount).
+ * Type:  WRITE.
+ */
+async function setUsedCashback(cartId, amount) {
+    if (!cartId || !(await hasUsedCashbackCol())) { return; }
+    await db('cart').where({ id: cartId }).update({
+        used_cashback: round2(Math.max(0, Number(amount) || 0)),
+    });
+}
+
+/**
+ * clearUsedCashback
+ *
+ * What:  Removes any redeem applied to the cart (sets used_cashback = 0).
+ *        recomputeTotals then restores the full payable. No-op pre-migration.
+ * Type:  WRITE.
+ */
+async function clearUsedCashback(cartId) {
+    if (!cartId || !(await hasUsedCashbackCol())) { return; }
+    await db('cart').where({ id: cartId }).update({ used_cashback: 0 });
+}
+
 // Default charity contribution tiers (% of sub-total) shown on the
 // checkout when the branch hasn't configured its own quick_tips rows.
 // Matches the legacy 5 / 10 / 15 quick-tip buttons.
@@ -957,6 +1028,13 @@ function publicCartView(cart, items, opts) {
         discountSource:   (Number(cart.coupon_id)  > 0) ? 'coupon'
                          : (Number(cart.voucher_id) > 0) ? 'voucher'
                          : (Number(cart.discount_id) > 0) ? 'auto' : null,
+        // Loyalty redeem — usedCashback is what's applied to THIS cart and
+        // already subtracted from grandtotal. rewardBalance / rewardMax are
+        // computed (not cart columns) and only passed on the page-render
+        // path (Cart.get) so the checkout can show "Use £X reward".
+        usedCashback:     Number(cart.used_cashback)  || 0,
+        rewardBalance:    (opts && typeof opts.rewardBalance === 'number') ? opts.rewardBalance : 0,
+        rewardMax:        (opts && typeof opts.rewardMax === 'number') ? opts.rewardMax : 0,
         grandtotal:       Number(cart.grandtotal)     || 0,
         totalQty:         Number(cart.total_qty)      || 0,
         freeDelivery:     Number(cart.free_delivery) === 1,
@@ -981,6 +1059,9 @@ function publicCartView(cart, items, opts) {
         scheduledTime:    formatScheduledTime(cart.pre_order_time, cart.is_pre_order),
         preOrderTime:     cart.pre_order_time || null,
         isPreOrder:       Number(cart.is_pre_order) === 1,
+        // Valid pre-order slots (today, this mode) for the schedule popup —
+        // [{value:'YYYY-MM-DDTHH:MM', label:'5:15 PM'}]. Only on page-render.
+        availableSlots:   (opts && Array.isArray(opts.availableSlots)) ? opts.availableSlots : [],
         items: (items || []).map((it) => ({
             id:           String(it.id),
             productId:    String(it.product_id),
@@ -1029,6 +1110,9 @@ module.exports = {
     clearCoupon,
     setVoucher,
     clearVoucher,
+    setUsedCashback,
+    clearUsedCashback,
+    hasUsedCashbackCol,
     setCharity,
     getCharityTiers,
     cardServiceCharge,

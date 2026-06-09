@@ -49,6 +49,11 @@ const orderListSchema = Joi.object({
     customer_id: customerIdRule,
     limit:  Joi.number().integer().min(1).max(50),
     offset: Joi.number().integer().min(0).max(1000),
+    // Filters (status bucket / date range / order-number search).
+    status:    Joi.string().valid('active', 'completed', 'cancelled').optional(),
+    search:    Joi.string().trim().max(60).allow('', null).optional(),
+    date_from: Joi.string().trim().pattern(/^\d{4}-\d{2}-\d{2}$/).allow('', null).optional(),
+    date_to:   Joi.string().trim().pattern(/^\d{4}-\d{2}-\d{2}$/).allow('', null).optional(),
 });
 
 // ── GET /customer/order/:id ────────────────────────────────────────
@@ -77,10 +82,30 @@ const orderReorderSchema = Joi.object({
     }),
 });
 
+// ── POST /customer/order/report-issue ──────────────────────────────
+// Customer reports a problem with an order (→ epos_complaints).
+const orderReportIssueSchema = Joi.object({
+    customer_id: customerIdRule,
+    order_id:    idRule.required().messages({ 'any.required': 'Order id is required.' }),
+    notes:       Joi.string().trim().min(1).max(2000).required().messages({
+        'string.empty': 'Please describe the problem with your order.',
+        'any.required': 'Please describe the problem with your order.',
+        'string.max':   'That message is too long.',
+    }),
+});
+
+// ── GET /customer/order/issue-response ──────────────────────────────
+const orderIssueResponseSchema = Joi.object({
+    customer_id: customerIdRule,
+    order_id:    idRule.required().messages({ 'any.required': 'Order id is required.' }),
+});
+
 module.exports = {
     orderPlaceSchema,
     orderListSchema,
     orderDetailSchema,
     orderStatusSchema,
     orderReorderSchema,
+    orderReportIssueSchema,
+    orderIssueResponseSchema,
 };

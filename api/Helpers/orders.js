@@ -55,10 +55,28 @@ async function listForCustomer(customerId, opts) {
     const offset = Math.max(0, Number(opts.offset) || 0);
     if (!customerId) { return []; }
 
-    const rows = await db('orders as o')
+    // Filters (legacy webordering customer order list): status bucket,
+    // created_at date range, order-number search.
+    const status   = opts.status   ? String(opts.status).toLowerCase().trim() : null;
+    const search   = opts.search   ? String(opts.search).trim() : null;
+    const dateFrom = opts.dateFrom ? String(opts.dateFrom).trim() : null;
+    const dateTo   = opts.dateTo   ? String(opts.dateTo).trim() : null;
+
+    let q = db('orders as o')
         .leftJoin('company as c', 'c.id', 'o.company_id')
         .where('o.user_id', customerId)
-        .andWhere('o.is_marketplace', 1)
+        .andWhere('o.is_marketplace', 1);
+
+    // order_status codes: 4/5/10/6 active, '' completed, 0/1/2/9 cancelled.
+    if (status === 'active')         { q = q.whereIn('o.order_status', ['4', '5', '10', '6']); }
+    else if (status === 'completed') { q = q.where('o.order_status', ''); }
+    else if (status === 'cancelled') { q = q.whereIn('o.order_status', ['0', '1', '2', '9']); }
+
+    if (search)   { q = q.andWhere('o.order_number', 'ilike', '%' + search + '%'); }
+    if (dateFrom) { q = q.whereRaw('DATE(o.created_at) >= ?', [dateFrom]); }
+    if (dateTo)   { q = q.whereRaw('DATE(o.created_at) <= ?', [dateTo]); }
+
+    const rows = await q
         .orderBy('o.id', 'desc')
         .limit(limit)
         .offset(offset)

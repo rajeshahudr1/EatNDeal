@@ -145,6 +145,45 @@ async function place(req, res) {
             customerNote:   b.customer_note || '',
         });
 
+        // 5c. Loyalty — credit THIS restaurant's reward card (Phase 1:
+        // cash_king cashback, scoped to (customer, company_id)). Best-effort:
+        // earnForOrder swallows all errors so it can never affect the placed
+        // order. The order is already committed at this point.
+        {
+            const Loyalty = require('../../Helpers/loyalty');
+            const companyId = v.cart.company_id;
+            const base = {
+                customerId: customer.id,
+                companyId,
+                orderId:    order.id,
+                subtotal:   Number(v.cart.sub_total) || 0,
+            };
+            // Earn rules fire in the SAME order legacy webordering does, each
+            // master-gated (loyalty_rules.status) inside its helper. All
+            // best-effort — the order is already committed, so a loyalty
+            // hiccup can never affect it.
+            await Loyalty.earnReferral(base);                 // 'referral' — first-order (FIRST, legacy)
+            await Loyalty.earnStampCashback(base);            // 'cashback' — stamp card
+            for (const it of items) {                         // 'product_cashback' — per line item
+                await Loyalty.earnProductCashback({
+                    customerId: customer.id, companyId, orderId: order.id,
+                    productId: it.product_id, qty: Number(it.product_qty) || 0,
+                });
+            }
+            await Loyalty.earnOrderStreak(base);              // 'product_streak' — order-count
+            await Loyalty.earnSpecialOffer(base);             // 'special_offer' — dated offer
+            await Loyalty.earnSmartCampaign({ ...base, type: 'inactive' }); // 'smart_campaign' — win-back
+            await Loyalty.earnEventCashback(base);            // 'event_cashback' — birthday/anniversary
+            // cash_king LAST — legacy awards it ONLY on cash/COD (the call
+            // site gates on payment slug = 'cash'); card orders earn none.
+            // payment_option 2 = card.
+            if (Number(b.payment_option) !== 2) {
+                await Loyalty.earnForOrder(base);
+            }
+            // collection_cashback — % on collection/pickup orders (serve_type 2).
+            await Loyalty.earnCollectionCashback({ ...base, serveType: v.cart.serve_type });
+        }
+
         // 6. Build a slim response — UI redirects to /order/<id>.
         const eta = OrderTime.formatRange(
             v.cart.serve_type === 2
@@ -164,6 +203,13 @@ async function place(req, res) {
             },
         }, 'Order placed.');
     } catch (err) {
+        // Redeem race — the customer's reward balance dropped between
+        // checkout and place, so the cart total couldn't be honoured. Roll
+        // back happened automatically; ask them to review the cart.
+        if (err && err.code === 'place.reward_short') {
+            return H.errorResponse(res,
+                'Your reward balance changed. Please review your cart and try again.', 422);
+        }
         H.log.error('order.place', err && err.message);
         return H.errorResponse(res, MSG.server.oops, 500);
     }
@@ -190,8 +236,12 @@ async function list(req, res) {
         if (error) { return H.errorResponse(res, error.msg, error.status); }
 
         const orders = await Orders.listForCustomer(customerId, {
-            limit:  req.query.limit,
-            offset: req.query.offset,
+            limit:    req.query.limit,
+            offset:   req.query.offset,
+            status:   req.query.status,
+            search:   req.query.search,
+            dateFrom: req.query.date_from,
+            dateTo:   req.query.date_to,
         });
         return H.successResponse(res, { orders });
     } catch (err) {
@@ -254,12 +304,34 @@ async function status(req, res) {
             .andWhere('user_id', customerId)
             .andWhere('is_marketplace', 1)
             .first(
-                'id', 'order_status', 'serve_type', 'created_at', 'updated_at',
-                'delivery_estimated_time', 'advanced_order_waiting_time_minute',
+                'id', 'order_number', 'order_status', 'serve_type', 'created_at', 'updated_at',
+                'delivery_estimated_time', 'advanced_order_waiting_time_minute', 'driver_id',
             );
         if (!order) { return H.errorResponse(res, 'Order not found.', 404); }
 
-        return H.successResponse(res, OrderStatus.statusSummary(order));
+        const summary = OrderStatus.statusSummary(order);
+
+        // #3 Driver — the assigned driver (legacy shows name/phone on the
+        // tracking page). The marketplace driver row carries a name.
+        summary.driver = null;
+        if (Number(order.driver_id) > 0) {
+            try {
+                const d = await db('driver').where({ id: order.driver_id }).first('id', 'name');
+                if (d) { summary.driver = { name: String(d.name || '').trim() || 'Your driver' }; }
+            } catch (e) { /* best-effort */ }
+        }
+
+        // #4 Latest in-page notification for this order (order_notification_
+        // details, polled — "Order Accepted" / "Driver Assigned" message).
+        summary.notification = null;
+        try {
+            const n = await db('order_notification_details')
+                .where({ order_number: order.order_number })
+                .orderBy('id', 'desc').first('message', 'trigger_event', 'created_at');
+            if (n && n.message) { summary.notification = { message: String(n.message), event: n.trigger_event || null }; }
+        } catch (e) { /* best-effort */ }
+
+        return H.successResponse(res, summary);
     } catch (err) {
         H.log.error('order.status', err && err.message);
         return H.errorResponse(res, MSG.server.oops, 500);
@@ -322,7 +394,8 @@ async function reorder(req, res) {
                 .andWhere('p.show_marketplace', 1)
                 .whereIn('p.status', A.SURFACE_STATUSES)
                 .first('p.id', 'p.name', 'p.company_id', 'p.marketplace_price',
-                       'p.online_platform_price', 'p.price_after_tax', ...A.selectColumns(db, 'p'));
+                       'p.online_platform_price', 'p.price_after_tax',
+                       'p.discount_type', 'p.discount_value', ...A.selectColumns(db, 'p'));
             if (!product || !A.evaluate(product).available) {
                 skipped.push(it.product_name || (product && product.name) || 'An item');
                 continue;
@@ -339,7 +412,7 @@ async function reorder(req, res) {
                 cartId:    cart.id,
                 product:   { id: product.id, name: product.name, company_id: product.company_id },
                 qty:       Number(it.product_qty) || 1,
-                unitPrice: M.pickPrice(product),
+                unitPrice: M.applyProductDiscount(M.pickPrice(product), product),
                 options,
                 remark:    it.remark || null,
             });
@@ -367,4 +440,90 @@ async function reorder(req, res) {
     }
 }
 
-module.exports = { place, list, detail, status, reorder };
+/**
+ * reportIssue — POST /customer/order/report-issue
+ *
+ * What:  Customer reports a problem with an order (legacy webordering
+ *        "Report an Issue with Your Order" → actionSaveOrderNotes). Inserts
+ *        an epos_complaints row (complaint_type_id 11) from the order's
+ *        branch/company/customer details + the typed notes, and links it via
+ *        orders.complaint_id. The restaurant answers from the POS; the
+ *        customer polls issueResponse for the reply.
+ * Type:  WRITE.
+ */
+async function reportIssue(req, res) {
+    try {
+        const customerId = req.body.customer_id;
+        const orderId    = req.body.order_id;
+        const notes      = String(req.body.notes || '').trim();
+        if (!notes) { return H.errorResponse(res, 'Please describe the problem with your order before submitting.', 422); }
+
+        const { error } = await customers.loadMarketplaceCustomer(customerId);
+        if (error) { return H.errorResponse(res, error.msg, error.status); }
+
+        const order = await db('orders')
+            .where({ id: orderId, user_id: customerId, is_marketplace: 1 })
+            .first('id', 'branch_id', 'company_id', 'customer_first_name', 'customer_last_name', 'customer_number', 'delivery_address');
+        if (!order) { return H.errorResponse(res, 'Order not found.', 404); }
+
+        const name = [order.customer_first_name, order.customer_last_name].filter(Boolean).join(' ').trim();
+        const [inserted] = await db('epos_complaints').insert({
+            company_id:         order.company_id,
+            branch_id:          order.branch_id,
+            complaint_type_id:  11,                          // legacy: 11 = order issue
+            complaint_details:  notes,
+            customer_telephone: order.customer_number || null,
+            customer_name:      name || null,
+            customer_address:   order.delivery_address || null,
+            platform:           'web',
+            status:             'awaiting_response',
+            created_by:         customerId,
+            created_at:         db.fn.now(),
+            updated_at:         db.fn.now(),
+        }).returning('id');
+
+        const complaintId = inserted && (inserted.id || inserted);
+        if (complaintId) {
+            await db('orders').where({ id: order.id }).update({ complaint_id: complaintId });
+        }
+
+        return H.successResponse(res, { complaintId: String(complaintId || '') },
+            'Thank you for contacting us. Your order issue has been submitted — our team will review it and get back to you shortly.');
+    } catch (err) {
+        H.log.error('order.reportIssue', err && err.message);
+        return H.errorResponse(res, MSG.server.oops, 500);
+    }
+}
+
+/**
+ * issueResponse — GET /customer/order/issue-response
+ *
+ * What:  Returns the restaurant's reply to a reported order issue (the
+ *        epos_complaints.response), once it's filled — drives the
+ *        client-side poll. null while still awaiting a reply.
+ * Type:  READ.
+ */
+async function issueResponse(req, res) {
+    try {
+        const customerId = req.query.customer_id;
+        const orderId    = req.query.order_id;
+
+        const { error } = await customers.loadMarketplaceCustomer(customerId);
+        if (error) { return H.errorResponse(res, error.msg, error.status); }
+
+        const order = await db('orders')
+            .where({ id: orderId, user_id: customerId, is_marketplace: 1 }).first('complaint_id');
+        if (!order || !order.complaint_id) { return H.successResponse(res, { response: null, status: null }); }
+
+        const c = await db('epos_complaints')
+            .where({ id: order.complaint_id })
+            .whereNotNull('response').andWhereRaw("response <> ''")
+            .first('response', 'status');
+        return H.successResponse(res, { response: c ? c.response : null, status: c ? c.status : null });
+    } catch (err) {
+        H.log.error('order.issueResponse', err && err.message);
+        return H.errorResponse(res, MSG.server.oops, 500);
+    }
+}
+
+module.exports = { place, list, detail, status, reorder, reportIssue, issueResponse };

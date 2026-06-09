@@ -174,19 +174,27 @@
         close();
     }
 
-    // Persist the chosen mode onto the row + update its visible label.
+    // Highlight the Cash / Card tile on the cart page for the active mode.
+    function paintCartPayTiles(mode) {
+        var wrap = $('[data-cart-pay]');
+        if (!wrap) { return; }
+        var want = (mode && mode !== 'cash') ? 'card' : 'cash';
+        var tiles = wrap.querySelectorAll('[data-paytile]');
+        Array.prototype.forEach.call(tiles, function (t) {
+            t.classList.toggle('is-active', t.getAttribute('data-paytile') === want);
+        });
+    }
+
+    // Persist the chosen mode onto the row + update the CARD tile's label
+    // ([data-ckt-pay-title]/[sub] live on the Card tile). Cash has its own
+    // static tile, so cash just resets the Card tile to its neutral label.
     function commitPayRow(row, mode) {
         row.setAttribute('data-ckt-pay-mode', mode);
         var titleEl = row.querySelector('[data-ckt-pay-title]');
         var subEl   = row.querySelector('[data-ckt-pay-sub]');
-        if (mode === 'cash') {
-            var modeBtn = document.querySelector('[data-action="cart-set-mode"].is-active');
-            var isPickup = modeBtn && modeBtn.getAttribute('data-mode') === '2';
-            if (titleEl) { titleEl.textContent = 'Cash on ' + (isPickup ? 'pickup' : 'delivery'); }
-            if (subEl)   { subEl.textContent   = 'Pay at the door'; }
-        } else if (mode === 'new-card') {
+        if (mode === 'new-card') {
             if (titleEl) { titleEl.textContent = 'New card'; }
-            if (subEl)   { subEl.textContent   = 'You\'ll be charged at checkout'; }
+            if (subEl)   { subEl.textContent   = 'Charged at checkout'; }
         } else if (mode.indexOf('card:') === 0) {
             var btn = document.querySelector('[data-pay-mode="' + mode + '"]');
             if (btn) {
@@ -195,7 +203,11 @@
                 if (titleEl && t) { titleEl.textContent = t.textContent; }
                 if (subEl   && s) { subEl.textContent   = s.textContent; }
             }
+        } else if (mode === 'cash') {
+            if (titleEl) { titleEl.textContent = 'Card'; }
+            if (subEl)   { subEl.textContent   = 'Choose a card'; }
         }
+        paintCartPayTiles(mode);
     }
 
     // Save the typed card now (SetupIntent), then reload so it appears
@@ -349,6 +361,14 @@
         if (t.closest('[data-action="ckt-popup-close"]')) {
             ev.preventDefault();
             close();
+            return;
+        }
+        // Cash tile on the cart page — commit cash, no popup.
+        var pickCash = t.closest('[data-action="ckt-pick-cash"]');
+        if (pickCash) {
+            ev.preventDefault();
+            var cashRow = $('[data-cart-pay]');
+            if (cashRow) { commitPayRow(cashRow, 'cash'); }
             return;
         }
         var pick = t.closest('[data-action="ckt-pick-pay"]');

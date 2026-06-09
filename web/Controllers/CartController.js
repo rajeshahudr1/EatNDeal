@@ -259,11 +259,14 @@ const applyCoupon  = (req, res) => forwardWrite(req, res, '/api/v1/customer/cart
 const removeCoupon = (req, res) => forwardWrite(req, res, '/api/v1/customer/cart/remove-coupon');
 const applyVoucher  = (req, res) => forwardWrite(req, res, '/api/v1/customer/cart/apply-voucher');
 const removeVoucher = (req, res) => forwardWrite(req, res, '/api/v1/customer/cart/remove-voucher');
+const applyLoyalty  = (req, res) => forwardWrite(req, res, '/api/v1/customer/cart/apply-loyalty');
+const removeLoyalty = (req, res) => forwardWrite(req, res, '/api/v1/customer/cart/remove-loyalty');
 const setCharity   = (req, res) => forwardWrite(req, res, '/api/v1/customer/cart/set-charity');
 
 module.exports = {
     page, data, count, promotions,
     add, updateQty, removeItem, clear,
     setMode, setAddress, setSchedule, setInstructions,
-    applyCoupon, removeCoupon, applyVoucher, removeVoucher, setCharity,
+    applyCoupon, removeCoupon, applyVoucher, removeVoucher,
+    applyLoyalty, removeLoyalty, setCharity,
 };

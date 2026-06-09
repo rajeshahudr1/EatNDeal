@@ -178,6 +178,25 @@ const cartRemoveVoucherSchema = Joi.object({
     customer_id: customerIdRule,
 });
 
+// ── POST /customer/cart/apply-loyalty ──────────────────────────────
+// Redeem loyalty cashback against the cart. The amount is the £ the
+// customer wants to spend; the controller clamps it to maxRedeemable
+// (balance / restaurant cap / sub-total), so we only bound it loosely here.
+const cartApplyLoyaltySchema = Joi.object({
+    customer_id: customerIdRule,
+    amount: Joi.number().min(0).max(100000).required()
+        .messages({
+            'number.base':  'Enter a valid reward amount.',
+            'number.min':   'Reward amount can\'t be negative.',
+            'any.required': 'Enter a reward amount.',
+        }),
+});
+
+// ── POST /customer/cart/remove-loyalty ─────────────────────────────
+const cartRemoveLoyaltySchema = Joi.object({
+    customer_id: customerIdRule,
+});
+
 // ── POST /customer/cart/set-charity ────────────────────────────────
 // The customer's chosen charity contribution amount (No → 0, a % tier of
 // sub-total, or a Custom £). The helper clamps + rounds; here we just
@@ -207,5 +226,7 @@ module.exports = {
     cartRemoveCouponSchema,
     cartApplyVoucherSchema,
     cartRemoveVoucherSchema,
+    cartApplyLoyaltySchema,
+    cartRemoveLoyaltySchema,
     cartSetCharitySchema,
 };

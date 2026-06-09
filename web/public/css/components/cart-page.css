@@ -626,6 +626,62 @@
 }
 .ckt-voucher__remove:hover { border-color: var(--color-primary); background: var(--color-primary); color: #fff; }
 
+/* Loyalty redeem — spend this restaurant's reward balance. Green-tinted to
+   read as "money you already have", distinct from the promo/voucher boxes. */
+.ckt-loyalty {
+    margin-top: 14px;
+    padding: 14px 16px;
+    border: 1px solid #b7e4c7;
+    border-radius: 14px;
+    background: #f2fbf5;
+}
+.ckt-loyalty__title {
+    display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px;
+    font-size: 0.95rem; font-weight: 700; color: var(--color-text); margin: 0 0 10px;
+}
+.ckt-loyalty__bal { font-size: 0.82rem; font-weight: 700; color: #166534; }
+.ckt-loyalty__row { display: flex; gap: 8px; align-items: stretch; }
+.ckt-loyalty__cur {
+    display: flex; align-items: center; padding: 0 0.7rem;
+    border: 1px solid #b7e4c7; border-right: 0;
+    border-radius: 10px 0 0 10px; background: #fff;
+    font-weight: 700; color: #166534;
+}
+.ckt-loyalty__input {
+    flex: 1; min-width: 0;
+    padding: 0.55rem 0.8rem;
+    border: 1px solid #b7e4c7; border-left: 0; border-right: 0;
+    font-size: 0.95rem;
+}
+.ckt-loyalty__input:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(22, 101, 52, 0.12); }
+.ckt-loyalty__apply {
+    flex: 0 0 auto;
+    padding: 0.55rem 1.1rem;
+    border: 0;
+    border-radius: 0 10px 10px 0;
+    background: #166534;
+    color: #fff;
+    font-weight: 700;
+    cursor: pointer;
+}
+.ckt-loyalty__apply:hover { background: #0f4f28; }
+.ckt-loyalty__note { font-size: 0.78rem; color: #166534; margin: 8px 0 0; }
+.ckt-loyalty__applied { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.ckt-loyalty__code { font-size: 0.95rem; font-weight: 700; color: var(--color-text); margin: 0; }
+.ckt-loyalty__sub { font-size: 0.82rem; color: #0f6e56; font-weight: 600; margin: 2px 0 0; }
+.ckt-loyalty__remove {
+    flex: 0 0 auto;
+    padding: 0.4rem 0.8rem;
+    border: 1px solid #b7e4c7;
+    border-radius: 999px;
+    background: #fff;
+    color: #166534;
+    font-weight: 600;
+    font-size: 0.85rem;
+    cursor: pointer;
+}
+.ckt-loyalty__remove:hover { border-color: #166534; background: #166534; color: #fff; }
+
 /* Card-payment surcharge note + review-popup line. */
 .ckt-card-note {
     display: flex;
@@ -637,3 +693,20 @@
 }
 .ckt-card-note svg { color: var(--color-primary); flex: 0 0 auto; }
 .ckt-totals__row--cardcharge[hidden] { display: none !important; }
+
+/* Payment choice — two Cash / Card tiles (no card auto-selected; Cash
+   needs no popup, Card opens the card picker). */
+.ckt-paychoice { display: flex; gap: 12px; }
+.ckt-paytile {
+    flex: 1 1 0; display: flex; align-items: center; gap: 10px;
+    padding: 14px; border: 1.5px solid var(--color-border, #e5e7eb);
+    border-radius: 14px; background: #fff; cursor: pointer; text-align: left;
+    font: inherit; transition: border-color .15s ease, background .15s ease;
+}
+.ckt-paytile.is-active { border-color: var(--color-primary); background: rgba(229, 37, 42, 0.05); }
+.ckt-paytile__icon { flex: 0 0 auto; color: var(--color-text-muted); display: inline-flex; }
+.ckt-paytile.is-active .ckt-paytile__icon { color: var(--color-primary); }
+.ckt-paytile__txt { display: flex; flex-direction: column; min-width: 0; }
+.ckt-paytile__label { font-weight: 700; font-size: 0.95rem; }
+.ckt-paytile__sub { font-size: 0.78rem; color: var(--color-text-soft); }
+@media (max-width: 480px) { .ckt-paychoice { flex-direction: column; } }

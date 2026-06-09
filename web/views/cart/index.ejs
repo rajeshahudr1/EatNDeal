@@ -189,32 +189,33 @@
                     <h2 class="ckt-card__title">Payment</h2>
                 </header>
 
-                <%# Cash is always available; the popup decides between
-                    cash, a saved card, or a fresh new card. The row
-                    just shows the currently-chosen method. JS reads
+                <%# Pay with Cash OR Card — an EXPLICIT choice; no card is
+                    auto-selected (legacy webordering shows Cash first too).
+                    Cash needs no popup; Card opens the card picker (and the
+                    card popup no longer carries a Cash row). JS reads
                     [data-ckt-pay-mode] for the active selection. %>
-                <%
-                    var defaultCard = payList.length ? payList[0] : null;
-                    var payDisplay = 'Cash on ' + (cart.serveType === 2 ? 'pickup' : 'delivery');
-                    var paySubtle = 'Tap Edit to switch';
-                    if (stripeOn && defaultCard) {
-                        payDisplay = (defaultCard.brand || 'card').toUpperCase() + ' •••• ' + defaultCard.last4;
-                        paySubtle = (defaultCard.expMonth ? 'Expires ' + String(defaultCard.expMonth).padStart(2,'0') + '/' + String(defaultCard.expYear).slice(-2) : '');
-                    }
-                %>
-                <div class="ckt-row ckt-row--pay" data-cart-pay data-stripe-key="<%= stripe_publishable_key %>" data-ckt-pay-mode="<%= (stripeOn && defaultCard) ? 'card:' + defaultCard.id : 'cash' %>">
-                    <span class="ckt-row__icon" aria-hidden="true">
-                        <% if (stripeOn && defaultCard) { %>
-                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
-                        <% } else { %>
+                <% var cashLbl = 'Pay on ' + (cart.serveType === 2 ? 'pickup' : 'delivery'); %>
+                <div class="ckt-paychoice" data-cart-pay data-stripe-key="<%= stripe_publishable_key %>" data-ckt-pay-mode="cash">
+                    <button type="button" class="ckt-paytile is-active" data-action="ckt-pick-cash" data-paytile="cash">
+                        <span class="ckt-paytile__icon" aria-hidden="true">
                             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="3"/></svg>
-                        <% } %>
-                    </span>
-                    <div class="ckt-row__body">
-                        <p class="ckt-row__title" data-ckt-pay-title><%= payDisplay %></p>
-                        <p class="ckt-row__sub" data-ckt-pay-sub><%= paySubtle %></p>
-                    </div>
-                    <button type="button" class="ckt-row__edit" data-action="ckt-open-payment"><%= (stripeOn && defaultCard) ? 'Edit' : 'Add' %></button>
+                        </span>
+                        <span class="ckt-paytile__txt">
+                            <span class="ckt-paytile__label">Cash</span>
+                            <span class="ckt-paytile__sub"><%= cashLbl %></span>
+                        </span>
+                    </button>
+                    <% if (stripeOn) { %>
+                    <button type="button" class="ckt-paytile" data-action="ckt-open-payment" data-paytile="card">
+                        <span class="ckt-paytile__icon" aria-hidden="true">
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+                        </span>
+                        <span class="ckt-paytile__txt">
+                            <span class="ckt-paytile__label" data-ckt-pay-title>Card</span>
+                            <span class="ckt-paytile__sub" data-ckt-pay-sub>Choose a card</span>
+                        </span>
+                    </button>
+                    <% } %>
                 </div>
             </section>
 
@@ -346,6 +347,44 @@
                 <% } %>
             </div>
 
+            <%# Loyalty redeem — spend THIS restaurant's reward balance on
+                the order. Shown only when the signed-in customer has a
+                usable balance here (or already applied some). Independent of
+                coupon/voucher — it stacks. The API re-clamps the amount to
+                balance / cap / sub-total. %>
+            <%
+                var rwBal  = cart.rewardBalance || 0;
+                var rwMax  = cart.rewardMax || 0;
+                var rwUsed = cart.usedCashback || 0;
+            %>
+            <% if (rwUsed > 0 || rwMax > 0) { %>
+            <div class="ckt-loyalty" data-cart-loyalty
+                 data-reward-balance="<%= rwBal.toFixed(2) %>"
+                 data-reward-max="<%= rwMax.toFixed(2) %>"
+                 data-reward-used="<%= rwUsed.toFixed(2) %>">
+                <% if (rwUsed > 0) { %>
+                    <div class="ckt-loyalty__applied">
+                        <div class="ckt-loyalty__info">
+                            <p class="ckt-loyalty__code">🎁 Reward applied</p>
+                            <p class="ckt-loyalty__sub">− <%= sym %><%= rwUsed.toFixed(2) %> · <%= sym %><%= rwBal.toFixed(2) %> balance left</p>
+                        </div>
+                        <button type="button" class="ckt-loyalty__remove" data-action="cart-remove-loyalty">Remove</button>
+                    </div>
+                <% } else { %>
+                    <p class="ckt-loyalty__title">🎁 Use your reward
+                        <span class="ckt-loyalty__bal"><%= sym %><%= rwBal.toFixed(2) %> available</span></p>
+                    <div class="ckt-loyalty__row">
+                        <span class="ckt-loyalty__cur"><%= sym %></span>
+                        <input type="number" class="ckt-loyalty__input" data-cart-loyalty-input min="0" step="0.01" max="<%= rwMax.toFixed(2) %>" inputmode="decimal" placeholder="0.00" value="<%= rwMax.toFixed(2) %>">
+                        <button type="button" class="ckt-loyalty__apply" data-action="cart-apply-loyalty">Use</button>
+                    </div>
+                    <% if (rwMax < rwBal) { %>
+                    <p class="ckt-loyalty__note">Up to <%= sym %><%= rwMax.toFixed(2) %> can be used on this order.</p>
+                    <% } %>
+                <% } %>
+            </div>
+            <% } %>
+
             <%# Charity contribution — No / % tiers / Custom. The chosen
                 amount is ADDED to the total and donated to the restaurant.
                 Mirrors the legacy "Add a Charity Contribution" selector. %>
@@ -431,6 +470,12 @@
                     <div class="ckt-totals__row ckt-totals__row--discount">
                         <dt><%= cart.discountSource === 'auto' ? 'Auto-discount' : (cart.discountSource === 'voucher' ? 'Voucher' : 'Discount') %></dt>
                         <dd>− <%= sym %><%= cart.discount.toFixed(2) %></dd>
+                    </div>
+                    <% } %>
+                    <% if (cart.usedCashback > 0) { %>
+                    <div class="ckt-totals__row ckt-totals__row--discount">
+                        <dt>Reward applied</dt>
+                        <dd>− <%= sym %><%= cart.usedCashback.toFixed(2) %></dd>
                     </div>
                     <% } %>
                     <%# Card service charge — shown + added to the total only

@@ -39,6 +39,7 @@ const M              = require('../../Helpers/marketplace');
 const A              = require('../../Helpers/availability');
 const Offers         = require('../../Helpers/offers');
 const OrderTime      = require('../../Helpers/orderTime');
+const StoreHours     = require('../../Helpers/storeHours');
 const Favourites     = require('../Customer/FavouriteController');
 
 /**
@@ -270,6 +271,12 @@ async function list(req, res) {
                 'b.open_as_usual',
                 'b.start_time',
                 'b.end_time',
+                // Close-flag + per-service columns for the real open/closed
+                // verdict (Helpers/storeHours), batched across the list.
+                'b.closed', 'b.closed_reopen_date', 'b.clossed_repoen_time', 'b.clossed_text',
+                'b.closed_for', 'b.closed_for_time',
+                'b.show_delivery_option', 'b.show_delivery_option_tab', 'b.delivery_closed_util_date',
+                'b.show_pickup_option', 'b.show_pickup_option_tab', 'b.pickup_closed_util_date',
                 'b.delivery_waiting_time',
                 'b.pickup_waiting_time',
                 'b.branch_description',
@@ -363,6 +370,10 @@ async function list(req, res) {
         // chip across list/detail/favourites/dishes.
         const timesByBranch = await OrderTime.computeForBranches(uniq);
 
+        // Real open/closed + hours for every card in ONE batched pass
+        // (store_business_hours per service + close-flag precedence).
+        const availByBranch = await StoreHours.availabilityForBranches(uniq);
+
         const restaurants = uniq.map(r => {
             // Postcode-zone delivery facts (matched application-side).
             const zones = zonesByBranch.get(String(r.branch_id)) || [];
@@ -379,6 +390,16 @@ async function list(req, res) {
                 postcode,
                 zone,
             });
+            // Override the card's open/closed with the real per-service
+            // verdict (store_business_hours), so cards + the open_now facet
+            // match the detail page.
+            const av = availByBranch.get(String(r.branch_id));
+            if (av) {
+                card.isOpen     = av.isOpen;
+                card.openStatus = av.status;
+                card.hours      = av.hours;
+                card.opensAt    = av.reopenAt;
+            }
             // Append internal sort/facet keys (stripped before the
             // response slice — see _-prefix strip below).
             card._mins      = card.distanceKm != null ? distance.estimateDeliveryMinutesNumeric(card.distanceKm) : null;
@@ -546,7 +567,14 @@ async function detail(req, res) {
                 'b.start_time', 'b.end_time', 'b.delivery_waiting_time', 'b.pickup_waiting_time',
                 'b.banner_image', 'b.business_image',
                 'b.direction_latitude as branch_lat', 'b.direction_longitude as branch_lng',
-                'b.open_as_usual', 'b.closed_until',
+                'b.open_as_usual', 'b.closed_until', 'b.name as branch_name',
+                // Close-flag + per-service columns — drive the real
+                // open/closed verdict (Helpers/storeHours), per legacy POS.
+                'b.closed', 'b.closed_reopen_date', 'b.clossed_repoen_time', 'b.clossed_text',
+                'b.closed_for', 'b.closed_for_time',
+                'b.show_delivery_option', 'b.show_delivery_option_tab', 'b.delivery_closed_util_date',
+                'b.show_pickup_option', 'b.show_pickup_option_tab', 'b.pickup_closed_util_date',
+                'b.pre_order',
                 db.raw(`(SELECT ROUND(AVG(rr.rating)::numeric, 1) FROM review_rating rr
                           WHERE rr.company_id = c.id AND rr.publish_online = 1) AS avg_rating`),
                 db.raw(`(SELECT COUNT(*) FROM review_rating rr
@@ -582,6 +610,10 @@ async function detail(req, res) {
         const detailCustomerId = req.query.customer_id ? String(req.query.customer_id) : null;
         const detailFavSet = await Favourites.favouriteIdSet(detailCustomerId, [row.company_id]);
 
+        // Real open/closed + hours from store_business_hours (per service) +
+        // the close-flag precedence — replaces the stale start_time/end_time.
+        const avail = await StoreHours.availabilityForBranch(row);
+
         const restaurant = {
             id:              String(row.company_id),
             slug:            row.domain_name ? M.slugify(row.domain_name) : M.slugify(name, row.company_id),
@@ -591,7 +623,16 @@ async function detail(req, res) {
             cuisines:        M.cuisinesFor({ business_category: row.business_category }),
             rating:          avgRating,   // null when no published reviews — UI hides the badge
             ratingCount:     row.rating_count != null ? Number(row.rating_count) : 0,
-            isOpen:          M.isOpenNow(row),
+            isOpen:          avail ? avail.isOpen : M.isOpenNow(row),
+            // Availability detail (per legacy POS) for the "Restaurant info"
+            // chip: status (open/preorder/closed), per-service, why-closed.
+            openStatus:      avail ? avail.status : null,
+            deliveryOpen:    avail ? (avail.services.delivery.status === 'open') : null,
+            pickupOpen:      avail ? (avail.services.takeaway.status === 'open') : null,
+            closedReason:    avail ? avail.closedReason : null,
+            closedMessage:   avail ? avail.message : null,
+            opensAt:         avail ? avail.reopenAt : null,
+            preOrder:        Number(row.pre_order) === 1,
             distanceKm:      km != null ? km : null,
             deliveryMinutes: detailTimes.delivery,
             // Pickup time = pickup_waiting_time + max pickup advance.
@@ -604,7 +645,7 @@ async function detail(req, res) {
             address:         addr,
             phone:           row.contact_number || null,
             website:         row.website || row.website_domain || null,
-            hours:           (open && close) ? (open + ' – ' + close) : null,
+            hours:           avail && avail.hours ? avail.hours : ((open && close) ? (open + ' – ' + close) : null),
             lat:             row.branch_lat != null && row.branch_lat !== '' ? Number(row.branch_lat) : null,
             lng:             row.branch_lng != null && row.branch_lng !== '' ? Number(row.branch_lng) : null,
             image:           M.yiiImageUrl('banner', row.company_id, row.banner_image) || null,
@@ -655,17 +696,26 @@ async function detail(req, res) {
             .select(
                 'p.id as product_id', 'p.name as product_name', 'p.veg_non_veg',
                 'p.marketplace_price', 'p.online_platform_price', 'p.price_after_tax',
+                'p.discount_type', 'p.discount_value',
                 'p.is_recommended', 'p.is_featured', 'ppc.category_id', 'pi.url as image_url',
                 ...A.selectColumns(db, 'p'),
             );
 
+        // BOGOF map for the whole menu (one pass) → "Buy X Get Y" badges.
+        const bogoMap = await require('../../Helpers/loyalty').bogoMapFor(companyId);
+
         const mapProd = (r) => {
             const avail = A.evaluate(r);
+            const disc  = M.discountedPrice(r);
+            const bogo  = bogoMap.get(String(r.product_id)) || null;
             return {
+                bogo:          bogo,   // { buyQty, getQty } | null
                 id:            String(r.product_id),
                 name:          String(r.product_name || '').trim(),
                 slug:          M.slugify(r.product_name),
-                price:         M.pickPrice(r),
+                price:         disc.final,
+                // Original (struck-through) price shown only when discounted.
+                originalPrice: disc.hasDiscount ? disc.original : null,
                 // Products have no per-dish reviews, so no real rating — null
                 // hides the badge (we don't show the restaurant's avg as a
                 // fake per-product rating).

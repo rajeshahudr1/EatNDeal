@@ -34,6 +34,7 @@ const Coupons   = require('../../Helpers/coupons');
 const Vouchers  = require('../../Helpers/vouchers');
 const M         = require('../../Helpers/marketplace');
 const A         = require('../../Helpers/availability');
+const StoreHours = require('../../Helpers/storeHours');
 const { db }    = require('../../config/db');
 
 /**
@@ -94,7 +95,32 @@ async function get(req, res) {
         // Card-payment surcharge for this company (added only when paying
         // by card) — the page shows it + bumps the total when card picked.
         const cardServiceCharge = await Cart.cardServiceCharge(open.company_id);
-        const view  = Cart.publicCartView(v.cart, items, { charityTiers, cardServiceCharge });
+
+        // Loyalty redeem — this restaurant's usable reward balance for this
+        // customer + the most they may spend on this cart (balance / cap /
+        // sub-total). Feeds the checkout "Use £X reward" row. Best-effort:
+        // any loyalty hiccup just hides the redeem option.
+        let rewardBalance = 0;
+        let rewardMax = 0;
+        try {
+            const Loyalty = require('../../Helpers/loyalty');
+            rewardBalance = await Loyalty.balanceFor(customerId, open.company_id);
+            rewardMax     = await Loyalty.maxRedeemable({
+                customerId, companyId: open.company_id, subTotal: Number(v.cart.sub_total) || 0,
+            });
+        } catch (e) { rewardBalance = 0; rewardMax = 0; }
+
+        // Pre-order slots — valid 15-min times today for this restaurant +
+        // the cart's mode (store_business_hours), to populate the schedule
+        // popup with real openings instead of a free datetime field.
+        let availableSlots = [];
+        try {
+            if (branch) { availableSlots = await StoreHours.slotsForBranch(branch, v.cart.serve_type); }
+        } catch (e) { availableSlots = []; }
+
+        const view  = Cart.publicCartView(v.cart, items, {
+            charityTiers, cardServiceCharge, rewardBalance, rewardMax, availableSlots,
+        });
 
         return H.successResponse(res, {
             cart:     view,
@@ -158,6 +184,7 @@ async function add(req, res) {
             .select(
                 'p.id', 'p.name', 'p.company_id',
                 'p.marketplace_price', 'p.online_platform_price', 'p.price_after_tax',
+                'p.discount_type', 'p.discount_value',
                 'c.business_name',
                 ...A.selectColumns(db, 'p'),
             )
@@ -261,8 +288,20 @@ async function add(req, res) {
         // delivery address" the moment the customer hits the cart.
         await Cart.ensureDefaultDeliveryAddress(cart.id, customerId, branch);
 
-        // 7. Insert line + modifier sub-rows. Unit price is server-side.
-        const unitPrice = M.pickPrice(product);
+        // 7. Insert line + modifier sub-rows. Unit price is server-side,
+        // with the product's own discount applied (legacy webordering
+        // actionAdd: discount_type 1 = flat £, 2 = %).
+        const discountedUnit = M.applyProductDiscount(M.pickPrice(product), product);
+        // BOGOF — the customer pays for the payable quantity only (legacy
+        // gePaybleQuantity). Expressed as an EFFECTIVE per-unit price so the
+        // existing line math (unit × qty) nets the right total — NO schema
+        // change (legacy stores a reduced line price too, not a flag).
+        const Loyalty = require('../../Helpers/loyalty');
+        const bogo    = await Loyalty.bogoForProduct(product.id, product.company_id);
+        const payable = Loyalty.payableQtyFor(bogo, qty);
+        const unitPrice = (bogo && qty > 0 && payable < qty)
+            ? Math.round((discountedUnit * payable / qty) * 100) / 100
+            : discountedUnit;
         await Cart.addItem({
             cartId:    cart.id,
             product,
@@ -582,6 +621,12 @@ async function setSchedule(req, res) {
             if (scheduledDate.getTime() < minLead) {
                 return H.errorResponse(res, 'Please choose a time at least 15 minutes from now.', 422);
             }
+            // Must be a REAL opening slot for this restaurant + mode — blocks
+            // free-typed times that fall outside the store's business hours.
+            const schedBranch = await M.loadActiveBranch(open.branch_id);
+            if (schedBranch && !(await StoreHours.isSchedulable(schedBranch, open.serve_type, rawScheduled))) {
+                return H.errorResponse(res, 'The restaurant isn\'t open at that time. Please pick an available slot.', 422);
+            }
         }
 
         await Cart.setSchedule(open.id, scheduledDate, isPreOrder);
@@ -751,6 +796,83 @@ async function removeVoucher(req, res) {
 }
 
 /**
+ * applyLoyalty
+ *
+ * What:  Redeems loyalty cashback against the open cart (Phase 2 redeem).
+ *        The requested amount is clamped server-side to maxRedeemable
+ *        (usable balance / restaurant cap / sub-total); recomputeTotals
+ *        re-clamps + folds it into grandtotal. Redeem is INDEPENDENT of any
+ *        coupon/voucher — it stacks (mirrors legacy used_cashback). The
+ *        rewards are not actually burned until the order is placed (the
+ *        place transaction consumes them FIFO); this only records intent.
+ * Type:  WRITE.
+ *
+ * Body:   customer_id, amount
+ */
+async function applyLoyalty(req, res) {
+    try {
+        const customerId = req.body.customer_id;
+        const amount     = Number(req.body.amount) || 0;
+
+        const { error } = await customers.loadMarketplaceCustomer(customerId);
+        if (error) { return H.errorResponse(res, error.msg, error.status); }
+
+        const open = await Cart.findOpenCart(customerId);
+        if (!open) { return H.errorResponse(res, 'Your cart is no longer available.', 404); }
+
+        // Redeem column not migrated yet → feature is off.
+        if (!(await Cart.hasUsedCashbackCol())) {
+            return H.errorResponse(res, 'Rewards aren\'t available right now.', 422);
+        }
+
+        const Loyalty = require('../../Helpers/loyalty');
+        const max = await Loyalty.maxRedeemable({
+            customerId, companyId: open.company_id, subTotal: Number(open.sub_total) || 0,
+        });
+        if (max <= 0) {
+            return H.errorResponse(res, 'You have no reward to use at this restaurant yet.', 422);
+        }
+
+        const apply = Math.min(Math.max(0, amount), max);
+        if (apply <= 0) {
+            return H.errorResponse(res, 'Enter how much reward to use.', 422);
+        }
+
+        await Cart.setUsedCashback(open.id, apply);
+        return respondWithCart(res, open.id, customerId,
+            'Reward applied — £' + apply.toFixed(2) + ' off.');
+    } catch (err) {
+        H.log.error('cart.applyLoyalty', err && err.message);
+        return H.errorResponse(res, MSG.server.oops, 500);
+    }
+}
+
+/**
+ * removeLoyalty
+ *
+ * What:  Clears any redeem applied to the open cart (used_cashback = 0);
+ *        recomputeTotals restores the full payable.
+ * Type:  WRITE.
+ */
+async function removeLoyalty(req, res) {
+    try {
+        const customerId = req.body.customer_id;
+
+        const { error } = await customers.loadMarketplaceCustomer(customerId);
+        if (error) { return H.errorResponse(res, error.msg, error.status); }
+
+        const open = await Cart.findOpenCart(customerId);
+        if (!open) { return H.errorResponse(res, 'Your cart is no longer available.', 404); }
+
+        await Cart.clearUsedCashback(open.id);
+        return respondWithCart(res, open.id, customerId, 'Reward removed.');
+    } catch (err) {
+        H.log.error('cart.removeLoyalty', err && err.message);
+        return H.errorResponse(res, MSG.server.oops, 500);
+    }
+}
+
+/**
  * setCharity
  *
  * What:  Saves the customer's chosen charity contribution onto the open
@@ -852,4 +974,4 @@ async function promotions(req, res) {
     }
 }
 
-module.exports = { get, count, promotions, add, updateQty, removeItem, clear, setMode, setAddress, setSchedule, setInstructions, applyCoupon, removeCoupon, applyVoucher, removeVoucher, setCharity };
+module.exports = { get, count, promotions, add, updateQty, removeItem, clear, setMode, setAddress, setSchedule, setInstructions, applyCoupon, removeCoupon, applyVoucher, removeVoucher, applyLoyalty, removeLoyalty, setCharity };

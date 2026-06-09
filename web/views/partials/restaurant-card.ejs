@@ -86,7 +86,7 @@
             </div>
             <% if (showDelivery) { %>
                 <% if (!r.isOpen) { %>
-                    <span class="resto-card__delivery resto-card__delivery--muted">Currently closed</span>
+                    <span class="resto-card__delivery resto-card__delivery--closed"><%= (r.openStatus === 'preorder') ? 'Closed — pre-order' : 'Currently closed' %><% if (r.opensAt) { %> · opens <%= r.opensAt %><% } %></span>
                 <% } else if (r.deliverable === false) { %>
                     <span class="resto-card__delivery resto-card__delivery--muted">Doesn't deliver to your area</span>
                 <% } else if (typeof r.deliveryFee === 'number') { %>

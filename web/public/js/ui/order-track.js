@@ -110,6 +110,29 @@
             renderEta(currentEtaMin);
         }
 
+        // 4b. Driver — the assigned driver's name (delivery orders).
+        var drv = q('[data-order-driver]');
+        if (drv) {
+            if (data.driver && data.driver.name) {
+                drv.hidden = false;
+                var dn = drv.querySelector('[data-order-driver-name]');
+                if (dn) { dn.textContent = data.driver.name; }
+            } else {
+                drv.hidden = true;
+            }
+        }
+
+        // 4c. Latest in-page notification (order_notification_details).
+        var note = q('[data-order-notification]');
+        if (note) {
+            if (data.notification && data.notification.message) {
+                note.hidden = false;
+                note.textContent = data.notification.message;
+            } else {
+                note.hidden = true;
+            }
+        }
+
         // 5. Terminal → stop clocks + soft reload so the
         //    "Delivered. Enjoy!" / cancelled UI renders properly.
         if (data.progress && data.progress.isTerminal) {

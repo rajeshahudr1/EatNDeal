@@ -285,6 +285,8 @@ async function index(req, res, next) {
     let liveMenuCategories = [];     // restaurant page: left-rail menu
     let liveSections       = [];     // restaurant page: products grouped by category
     let liveReviews        = null;   // restaurant page: published customer reviews (+ avg + count)
+    let liveRewardBalance  = 0;      // restaurant page: this customer's reward-card balance here
+    let liveRewardStreak   = null;   // restaurant page: order-streak progress ("1 more order → £5")
     let liveOffers         = null;   // restaurant page: active offers (banners/coupons/discounts)
     let liveProduct        = null;   // product page: the product
     let liveProductGroups  = [];     // product page: selectable option groups
@@ -368,6 +370,18 @@ async function index(req, res, next) {
                             '/api/v1/marketplace/reviews?sort=best&limit=5&company_id=' + encodeURIComponent(liveRestaurant.id));
                         liveReviews = (rv.body && rv.body.status === 200 && rv.body.data) || null;
                     } catch (e) { liveReviews = null; }
+
+                    // Signed-in customer's reward-card balance at THIS
+                    // restaurant (loyalty, per company_id). Best-effort.
+                    if (customerId) {
+                        try {
+                            const lb = await callApi(req, 'GET',
+                                '/api/v1/customer/loyalty/balance?customer_id=' + encodeURIComponent(customerId) +
+                                '&company_id=' + encodeURIComponent(liveRestaurant.id));
+                            liveRewardBalance = (lb.body && lb.body.status === 200 && lb.body.data && Number(lb.body.data.balance)) || 0;
+                            liveRewardStreak  = (lb.body && lb.body.status === 200 && lb.body.data && lb.body.data.streak) || null;
+                        } catch (e) { liveRewardBalance = 0; liveRewardStreak = null; }
+                    }
                 }
             } else if (viewMode === 'product') {
                 // Single-product page — product + its selectable option
@@ -759,6 +773,8 @@ async function index(req, res, next) {
         menu_categories:     liveMenuCategories,
         menu_sections:       liveSections,
         restaurant_reviews:  liveReviews,
+        restaurant_reward_balance: liveRewardBalance,
+        restaurant_reward_streak:  liveRewardStreak,
         restaurant_offers:   liveOffers,
         // Product page: the product + its selectable option groups + related.
         product:             liveProduct,

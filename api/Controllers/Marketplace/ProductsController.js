@@ -562,6 +562,7 @@ async function detail(req, res) {
             .select(
                 'p.id as product_id', 'p.name as product_name', 'p.product_description',
                 'p.veg_non_veg', 'p.marketplace_price', 'p.online_platform_price', 'p.price_after_tax',
+                'p.discount_type', 'p.discount_value',
                 'c.id as company_id', 'c.business_name', 'c.domain_name', 'pi.url as image_url',
                 ...A.selectColumns(db, 'p'),
             )
@@ -570,12 +571,15 @@ async function detail(req, res) {
 
         const name = String(row.product_name || '').trim();
         const avail = A.evaluate(row);
+        const disc  = M.discountedPrice(row);
         const product = {
             id:          String(row.product_id),
             name,
             slug:        M.slugify(name),
             description: String(row.product_description || '').trim() || null,
-            basePrice:   M.pickPrice(row),
+            basePrice:   disc.final,
+            // Original (struck-through) unit price — only when discounted.
+            originalPrice: disc.hasDiscount ? disc.original : null,
             // Availability — status-driven (no stock). `availability` is the
             // full verdict ({available, soldOut, state, label}); `available`
             // is the convenience boolean the web uses to disable Add.

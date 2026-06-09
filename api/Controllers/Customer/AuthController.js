@@ -294,6 +294,12 @@ async function saveProfile(req, res) {
         const cleanContact = customers.normalisePhone(contact_no);
         const cleanCountry = Number(customers.normalisePhone(country_code)) || 0;
 
+        // Referral (Invite & Earn) — if the signup form carried a friend's
+        // code, bind referred_by to that customer (invalid code is silently
+        // ignored, like legacy actionSignup). Every new customer also gets
+        // their OWN referral_code.
+        const referrerId = await customers.resolveReferrer(req.body.referred_code);
+
         if (row && state === 'pending') {
             // UPDATE the OTP-verified stub into a fully-registered row.
             await db('customer')
@@ -303,6 +309,8 @@ async function saveProfile(req, res) {
                     lastname:          lastname || null,
                     email:             email    || null,
                     is_registered:     1,
+                    referral_code:     row.referral_code || customers.generateReferralCode(),
+                    referred_by:       row.referred_by || referrerId || null,
                     registered_at:     H.now(),
                     verify_at:         H.now(),
                     updated_at:        db.fn.now(),
@@ -332,6 +340,8 @@ async function saveProfile(req, res) {
                 signup_source:        '1',
                 is_registered:        1,
                 is_marketplace_user:  1,
+                referral_code:        customers.generateReferralCode(),
+                referred_by:          referrerId || null,
                 registered_at:        H.now(),
                 verify_at:            H.now(),
             })
@@ -795,6 +805,7 @@ async function socialSignin(req, res) {
                 signup_source:       '3',         // social
                 is_registered:       1,
                 is_marketplace_user: 1,
+                referral_code:       customers.generateReferralCode(),
                 registered_at:       H.now(),
                 verify_at:           H.now(),
                 // contact_no stays NULL — user will be asked to add a phone

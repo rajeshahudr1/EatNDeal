@@ -308,6 +308,8 @@ async function saveProfile(req, res) {
     const firstname = spaceIdx === -1 ? nameRaw : nameRaw.slice(0, spaceIdx);
     const lastname  = spaceIdx === -1 ? ''      : nameRaw.slice(spaceIdx + 1);
     const email     = String((req.body && req.body.email) || '').trim();
+    // Optional "Invite & Earn" code from a friend → binds referred_by.
+    const referredCode = String((req.body && req.body.referred_code) || '').trim();
 
     if (!firstname) {
         req.flash('error', 'Please enter your name.');
@@ -315,11 +317,12 @@ async function saveProfile(req, res) {
     }
 
     const apiRes = await callApi(req, 'POST', '/api/v1/auth/save-profile', {
-        country_code: pending.country_code,
-        contact_no:   pending.contact_no,
+        country_code:  pending.country_code,
+        contact_no:    pending.contact_no,
         firstname,
         lastname,
         email,
+        referred_code: referredCode,
     });
 
     const body = apiRes.body || {};
@@ -434,9 +437,20 @@ async function accountPage(req, res) {
     // Orders tab — fetch the customer's marketplace orders (newest
     // first, paginated). Same envelope handling as favourites.
     let orders = null;
+    // Order filters carried in the URL query (?status=&search=&date_from=&date_to=).
+    const orderFilters = {
+        status:    ['active', 'completed', 'cancelled'].indexOf(String(req.query.status || '')) !== -1 ? String(req.query.status) : '',
+        search:    String(req.query.search || '').trim().slice(0, 60),
+        date_from: /^\d{4}-\d{2}-\d{2}$/.test(req.query.date_from || '') ? req.query.date_from : '',
+        date_to:   /^\d{4}-\d{2}-\d{2}$/.test(req.query.date_to || '') ? req.query.date_to : '',
+    };
     if (activeTab === 'orders') {
         try {
             const qs = new URLSearchParams({ customer_id: String(user.id), limit: '20' });
+            if (orderFilters.status)    { qs.set('status', orderFilters.status); }
+            if (orderFilters.search)    { qs.set('search', orderFilters.search); }
+            if (orderFilters.date_from) { qs.set('date_from', orderFilters.date_from); }
+            if (orderFilters.date_to)   { qs.set('date_to', orderFilters.date_to); }
             const oRes = await callApi(req, 'GET', '/api/v1/customer/orders?' + qs.toString());
             orders = (oRes.body && oRes.body.status === 200 && oRes.body.data && oRes.body.data.orders) || [];
         } catch (e) { orders = []; }
@@ -480,6 +494,16 @@ async function accountPage(req, res) {
         } catch (e) { about = null; }
     }
 
+    // Rewards tab — the customer's per-restaurant reward cards (loyalty).
+    // Each restaurant is a separate card/balance; null/[] = empty wallet.
+    let rewardCards = null;
+    if (activeTab === 'rewards') {
+        try {
+            const rwRes = await callApi(req, 'GET', '/api/v1/customer/loyalty/wallet?customer_id=' + encodeURIComponent(user.id));
+            rewardCards = (rwRes.body && rwRes.body.status === 200 && rwRes.body.data && rwRes.body.data.cards) || [];
+        } catch (e) { rewardCards = []; }
+    }
+
     return res.render('account/index', {
         page_title:       TABS[activeTab],
         _layoutFile:      '../_layout',
@@ -502,6 +526,11 @@ async function accountPage(req, res) {
         addresses:        addresses,
         payment_methods:  paymentMethods,
         account_about:    about,
+        reward_cards:     rewardCards,
+        // Invite & Earn — the customer's own referral code (from /auth/me).
+        referral_code:    user.referral_code || '',
+        // Order-history filter state (echoed back into the filter bar).
+        order_filters:    orderFilters,
     });
 }
 

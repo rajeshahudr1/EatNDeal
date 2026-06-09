@@ -40,6 +40,7 @@ const { db }    = require('../config/db');
 const M         = require('./marketplace');
 const Cart      = require('./cart');
 const A         = require('./availability');
+const StoreHours = require('./storeHours');
 
 // Validation levels the caller can ask for. Heavier checks (stock, prices)
 // are skipped on cheap reads so a noisy "open the cart page" doesn't fan
@@ -105,15 +106,21 @@ async function validate(cartId, customerId, ctx) {
         return out;
     }
 
-    // Open / pre-order gate — at WRITE we just warn (customer may want to
-    // pre-order anyway); at PLACE we block if neither open nor a valid
-    // future pre-order time is set. Marketplace carts store the full
-    // datetime in `pre_order_time` (timestamptz); the legacy
-    // `scheduled_time` TIME column is unused here.
-    const isOpen = M.isOpenNow(branch);
+    // Open / pre-order gate — checks the REAL per-service hours
+    // (store_business_hours + close-flag precedence, Helpers/storeHours),
+    // for the cart's mode (serve_type 3 = delivery, 2 = pickup/take-away).
+    // At WRITE we just warn (customer may want to pre-order anyway); at
+    // PLACE we block if neither open nor a valid future pre-order time is
+    // set. Marketplace carts store the full datetime in `pre_order_time`.
+    const avail   = await StoreHours.availabilityForBranch(branch);
+    const svc     = avail ? (Number(cart.serve_type) === 2 ? avail.services.takeaway : avail.services.delivery) : null;
+    const isOpen  = svc ? (svc.status === 'open') : (avail ? avail.isOpen : M.isOpenNow(branch));
+    const closedMsg = (avail && avail.message)
+        ? avail.message
+        : 'The restaurant is currently closed. Schedule a pre-order or come back later.';
     if (!isOpen && level === LEVEL.PLACE) {
         if (!(Number(cart.is_pre_order) === 1 && cart.pre_order_time)) {
-            pushErr(out, 'branch.closed', 'The restaurant is currently closed. Schedule a pre-order or come back later.');
+            pushErr(out, 'branch.closed', closedMsg);
         }
     } else if (!isOpen) {
         pushWarn(out, 'branch.closed', 'The restaurant is closed right now — you can still pre-order.');

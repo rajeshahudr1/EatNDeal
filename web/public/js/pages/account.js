@@ -131,8 +131,82 @@
         if (!/^[0-9]$/.test(ev.key)) { ev.preventDefault(); }
     }
 
+    // ── Invite & Earn: share the referral code ─────────────────────
+    // Builds ONE friendly message from the code + the site link, then
+    // hands it to the chosen platform's share endpoint (new tab). Email
+    // and SMS use mailto:/sms: so the device opens its own app; "native"
+    // uses the Web Share sheet (Instagram / Messenger on mobile) and
+    // falls back to copying the message when the API is missing. Nothing
+    // is sent anywhere until the customer picks an app themselves.
+    function shareReferral(platform, code) {
+        code = (code || '').trim();
+        if (!code) { return; }
+
+        var origin  = window.location.origin || 'https://eatndeal.com';
+        var link    = origin + '/?ref=' + encodeURIComponent(code);
+        var msg     = '🍔 I order on EatNDeal and love it! Use my code ' + code +
+                      ' when you sign up — we BOTH earn cashback on your first order. Order here: ' + link;
+        var subject = 'Get cashback on EatNDeal — my invite code ' + code;
+
+        var url = '';
+        switch (platform) {
+            case 'whatsapp':
+                url = 'https://wa.me/?text=' + encodeURIComponent(msg);
+                break;
+            case 'facebook':
+                url = 'https://www.facebook.com/sharer/sharer.php?u=' + encodeURIComponent(link) +
+                      '&quote=' + encodeURIComponent(msg);
+                break;
+            case 'twitter':
+                url = 'https://twitter.com/intent/tweet?text=' + encodeURIComponent(msg);
+                break;
+            case 'telegram':
+                url = 'https://t.me/share/url?url=' + encodeURIComponent(link) +
+                      '&text=' + encodeURIComponent(msg);
+                break;
+            case 'email':
+                url = 'mailto:?subject=' + encodeURIComponent(subject) +
+                      '&body=' + encodeURIComponent(msg);
+                break;
+            case 'sms':
+                // Leading '?&body=' keeps both iOS and Android SMS apps happy.
+                url = 'sms:?&body=' + encodeURIComponent(msg);
+                break;
+            case 'native':
+                if (navigator.share) {
+                    navigator.share({ title: 'EatNDeal invite', text: msg, url: link })
+                        .catch(function () {});
+                    return;
+                }
+                if (navigator.clipboard) {
+                    navigator.clipboard.writeText(msg).then(function () {
+                        if (window.EatNDealUi && window.EatNDealUi.showToast) {
+                            window.EatNDealUi.showToast('success', 'Invite message copied!');
+                        }
+                    });
+                }
+                return;
+            default:
+                return;
+        }
+
+        if (platform === 'email' || platform === 'sms') {
+            // Same-tab so the OS hands off to the mail / SMS app cleanly.
+            window.location.href = url;
+        } else {
+            window.open(url, '_blank', 'noopener,noreferrer');
+        }
+    }
+
     // ── Field interactions: clear / CHANGE toggle / avatar ─────────
     function bindFieldActions() {
+        // The native "More" button only makes sense where the Web Share
+        // API exists (mostly mobile) — reveal it there, leave hidden else.
+        if (navigator.share) {
+            var moreBtn = document.querySelector('[data-action="share-referral"][data-platform="native"]');
+            if (moreBtn) { moreBtn.hidden = false; }
+        }
+
         document.addEventListener('click', function (ev) {
             var t = ev.target;
             if (!t || !t.closest) { return; }
@@ -214,6 +288,30 @@
                 ev.preventDefault();
                 var pmCard = pmDel.closest('[data-pm-id]');
                 deletePaymentMethod(pmCard ? pmCard.getAttribute('data-pm-id') : null);
+                return;
+            }
+
+            // Invite & Earn — copy the referral code to the clipboard.
+            var copyRef = t.closest('[data-action="copy-referral"]');
+            if (copyRef) {
+                ev.preventDefault();
+                var refCode = copyRef.getAttribute('data-code') || '';
+                if (refCode && navigator.clipboard) {
+                    navigator.clipboard.writeText(refCode).then(function () {
+                        if (window.EatNDealUi && window.EatNDealUi.showToast) { window.EatNDealUi.showToast('success', 'Referral code copied!'); }
+                        var orig = copyRef.textContent;
+                        copyRef.textContent = 'Copied!';
+                        setTimeout(function () { copyRef.textContent = orig; }, 1500);
+                    });
+                }
+                return;
+            }
+
+            // Invite & Earn — share the referral code to a platform.
+            var shareBtn = t.closest('[data-action="share-referral"]');
+            if (shareBtn) {
+                ev.preventDefault();
+                shareReferral(shareBtn.getAttribute('data-platform'), shareBtn.getAttribute('data-code') || '');
                 return;
             }
 

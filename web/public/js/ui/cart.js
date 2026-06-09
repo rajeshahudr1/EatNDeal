@@ -538,6 +538,32 @@
         });
     }
 
+    // ── Loyalty redeem (spend this restaurant's reward balance) ─────
+    // Apply reads the £ amount the customer typed (defaults to the max);
+    // the API re-clamps to balance / cap / sub-total. Remove clears it.
+    function onApplyLoyalty(ev, btn) {
+        ev.preventDefault();
+        var panel = btn.closest('[data-cart-loyalty]');
+        var input = panel && panel.querySelector('[data-cart-loyalty-input]');
+        var max   = panel ? (parseFloat(panel.getAttribute('data-reward-max')) || 0) : 0;
+        var amount = input ? parseFloat(input.value) : max;
+        if (!isFinite(amount) || amount <= 0) { amount = max; }
+        if (!(amount > 0)) { toast('error', 'Enter how much reward to use.'); return; }
+        btn.disabled = true;
+        postCart('/cart/apply-loyalty', { amount: amount }).then(function (env) {
+            handleEnvelope(env, { reload: true });
+            if (!env || env.status !== 200) { btn.disabled = false; }
+        });
+    }
+    function onRemoveLoyalty(ev, btn) {
+        ev.preventDefault();
+        btn.disabled = true;
+        postCart('/cart/remove-loyalty', {}).then(function (env) {
+            handleEnvelope(env, { reload: true });
+            if (!env || env.status !== 200) { btn.disabled = false; }
+        });
+    }
+
     // ── Charity contribution (No / % tiers / Custom) ────────────────
     function charityRoot() { return document.querySelector('[data-cart-charity]'); }
 
@@ -1033,6 +1059,8 @@
             case 'cart-remove-coupon':  return onRemoveCoupon(ev, btn);
             case 'cart-apply-voucher':  return onApplyVoucher(ev, btn);
             case 'cart-remove-voucher': return onRemoveVoucher(ev, btn);
+            case 'cart-apply-loyalty':  return onApplyLoyalty(ev, btn);
+            case 'cart-remove-loyalty': return onRemoveLoyalty(ev, btn);
             case 'cart-charity':        return onCharity(ev, btn);
             case 'cart-charity-custom': return onCharityCustom(ev, btn);
             case 'cart-set-pay':        return onCartSetPay(ev, btn);

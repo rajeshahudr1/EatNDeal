@@ -48,4 +48,16 @@ const listReviewsSchema = Joi.object({
     stars:  Joi.number().integer().min(1).max(5),   // optional single-star filter
 });
 
-module.exports = { submitReviewSchema, listReviewsSchema };
+// ── POST /customer/review-cashback ────────────────────────────────
+// Customer submits a screenshot of an external review for cashback.
+const cashbackReviewSchema = Joi.object({
+    customer_id: idRule.required().messages({ 'any.required': 'Customer id is required.' }),
+    company_id:  idRule.required().messages({ 'any.required': 'Restaurant id is required.' }),
+    review_type: Joi.number().integer().valid(1, 2).default(1),
+    notes:       Joi.string().trim().max(1000).allow('', null),
+    photo:       Joi.string().trim().pattern(/^\/[\w./-]{1,200}$/).allow('', null).messages({
+        'string.pattern.base': 'Photo path is not valid.',
+    }),
+});
+
+module.exports = { submitReviewSchema, listReviewsSchema, cashbackReviewSchema };

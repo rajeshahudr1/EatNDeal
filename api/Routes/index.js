@@ -282,6 +282,8 @@ const {
     cartRemoveCouponSchema,
     cartApplyVoucherSchema,
     cartRemoveVoucherSchema,
+    cartApplyLoyaltySchema,
+    cartRemoveLoyaltySchema,
     cartSetCharitySchema,
 } = require('../Validators/cart');
 
@@ -345,6 +347,14 @@ router.post('/customer/cart/remove-voucher',
     validate(cartRemoveVoucherSchema),
     CartCtl.removeVoucher);
 
+router.post('/customer/cart/apply-loyalty',
+    validate(cartApplyLoyaltySchema),
+    CartCtl.applyLoyalty);
+
+router.post('/customer/cart/remove-loyalty',
+    validate(cartRemoveLoyaltySchema),
+    CartCtl.removeLoyalty);
+
 router.post('/customer/cart/set-charity',
     validate(cartSetCharitySchema),
     CartCtl.setCharity);
@@ -358,6 +368,8 @@ const {
     orderDetailSchema,
     orderStatusSchema,
     orderReorderSchema,
+    orderReportIssueSchema,
+    orderIssueResponseSchema,
 } = require('../Validators/order');
 
 router.post('/customer/order/place',
@@ -380,16 +392,42 @@ router.post('/customer/order/reorder',
     validate(orderReorderSchema),
     OrderCtl.reorder);
 
+router.post('/customer/order/report-issue',
+    validate(orderReportIssueSchema),
+    OrderCtl.reportIssue);
+
+router.get('/customer/order/issue-response',
+    validateQuery(orderIssueResponseSchema),
+    OrderCtl.issueResponse);
+
 // ── Post-order reviews ──────────────────────────────────────────────
 // The customer rates (1–5) + writes text + optional photo for one of their
 // orders (saved to review_rating, one per order). The public list (read by
 // the restaurant page) is registered with the marketplace routes below.
 const ReviewCtl = require('../Controllers/Customer/ReviewController');
-const { submitReviewSchema, listReviewsSchema } = require('../Validators/review');
+const { submitReviewSchema, listReviewsSchema, cashbackReviewSchema } = require('../Validators/review');
 
 router.post('/customer/review',
     validate(submitReviewSchema),
     ReviewCtl.submit);
+
+// Cashback review — customer uploads a screenshot of an external review to
+// earn cashback (customer_review, pending admin approval in the POS).
+router.post('/customer/review-cashback',
+    validate(cashbackReviewSchema),
+    ReviewCtl.submitCashbackReview);
+
+// ── Loyalty (per-restaurant reward cards) ───────────────────────────
+const LoyaltyCtl = require('../Controllers/Customer/LoyaltyController');
+const { walletSchema: loyaltyWalletSchema, balanceSchema: loyaltyBalanceSchema } = require('../Validators/loyalty');
+
+router.get('/customer/loyalty/wallet',
+    validateQuery(loyaltyWalletSchema),
+    LoyaltyCtl.wallet);
+
+router.get('/customer/loyalty/balance',
+    validateQuery(loyaltyBalanceSchema),
+    LoyaltyCtl.balance);
 
 // ── Customer payments (Stripe-backed) ───────────────────────────────
 // createIntent returns a Stripe PaymentIntent the browser confirms via

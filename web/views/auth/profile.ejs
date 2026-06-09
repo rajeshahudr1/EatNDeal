@@ -79,6 +79,22 @@
                 >
             </div>
 
+            <%# Referral code — optional "Invite & Earn" code a friend shared.
+                Binds referred_by on the new customer (legacy "Referred Code"). %>
+            <div class="profile-field">
+                <label class="profile-field__label" for="profile-ref">Referral code <span class="profile-field__hint">(optional)</span></label>
+                <input
+                    id="profile-ref"
+                    class="profile-field__input"
+                    type="text"
+                    name="referred_code"
+                    value=""
+                    placeholder="Friend's code (e.g. 8HKQG57Y)"
+                    autocomplete="off"
+                    maxlength="20"
+                >
+            </div>
+
             <%# Diet preference — Veg / Non-veg. Tap toggles, only one
                 selected at a time. Demo defaults to Veg. %>
             <div class="profile-field">

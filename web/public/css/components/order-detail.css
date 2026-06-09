@@ -276,3 +276,39 @@
 }
 .review-form__photo-btn:hover { border-color: var(--color-primary); color: var(--color-primary); }
 .review-form__submit { margin-top: var(--space-2); }
+
+/* Driver + live status message on the tracker. */
+.order-track__driver { display: flex; align-items: center; gap: 8px; margin: 10px 0 0; font-size: 0.92rem; color: var(--color-text); font-weight: 600; }
+.order-track__driver[hidden] { display: none; }
+.order-track__driver svg { color: var(--color-primary); flex: 0 0 auto; }
+.order-track__note { margin: 10px 0 0; padding: 10px 14px; background: #eff6ff; color: #1e40af; border-radius: 10px; font-size: 0.88rem; font-weight: 600; }
+.order-track__note[hidden] { display: none; }
+
+/* Report-an-issue modal (order detail). */
+.issue-modal { position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center; justify-content: center; padding: var(--space-4); }
+.issue-modal[hidden] { display: none; }
+.issue-modal__backdrop { position: absolute; inset: 0; background: rgba(17, 17, 17, 0.55); }
+.issue-modal__panel {
+    position: relative; z-index: 1; width: 100%; max-width: 460px;
+    background: #fff; border-radius: var(--radius-xl, 20px); padding: var(--space-6) var(--space-5) var(--space-5);
+    box-shadow: var(--shadow-2); max-height: 92vh; overflow-y: auto; animation: review-pop 140ms ease;
+}
+.issue-modal__close {
+    position: absolute; top: 10px; right: 12px; width: 34px; height: 34px; border: 0;
+    background: var(--color-bg-alt); border-radius: 50%; font-size: 1.4rem; line-height: 1; cursor: pointer; color: var(--color-text);
+}
+.issue-modal__title { margin: 0 0 4px; font-size: 1.1rem; font-weight: 800; }
+.issue-modal__sub { margin: 0 0 14px; font-size: 0.88rem; color: var(--color-text-soft); }
+.issue-modal__text {
+    width: 100%; border: 1.5px solid var(--color-border, #e5e7eb); border-radius: 12px;
+    padding: 12px; font: inherit; resize: vertical; min-height: 110px;
+}
+.issue-modal__text:focus { outline: none; border-color: var(--color-primary); }
+.issue-modal__err { margin: 8px 0 0; font-size: 0.82rem; color: #dc2626; }
+.issue-modal__err[hidden] { display: none; }
+.issue-modal__actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 16px; }
+.issue-modal__actions[hidden] { display: none; }
+.issue-modal__reply { margin-top: 12px; padding: 12px 14px; border-radius: 12px; font-size: 0.9rem; }
+.issue-modal__reply[hidden] { display: none; }
+.issue-modal__reply.is-success { background: #dcfce7; color: #15803d; }
+.issue-modal__reply.is-reply { background: #eff6ff; color: #1e40af; }

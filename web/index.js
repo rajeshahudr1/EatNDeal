@@ -566,6 +566,8 @@ app.post('/cart/apply-coupon', CartController.applyCoupon);
 app.post('/cart/remove-coupon',CartController.removeCoupon);
 app.post('/cart/apply-voucher', CartController.applyVoucher);
 app.post('/cart/remove-voucher',CartController.removeVoucher);
+app.post('/cart/apply-loyalty', CartController.applyLoyalty);
+app.post('/cart/remove-loyalty',CartController.removeLoyalty);
 app.post('/cart/set-charity',  CartController.setCharity);
 
 // ── Orders (signed-in marketplace customers only) ───────────────────
@@ -573,6 +575,9 @@ app.post('/cart/set-charity',  CartController.setCharity);
 // Phase-2E will add /orders (list) + /order/:id (full detail).
 app.post('/order/place',           OrderController.place);
 app.post('/order/:id/reorder',     OrderController.reorder);
+app.post('/order/:id/report-issue', OrderController.reportIssue);
+app.get ('/order/:id/issue-response', OrderController.issueResponse);
+app.get ('/order/:id/receipt',     OrderController.receipt);
 app.get ('/orders',                OrderController.ordersPage);
 app.get ('/order/:id/confirm',     OrderController.confirmation);
 app.get ('/orders/data',           OrderController.list);
@@ -643,6 +648,17 @@ app.post('/order/:id/review', (req, res) => {
             return res.status(200).json({ status: 400, show: true, msg });
         }
         return OrderController.submitReview(req, res);
+    });
+});
+
+// Cashback review — upload a screenshot of an external (Google/FB) review.
+app.post('/review-cashback', (req, res) => {
+    reviewUpload.single('photo')(req, res, (err) => {
+        if (err) {
+            if (req.flash) { req.flash('error', 'Could not upload that screenshot. Use a PNG/JPG under 4 MB.'); }
+            return res.redirect(req.get('referer') || '/');
+        }
+        return OrderController.submitCashbackReview(req, res);
     });
 });
 

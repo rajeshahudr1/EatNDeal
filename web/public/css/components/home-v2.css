@@ -446,6 +446,8 @@
 .resto-card__time, .resto-card__dist { display: inline-flex; align-items: center; gap: 3px; }
 .resto-card__dist svg { color: var(--color-primary); }
 .resto-card__delivery { color: var(--color-success); font-size: 0.8rem; font-weight: 600; }
+/* Closed badge — RED (defined after the base so it wins the cascade). */
+.resto-card__delivery--closed { color: #dc2626; }
 .resto-card__foot { display: flex; align-items: center; justify-content: space-between; margin-top: 2px; }
 .resto-card__price { font-size: 0.82rem; color: var(--color-text-muted); }
 .resto-card__add {

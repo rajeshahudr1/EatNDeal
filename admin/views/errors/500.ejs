@@ -1,0 +1,15 @@
+<%#
+  views/errors/500.ejs — server-error page (bare layout). error_msg is
+  passed only in development; null in production.
+-%>
+<section class="errpage">
+    <div class="errpage__card">
+        <div class="errpage__code">500</div>
+        <h1 class="errpage__title">Something went wrong</h1>
+        <p class="errpage__sub">An unexpected error occurred. Please try again.</p>
+        <% if (typeof error_msg !== 'undefined' && error_msg) { %>
+        <pre class="errpage__detail"><%= error_msg %></pre>
+        <% } %>
+        <a class="errpage__btn" href="/">Back to dashboard</a>
+    </div>
+</section>

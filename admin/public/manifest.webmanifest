@@ -1,0 +1,19 @@
+{
+    "name": "EatNDeal Admin",
+    "short_name": "EatNDeal Admin",
+    "description": "EatNDeal loyalty & marketplace management console.",
+    "start_url": "/",
+    "scope": "/",
+    "display": "standalone",
+    "orientation": "any",
+    "background_color": "#16213e",
+    "theme_color": "#16213e",
+    "icons": [
+        {
+            "src": "/brand/logo.png",
+            "sizes": "any",
+            "type": "image/png",
+            "purpose": "any"
+        }
+    ]
+}

@@ -1,0 +1,72 @@
+<%#
+  views/auth/reset.ejs
+
+  "Set a new password" — reached from the reset link. Carries the token in a
+  hidden field; the password has a show/hide toggle + a confirm field. POSTs
+  to /reset-password.
+
+  Used: Controllers/AuthController.resetPage / doReset (bare layout).
+-%>
+<section class="adlogin">
+    <aside class="adlogin__brand">
+        <div class="adlogin__brand-top">
+            <span class="adlogin__logo-wrap"><img class="adlogin__logo" src="<%= brand.logoUrl %>?v=<%= ASSET_VERSION %>" alt="<%= brand.name %>"></span>
+            <span class="adlogin__brand-name"><%= brand.name %> <span>Admin</span></span>
+        </div>
+        <h1 class="adlogin__headline">Choose a<br><em>new password</em></h1>
+        <p class="adlogin__subhead">Pick a strong password you don’t use anywhere else.</p>
+        <p class="adlogin__brand-foot"><%= brand.copyright || '© EatNDeal' %></p>
+    </aside>
+
+    <div class="adlogin__panel">
+        <div class="adlogin__card" role="region" aria-labelledby="adreset-title">
+            <div class="adlogin__mobilebrand" aria-hidden="true">
+                <img src="<%= brand.logoUrl %>?v=<%= ASSET_VERSION %>" alt="">
+                <span><%= brand.name %> <strong>Admin</strong></span>
+            </div>
+
+            <h2 id="adreset-title" class="adlogin__title">Set a new password</h2>
+            <p class="adlogin__sub">Your reset link is valid for a limited time</p>
+
+            <% if (!token) { %>
+                <p class="adform__error adform__error--block">This reset link is missing or invalid. Please request a new one.</p>
+                <p class="adlogin__secure adlogin__back"><a class="adform__forgot" href="/forgot-password">← Request a new link</a></p>
+            <% } else { %>
+            <form id="adreset-form" class="adform" method="post" action="/reset-password" novalidate>
+                <input type="hidden" name="token" value="<%= token %>">
+
+                <label class="adform__label" for="adreset-password">New password</label>
+                <div class="adform__field" data-field="password">
+                    <span class="adform__icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                    </span>
+                    <input id="adreset-password" class="adform__input" type="password" name="password"
+                        placeholder="Enter a new password" autocomplete="new-password" minlength="6" required autofocus>
+                    <button type="button" class="adform__toggle" data-action="toggle-password" data-target="adreset-password" aria-label="Show password" aria-pressed="false">
+                        <svg class="adform__eye" viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+                        <svg class="adform__eye-off" viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" hidden><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c6.5 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.5 13.5 0 0 0 2 12s3.5 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" y1="2" x2="22" y2="22"/></svg>
+                    </button>
+                </div>
+                <p class="adform__error" data-error="password" hidden></p>
+
+                <label class="adform__label" for="adreset-confirm">Confirm new password</label>
+                <div class="adform__field" data-field="confirm">
+                    <span class="adform__icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                    </span>
+                    <input id="adreset-confirm" class="adform__input" type="password" name="confirm"
+                        placeholder="Re-enter the new password" autocomplete="new-password" minlength="6" required>
+                </div>
+                <p class="adform__error" data-error="confirm" hidden></p>
+
+                <button type="submit" class="adform__submit" data-action="submit-reset">
+                    <span class="adform__submit-label">Reset password</span>
+                    <span class="adform__spinner" aria-hidden="true"></span>
+                </button>
+            </form>
+
+            <p class="adlogin__secure adlogin__back"><a class="adform__forgot" href="/login">← Back to sign in</a></p>
+            <% } %>
+        </div>
+    </div>
+</section>

@@ -512,6 +512,14 @@ async function accountPage(req, res) {
         // Highlight the matching bottom-nav icon: Orders when the orders
         // tab is open, otherwise Profile.
         active_nav:       activeTab === 'orders' ? 'orders' : 'profile',
+        // Only the Profile EDIT screen becomes the chrome-less focused
+        // "app screen" on mobile (it has its own sticky save bar). Every
+        // other tab (Addresses / Payment / Orders / Favourites / Rewards)
+        // keeps the site header + bottom-nav like the Orders screen, so the
+        // whole account section feels consistent on a phone. The CSS keys
+        // the focused treatment off the body class `view-profilefocus`
+        // (set via view_mode) instead of active_nav.
+        view_mode:        activeTab === 'profile' ? 'profilefocus' : '',
         extra_js:         '/js/pages/account.js',
         // Full site chrome (header + footer) like the mockup, but NO promo
         // strip on this page.

@@ -224,6 +224,29 @@ router.post('/auth/social-signin',
     validate(socialSigninSchema),
     AuthCtl.socialSignin);
 
+// ── Admin console auth (super-admin / staff + company) ─────────────
+// Powers the admin/ layer (port 4503). Authenticates against the EXISTING
+// live tables: `user` (role 6 = super admin) + `company` (owner login).
+// Public endpoints — the whole point is to sign an admin in.
+const AdminAuthCtl = require('../Controllers/Admin/AuthController');
+const {
+    adminLoginSchema,
+    adminForgotSchema,
+    adminResetSchema,
+} = require('../Validators/adminAuth');
+
+router.post('/admin/auth/login',
+    validate(adminLoginSchema),
+    AdminAuthCtl.login);
+
+router.post('/admin/auth/forgot-password',
+    validate(adminForgotSchema),
+    AdminAuthCtl.forgotPassword);
+
+router.post('/admin/auth/reset-password',
+    validate(adminResetSchema),
+    AdminAuthCtl.resetPassword);
+
 // ── Customer saved addresses ───────────────────────────────────────
 // The signed-in customer's address book (Home / Work / ...) backing the
 // location sheet + "Address info" add/edit screen. Scoped to one

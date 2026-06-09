@@ -1,0 +1,23 @@
+/*
+ * mobile.css — admin layout for < 900px
+ *
+ * Loaded via <link media="(max-width: 899px)">. The component sheets are
+ * already mobile-first, so this file only holds small phone-only polish
+ * that would otherwise clutter the component files.
+ * (Conventions rule #4 — separate desktop / mobile layout.)
+ */
+
+/* Prevent the page behind the open sidebar drawer from scrolling. */
+body.sidebar-open { overflow: hidden; }
+
+/* Slightly tighter login card on small phones. */
+@media (max-width: 380px) {
+    .adlogin { padding: 16px 12px; }
+    .adlogin__card { padding: 24px 18px 22px; }
+    .adlogin__title { font-size: 1.3rem; }
+}
+
+/* Hide the username label on very narrow topbars — keep just the avatar. */
+@media (max-width: 420px) {
+    .admin-topbar__uname { display: none; }
+}

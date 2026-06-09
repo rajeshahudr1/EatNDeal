@@ -1,0 +1,121 @@
+<%#
+  views/auth/login.ejs
+
+  Admin sign-in page. Split layout matching the admin mockup theme
+  (dark navy #16213e branding + red CTA):
+    Desktop (>= 900px): two columns —
+      LEFT  dark branding panel: logo · "Admin Console" · tagline ·
+            loyalty-management feature rows.
+      RIGHT white card: "Welcome back" · email + password · remember /
+            forgot · Sign in · security note.
+    Mobile (< 900px): stacks — compact dark header band on top, card below.
+
+  POSTs to /login (works without JS). pages/login.js progressively
+  enhances: password show/hide, inline validation, submit spinner.
+
+  Used: Controllers/AuthController.loginPage (bare layout).
+-%>
+<section class="adlogin">
+
+    <%# ── LEFT: dark branding panel ─────────────────────────────── %>
+    <aside class="adlogin__brand">
+        <div class="adlogin__brand-top">
+            <span class="adlogin__logo-wrap">
+                <img class="adlogin__logo" src="<%= brand.logoUrl %>?v=<%= ASSET_VERSION %>" alt="<%= brand.name %>">
+            </span>
+            <span class="adlogin__brand-name"><%= brand.name %> <span>Admin</span></span>
+        </div>
+
+        <h1 class="adlogin__headline">Manage your<br><em>loyalty &amp; rewards</em><br>in one place.</h1>
+        <p class="adlogin__subhead">Cashback rules, tiers, challenges, referrals and review claims — all from a single console.</p>
+
+        <ul class="adlogin__features">
+            <li class="adfeat">
+                <span class="adfeat__icon" aria-hidden="true">💷</span>
+                <span class="adfeat__text"><strong>Cashback &amp; Tiers</strong><span>Configure rates, thresholds &amp; member tiers</span></span>
+            </li>
+            <li class="adfeat">
+                <span class="adfeat__icon" aria-hidden="true">🏆</span>
+                <span class="adfeat__text"><strong>Challenges &amp; Events</strong><span>Run seasonal multipliers &amp; leaderboards</span></span>
+            </li>
+            <li class="adfeat">
+                <span class="adfeat__icon" aria-hidden="true">⭐</span>
+                <span class="adfeat__text"><strong>Review Claims</strong><span>Approve Google / Facebook review rewards</span></span>
+            </li>
+            <li class="adfeat">
+                <span class="adfeat__icon" aria-hidden="true">👥</span>
+                <span class="adfeat__text"><strong>Customer Segments</strong><span>Target high-value &amp; inactive customers</span></span>
+            </li>
+        </ul>
+
+        <p class="adlogin__brand-foot"><%= brand.copyright || '© EatNDeal' %></p>
+    </aside>
+
+    <%# ── RIGHT: form card ──────────────────────────────────────── %>
+    <div class="adlogin__panel">
+        <div class="adlogin__card" role="region" aria-labelledby="adlogin-title">
+
+            <%# Compact brand row — only visible on mobile (the dark panel
+                is hidden there). %>
+            <div class="adlogin__mobilebrand" aria-hidden="true">
+                <img src="<%= brand.logoUrl %>?v=<%= ASSET_VERSION %>" alt="">
+                <span><%= brand.name %> <strong>Admin</strong></span>
+            </div>
+
+            <h2 id="adlogin-title" class="adlogin__title">Welcome back 👋</h2>
+            <p class="adlogin__sub">Sign in to your admin account</p>
+
+            <form id="adlogin-form" class="adform" method="post" action="/login" novalidate>
+                <input type="hidden" name="next" value="<%= next %>">
+
+                <%# Email %>
+                <label class="adform__label" for="adlogin-email">Email address</label>
+                <div class="adform__field" data-field="email">
+                    <span class="adform__icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 6-10 7L2 6"/></svg>
+                    </span>
+                    <input id="adlogin-email" class="adform__input" type="email" name="email"
+                        value="<%= email %>" placeholder="you@eatndeal.com"
+                        autocomplete="username" inputmode="email" required autofocus>
+                </div>
+                <p class="adform__error" data-error="email" hidden></p>
+
+                <%# Password %>
+                <label class="adform__label" for="adlogin-password">Password</label>
+                <div class="adform__field" data-field="password">
+                    <span class="adform__icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                    </span>
+                    <input id="adlogin-password" class="adform__input" type="password" name="password"
+                        placeholder="Enter your password" autocomplete="current-password"
+                        minlength="6" required>
+                    <button type="button" class="adform__toggle" data-action="toggle-password"
+                        aria-label="Show password" aria-pressed="false">
+                        <svg class="adform__eye" viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+                        <svg class="adform__eye-off" viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" hidden><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c6.5 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.5 13.5 0 0 0 2 12s3.5 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" y1="2" x2="22" y2="22"/></svg>
+                    </button>
+                </div>
+                <p class="adform__error" data-error="password" hidden></p>
+
+                <%# Remember + forgot %>
+                <div class="adform__row">
+                    <label class="adform__check">
+                        <input type="checkbox" name="remember" value="1">
+                        <span>Remember me</span>
+                    </label>
+                    <a class="adform__forgot" href="/forgot-password">Forgot password?</a>
+                </div>
+
+                <button type="submit" class="adform__submit" data-action="submit-login">
+                    <span class="adform__submit-label">Sign in</span>
+                    <span class="adform__spinner" aria-hidden="true"></span>
+                </button>
+            </form>
+
+            <p class="adlogin__secure">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                Secure admin access · authorised staff only
+            </p>
+        </div>
+    </div>
+</section>

@@ -1,0 +1,48 @@
+<%#
+  partials/sidebar.ejs — admin left navigation
+
+  Dark navy rail with the loyalty-management sections from the mockup.
+  On desktop it is fixed; on mobile it slides in as an off-canvas drawer
+  (toggled by the topbar hamburger, dismissed via .admin-scrim).
+  active_nav (set per controller) highlights the current item.
+-%>
+<% var nav = active_nav || ''; %>
+<aside class="admin-sidebar" id="admin-sidebar">
+    <div class="admin-sidebar__brand">
+        <img class="admin-sidebar__logo" src="<%= brand.logoUrl %>?v=<%= ASSET_VERSION %>" alt="<%= brand.name %>">
+        <span class="admin-sidebar__name"><%= brand.name %> <span>Admin</span></span>
+    </div>
+
+    <nav class="admin-nav" aria-label="Admin sections">
+        <a class="admin-nav__item <%= nav === 'dashboard' ? 'is-active' : '' %>" href="/">
+            <span class="admin-nav__ic" aria-hidden="true">📊</span><span>Dashboard</span>
+        </a>
+        <a class="admin-nav__item <%= nav === 'cashback' ? 'is-active' : '' %>" href="/loyalty/cashback-rules">
+            <span class="admin-nav__ic" aria-hidden="true">💷</span><span>Cashback Rules</span>
+        </a>
+        <a class="admin-nav__item <%= nav === 'tiers' ? 'is-active' : '' %>" href="/loyalty/tiers">
+            <span class="admin-nav__ic" aria-hidden="true">🏅</span><span>Tier Config</span>
+        </a>
+        <a class="admin-nav__item <%= nav === 'referral' ? 'is-active' : '' %>" href="/loyalty/referral-streak">
+            <span class="admin-nav__ic" aria-hidden="true">🔥</span><span>Referral &amp; Streak</span>
+        </a>
+        <a class="admin-nav__item <%= nav === 'challenges' ? 'is-active' : '' %>" href="/loyalty/challenges">
+            <span class="admin-nav__ic" aria-hidden="true">🏆</span><span>Challenges</span>
+        </a>
+        <a class="admin-nav__item <%= nav === 'events' ? 'is-active' : '' %>" href="/loyalty/events">
+            <span class="admin-nav__ic" aria-hidden="true">🎉</span><span>Event Rewards</span>
+        </a>
+        <a class="admin-nav__item <%= nav === 'reviews' ? 'is-active' : '' %>" href="/loyalty/review-claims">
+            <span class="admin-nav__ic" aria-hidden="true">⭐</span><span>Review Claims</span>
+        </a>
+        <a class="admin-nav__item <%= nav === 'segments' ? 'is-active' : '' %>" href="/loyalty/segments">
+            <span class="admin-nav__ic" aria-hidden="true">👥</span><span>Segments</span>
+        </a>
+    </nav>
+
+    <form class="admin-sidebar__logout" method="post" action="/logout">
+        <button type="submit" class="admin-nav__item admin-nav__item--logout">
+            <span class="admin-nav__ic" aria-hidden="true">↩️</span><span>Sign out</span>
+        </button>
+    </form>
+</aside>

@@ -118,19 +118,67 @@
         <% var ords = (typeof orders !== 'undefined' && orders) ? orders : []; %>
         <% var of = (typeof order_filters !== 'undefined' && order_filters) ? order_filters : { status:'', search:'', date_from:'', date_to:'' }; %>
 
-        <%# Filter bar — status / date range / order-number search (GET). %>
-        <form class="orders-filter" method="get" action="/account">
+        <%# Filter — compact bar (order-number search + a filter icon) that
+            opens a bottom-sheet popup for status + date range. Mirrors the
+            home page's search + filter-icon pattern. The whole thing is one
+            GET form so Apply (or Enter in the search box) submits every
+            field together. %>
+        <% var ordfActive = !!(of.status || of.date_from || of.date_to); %>
+        <form class="ordf" method="get" action="/account" data-orders-filter>
             <input type="hidden" name="tab" value="orders">
-            <select name="status" class="orders-filter__select" aria-label="Order status">
-                <option value=""<%= of.status === '' ? ' selected' : '' %>>All orders</option>
-                <option value="active"<%= of.status === 'active' ? ' selected' : '' %>>Active</option>
-                <option value="completed"<%= of.status === 'completed' ? ' selected' : '' %>>Completed</option>
-                <option value="cancelled"<%= of.status === 'cancelled' ? ' selected' : '' %>>Cancelled</option>
-            </select>
-            <input type="search" name="search" class="orders-filter__input" placeholder="Order number…" value="<%= of.search %>" maxlength="60">
-            <input type="date" name="date_from" class="orders-filter__date" value="<%= of.date_from %>" aria-label="From date">
-            <input type="date" name="date_to" class="orders-filter__date" value="<%= of.date_to %>" aria-label="To date">
-            <button type="submit" class="orders-filter__btn">Filter</button>
+
+            <div class="ordf__bar">
+                <div class="ordf__search">
+                    <svg class="ordf__search-ic" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                    <input type="search" name="search" class="ordf__search-input" placeholder="Search order number…" value="<%= of.search %>" maxlength="60">
+                </div>
+                <button type="button" class="ordf__filter-btn<%= ordfActive ? ' is-active' : '' %>" data-action="open-orders-filter" aria-haspopup="dialog" aria-label="Filter orders">
+                    <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="7" y1="12" x2="17" y2="12"/><line x1="10" y1="18" x2="14" y2="18"/></svg>
+                    <% if (ordfActive) { %><span class="ordf__dot" aria-hidden="true"></span><% } %>
+                </button>
+            </div>
+
+            <%# Bottom-sheet popup — status + date range. Hidden until the
+                filter icon is tapped (toggled by /js/pages/account.js). %>
+            <div class="ordf-sheet" data-orders-sheet hidden>
+                <div class="ordf-sheet__backdrop" data-action="close-orders-filter" aria-hidden="true"></div>
+                <div class="ordf-sheet__panel" role="dialog" aria-modal="true" aria-label="Filter orders">
+                    <header class="ordf-sheet__head">
+                        <h3 class="ordf-sheet__title">Filter orders</h3>
+                        <button type="button" class="ordf-sheet__close" data-action="close-orders-filter" aria-label="Close">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                        </button>
+                    </header>
+
+                    <div class="ordf-sheet__body">
+                        <label class="ordf-sheet__label">Status</label>
+                        <div class="ordf-chips" role="radiogroup" aria-label="Order status">
+                            <% [['','All orders'],['active','Active'],['completed','Completed'],['cancelled','Cancelled']].forEach(function (s) { %>
+                            <label class="ordf-chip<%= of.status === s[0] ? ' is-on' : '' %>">
+                                <input type="radio" name="status" value="<%= s[0] %>"<%= of.status === s[0] ? ' checked' : '' %>>
+                                <span><%= s[1] %></span>
+                            </label>
+                            <% }); %>
+                        </div>
+
+                        <div class="ordf-sheet__dates">
+                            <div>
+                                <label class="ordf-sheet__label" for="ordf-from">From</label>
+                                <input id="ordf-from" type="date" name="date_from" class="ordf-sheet__date" value="<%= of.date_from %>">
+                            </div>
+                            <div>
+                                <label class="ordf-sheet__label" for="ordf-to">To</label>
+                                <input id="ordf-to" type="date" name="date_to" class="ordf-sheet__date" value="<%= of.date_to %>">
+                            </div>
+                        </div>
+                    </div>
+
+                    <footer class="ordf-sheet__foot">
+                        <a class="ordf-sheet__clear" href="/account?tab=orders">Clear all</a>
+                        <button type="submit" class="ordf-sheet__apply">Apply filters</button>
+                    </footer>
+                </div>
+            </div>
         </form>
 
         <% if (ords.length === 0) { %>

@@ -1,0 +1,76 @@
+<%#
+  views/auth/forgot.ejs
+
+  "Forgot password" — same split layout as the login page. Two states:
+    • default → email input + "Send reset link"
+    • sent    → confirmation message (+ a dev reset link in non-prod, since
+                no mailer is wired yet)
+
+  Used: Controllers/AuthController.forgotPage / doForgot (bare layout).
+-%>
+<section class="adlogin">
+    <aside class="adlogin__brand">
+        <div class="adlogin__brand-top">
+            <span class="adlogin__logo-wrap"><img class="adlogin__logo" src="<%= brand.logoUrl %>?v=<%= ASSET_VERSION %>" alt="<%= brand.name %>"></span>
+            <span class="adlogin__brand-name"><%= brand.name %> <span>Admin</span></span>
+        </div>
+        <h1 class="adlogin__headline">Reset your<br><em>access</em><br>securely.</h1>
+        <p class="adlogin__subhead">We’ll email you a secure, time-limited link to set a new password.</p>
+        <p class="adlogin__brand-foot"><%= brand.copyright || '© EatNDeal' %></p>
+    </aside>
+
+    <div class="adlogin__panel">
+        <div class="adlogin__card" role="region" aria-labelledby="adforgot-title">
+            <div class="adlogin__mobilebrand" aria-hidden="true">
+                <img src="<%= brand.logoUrl %>?v=<%= ASSET_VERSION %>" alt="">
+                <span><%= brand.name %> <strong>Admin</strong></span>
+            </div>
+
+            <% if (typeof sent !== 'undefined' && sent) { %>
+                <%# ── Sent state ─────────────────────────────────── %>
+                <div class="adlogin__sent-ic" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 6-10 7L2 6"/></svg>
+                </div>
+                <h2 id="adforgot-title" class="adlogin__title">Check your email</h2>
+                <p class="adlogin__sub">If <strong><%= email %></strong> is registered, we’ve sent a link to reset your password. It expires in 1 hour.</p>
+
+                <% if (dev_reset_url) { %>
+                <%# Dev-only: no mailer is wired, so surface the link directly. %>
+                <a class="adform__submit" href="<%= dev_reset_url %>">
+                    <span class="adform__submit-label">Open reset link (dev)</span>
+                </a>
+                <% } %>
+
+                <p class="adlogin__secure adlogin__back">
+                    <a class="adform__forgot" href="/login">← Back to sign in</a>
+                </p>
+            <% } else { %>
+                <%# ── Default state ──────────────────────────────── %>
+                <h2 id="adforgot-title" class="adlogin__title">Forgot password?</h2>
+                <p class="adlogin__sub">Enter your admin email and we’ll send a reset link</p>
+
+                <form id="adforgot-form" class="adform" method="post" action="/forgot-password" novalidate>
+                    <label class="adform__label" for="adforgot-email">Email address</label>
+                    <div class="adform__field" data-field="email">
+                        <span class="adform__icon" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 6-10 7L2 6"/></svg>
+                        </span>
+                        <input id="adforgot-email" class="adform__input" type="email" name="email"
+                            value="<%= typeof email !== 'undefined' ? email : '' %>" placeholder="you@eatndeal.com"
+                            autocomplete="username" inputmode="email" required autofocus>
+                    </div>
+                    <p class="adform__error" data-error="email" hidden></p>
+
+                    <button type="submit" class="adform__submit" data-action="submit-login">
+                        <span class="adform__submit-label">Send reset link</span>
+                        <span class="adform__spinner" aria-hidden="true"></span>
+                    </button>
+                </form>
+
+                <p class="adlogin__secure adlogin__back">
+                    <a class="adform__forgot" href="/login">← Back to sign in</a>
+                </p>
+            <% } %>
+        </div>
+    </div>
+</section>

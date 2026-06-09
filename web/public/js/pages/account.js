@@ -198,8 +198,26 @@
         }
     }
 
+    // ── Orders filter bottom-sheet ─────────────────────────────────
+    // Opens/closes the status + date-range popup on the Orders tab. The
+    // sheet lives inside the GET filter form, so the Apply button submits
+    // every field together (search box + status + dates).
+    function toggleOrdersSheet(open) {
+        var sheet = document.querySelector('[data-orders-sheet]');
+        if (!sheet) { return; }
+        sheet.hidden = !open;
+        document.body.classList.toggle('ordf-open', !!open);
+    }
+
     // ── Field interactions: clear / CHANGE toggle / avatar ─────────
     function bindFieldActions() {
+        // Esc closes the orders filter sheet if it's open.
+        document.addEventListener('keydown', function (ev) {
+            if (ev.key === 'Escape' && document.body.classList.contains('ordf-open')) {
+                toggleOrdersSheet(false);
+            }
+        });
+
         // The native "More" button only makes sense where the Web Share
         // API exists (mostly mobile) — reveal it there, leave hidden else.
         if (navigator.share) {
@@ -312,6 +330,18 @@
             if (shareBtn) {
                 ev.preventDefault();
                 shareReferral(shareBtn.getAttribute('data-platform'), shareBtn.getAttribute('data-code') || '');
+                return;
+            }
+
+            // Orders filter — open / close the bottom-sheet popup.
+            if (t.closest('[data-action="open-orders-filter"]')) {
+                ev.preventDefault();
+                toggleOrdersSheet(true);
+                return;
+            }
+            if (t.closest('[data-action="close-orders-filter"]')) {
+                ev.preventDefault();
+                toggleOrdersSheet(false);
                 return;
             }
 

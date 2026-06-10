@@ -1,0 +1,80 @@
+<%#
+  views/store-settings/advance-order.ejs
+
+  Advance Order Waiting Time — port of the legacy sub-page. Two tabs:
+    Value-Time  (order_type 1) and Volume-Time (order_type 2),
+  each with a Pickup (service_type 1) and Delivery (service_type 4) group.
+  Each group lists its ranges (min–max → time) with edit / delete and an
+  inline add form. `rows` = the api payload, or null on error.
+
+  Used: Controllers/StoreSettingsController.advanceIndex.
+-%>
+<%
+    var sym = (brand && brand.currencySymbol) ? brand.currencySymbol : '£';
+    var allRows = rows || [];
+    function rowsFor(ot, st) { return allRows.filter(function (r) { return r.order_type === ot && r.service_type === st; }); }
+%>
+<div class="ss">
+
+    <div class="ly__head">
+        <div>
+            <h2 class="ly__title">⏱️ Advance Order Waiting Time</h2>
+            <p class="ly__sub">Extra prep time by order value / volume &amp; service</p>
+        </div>
+        <a class="ly-btn ly-btn--ghost ly-btn--sm" href="/store-settings">← Store settings</a>
+    </div>
+
+    <% if (load_error) { %>
+        <div class="ly-empty"><span class="ly-empty__ic" aria-hidden="true">🏢</span><p class="ly-empty__msg"><%= load_error %></p></div>
+    <% } else if (rows) { %>
+
+        <div class="adv-tabs" data-adv-tabs>
+            <button type="button" class="adv-tab is-active" data-adv-tab="1">Value-Time</button>
+            <button type="button" class="adv-tab" data-adv-tab="2">Volume-Time</button>
+        </div>
+
+        <% [[1,'Value-Time'],[2,'Volume-Time']].forEach(function (ot) { %>
+        <div class="adv-pane" data-adv-pane="<%= ot[0] %>" <%= ot[0] === 1 ? '' : 'hidden' %>>
+            <% [[1,'🛍️ Pickup'],[4,'🛵 Delivery']].forEach(function (st) {
+                var gr = rowsFor(ot[0], st[0]);
+            %>
+            <section class="card ss-card">
+                <h3 class="card__title"><%= st[1] %></h3>
+                <div class="adv-rows">
+                    <% if (!gr.length) { %>
+                        <p class="ly-none">No ranges yet.</p>
+                    <% } else { %>
+                        <% gr.forEach(function (r) { %>
+                        <div class="adv-row">
+                            <span class="adv-row__range"><strong><%= sym %><%= r.min.toFixed(2) %></strong> – <strong><%= sym %><%= r.max.toFixed(2) %></strong></span>
+                            <span class="adv-row__time"><%= r.time %> min</span>
+                            <div class="adv-row__act">
+                                <button type="button" class="ly-iconbtn" data-action="adv-edit" data-row="<%= encodeURIComponent(JSON.stringify(r)) %>" aria-label="Edit">✎</button>
+                                <form method="post" action="/store-settings/advance/delete" class="ly-del">
+                                    <input type="hidden" name="id" value="<%= r.id %>">
+                                    <button type="button" class="ly-iconbtn ly-iconbtn--danger" data-action="adv-delete" aria-label="Delete">🗑</button>
+                                </form>
+                            </div>
+                        </div>
+                        <% }); %>
+                    <% } %>
+                </div>
+
+                <form method="post" action="/store-settings/advance" class="adv-add" data-adv-form>
+                    <input type="hidden" name="order_type" value="<%= ot[0] %>">
+                    <input type="hidden" name="service_type" value="<%= st[0] %>">
+                    <input type="hidden" name="id" value="">
+                    <input type="number" name="min" step="0.01" min="0" placeholder="Min <%= sym %>" required>
+                    <span class="adv-add__dash">–</span>
+                    <input type="number" name="max" step="0.01" min="0" placeholder="Max <%= sym %>" required>
+                    <input type="number" name="time" min="0" placeholder="Minutes" required>
+                    <button type="submit" class="ly-btn ly-btn--primary ly-btn--sm" data-adv-submit>Add</button>
+                    <button type="button" class="ly-btn ly-btn--ghost ly-btn--sm" data-action="adv-cancel" hidden>Cancel</button>
+                </form>
+            </section>
+            <% }); %>
+        </div>
+        <% }); %>
+
+    <% } %>
+</div>

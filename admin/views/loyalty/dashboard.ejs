@@ -1,0 +1,113 @@
+<%#
+  views/loyalty/dashboard.ejs
+
+  Loyalty Dashboard — the landing for the Loyalty menu. Shows the loyalty
+  metrics (cashback earned / redeemed / outstanding / pending claims) plus a
+  grid of cards linking to every loyalty management screen. `dash` = the
+  /admin/loyalty/dashboard payload (or null on error).
+
+  Used: Controllers/LoyaltyController.loyaltyDashboard (shell layout).
+-%>
+<%
+    var cc  = (typeof company_ctx !== 'undefined' && company_ctx) ? company_ctx : { selectedCompany: null, isSuper: false, selectedCompanyId: null };
+    var sym = (brand && brand.currencySymbol) ? brand.currencySymbol : '£';
+    function money(n) { return sym + Number(n || 0).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+    var scopeLabel = cc.selectedCompany ? cc.selectedCompany.business_name : (cc.isSuper ? 'All companies' : 'Your company');
+    var TILES = [
+        ['/loyalty/cashback-rules', '💷', 'Cashback Rules', 'Order-value cashback + wallet settings'],
+        ['/loyalty/tiers',          '🏅', 'Tier Config',    'Bronze / Silver / Gold spend bands'],
+        ['/loyalty/referral-streak','🔥', 'Referral & Streak', 'Invite rewards + order streaks'],
+        ['/loyalty/challenges',     '🏆', 'Challenges',     'Leaderboards & win-back campaigns'],
+        ['/loyalty/events',         '🎉', 'Event Rewards',  'Sign-up / profile / review bonuses'],
+        ['/loyalty/review-claims',  '⭐', 'Review Claims',  'Approve or reject review rewards'],
+        ['/loyalty/segments',       '👥', 'Segments',       'Customer tiers & inactivity'],
+    ];
+%>
+<div class="ly">
+
+    <%- include('../partials/loyalty-subnav') -%>
+
+    <div class="ly__head">
+        <div>
+            <h2 class="ly__title">🎁 Loyalty Dashboard</h2>
+            <p class="ly__sub"><%= scopeLabel %></p>
+        </div>
+        <% if (dash) { %>
+            <% if (cc.selectedCompanyId != null && cc.isSuper) { %>
+                <%# Super admin controls whether THIS company has loyalty. Turning
+                    it on makes the Loyalty menu appear in that company's login. %>
+                <form method="post" action="/loyalty/master-toggle" class="ly-switch-form" data-toggle-form>
+                    <input type="hidden" name="status" value="<%= dash.loyaltyOn ? '2' : '1' %>">
+                    <span class="ly-switch-form__lbl">Loyalty <%= dash.loyaltyOn ? 'ON' : 'OFF' %></span>
+                    <label class="ly-switch"><input type="checkbox" data-action="ly-master-toggle" <%= dash.loyaltyOn ? 'checked' : '' %> aria-label="Enable loyalty for this company"><span class="ly-switch__ui" aria-hidden="true"></span></label>
+                </form>
+            <% } else if (cc.selectedCompanyId != null) { %>
+                <span class="dash__status <%= dash.loyaltyOn ? 'is-on' : 'is-off' %>">Loyalty <%= dash.loyaltyOn ? 'ON' : 'OFF' %></span>
+            <% } else { %>
+                <span class="dash__status is-on"><%= dash.companiesWithLoyalty %> companies live</span>
+            <% } %>
+        <% } %>
+    </div>
+
+    <% if (load_error) { %>
+        <div class="ly-empty"><span class="ly-empty__ic" aria-hidden="true">⚠️</span><p class="ly-empty__msg"><%= load_error %></p></div>
+    <% } else if (dash) { %>
+
+        <div class="dash__metrics">
+            <div class="metric metric--green"><span class="metric__val"><%= money(dash.totals.earned) %></span><span class="metric__lbl">Cashback Given</span></div>
+            <div class="metric metric--amber"><span class="metric__val"><%= money(dash.totals.redeemed) %></span><span class="metric__lbl">Wallet Redeemed</span></div>
+            <div class="metric metric--blue"><span class="metric__val"><%= money(dash.totals.outstanding) %></span><span class="metric__lbl">Outstanding</span></div>
+            <a class="metric metric--purple metric--link" href="/loyalty/review-claims"><span class="metric__val"><%= dash.pendingReviewClaims %></span><span class="metric__lbl">Pending Claims<%= dash.pendingReviewClaims > 0 ? ' →' : '' %></span></a>
+        </div>
+
+        <%# Company-level loyalty settings (commission + phone orders) — the
+            fields that sit next to the on/off toggle in the legacy admin.
+            Super admin only, with a company selected. %>
+        <% if (cc.isSuper && cc.selectedCompanyId != null) { %>
+        <section class="card ly-card">
+            <h3 class="card__title">⚙️ Loyalty configuration — <%= cc.selectedCompany ? cc.selectedCompany.business_name : '' %></h3>
+            <form method="post" action="/loyalty/company-config" class="lc-form">
+                <div class="lc-form__fields">
+                    <div class="lc-field">
+                        <label class="lc-field__label" for="lc-commission">Commission (%)</label>
+                        <input id="lc-commission" class="lc-field__input" type="number" name="loyalty_commission" step="0.01" min="0" value="<%= dash.commission %>" required>
+                    </div>
+                    <label class="lc-toggle">
+                        <input type="checkbox" name="enable_loyalty_phone_order" value="1" <%= dash.phoneOrders ? 'checked' : '' %>>
+                        <span>Enable loyalty for phone orders</span>
+                    </label>
+                </div>
+                <button type="submit" class="ly-btn ly-btn--primary lc-form__save">Save settings</button>
+            </form>
+        </section>
+        <% } %>
+
+        <% if (dash.scope.isSuper && dash.scope.companyId == null && dash.perCompany && dash.perCompany.length) { %>
+        <section class="card">
+            <h3 class="card__title">🏢 Loyalty by company</h3>
+            <div class="dash-table">
+                <div class="dash-table__head"><span>Company</span><span>Earned</span><span>Redeemed</span></div>
+                <% dash.perCompany.forEach(function (c) { %>
+                <div class="dash-table__row"><span class="dash-table__name"><%= c.business_name %></span><span><%= money(c.earned) %></span><span><%= money(c.redeemed) %></span></div>
+                <% }); %>
+            </div>
+        </section>
+        <% } %>
+
+    <% } %>
+
+    <%# The loyalty "menu" — every management screen as a card. %>
+    <h3 class="ly-tiles__title">Manage</h3>
+    <div class="ly-tiles">
+        <% TILES.forEach(function (t) { %>
+        <a class="ly-tile" href="<%= t[0] %>">
+            <span class="ly-tile__ic"><%= t[1] %></span>
+            <span class="ly-tile__body">
+                <span class="ly-tile__name"><%= t[2] %></span>
+                <span class="ly-tile__sub"><%= t[3] %></span>
+            </span>
+            <span class="ly-tile__chev" aria-hidden="true">›</span>
+        </a>
+        <% }); %>
+    </div>
+</div>

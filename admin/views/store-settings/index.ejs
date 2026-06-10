@@ -1,0 +1,444 @@
+<%#
+  views/store-settings/index.ejs
+
+  Store Settings — port of the legacy admin/pos/store-settings page (Phase 1:
+  the main settings form). Company-scoped. Every toggle is a hidden input
+  (the submitted value) + a switch checkbox synced by store-settings.js. Button
+  groups + reveals are driven the same way. `ss` = the api payload or null.
+
+  Used: Controllers/StoreSettingsController.index.
+-%>
+<%
+    var b = ss ? ss.branch : {};
+    var sym = (brand && brand.currencySymbol) ? brand.currencySymbol : '£';
+    function on(v) { return Number(v) === 1; }
+    // Toggle row: hidden carries the value; checkbox is the UI (synced by JS).
+    function tog(name, val, label, sub) {
+        return '<div class="ss-toggle">'
+            + '<span class="ss-toggle__label">' + label + (sub ? '<span class="ss-toggle__sub">' + sub + '</span>' : '') + '</span>'
+            + '<label class="ss-switch"><input type="hidden" name="' + name + '" value="' + (on(val) ? 1 : 0) + '">'
+            + '<input type="checkbox" class="ss-switch__cb" data-sync="' + name + '"' + (on(val) ? ' checked' : '') + '>'
+            + '<span class="ss-switch__ui" aria-hidden="true"></span></label></div>';
+    }
+    // Segmented button group → hidden value.
+    function btngroup(name, val, opts) {
+        var h = '<div class="ss-btngroup" data-btngroup="' + name + '"><input type="hidden" name="' + name + '" value="' + val + '">';
+        opts.forEach(function (o) { h += '<button type="button" class="ss-btn' + (String(val) === String(o[0]) ? ' is-active' : '') + '" data-value="' + o[0] + '">' + o[1] + '</button>'; });
+        return h + '</div>';
+    }
+%>
+<div class="ss">
+
+    <%# Page title lives in the topbar — no duplicate heading here. %>
+    <% if (load_error) { %>
+        <div class="ly-empty"><span class="ly-empty__ic" aria-hidden="true">🏢</span><p class="ly-empty__msg"><%= load_error %></p></div>
+    <% } else if (ss) { %>
+
+    <%# Store images — its own multipart form (not nested in the settings form).
+        Files are written into the Yii uploads tree; only filenames hit the DB. %>
+    <section class="card ss-card">
+        <h3 class="card__title">Store images</h3>
+        <form method="post" action="/store-settings/upload" enctype="multipart/form-data">
+            <div class="ss-img-grid">
+                <% [['business_image','Business image', b.business_image_url],['banner_image','Banner image', b.banner_image_url],['discount_icon','Discount logo', b.discount_icon_url],['surprise_image','Surprise box', b.surprise_image_url]].forEach(function (im) { %>
+                <label class="ss-img">
+                    <span class="ss-img__label"><%= im[1] %></span>
+                    <span class="ss-img__preview" data-img-preview>
+                        <% if (im[2]) { %><img src="<%= im[2] %>" alt="<%= im[1] %>" data-img-thumb><% } else { %><span class="ss-img__ph" data-img-ph>No image</span><% } %>
+                        <span class="ss-img__overlay" aria-hidden="true">Change</span>
+                    </span>
+                    <span class="ss-img__file">
+                        <span class="ss-img__btn">Choose file</span>
+                        <span class="ss-img__name" data-img-name>No file chosen</span>
+                    </span>
+                    <input type="file" name="<%= im[0] %>" accept="image/png,image/jpeg,image/webp" class="ss-img__input" data-img-input>
+                </label>
+                <% }); %>
+            </div>
+            <div class="ss-img-foot">
+                <button type="submit" class="ly-btn ly-btn--primary ly-btn--sm">Upload images</button>
+            </div>
+        </form>
+    </section>
+
+    <form method="post" action="/store-settings/save" class="ss-form">
+
+        <%# 1. Store identity (read-only) %>
+        <section class="card ss-card ss-id">
+            <div class="ss-id__body">
+                <h3 class="ss-id__name"><%= b.business_name || 'Store' %></h3>
+                <% if (b.direction_address) { %><p class="ss-id__addr"><%= b.direction_address %></p><% } %>
+            </div>
+            <span class="ss-id__badge">Store ID <%= b.id %></span>
+        </section>
+
+        <%# Store status badge + modal trigger (modal itself lives after the
+            form so its own <form> isn't nested). %>
+        <section class="card ss-card ss-status">
+            <div>
+                <h3 class="card__title">Store status</h3>
+                <p class="ss-status__line">Currently
+                    <span class="ss-status__badge <%= b.store_open ? 'is-open' : 'is-closed' %>"><%= b.store_open ? 'OPEN' : 'CLOSED' %></span>
+                </p>
+            </div>
+            <button type="button" class="ly-btn ly-btn--ghost" data-action="ss-status-open">Change status</button>
+        </section>
+
+        <%# 2. Store Information %>
+        <section class="card ss-card">
+            <h3 class="card__title">Store Information</h3>
+            <div class="ss-grid">
+                <div class="ss-field ss-full">
+                    <label for="ss-info">Store Information</label>
+                    <textarea id="ss-info" name="branch_info" rows="5"><%= b.branch_info %></textarea>
+                </div>
+                <div class="ss-field">
+                    <label for="ss-contact">Store Contact Number</label>
+                    <input id="ss-contact" type="text" name="contact_number" value="<%= b.contact_number %>">
+                </div>
+                <div class="ss-field">
+                    <label for="ss-email">Store Email</label>
+                    <input id="ss-email" type="email" name="email" value="<%= b.email %>">
+                </div>
+                <div class="ss-field ss-full">
+                    <label for="ss-print">Print Text <span class="ss-hint">Notes : Enter printing text in this format only. [amount]</span></label>
+                    <textarea id="ss-print" name="thirdparty_print_text" rows="5"><%= b.thirdparty_print_text %></textarea>
+                </div>
+            </div>
+        </section>
+
+        <%# Call Center & Customer Details (legacy) %>
+        <section class="card ss-card">
+            <h3 class="card__title">Call Center &amp; Customer Details</h3>
+            <div class="ss-toggles">
+                <%- tog('close_call_center', b.close_call_center, 'Completely close call center') %>
+                <%- tog('coll_cus_details_bef_orders', b.coll_cus_details_bef_orders, 'Collect customer details before orders') %>
+            </div>
+        </section>
+
+        <%# 3. Service options — each service toggle reveals a "closed until"
+            panel (tabs + date) when switched OFF, mirroring the legacy page. %>
+        <section class="card ss-card">
+            <h3 class="card__title">Service options</h3>
+            <div class="ss-services">
+                <%
+                    var svcs = [
+                        ['delivery','Delivery','show_delivery_option','show_delivery_option_tab','delivery_closed_util_date', b.show_delivery_option, b.show_delivery_option_tab, b.delivery_closed_util_date],
+                        ['pickup','Pickup / Takeaway','show_pickup_option','show_pickup_option_tab','pickup_closed_util_date', b.show_pickup_option, b.show_pickup_option_tab, b.pickup_closed_util_date],
+                    ];
+                    svcs.forEach(function (s) {
+                        var key=s[0], lbl=s[1], onName=s[2], tabName=s[3], dateName=s[4], onVal=s[5], tabVal=Number(s[6])||0, dateVal=s[7]||'';
+                        var dtLocal = String(dateVal).slice(0,16).replace(' ','T');
+                %>
+                <div class="ss-service">
+                    <div class="ss-toggle">
+                        <span class="ss-toggle__label"><%= lbl %></span>
+                        <label class="ss-switch">
+                            <input type="hidden" name="<%= onName %>" value="<%= on(onVal)?1:0 %>">
+                            <input type="checkbox" class="ss-switch__cb" data-sync="<%= onName %>" data-reveal-off="<%= key %>-closed" <%= on(onVal)?'checked':'' %>>
+                            <span class="ss-switch__ui" aria-hidden="true"></span>
+                        </label>
+                    </div>
+                    <div class="ss-reveal-off" data-reveal-off="<%= key %>-closed" <%= on(onVal)?'hidden':'' %>>
+                        <span class="ss-sublabel">While <%= lbl %> is off</span>
+                        <div class="ss-btngroup ss-btngroup--sm" data-btngroup="<%= tabName %>" data-tab-for="<%= key %>">
+                            <input type="hidden" name="<%= tabName %>" value="<%= tabVal %>">
+                            <button type="button" class="ss-btn<%= tabVal===1?' is-active':'' %>" data-value="1">Closed today</button>
+                            <button type="button" class="ss-btn<%= tabVal===2?' is-active':'' %>" data-value="2">Closed until</button>
+                            <button type="button" class="ss-btn<%= tabVal===3?' is-active':'' %>" data-value="3">Permanently</button>
+                        </div>
+                        <div class="ss-field ss-full" data-tab-date="<%= key %>" <%= tabVal===2?'':'hidden' %>>
+                            <label>Reopen at</label>
+                            <input type="datetime-local" name="<%= dateName %>" value="<%= dtLocal %>">
+                        </div>
+                    </div>
+                </div>
+                <% }); %>
+
+                <div class="ss-toggle">
+                    <span class="ss-toggle__label">Pre-ordering<span class="ss-toggle__sub">Let customers order ahead</span></span>
+                    <label class="ss-switch">
+                        <input type="hidden" name="pre_order" value="<%= on(b.pre_order)?1:0 %>">
+                        <input type="checkbox" class="ss-switch__cb" data-sync="pre_order" <%= on(b.pre_order)?'checked':'' %>>
+                        <span class="ss-switch__ui" aria-hidden="true"></span>
+                    </label>
+                </div>
+            </div>
+        </section>
+
+        <%# Table Service & Stock Options (legacy) %>
+        <section class="card ss-card">
+            <h3 class="card__title">Table Service &amp; Stock Options</h3>
+            <div class="ss-toggles">
+                <%- tog('out_of_stock_offline_ordering', b.out_of_stock_offline_ordering, 'Out of Stock for offline ordering') %>
+                <%- tog('accept_online_paid_order', b.accept_online_paid_order, 'Enable online paid orders') %>
+            </div>
+            <div class="ss-grid">
+                <div class="ss-field">
+                    <label for="ss-ppr">Product Per Row</label>
+                    <select id="ss-ppr" name="per_row_product">
+                        <option value="1" <%= String(b.per_row_product) === '1' ? 'selected' : '' %>>1</option>
+                        <option value="2" <%= String(b.per_row_product) === '2' ? 'selected' : '' %>>2</option>
+                    </select>
+                </div>
+            </div>
+        </section>
+
+        <%# Analytics (legacy — Google Analytics; Banner image is in Store images) %>
+        <section class="card ss-card">
+            <h3 class="card__title">Analytics</h3>
+            <div class="ss-grid">
+                <div class="ss-field ss-full">
+                    <label for="ss-ga">Google Analytics Code</label>
+                    <textarea id="ss-ga" name="google_analytics_code" rows="5"><%= b.google_analytics_code %></textarea>
+                </div>
+            </div>
+        </section>
+
+        <%# 4. Current waiting times (DD:HH:MM) %>
+        <section class="card ss-card">
+            <h3 class="card__title">Current waiting times</h3>
+            <div class="ss-waits">
+                <% [['inStore','In-store', ss.branch.inStore_wait],['delivery','Delivery', ss.branch.delivery_wait],['pickup','Pickup', ss.branch.pickup_wait]].forEach(function (w) { %>
+                <div class="ss-wait">
+                    <span class="ss-wait__label"><%= w[1] %></span>
+                    <div class="ss-wait__row">
+                        <input type="number" name="<%= w[0] %>_day" min="0" max="99" value="<%= w[2].day %>" inputmode="numeric" aria-label="Days"><span>d</span>
+                        <input type="number" name="<%= w[0] %>_hours" min="0" max="23" value="<%= w[2].hours %>" inputmode="numeric" aria-label="Hours"><span>h</span>
+                        <input type="number" name="<%= w[0] %>_minutes" min="0" max="59" value="<%= w[2].minutes %>" inputmode="numeric" aria-label="Minutes"><span>m</span>
+                    </div>
+                </div>
+                <% }); %>
+            </div>
+        </section>
+
+        <%# 5. Charges %>
+        <section class="card ss-card">
+            <h3 class="card__title">Charges</h3>
+            <div class="ss-grid">
+                <div class="ss-field">
+                    <label for="ss-svc">Service charge (offline)</label>
+                    <select id="ss-svc" name="service_charge_offline_order">
+                        <% (ss.serviceChargeOptions || []).forEach(function (v) { %><option value="<%= v %>" <%= String(b.service_charge_offline_order) === v ? 'selected' : '' %>><%= v %></option><% }); %>
+                    </select>
+                </div>
+                <div class="ss-field"><label for="ss-obc">Offline bag charge (<%= sym %>)</label><input id="ss-obc" type="number" step="0.01" min="0" name="offline_bag_charge" value="<%= b.offline_bag_charge %>"></div>
+                <div class="ss-field"><label for="ss-obq">Offline bags / order</label><input id="ss-obq" type="number" min="0" name="offline_per_bag_qty" value="<%= b.offline_per_bag_qty %>"></div>
+                <div class="ss-field"><label for="ss-onbc">Online bag charge (<%= sym %>)</label><input id="ss-onbc" type="number" step="0.01" min="0" name="online_bag_charge" value="<%= b.online_bag_charge %>"></div>
+                <div class="ss-field"><label for="ss-onbq">Online bags / order</label><input id="ss-onbq" type="number" min="0" name="online_per_bag_qty" value="<%= b.online_per_bag_qty %>"></div>
+            </div>
+        </section>
+
+        <%# 6. Tips %>
+        <section class="card ss-card">
+            <h3 class="card__title">Tips</h3>
+            <div class="ss-toggles">
+                <%- tog('tips', b.tips, 'Enable tips') %>
+            </div>
+            <div class="ss-reveal" data-reveal="tips" <%= on(b.tips) ? '' : 'hidden' %>>
+                <div class="ss-grid">
+                    <div class="ss-field"><label>Tip goes to</label><%- btngroup('tipe_type', b.tipe_type, [[1,'Restaurant'],[2,'Offline']]) %></div>
+                    <div class="ss-field"><label>Calculate tip on</label><%- btngroup('calculate_tip_on', b.calculate_tip_on, [[1,'Sub-total'],[2,'Grand total']]) %></div>
+                </div>
+                <div class="ss-toggles"><%- tog('mandatory_tip_pos_ordering', b.mandatory_tip_pos_ordering, 'Mandatory tip on POS ordering') %></div>
+            </div>
+        </section>
+
+        <%# 7. Payment & order processing %>
+        <section class="card ss-card">
+            <h3 class="card__title">Payment &amp; order processing</h3>
+            <div class="ss-toggles">
+                <%- tog('accept_cash_payments_online', b.accept_cash_payments_online, 'Accept cash payments online') %>
+                <%- tog('auto_acc_off_orders', b.auto_acc_off_orders, 'Auto-accept offline orders') %>
+                <%- tog('enable_image_epos', b.enable_image_epos, 'Show product images on EPOS') %>
+                <%- tog('show_checked_allergies', b.show_checked_allergies, 'Show checked allergies') %>
+                <%- tog('hide_cat_ordering', b.hide_cat_ordering, 'Hide categories on ordering') %>
+                <%- tog('payments_pbl_qr_enabled', b.payments_pbl_qr_enabled, 'Pay-by-link QR payments') %>
+            </div>
+        </section>
+
+        <%# 8. Credit & upselling %>
+        <section class="card ss-card">
+            <h3 class="card__title">Credit &amp; upselling</h3>
+            <div class="ss-toggles"><%- tog('credit_management', b.credit_management, 'Credit management') %></div>
+            <div class="ss-grid">
+                <div class="ss-field ss-full"><label for="ss-up">Online upselling message</label><textarea id="ss-up" name="upselling_msg" rows="2"><%= b.upselling_msg %></textarea></div>
+                <div class="ss-field ss-full"><label for="ss-upo">Offline upselling message</label><textarea id="ss-upo" name="offline_upselling_msg" rows="2"><%= b.offline_upselling_msg %></textarea></div>
+            </div>
+        </section>
+
+        <%# 9. Table ordering %>
+        <section class="card ss-card">
+            <h3 class="card__title">Table ordering</h3>
+            <div class="ss-toggles"><%- tog('enable_table_service_ordering', b.enable_table_service_ordering, 'Enable table-service ordering') %></div>
+            <div class="ss-reveal" data-reveal="enable_table_service_ordering" <%= on(b.enable_table_service_ordering) ? '' : 'hidden' %>>
+                <div class="ss-toggles">
+                    <%- tog('edit_previous_course_details', b.edit_previous_course_details, 'Allow editing items from a previous course') %>
+                    <%- tog('group_items_qty_more_one', b.group_items_qty_more_one, 'Group items with qty > 1') %>
+                    <%- tog('sms_online_table_res_request', b.sms_online_table_res_request, 'SMS on online table reservation request') %>
+                    <%- tog('instore_all_fields_must_filled', b.instore_all_fields_must_filled, 'In-store: all fields must be filled') %>
+                    <%- tog('table_cleaning', b.table_cleaning, 'Table cleaning') %>
+                </div>
+            </div>
+        </section>
+
+        <%# 10. Charity & savings %>
+        <section class="card ss-card">
+            <h3 class="card__title">Charity &amp; savings</h3>
+            <div class="ss-grid">
+                <div class="ss-field"><label for="ss-fix">Fix charity %</label><input id="ss-fix" type="number" step="0.01" min="0" name="fix_charity_percentage" value="<%= b.fix_charity_percentage %>"></div>
+                <div class="ss-field"><label for="ss-tpl">Savings label</label><input id="ss-tpl" type="text" name="third_party_label" value="<%= b.third_party_label %>" placeholder="e.g. Uber Eats"></div>
+                <div class="ss-field"><label for="ss-tpp">Third-party savings %</label><input id="ss-tpp" type="number" step="0.01" min="0" name="third_party_percentage" value="<%= b.third_party_percentage %>"></div>
+                <div class="ss-field"><label for="ss-tow">Direct-order savings %</label><input id="ss-tow" type="number" step="0.01" min="0" name="third_online_website_percentage" value="<%= b.third_online_website_percentage %>"></div>
+            </div>
+        </section>
+
+        <%# 11. SEO %>
+        <section class="card ss-card">
+            <h3 class="card__title">Search engine optimization</h3>
+            <div class="ss-grid">
+                <div class="ss-field ss-full"><label for="ss-pt">Page title</label><input id="ss-pt" type="text" name="page_title" maxlength="60" value="<%= b.page_title %>"></div>
+                <div class="ss-field ss-full"><label for="ss-pk">Meta keywords</label><input id="ss-pk" type="text" name="page_meta_keyword" maxlength="160" value="<%= b.page_meta_keyword %>"></div>
+                <div class="ss-field ss-full"><label for="ss-pd">Meta description</label><input id="ss-pd" type="text" name="page_meta_description" maxlength="150" value="<%= b.page_meta_description %>"></div>
+            </div>
+        </section>
+
+        <%# 12. Layout %>
+        <section class="card ss-card">
+            <h3 class="card__title">Ordering layout</h3>
+            <div class="ss-grid">
+                <div class="ss-field"><label>Button columns</label><%- btngroup('button_setting_col', b.button_setting_col, [['4','4 column'],['5','5 column'],['6','6 column']]) %></div>
+                <div class="ss-field"><label>Web ordering layout</label><%- btngroup('webordering_category_layout', b.webordering_category_layout, [[1,'Horizontal'],[2,'Vertical']]) %></div>
+            </div>
+        </section>
+
+        <%# 13. Surprise box (Too Good To Go) %>
+        <section class="card ss-card">
+            <div class="ss-card__head">
+                <h3 class="card__title">🎁 Surprise Box</h3>
+                <label class="ss-switch"><input type="hidden" name="is_toogoodtogo_product" value="<%= on(b.is_toogoodtogo_product) ? 1 : 0 %>"><input type="checkbox" class="ss-switch__cb" data-sync="is_toogoodtogo_product" <%= on(b.is_toogoodtogo_product) ? 'checked' : '' %>><span class="ss-switch__ui" aria-hidden="true"></span></label>
+            </div>
+            <div class="ss-reveal" data-reveal="is_toogoodtogo_product" <%= on(b.is_toogoodtogo_product) ? '' : 'hidden' %>>
+                <div class="ss-grid">
+                    <div class="ss-field"><label>Product name</label><input type="text" value="SURPRISE BOX" readonly></div>
+                    <div class="ss-field"><label for="ss-price">Price (<%= sym %>)</label><input id="ss-price" type="number" step="0.01" min="0" name="price" value="<%= b.price %>"></div>
+                    <div class="ss-field"><label for="ss-dprice">Discount price (<%= sym %>)</label><input id="ss-dprice" type="number" step="0.01" min="0" name="discount_price" value="<%= b.discount_price %>"></div>
+                    <div class="ss-field"><label for="ss-qty">Quantity</label><input id="ss-qty" type="number" min="0" name="qty" value="<%= b.qty %>"></div>
+                    <div class="ss-field"><label for="ss-st">Start time</label><input id="ss-st" type="time" name="start_time" value="<%= b.start_time %>"></div>
+                    <div class="ss-field"><label for="ss-et">End time</label><input id="ss-et" type="time" name="end_time" value="<%= b.end_time %>"></div>
+                    <div class="ss-field ss-full"><label for="ss-ct">Collect time label</label><input id="ss-ct" type="text" name="saving_product_description" value="<%= b.saving_product_description %>"></div>
+                    <div class="ss-field ss-full"><label for="ss-about">About the surprise box</label><textarea id="ss-about" name="about_surprise_box" rows="2"><%= b.about_surprise_box %></textarea></div>
+                    <div class="ss-field ss-full"><label for="ss-ing">Ingredients / allergens</label><textarea id="ss-ing" name="ingredients_allergens" rows="2"><%= b.ingredients_allergens %></textarea></div>
+                    <div class="ss-field ss-full"><label for="ss-ci">Collection instructions</label><textarea id="ss-ci" name="collection_instructions" rows="2"><%= b.collection_instructions %></textarea></div>
+                </div>
+            </div>
+        </section>
+
+        <%# Configurators — open in modals / sub-pages (outside this form). %>
+        <section class="card ss-card ss-configs">
+            <h3 class="card__title">Configurators</h3>
+            <div class="ss-config-row">
+                <div>
+                    <strong>Quick charity tips</strong>
+                    <p class="ss-config-row__sub"><%= (ss.tips || []).length %> tip<%= (ss.tips||[]).length === 1 ? '' : 's' %> configured</p>
+                </div>
+                <button type="button" class="ly-btn ly-btn--ghost" data-action="ss-tips-open">Manage tips</button>
+            </div>
+            <div class="ss-config-row">
+                <div>
+                    <strong>Advance order waiting times</strong>
+                    <p class="ss-config-row__sub">Per value / volume &amp; service type</p>
+                </div>
+                <a class="ly-btn ly-btn--ghost" href="/store-settings/advance">Open →</a>
+            </div>
+        </section>
+
+        <div class="ss-save">
+            <button type="submit" class="ly-btn ly-btn--primary">Save store settings</button>
+        </div>
+    </form>
+
+    <%# Website status modal — its own form (not nested in the settings form). %>
+    <% var sMode = (Number(b.closed) === 1 && Number(b.closed_until) === 1) ? 'closed_until' : ((Number(b.closed) === 1 && Number(b.closed_for) === 1) ? 'closed_for' : 'open'); %>
+    <% var CFL = [['today','Rest of today'],['30min','30 minutes'],['1hours','1 hour'],['2hours','2 hours'],['3hours','3 hours'],['4hours','4 hours']]; %>
+    <div class="ss-modal" data-ss-modal hidden>
+        <div class="ss-modal__backdrop" data-action="ss-status-close" aria-hidden="true"></div>
+        <div class="ss-modal__panel" role="dialog" aria-modal="true" aria-label="Store status">
+            <header class="ss-modal__head">
+                <h3>Store status</h3>
+                <button type="button" class="ss-modal__close" data-action="ss-status-close" aria-label="Close">
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+            </header>
+            <form method="post" action="/store-settings/website-status" class="ss-modal__body">
+                <div class="ss-radios" data-status-radios>
+                    <label class="ss-radio"><input type="radio" name="status_mode" value="open" <%= sMode === 'open' ? 'checked' : '' %>><span>Open as usual</span></label>
+                    <label class="ss-radio"><input type="radio" name="status_mode" value="closed_for" <%= sMode === 'closed_for' ? 'checked' : '' %>><span>Closed for a while</span></label>
+                    <label class="ss-radio"><input type="radio" name="status_mode" value="closed_until" <%= sMode === 'closed_until' ? 'checked' : '' %>><span>Closed until a date</span></label>
+                </div>
+
+                <div class="ss-status-block" data-status-block="closed_for" <%= sMode === 'closed_for' ? '' : 'hidden' %>>
+                    <label for="ss-cfl">Closed for</label>
+                    <select id="ss-cfl" name="closed_for_list">
+                        <% CFL.forEach(function (o) { %><option value="<%= o[0] %>" <%= b.closed_for_list === o[0] ? 'selected' : '' %>><%= o[1] %></option><% }); %>
+                    </select>
+                </div>
+
+                <div class="ss-status-block" data-status-block="closed_until" <%= sMode === 'closed_until' ? '' : 'hidden' %>>
+                    <div class="ss-grid">
+                        <div class="ss-field"><label for="ss-crd">Reopen date</label><input id="ss-crd" type="date" name="closed_reopen_date" value="<%= String(b.closed_reopen_date || '').slice(0,10) %>"></div>
+                        <div class="ss-field"><label for="ss-crt">Reopen time</label><input id="ss-crt" type="time" name="clossed_repoen_time" value="<%= String(b.clossed_repoen_time || '').slice(0,5) %>"></div>
+                    </div>
+                </div>
+
+                <div class="ss-field ss-full">
+                    <label for="ss-ctext">Message to customers (optional)</label>
+                    <textarea id="ss-ctext" name="clossed_text" rows="2"><%= b.clossed_text %></textarea>
+                </div>
+
+                <footer class="ss-modal__foot">
+                    <button type="button" class="ly-btn ly-btn--ghost" data-action="ss-status-close">Cancel</button>
+                    <button type="submit" class="ly-btn ly-btn--primary">Update status</button>
+                </footer>
+            </form>
+        </div>
+    </div>
+
+    <%# Quick charity tips modal — replace-all of the branch's tip rows. %>
+    <div class="ss-modal" data-ss-tips-modal hidden>
+        <div class="ss-modal__backdrop" data-action="ss-tips-close" aria-hidden="true"></div>
+        <div class="ss-modal__panel" role="dialog" aria-modal="true" aria-label="Quick charity tips">
+            <header class="ss-modal__head">
+                <h3>Quick charity tips</h3>
+                <button type="button" class="ss-modal__close" data-action="ss-tips-close" aria-label="Close">
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+            </header>
+            <form method="post" action="/store-settings/tips" class="ss-modal__body">
+                <div class="ss-tips" data-tips-list>
+                    <% (ss.tips || []).forEach(function (t) { %>
+                    <div class="ss-tip-row">
+                        <input type="text" name="tip_label[]" value="<%= t.label %>" placeholder="Label (e.g. 5%)" maxlength="100">
+                        <input type="number" name="tip_value[]" value="<%= t.value %>" step="0.01" min="0" placeholder="Value">
+                        <button type="button" class="ss-tip-del" data-action="ss-tip-remove" aria-label="Remove">&times;</button>
+                    </div>
+                    <% }); %>
+                </div>
+                <button type="button" class="ly-btn ly-btn--ghost ly-btn--sm" data-action="ss-tip-add">+ Add tip</button>
+                <footer class="ss-modal__foot">
+                    <button type="button" class="ly-btn ly-btn--ghost" data-action="ss-tips-close">Cancel</button>
+                    <button type="submit" class="ly-btn ly-btn--primary">Save tips</button>
+                </footer>
+            </form>
+            <template data-tip-template>
+                <div class="ss-tip-row">
+                    <input type="text" name="tip_label[]" placeholder="Label (e.g. 5%)" maxlength="100">
+                    <input type="number" name="tip_value[]" step="0.01" min="0" placeholder="Value">
+                    <button type="button" class="ss-tip-del" data-action="ss-tip-remove" aria-label="Remove">&times;</button>
+                </div>
+            </template>
+        </div>
+    </div>
+
+    <% } %>
+</div>

@@ -21,3 +21,23 @@ body.sidebar-open { overflow: hidden; }
 @media (max-width: 420px) {
     .admin-topbar__uname { display: none; }
 }
+
+/* Phone topbar: drop the page title (the page body already shows an H2),
+   keep the company switcher a FIXED width with the name truncating, and make
+   its dropdown a full-width sheet so it never overflows the screen. */
+@media (max-width: 640px) {
+    .admin-topbar { gap: 8px; padding: 0 10px; }
+    .admin-topbar__title { display: none; }
+
+    .admin-company { margin-left: 6px; }
+    .admin-company__btn { max-width: 150px; padding: 6px 10px; }
+    .admin-company__current { min-width: 0; }
+    .admin-company__panel {
+        position: fixed; left: 8px; right: 8px; top: calc(var(--topbar-h) + 4px);
+        width: auto; max-width: none;
+    }
+
+    .admin-topbar__company { margin-left: 6px; min-width: 0; }
+    .admin-topbar__company-label { max-width: 150px; margin-left: 6px; }
+    .admin-topbar__company-select { max-width: 150px; }
+}

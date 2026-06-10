@@ -264,4 +264,69 @@ async function doReset(req, res) {
     return res.redirect('/reset-password?token=' + encodeURIComponent(token));
 }
 
-module.exports = { loginPage, doLogin, logout, forgotPage, doForgot, resetPage, doReset };
+// ── My Profile ──────────────────────────────────────────────────────
+
+async function profilePage(req, res) {
+    let profile = null;
+    try {
+        const r = await callApi(req, 'GET', '/api/v1/admin/auth/me');
+        if (r && r.body && r.body.status === 200) { profile = r.body.data.profile; }
+    } catch (e) { /* render empty form */ }
+    res.render('auth/profile', {
+        page_title:  'My Profile',
+        _layoutFile: '../_layout',
+        active_nav:  '',
+        extra_js:    '/js/pages/account.js',
+        profile,
+    });
+}
+
+async function updateProfile(req, res) {
+    let apiRes;
+    try { apiRes = await callApi(req, 'POST', '/api/v1/admin/auth/profile', req.body); }
+    catch (e) { apiRes = null; }
+    const body = apiRes && apiRes.body;
+    if (body && body.status === 200) {
+        // Keep the topbar name/email in sync with the edit.
+        if (req.session && req.session.admin) {
+            const fn = String(req.body.first_name || '').trim();
+            const ln = String(req.body.last_name || '').trim();
+            const bn = String(req.body.business_name || '').trim();
+            req.session.admin.name  = [fn, ln].filter(Boolean).join(' ') || bn || req.session.admin.name;
+            req.session.admin.email = String(req.body.email || '').trim().toLowerCase() || req.session.admin.email;
+        }
+        if (req.flash) { req.flash('success', body.msg || 'Profile updated.'); }
+        return req.session.save(() => res.redirect('/profile'));
+    }
+    if (req.flash) { req.flash('error', (body && body.msg) || 'Could not update your profile.'); }
+    return res.redirect('/profile');
+}
+
+// ── Change Password ─────────────────────────────────────────────────
+
+function changePasswordPage(req, res) {
+    res.render('auth/change-password', {
+        page_title:  'Change Password',
+        _layoutFile: '../_layout',
+        active_nav:  '',
+        extra_js:    '/js/pages/account.js',
+    });
+}
+
+async function doChangePassword(req, res) {
+    let apiRes;
+    try { apiRes = await callApi(req, 'POST', '/api/v1/admin/auth/change-password', req.body); }
+    catch (e) { apiRes = null; }
+    const body = apiRes && apiRes.body;
+    if (body && body.status === 200) {
+        if (req.flash) { req.flash('success', body.msg || 'Password changed.'); }
+        return res.redirect('/change-password');
+    }
+    if (req.flash) { req.flash('error', (body && body.msg) || 'Could not change your password.'); }
+    return res.redirect('/change-password');
+}
+
+module.exports = {
+    loginPage, doLogin, logout, forgotPage, doForgot, resetPage, doReset,
+    profilePage, updateProfile, changePasswordPage, doChangePassword,
+};

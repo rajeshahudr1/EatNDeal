@@ -1,0 +1,83 @@
+<%#
+  views/loyalty/tiers.ejs
+
+  Tier Config screen. The three fixed membership tiers (Bronze / Silver /
+  Gold) — spend band (min/max) + lifetime free delivery — edited together and
+  upserted by (company_id, type). Master on/off toggles the membership_tier
+  rule. `tc` = { tiers:{bronze,silver,gold}, masterOn } or null on error.
+
+  Used: Controllers/LoyaltyController.tierConfig (shell layout).
+-%>
+<%
+    var sym = (brand && brand.currencySymbol) ? brand.currencySymbol : '£';
+    var TIERS = [
+        ['bronze', '🥉 Bronze', 'bronze'],
+        ['silver', '🥈 Silver', 'silver'],
+        ['gold',   '🏅 Gold',   'gold'],
+    ];
+%>
+<div class="ly">
+
+    <%- include('../partials/loyalty-subnav') -%>
+
+    <div class="ly__head">
+        <div>
+            <h2 class="ly__title">🏅 Tier Config</h2>
+            <p class="ly__sub">Spend bands &amp; perks for Bronze, Silver and Gold members</p>
+        </div>
+        <% if (tc) { %>
+        <form method="post" action="/loyalty/tiers/toggle" class="ly-switch-form" data-toggle-form>
+            <input type="hidden" name="status" value="<%= tc.masterOn ? '2' : '1' %>">
+            <span class="ly-switch-form__lbl"><%= tc.masterOn ? 'Enabled' : 'Disabled' %></span>
+            <label class="ly-switch">
+                <input type="checkbox" data-action="ly-master-toggle" <%= tc.masterOn ? 'checked' : '' %> aria-label="Enable tiers">
+                <span class="ly-switch__ui" aria-hidden="true"></span>
+            </label>
+        </form>
+        <% } %>
+    </div>
+
+    <% if (load_error) { %>
+        <div class="ly-empty">
+            <span class="ly-empty__ic" aria-hidden="true">🏢</span>
+            <p class="ly-empty__msg"><%= load_error %></p>
+        </div>
+    <% } else if (tc) { %>
+
+        <form method="post" action="/loyalty/tiers/save" class="ly-tiers">
+            <% TIERS.forEach(function (def) {
+                var key = def[0]; var t = tc.tiers[key] || { min_amount:0, max_amount:0, free_delivery_lifetime:false };
+            %>
+            <section class="card ly-tiercard ly-tiercard--<%= def[2] %>">
+                <h3 class="ly-tiercard__title"><%= def[1] %></h3>
+                <div class="ly-grid">
+                    <div class="ly-field">
+                        <label for="<%= key %>-min">Min spend (<%= sym %>)</label>
+                        <input id="<%= key %>-min" type="number" name="<%= key %>_min_amount" step="0.01" min="0" value="<%= t.min_amount %>" required>
+                    </div>
+                    <div class="ly-field">
+                        <label for="<%= key %>-max">Max spend (<%= sym %>)</label>
+                        <% if (key === 'gold') { %>
+                            <%# Gold is the top tier — "min and above", no upper limit.
+                                Legacy stores max_amount = 0 as the unbounded sentinel. %>
+                            <input type="hidden" name="gold_max_amount" value="0">
+                            <div class="ly-tier-above" title="No upper limit — Gold is the top band">Above (no upper limit)</div>
+                        <% } else { %>
+                            <input id="<%= key %>-max" type="number" name="<%= key %>_max_amount" step="0.01" min="0" value="<%= t.max_amount %>" required>
+                        <% } %>
+                    </div>
+                </div>
+                <label class="ly-check">
+                    <input type="checkbox" name="<%= key %>_free" value="1" <%= t.free_delivery_lifetime ? 'checked' : '' %>>
+                    <span>Lifetime free delivery</span>
+                </label>
+            </section>
+            <% }); %>
+
+            <div class="ly-tiers__foot">
+                <button type="submit" class="ly-btn ly-btn--primary">Save tiers</button>
+            </div>
+        </form>
+
+    <% } %>
+</div>

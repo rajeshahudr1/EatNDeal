@@ -1,0 +1,22 @@
+<%#
+  partials/loyalty-subnav.ejs — horizontal sub-navigation for the loyalty
+  console. Included at the top of every /loyalty/* page so you can hop between
+  the loyalty screens without going back to the sidebar. active_sub highlights
+  the current screen.
+-%>
+<% var sub = (typeof active_sub !== 'undefined' && active_sub) ? active_sub : ''; %>
+<nav class="ly-subnav" aria-label="Loyalty sections">
+    <a class="ly-subnav__item <%= sub === 'dashboard' ? 'is-active' : '' %>" href="/loyalty">📊 Overview</a>
+    <a class="ly-subnav__item <%= sub === 'cashback' ? 'is-active' : '' %>" href="/loyalty/cashback-rules">💷 Cashback</a>
+    <a class="ly-subnav__item <%= sub === 'product-cashback' ? 'is-active' : '' %>" href="/loyalty/product-cashback">🏷️ Product Cashback</a>
+    <a class="ly-subnav__item <%= sub === 'tiers' ? 'is-active' : '' %>" href="/loyalty/tiers">🏅 Tiers</a>
+    <a class="ly-subnav__item <%= sub === 'referral' ? 'is-active' : '' %>" href="/loyalty/referral-streak">🔥 Referral &amp; Streak</a>
+    <a class="ly-subnav__item <%= sub === 'challenges' ? 'is-active' : '' %>" href="/loyalty/challenges">🏆 Challenges</a>
+    <a class="ly-subnav__item <%= sub === 'events' ? 'is-active' : '' %>" href="/loyalty/events">🎉 Events</a>
+    <a class="ly-subnav__item <%= sub === 'review-rewards' ? 'is-active' : '' %>" href="/loyalty/review-rewards">⭐ Review Rewards</a>
+    <a class="ly-subnav__item <%= sub === 'cms-pages' ? 'is-active' : '' %>" href="/loyalty/cms-pages">📝 CMS Pages</a>
+    <a class="ly-subnav__item <%= sub === 'reviews' ? 'is-active' : '' %>" href="/loyalty/review-claims">✅ Review Claims</a>
+    <a class="ly-subnav__item <%= sub === 'bogof' ? 'is-active' : '' %>" href="/loyalty/bogof">🎟️ Buy X Get Y</a>
+    <a class="ly-subnav__item <%= sub === 'special-offer' ? 'is-active' : '' %>" href="/loyalty/special-offer">🎁 Special Offer</a>
+    <a class="ly-subnav__item <%= sub === 'segments' ? 'is-active' : '' %>" href="/loyalty/segments">👥 Segments</a>
+</nav>

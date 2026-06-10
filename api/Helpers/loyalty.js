@@ -1171,4 +1171,8 @@ module.exports = {
     earnReferral, earnEventCashback, earnSmartCampaign, earnCollectionCashback,
     bogoForProduct, payableQtyFor, bogoMapFor,
     balanceFor, cardsFor, maxRedeemable, consumeForRedeem, reverseForOrder, streakProgressFor,
+    // Shared reward-write (commission skim + expiry + ledger + audit row).
+    // Exposed so the admin Review-Claims approval can grant a review reward
+    // through the SAME path the earn rules use — keeping the ledger consistent.
+    award,
 };

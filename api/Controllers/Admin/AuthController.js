@@ -138,7 +138,7 @@ async function login(req, res) {
                 let role = 'admin';
                 if (Number(u.role) === ROLE_SUPER_ADMIN) { role = 'super_admin'; }
                 else if (Number(u.company_id) > 0)       { role = 'company'; }
-                const token = jwt.sign({ sub: String(u.id), kind: 'admin', role, company_id: Number(u.company_id) || 0 });
+                const token = jwt.sign({ sub: String(u.id), kind: 'admin', src: 'user', role, company_id: Number(u.company_id) || 0 });
                 return H.successResponse(res, {
                     token,
                     admin: {
@@ -169,7 +169,7 @@ async function login(req, res) {
             if (!(await verifyPassword(password, c.password))) {
                 return H.errorResponse(res, 'Invalid email or password.', 401, { code: 'bad_credentials' });
             }
-            const token = jwt.sign({ sub: String(c.id), kind: 'admin', role: 'company', company_id: Number(c.id) });
+            const token = jwt.sign({ sub: String(c.id), kind: 'admin', src: 'company', role: 'company', company_id: Number(c.id) });
             return H.successResponse(res, {
                 token,
                 admin: {
@@ -267,4 +267,171 @@ async function resetPassword(req, res) {
     }
 }
 
-module.exports = { login, forgotPassword, resetPassword };
+/**
+ * hashPassword — bcrypt-hash a new password, stored Yii-style ($2y$) so the
+ * legacy PHP backend reads it identically. cost 12 (strong, fast enough).
+ */
+async function hashPassword(plain) {
+    const h = await bcrypt.hash(String(plain), 12);
+    return h.replace(/^\$2[ab]\$/, '$2y$');
+}
+
+// Resolve the signed-in admin's account table + id from the JWT. `src` is
+// stamped at login ('user' for staff/super-admin, 'company' for a company-
+// table login); fall back to 'user' for older tokens.
+function accountRef(req) {
+    const u = (req && req.user) || {};
+    return { src: u.src === 'company' ? 'company' : 'user', id: Number(u.sub), role: u.role };
+}
+
+/**
+ * me — GET /api/v1/admin/auth/me
+ * The signed-in admin's editable profile (name parts + email), from whichever
+ * table they authenticated against.
+ */
+async function me(req, res) {
+    try {
+        const { src, id, role } = accountRef(req);
+        if (src === 'company') {
+            // Company login — the company table carries name/email + a contact
+            // number (mobile) and PIN (no address columns on company).
+            const c = await db('company').where('id', id)
+                .select('id', 'business_name', 'first_name', 'last_name', 'email', 'mobile', 'pin').first();
+            if (!c) { return H.errorResponse(res, 'Account not found.', 404); }
+            return H.successResponse(res, { profile: {
+                id: Number(c.id), src, role,
+                business_name: c.business_name || '',
+                first_name: c.first_name || '', last_name: c.last_name || '',
+                email: c.email || '',
+                mobile: c.mobile || '',
+                pin: c.pin || '',
+            } });
+        }
+        // User / staff login — the user table carries the full personal-details
+        // set (contact number, address, postcode, city, PIN).
+        const u = await db('user').where('id', id)
+            .select('id', 'firstname', 'lastname', 'email', 'username',
+                    'contact_no', 'address_1', 'address_2', 'postcode', 'city', 'pin').first();
+        if (!u) { return H.errorResponse(res, 'Account not found.', 404); }
+        return H.successResponse(res, { profile: {
+            id: Number(u.id), src, role,
+            first_name: u.firstname || '', last_name: u.lastname || '',
+            email: u.email || u.username || '',
+            contact_no: u.contact_no || '',
+            address_1: u.address_1 || '', address_2: u.address_2 || '',
+            postcode: u.postcode || '', city: u.city || '',
+            pin: u.pin || '',
+        } });
+    } catch (err) {
+        console.error('[admin.auth.me]', err && err.message);
+        return H.errorResponse(res, 'Could not load your profile.', 500);
+    }
+}
+
+/**
+ * updateProfile — POST /api/v1/admin/auth/profile
+ * Updates the signed-in admin's name parts + email (and business_name for a
+ * company login). Rejects an email already used by another account.
+ */
+async function updateProfile(req, res) {
+    try {
+        const { src, id } = accountRef(req);
+        const companyId = Number(req.user && req.user.company_id) || 0;
+        const b = req.body;
+        const email = String(b.email || '').trim().toLowerCase();
+        const table = src === 'company' ? 'company' : 'user';
+        const pin = String(b.pin || '').trim();   // blank = keep the current PIN
+
+        // Email must be unique within the same account table.
+        const dupe = await db(table)
+            .whereRaw('LOWER(email) = ?', [email])
+            .andWhere('id', '!=', id)
+            .first();
+        if (dupe) { return H.errorResponse(res, 'That email is already in use.', 409, { code: 'email_taken' }); }
+
+        if (src === 'company') {
+            // Company login → company.{name,email,mobile,pin}. (No address cols.)
+            const patch = {
+                business_name: String(b.business_name || '').trim() || null,
+                first_name:    String(b.first_name || '').trim() || null,
+                last_name:     String(b.last_name || '').trim() || null,
+                email,
+                mobile:        String(b.mobile || '').trim() || null,
+                updated_at:    db.fn.now(),
+                updated_by:    id,
+            };
+            if (pin) { patch.pin = pin; }
+            await db('company').where('id', id).update(patch);
+        } else {
+            // User / staff login → the full personal-details set. Contact number
+            // and PIN are unique within the company (mirrors the legacy
+            // personal-details checks), ignoring deleted rows + this account.
+            const contactNo = String(b.contact_no || '').trim();
+            if (contactNo) {
+                const clash = await db('user')
+                    .where({ company_id: companyId, contact_no: contactNo })
+                    .andWhere('id', '!=', id)
+                    .whereRaw("COALESCE(is_deleted, 'N') <> 'Y'")
+                    .first();
+                if (clash) { return H.errorResponse(res, 'Contact number already exists.', 409, { code: 'contact_taken' }); }
+            }
+            if (pin) {
+                const clash = await db('user')
+                    .where({ company_id: companyId, pin })
+                    .andWhere('id', '!=', id)
+                    .whereRaw("COALESCE(is_deleted, 'N') <> 'Y'")
+                    .first();
+                if (clash) { return H.errorResponse(res, 'PIN already exists.', 409, { code: 'pin_taken' }); }
+            }
+            const patch = {
+                firstname:  String(b.first_name || '').trim() || null,
+                lastname:   String(b.last_name || '').trim() || null,
+                email,
+                username:   email,   // legacy keeps user.username in step with email
+                contact_no: contactNo || null,
+                address_1:  String(b.address_1 || '').trim() || null,
+                address_2:  String(b.address_2 || '').trim() || null,
+                postcode:   String(b.postcode || '').trim() || null,
+                city:       String(b.city || '').trim() || null,
+                updated_at: db.fn.now(),
+                updated_by: id,
+            };
+            if (pin) { patch.pin = pin; }
+            await db('user').where('id', id).update(patch);
+        }
+        return H.successResponse(res, { saved: true }, 'Profile updated.');
+    } catch (err) {
+        console.error('[admin.auth.updateProfile]', err && err.message);
+        return H.errorResponse(res, 'Could not update your profile.', 500);
+    }
+}
+
+/**
+ * changePassword — POST /api/v1/admin/auth/change-password
+ * Verifies the current password, then stores a new bcrypt hash in the right
+ * column (user.password_hash or company.password).
+ */
+async function changePassword(req, res) {
+    try {
+        const { src, id } = accountRef(req);
+        const b = req.body;
+        const table = src === 'company' ? 'company' : 'user';
+        const pwCol = src === 'company' ? 'password' : 'password_hash';
+
+        const row = await db(table).where('id', id).first();
+        if (!row) { return H.errorResponse(res, 'Account not found.', 404); }
+
+        if (!(await verifyPassword(b.current_password, row[pwCol]))) {
+            return H.errorResponse(res, 'Your current password is incorrect.', 400, { code: 'bad_current' });
+        }
+
+        const newHash = await hashPassword(b.new_password);
+        await db(table).where('id', id).update({ [pwCol]: newHash });
+        return H.successResponse(res, { changed: true }, 'Password changed.');
+    } catch (err) {
+        console.error('[admin.auth.changePassword]', err && err.message);
+        return H.errorResponse(res, 'Could not change your password.', 500);
+    }
+}
+
+module.exports = { login, forgotPassword, resetPassword, me, updateProfile, changePassword };

@@ -33,6 +33,9 @@
     <link rel="stylesheet" href="/css/components/toast.css?v=<%= ASSET_VERSION %>">
     <link rel="stylesheet" href="/css/components/auth-login.css?v=<%= ASSET_VERSION %>">
     <link rel="stylesheet" href="/css/components/shell.css?v=<%= ASSET_VERSION %>">
+    <link rel="stylesheet" href="/css/components/loyalty.css?v=<%= ASSET_VERSION %>">
+    <link rel="stylesheet" href="/css/components/store-settings.css?v=<%= ASSET_VERSION %>">
+    <link rel="stylesheet" href="/css/components/products.css?v=<%= ASSET_VERSION %>">
     <link rel="stylesheet" href="/css/desktop.css?v=<%= ASSET_VERSION %>" media="(min-width: 900px)">
     <link rel="stylesheet" href="/css/mobile.css?v=<%= ASSET_VERSION %>"  media="(max-width: 899px)">
 </head>
@@ -69,6 +72,8 @@
         </div>
         <%# Dim layer for the mobile off-canvas sidebar. %>
         <div class="admin-scrim" data-action="close-sidebar" hidden></div>
+        <%# Native-style bottom navigation (phones only — CSS @media). %>
+        <%- include('partials/bottomnav') -%>
     <% } %>
 
     <%- include('partials/toast') -%>

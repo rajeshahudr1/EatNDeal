@@ -1,0 +1,116 @@
+<%#
+  views/loyalty/cms-pages.ejs
+
+  Review CMS Pages (loyalty_cms_pages). The 8 review / share types are shown as
+  TABS; each tab is its own form with a rich-text editor (custom, local — no
+  CDN), an example screenshot, and its own Save button (saved one-by-one via
+  fetch, so you stay on the tab). `cms` = { pages[] } or null on error.
+  Description HTML is sanitised server-side, so it is rendered unescaped.
+
+  Used: Controllers/LoyaltyController.cmsPages (shell layout).
+-%>
+<%
+    // The editor toolbar, reused inside every tab.
+    function toolbar() { %>
+    <div class="cms-toolbar" data-toolbar>
+        <select class="cms-tb__sel" data-cmd="formatBlock" title="Style" aria-label="Style">
+            <option value="p">Paragraph</option>
+            <option value="h2">Heading</option>
+            <option value="h3">Subheading</option>
+            <option value="blockquote">Quote</option>
+        </select>
+        <span class="cms-tb__sep"></span>
+        <button type="button" class="cms-tb__btn" data-cmd="bold" title="Bold"><b>B</b></button>
+        <button type="button" class="cms-tb__btn" data-cmd="italic" title="Italic"><i>I</i></button>
+        <button type="button" class="cms-tb__btn" data-cmd="underline" title="Underline"><u>U</u></button>
+        <button type="button" class="cms-tb__btn" data-cmd="strikeThrough" title="Strikethrough"><s>S</s></button>
+        <label class="cms-tb__btn cms-tb__color" title="Text colour">A<input type="color" data-cmd="foreColor" value="#111827" aria-label="Text colour"></label>
+        <span class="cms-tb__sep"></span>
+        <button type="button" class="cms-tb__btn" data-cmd="insertUnorderedList" title="Bulleted list">• List</button>
+        <button type="button" class="cms-tb__btn" data-cmd="insertOrderedList" title="Numbered list">1. List</button>
+        <span class="cms-tb__sep"></span>
+        <button type="button" class="cms-tb__btn" data-cmd="justifyLeft" title="Align left">⇤</button>
+        <button type="button" class="cms-tb__btn" data-cmd="justifyCenter" title="Align centre">↔</button>
+        <button type="button" class="cms-tb__btn" data-cmd="justifyRight" title="Align right">⇥</button>
+        <span class="cms-tb__sep"></span>
+        <button type="button" class="cms-tb__btn" data-cmd="createLink" title="Insert link">🔗</button>
+        <button type="button" class="cms-tb__btn" data-cmd="unlink" title="Remove link">⛓</button>
+        <button type="button" class="cms-tb__btn" data-cmd="insertImage" title="Insert image by URL">🖼</button>
+        <span class="cms-tb__sep"></span>
+        <button type="button" class="cms-tb__btn" data-cmd="removeFormat" title="Clear formatting">⨯</button>
+        <button type="button" class="cms-tb__btn" data-cmd="toggleCode" title="Edit HTML">&lt;/&gt;</button>
+    </div>
+    <% }
+%>
+<div class="ly cms">
+
+    <div class="ly__head">
+        <div>
+            <h2 class="ly__title">📝 Review CMS Pages</h2>
+            <p class="ly__sub">Instructions &amp; an example screenshot for each review / share type — saved one at a time</p>
+        </div>
+    </div>
+
+    <% if (load_error) { %>
+        <div class="ly-empty"><span class="ly-empty__ic" aria-hidden="true">🏢</span><p class="ly-empty__msg"><%= load_error %></p></div>
+    <% } else if (cms) { %>
+
+        <div class="cms-tabsbar">
+            <button type="button" class="cms-tabsbar__nav cms-tabsbar__nav--prev" data-tabs-prev aria-label="Scroll tabs left" hidden>‹</button>
+            <div class="cms-tabs" role="tablist" data-cms-tabs>
+                <% cms.pages.forEach(function (p, i) { %>
+                <button type="button" class="cms-tab<%= i === 0 ? ' is-on' : '' %>" data-cms-tab="<%= p.slug %>" role="tab"><%= p.name %></button>
+                <% }); %>
+            </div>
+            <button type="button" class="cms-tabsbar__nav cms-tabsbar__nav--next" data-tabs-next aria-label="Scroll tabs right" hidden>›</button>
+        </div>
+
+        <% cms.pages.forEach(function (p, i) { %>
+        <section class="card cms-panel<%= i === 0 ? '' : ' is-hidden' %>" data-cms-panel="<%= p.slug %>">
+            <form class="cms-form" method="post" action="/loyalty/cms-pages/save" enctype="multipart/form-data" data-cms-form>
+                <input type="hidden" name="review_type_slug" value="<%= p.slug %>">
+
+                <div class="cms-grid">
+                    <div class="cms-grid__main">
+                        <div class="ly-field">
+                            <label for="cms-title-<%= p.slug %>">Title <span class="pr-req">*</span></label>
+                            <input id="cms-title-<%= p.slug %>" type="text" name="title" maxlength="255" value="<%= p.title %>" required>
+                        </div>
+                        <div class="ly-field">
+                            <label>Content / instructions</label>
+                            <div class="cms-editor" data-editor>
+                                <% toolbar(); %>
+                                <div class="cms-editor__area" contenteditable="true" data-editable data-placeholder="How to leave this review / share…"><%- p.description %></div>
+                                <textarea name="description" data-editor-input hidden></textarea>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="cms-grid__side">
+                        <div class="ly-field">
+                            <label>Example screenshot</label>
+                            <div class="cms-shot">
+                                <div class="cms-shot__preview" data-shot-preview>
+                                    <% if (p.screenshot_url) { %><img src="<%= p.screenshot_url %>" alt="<%= p.name %> screenshot" data-shot-img data-lightbox>
+                                    <% } else { %><span class="cms-shot__ph" data-shot-ph>No screenshot</span><% } %>
+                                </div>
+                                <label class="cms-shot__pick">
+                                    <input type="file" name="screenshot" accept="image/png,image/jpeg,image/webp,image/gif" data-shot-input>
+                                    <span>Choose image</span>
+                                </label>
+                                <p class="ly-hint">PNG / JPG / WEBP / GIF, up to 3 MB.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="cms-foot">
+                    <span class="cms-foot__hint" data-save-hint></span>
+                    <button type="submit" class="ly-btn ly-btn--primary" data-cms-save>💾 Save “<%= p.name %>”</button>
+                </div>
+            </form>
+        </section>
+        <% }); %>
+
+    <% } %>
+</div>

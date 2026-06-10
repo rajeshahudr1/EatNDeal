@@ -1,0 +1,199 @@
+<%#
+  views/products/form.ejs
+
+  Add / Edit product. Phase 2a (core) + Phase 2b (advanced): category, name,
+  suffix, prices, description, status (+ "unavailable until"), veg/non-veg,
+  service size, calories, barcode, flags, image; PLUS tax + unit + discount,
+  schedule (Daily/Weekly with days & times), sections, allergens and modifier
+  groups. `product` = the row to edit (or null); `meta` = the option lists.
+
+  Used: Controllers/ProductsController.form.
+-%>
+<%
+    var sym = (brand && brand.currencySymbol) ? brand.currencySymbol : '£';
+    var p = product || {};
+    var isEdit = !!(product && product.id);
+    var m = meta || { categories: [], tax: [], units: [], sections: [], allergens: [], modifiers: [] };
+    var VEG = [[0, 'None'], [1, 'Veg'], [2, 'Non-veg']];
+    var STATUSES = [[1, 'Available'], [0, 'Unavailable'], [4, 'Unavailable Today'], [5, 'Unavailable Until'], [3, 'Sold Out']];
+    var DISCOUNTS = [[3, 'None'], [2, 'Percentage'], [1, 'Flat']];
+    var DAYS = [[1, 'Mon'], [2, 'Tue'], [3, 'Wed'], [4, 'Thu'], [5, 'Fri'], [6, 'Sat'], [7, 'Sun']];
+    var FLAGS = [
+        ['show_online', 'Show online'], ['is_recommended', 'Recommended'], ['is_display_about_us', 'Show in “About us”'],
+        ['is_alchohol', 'Contains alcohol'], ['is_tobacco', 'Tobacco product'],
+        ['eligible_for_online_discount', 'Eligible for online discount'], ['eligible_for_collection_discount', 'Eligible for collection discount'],
+        ['allow_coupon', 'Allow coupons'], ['excluded_for_free_gift', 'Excluded from free gift'],
+    ];
+    function on(v) { return Number(v) === 1; }
+    function has(arr, id) { return (arr || []).indexOf(Number(id)) !== -1; }
+    var curStatus = isEdit ? Number(p.status) : 1;
+    var curSched = isEdit ? (p.schedule || 'No Schedule') : 'No Schedule';
+    var schedOn = curSched === 'Daily' || curSched === 'Weekly';
+%>
+<div class="ly">
+
+    <div class="ly__head">
+        <div>
+            <h2 class="ly__title"><%= isEdit ? '✎ Edit Product' : '➕ Add Product' %></h2>
+            <p class="ly__sub"><%= isEdit ? (p.name || 'Product') : 'Create a new menu item' %></p>
+        </div>
+        <a href="/products" class="ly-btn ly-btn--ghost ly-btn--sm">← Back to list</a>
+    </div>
+
+    <% if (load_error) { %>
+        <div class="ly-empty"><span class="ly-empty__ic" aria-hidden="true">🏢</span><p class="ly-empty__msg"><%= load_error %></p></div>
+    <% } else { %>
+
+    <form method="post" action="/products/save" enctype="multipart/form-data" class="pr-form">
+        <% if (isEdit) { %><input type="hidden" name="id" value="<%= p.id %>"><% } %>
+
+        <section class="card ly-card">
+            <h3 class="card__title">Basics</h3>
+            <div class="ly-grid">
+                <div class="ly-field lc-full">
+                    <label for="pf-name">Name <span class="pr-req">*</span></label>
+                    <input id="pf-name" type="text" name="name" maxlength="255" value="<%= p.name || '' %>" required>
+                </div>
+                <div class="ly-field">
+                    <label for="pf-cat">Category <% if (!isEdit) { %><span class="pr-req">*</span><% } %></label>
+                    <select id="pf-cat" name="category_id" <%= isEdit ? '' : 'required' %>>
+                        <option value="">— Select category —</option>
+                        <% (m.categories || []).forEach(function (c) { var selId = isEdit ? Number(p.category_id) : Number(preCategory); %>
+                        <option value="<%= c.id %>" <%= selId === c.id ? 'selected' : '' %>><%= c.name %></option>
+                        <% }); %>
+                    </select>
+                </div>
+                <div class="ly-field">
+                    <label for="pf-suffix">Suffix</label>
+                    <input id="pf-suffix" type="text" name="suffix" maxlength="255" value="<%= p.suffix || '' %>" placeholder="e.g. Large">
+                </div>
+                <div class="ly-field">
+                    <label for="pf-norm">Normal price (<%= sym %>)</label>
+                    <input id="pf-norm" type="number" name="price_before_tax" step="0.01" min="0" value="<%= p.price_before_tax || '0.00' %>">
+                </div>
+                <div class="ly-field">
+                    <label for="pf-onl">Online price (<%= sym %>)</label>
+                    <input id="pf-onl" type="number" name="online_platform_price" step="0.01" min="0" value="<%= p.online_platform_price || '0.00' %>">
+                </div>
+                <div class="ly-field lc-full">
+                    <label for="pf-desc">Description</label>
+                    <textarea id="pf-desc" name="product_description" rows="3" maxlength="5000"><%= p.product_description || (p.description || '') %></textarea>
+                </div>
+            </div>
+        </section>
+
+        <section class="card ly-card">
+            <h3 class="card__title">Availability &amp; type</h3>
+            <div class="ly-grid">
+                <div class="ly-field">
+                    <label for="pf-status">Status</label>
+                    <select id="pf-status" name="status" data-status>
+                        <% STATUSES.forEach(function (s) { %><option value="<%= s[0] %>" <%= curStatus === s[0] ? 'selected' : '' %>><%= s[1] %></option><% }); %>
+                    </select>
+                </div>
+                <div class="ly-field" data-until-field <%= curStatus === 5 ? '' : 'hidden' %>>
+                    <label for="pf-until">Unavailable until</label>
+                    <input id="pf-until" type="datetime-local" name="availability_until" value="<%= p.availability_until || '' %>">
+                </div>
+                <div class="ly-field">
+                    <label for="pf-veg">Veg / Non-veg</label>
+                    <select id="pf-veg" name="veg_non_veg"><% VEG.forEach(function (v) { %><option value="<%= v[0] %>" <%= Number(p.veg_non_veg || 0) === v[0] ? 'selected' : '' %>><%= v[1] %></option><% }); %></select>
+                </div>
+                <div class="ly-field"><label for="pf-size">Service size</label><input id="pf-size" type="text" name="service_size" maxlength="80" value="<%= p.service_size || '' %>"></div>
+                <div class="ly-field"><label for="pf-cal">Calories</label><input id="pf-cal" type="text" name="calories" maxlength="40" value="<%= p.calories || '' %>"></div>
+                <div class="ly-field"><label for="pf-bar">Barcode</label><input id="pf-bar" type="text" name="barcode" maxlength="120" value="<%= p.barcode || '' %>"></div>
+            </div>
+        </section>
+
+        <section class="card ly-card">
+            <h3 class="card__title">Tax &amp; discount</h3>
+            <div class="ly-grid">
+                <div class="ly-field">
+                    <label for="pf-tax">VAT / Tax</label>
+                    <select id="pf-tax" name="tax_id"><option value="0">— None —</option><% (m.tax || []).forEach(function (t) { %><option value="<%= t.id %>" <%= Number(p.tax_id || 0) === t.id ? 'selected' : '' %>><%= t.label %></option><% }); %></select>
+                </div>
+                <div class="ly-field">
+                    <label for="pf-unit">Unit type</label>
+                    <select id="pf-unit" name="unit_type_id"><option value="0">— None —</option><% (m.units || []).forEach(function (u) { %><option value="<%= u.id %>" <%= Number(p.unit_type_id || 0) === u.id ? 'selected' : '' %>><%= u.name %></option><% }); %></select>
+                </div>
+                <div class="ly-field">
+                    <label for="pf-dtype">Discount type</label>
+                    <select id="pf-dtype" name="discount_type"><% DISCOUNTS.forEach(function (dd) { %><option value="<%= dd[0] %>" <%= Number(p.discount_type || 3) === dd[0] ? 'selected' : '' %>><%= dd[1] %></option><% }); %></select>
+                </div>
+                <div class="ly-field"><label for="pf-dval">Discount value</label><input id="pf-dval" type="number" name="discount_value" step="0.01" min="0" value="<%= p.discount_value || '0.00' %>"></div>
+                <div class="ly-field lc-full"><label for="pf-ddesc">Discount description</label><input id="pf-ddesc" type="text" name="discount_description" maxlength="255" value="<%= p.discount_description || '' %>"></div>
+            </div>
+        </section>
+
+        <section class="card ly-card">
+            <h3 class="card__title">Schedule</h3>
+            <div class="ly-grid">
+                <div class="ly-field">
+                    <label for="pf-sched">When available</label>
+                    <select id="pf-sched" name="schedule" data-schedule>
+                        <option value="No Schedule" <%= curSched === 'No Schedule' ? 'selected' : '' %>>No Schedule</option>
+                        <option value="Daily" <%= curSched === 'Daily' ? 'selected' : '' %>>Daily</option>
+                        <option value="Weekly" <%= curSched === 'Weekly' ? 'selected' : '' %>>Weekly</option>
+                    </select>
+                </div>
+            </div>
+            <div data-schedule-fields <%= schedOn ? '' : 'hidden' %>>
+                <div class="ly-grid">
+                    <div class="ly-field"><label for="pf-sd">Start date</label><input id="pf-sd" type="date" name="schedule_start_date" value="<%= p.schedule_start_date || '' %>"></div>
+                    <div class="ly-field"><label for="pf-st">Start time</label><input id="pf-st" type="time" name="schedule_start_time" value="<%= p.schedule_start_time || '' %>"></div>
+                    <div class="ly-field"><label for="pf-ed">End date</label><input id="pf-ed" type="date" name="schedule_end_date" value="<%= p.schedule_end_date || '' %>"></div>
+                    <div class="ly-field"><label for="pf-et">End time</label><input id="pf-et" type="time" name="schedule_end_time" value="<%= p.schedule_end_time || '' %>"></div>
+                </div>
+                <label class="ly-hint">Days</label>
+                <div class="pr-days"><% DAYS.forEach(function (dy) { %><label class="ly-check"><input type="checkbox" name="schedule_days[]" value="<%= dy[0] %>" <%= has(p.schedule_days, dy[0]) ? 'checked' : '' %>><span><%= dy[1] %></span></label><% }); %></div>
+            </div>
+        </section>
+
+        <section class="card ly-card">
+            <h3 class="card__title">Options</h3>
+            <div class="pr-flags"><% FLAGS.forEach(function (f) { %><label class="ly-check"><input type="checkbox" name="<%= f[0] %>" value="1" <%= on(p[f[0]]) ? 'checked' : '' %>><span><%= f[1] %></span></label><% }); %></div>
+        </section>
+
+        <% if ((m.sections || []).length) { %>
+        <section class="card ly-card">
+            <h3 class="card__title">Sections</h3>
+            <div class="pr-flags"><% m.sections.forEach(function (s) { %><label class="ly-check"><input type="checkbox" name="section_ids[]" value="<%= s.id %>" <%= has(p.section_ids, s.id) ? 'checked' : '' %>><span><%= s.name %></span></label><% }); %></div>
+        </section>
+        <% } %>
+
+        <% if ((m.allergens || []).length) { %>
+        <section class="card ly-card">
+            <h3 class="card__title">Allergens</h3>
+            <div class="pr-flags"><% m.allergens.forEach(function (a) { %><label class="ly-check"><input type="checkbox" name="allergen_ids[]" value="<%= a.id %>" <%= has(p.allergen_ids, a.id) ? 'checked' : '' %>><span><%= a.name %></span></label><% }); %></div>
+        </section>
+        <% } %>
+
+        <% if ((m.modifiers || []).length) { %>
+        <section class="card ly-card">
+            <h3 class="card__title">Modifier groups</h3>
+            <p class="ly-hint">Tick the modifier groups that apply to this item (order = tick order).</p>
+            <div class="pr-flags"><% m.modifiers.forEach(function (mg) { %><label class="ly-check"><input type="checkbox" name="modifier_ids[]" value="<%= mg.id %>" <%= has(p.modifier_ids, mg.id) ? 'checked' : '' %>><span><%= mg.name %></span></label><% }); %></div>
+        </section>
+        <% } %>
+
+        <section class="card ly-card">
+            <h3 class="card__title">Image</h3>
+            <div class="pr-imgrow">
+                <div class="pr-imgprev" data-img-prev>
+                    <% if (isEdit && p.image_url) { %><img src="<%= p.image_url %>" alt="" data-img-thumb><% } else { %><span class="pr-imgprev__ph" data-img-ph>No image</span><% } %>
+                </div>
+                <div class="pr-imgupload">
+                    <input type="file" name="image" accept="image/png,image/jpeg,image/webp,image/gif" data-img-input>
+                    <p class="ly-hint">PNG / JPG / WEBP / GIF, up to 5 MB. <%= isEdit ? 'Leave empty to keep the current image.' : '' %></p>
+                </div>
+            </div>
+        </section>
+
+        <div class="ly-saveall">
+            <a href="/products" class="ly-btn ly-btn--ghost">Cancel</a>
+            <button type="submit" class="ly-btn ly-btn--primary ly-btn--lg"><%= isEdit ? 'Save changes' : 'Create product' %></button>
+        </div>
+    </form>
+
+    <% } %>
+</div>

@@ -1,0 +1,87 @@
+<%#
+  views/auth/profile.ejs
+
+  My Profile — the signed-in admin's account details (name + email; plus a
+  business name for a company login). Renders in the admin shell. `profile` =
+  /admin/auth/me payload, or null when it couldn't load.
+
+  Used: Controllers/AuthController.profilePage.
+-%>
+<div class="ly">
+
+    <div class="ly__head">
+        <div>
+            <h2 class="ly__title">👤 My Profile</h2>
+            <p class="ly__sub">Your admin account details</p>
+        </div>
+    </div>
+
+    <% if (!profile) { %>
+        <div class="ly-empty"><span class="ly-empty__ic" aria-hidden="true">⚠️</span><p class="ly-empty__msg">Couldn’t load your profile — make sure the API is running, then refresh.</p></div>
+    <% } else { %>
+        <section class="card ly-card">
+            <form method="post" action="/profile" class="ly-grid">
+                <% if (profile.src === 'company') { %>
+                <div class="ly-field lc-full">
+                    <label for="pf-business">Business name</label>
+                    <input id="pf-business" type="text" name="business_name" value="<%= profile.business_name || '' %>" maxlength="150">
+                </div>
+                <% } %>
+                <div class="ly-field">
+                    <label for="pf-first">First name</label>
+                    <input id="pf-first" type="text" name="first_name" value="<%= profile.first_name || '' %>" maxlength="80">
+                </div>
+                <div class="ly-field">
+                    <label for="pf-last">Last name</label>
+                    <input id="pf-last" type="text" name="last_name" value="<%= profile.last_name || '' %>" maxlength="80">
+                </div>
+                <div class="ly-field lc-full">
+                    <label for="pf-email">Email address</label>
+                    <input id="pf-email" type="email" name="email" value="<%= profile.email || '' %>" maxlength="150" required>
+                </div>
+
+                <% if (profile.src === 'company') { %>
+                <%# Company login — contact number (company.mobile) + PIN. %>
+                <div class="ly-field">
+                    <label for="pf-mobile">Contact number</label>
+                    <input id="pf-mobile" type="text" name="mobile" value="<%= profile.mobile || '' %>" maxlength="15" inputmode="numeric" pattern="[0-9]*" data-digits autocomplete="off" placeholder="Contact number">
+                </div>
+                <div class="ly-field">
+                    <label for="pf-pin">PIN <span class="ly-field__hint">(leave blank to keep)</span></label>
+                    <input id="pf-pin" type="text" name="pin" value="<%= profile.pin || '' %>" maxlength="4" inputmode="numeric" pattern="[0-9]*" data-digits autocomplete="off" placeholder="4-digit PIN">
+                </div>
+                <% } else { %>
+                <%# Staff / super-admin login — full personal-details set. %>
+                <div class="ly-field">
+                    <label for="pf-contact">Contact number</label>
+                    <input id="pf-contact" type="text" name="contact_no" value="<%= profile.contact_no || '' %>" maxlength="15" inputmode="numeric" pattern="[0-9]*" data-digits autocomplete="off" placeholder="Contact number">
+                </div>
+                <div class="ly-field">
+                    <label for="pf-pin">PIN <span class="ly-field__hint">(leave blank to keep)</span></label>
+                    <input id="pf-pin" type="text" name="pin" value="<%= profile.pin || '' %>" maxlength="4" inputmode="numeric" pattern="[0-9]*" data-digits autocomplete="off" placeholder="4-digit PIN">
+                </div>
+                <div class="ly-field lc-full">
+                    <label for="pf-addr1">Address line 1</label>
+                    <input id="pf-addr1" type="text" name="address_1" value="<%= profile.address_1 || '' %>" maxlength="255">
+                </div>
+                <div class="ly-field lc-full">
+                    <label for="pf-addr2">Address line 2</label>
+                    <input id="pf-addr2" type="text" name="address_2" value="<%= profile.address_2 || '' %>" maxlength="255">
+                </div>
+                <div class="ly-field">
+                    <label for="pf-postcode">Postcode</label>
+                    <input id="pf-postcode" type="text" name="postcode" value="<%= profile.postcode || '' %>" maxlength="20">
+                </div>
+                <div class="ly-field">
+                    <label for="pf-city">City</label>
+                    <input id="pf-city" type="text" name="city" value="<%= profile.city || '' %>" maxlength="100">
+                </div>
+                <% } %>
+
+                <div class="ly-field ly-field--action lc-full">
+                    <button type="submit" class="ly-btn ly-btn--primary">Save changes</button>
+                </div>
+            </form>
+        </section>
+    <% } %>
+</div>

@@ -1,0 +1,129 @@
+<%#
+  views/loyalty/bogof.ejs
+
+  Section 7 — Buy X Get Y (BOGO). Buy N, get M of a chosen set of items
+  (legacy loyalty_bogof_rule + loyalty_bogof_buy). apply_on = Product or
+  Category decides which multi-select applies. Multi-row CRUD (add / edit /
+  two-click delete) + master toggle. `bg` = { rules[], products[],
+  categories[], masterOn } or null.
+
+  Used: Controllers/LoyaltyController.bogof (shell layout).
+-%>
+<div class="ly">
+
+    <%- include('../partials/loyalty-subnav') -%>
+
+    <div class="ly__head">
+        <div>
+            <h2 class="ly__title">🎟️ Buy X Get Y</h2>
+            <p class="ly__sub">Buy-one-get-one style offers on products or categories</p>
+        </div>
+    </div>
+
+    <% if (load_error) { %>
+        <div class="ly-empty"><span class="ly-empty__ic" aria-hidden="true">🏢</span><p class="ly-empty__msg"><%= load_error %></p></div>
+    <% } else if (bg) { %>
+
+        <section class="card ly-card">
+            <div class="ly-card__head">
+                <h3 class="card__title">🎟️ Buy X Get Y offers</h3>
+                <div class="ly-card__headact">
+                    <form method="post" action="/loyalty/bogof/toggle" class="ly-switch-form" data-toggle-form>
+                        <input type="hidden" name="status" value="<%= bg.masterOn ? '2' : '1' %>">
+                        <span class="ly-switch-form__lbl"><%= bg.masterOn ? 'Enabled' : 'Disabled' %></span>
+                        <label class="ly-switch"><input type="checkbox" data-action="ly-master-toggle" <%= bg.masterOn ? 'checked' : '' %> aria-label="Enable BOGO"><span class="ly-switch__ui" aria-hidden="true"></span></label>
+                    </form>
+                    <% if (bg.products.length || bg.categories.length) { %>
+                    <button type="button" class="ly-btn ly-btn--primary ly-btn--sm" data-action="ly-add" data-form="ly-bg-form">+ Add</button>
+                    <% } %>
+                </div>
+            </div>
+
+            <% if (!bg.products.length && !bg.categories.length) { %>
+                <p class="ly-none">No products or categories found for this store yet.</p>
+            <% } else { %>
+
+            <form id="ly-bg-form" class="ly-rowform" method="post" action="/loyalty/bogof/save" hidden>
+                <input type="hidden" name="id" value="">
+                <h4 class="ly-rowform__title" data-form-title data-add-title="Add BOGO offer" data-edit-title="Edit BOGO offer">Add BOGO offer</h4>
+                <div class="ly-grid">
+                    <div class="ly-field">
+                        <label for="bg-buy">Buy quantity</label>
+                        <input id="bg-buy" type="number" name="buy_quantity" min="1" step="1" value="1" required>
+                    </div>
+                    <div class="ly-field">
+                        <label for="bg-get">Get quantity</label>
+                        <input id="bg-get" type="number" name="get_quantity" min="1" step="1" value="1" required>
+                    </div>
+                    <div class="ly-field">
+                        <label for="bg-apply">Apply on</label>
+                        <select id="bg-apply" name="apply_on" data-apply-on>
+                            <option value="1">Product</option>
+                            <option value="2">Category</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="ly-field" data-apply-block="1">
+                    <label>Products</label>
+                    <div class="ly-multi" data-multi>
+                        <input type="text" class="ly-multi__filter" data-multi-filter placeholder="🔍 Filter products…" autocomplete="off">
+                        <div class="ly-multi__list">
+                            <% bg.products.forEach(function (p) { %>
+                            <label class="ly-multi__opt" data-multi-option data-name="<%= p.name %>">
+                                <input type="checkbox" name="product_ids[]" value="<%= p.id %>">
+                                <span class="ly-multi__name"><%= p.name %></span>
+                            </label>
+                            <% }); %>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="ly-field" data-apply-block="2" hidden>
+                    <label>Categories</label>
+                    <div class="ly-multi" data-multi>
+                        <input type="text" class="ly-multi__filter" data-multi-filter placeholder="🔍 Filter categories…" autocomplete="off">
+                        <div class="ly-multi__list">
+                            <% bg.categories.forEach(function (c) { %>
+                            <label class="ly-multi__opt" data-multi-option data-name="<%= c.name %>">
+                                <input type="checkbox" name="category_ids[]" value="<%= c.id %>">
+                                <span class="ly-multi__name"><%= c.name %></span>
+                            </label>
+                            <% }); %>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="ly-rowform__foot">
+                    <button type="button" class="ly-btn ly-btn--ghost" data-action="ly-cancel" data-form="ly-bg-form">Cancel</button>
+                    <button type="submit" class="ly-btn ly-btn--primary">Save</button>
+                </div>
+            </form>
+
+            <% if (!bg.rules.length) { %>
+                <p class="ly-none">No BOGO offers yet. Add one above.</p>
+            <% } else { %>
+                <div class="ly-rules">
+                    <% bg.rules.forEach(function (r) { %>
+                    <div class="ly-rule" data-rule="<%= encodeURIComponent(JSON.stringify(r)) %>">
+                        <div class="ly-rule__main">
+                            <span class="ly-tier ly-tier--<%= r.apply_on === 2 ? 'silver' : 'bronze' %>">Buy <%= r.buy_quantity %> · Get <%= r.get_quantity %></span>
+                            <span class="ly-rule__text"><%= r.apply_on === 2 ? 'Category' : 'Product' %>: <strong><%= r.item_names.slice(0, 4).join(', ') || '—' %></strong><%= r.item_names.length > 4 ? ('  +' + (r.item_names.length - 4) + ' more') : '' %></span>
+                        </div>
+                        <div class="ly-rule__act">
+                            <button type="button" class="ly-iconbtn" data-action="ly-edit" data-form="ly-bg-form" aria-label="Edit">✎</button>
+                            <form method="post" action="/loyalty/bogof/delete" class="ly-del">
+                                <input type="hidden" name="id" value="<%= r.id %>">
+                                <button type="button" class="ly-iconbtn ly-iconbtn--danger" data-action="ly-delete" aria-label="Delete">🗑</button>
+                            </form>
+                        </div>
+                    </div>
+                    <% }); %>
+                </div>
+            <% } %>
+
+            <% } %>
+        </section>
+
+    <% } %>
+</div>

@@ -1,0 +1,270 @@
+<%#
+  views/loyalty/config.ejs
+
+  Loyalty Configuration — ONE page, ONE form, ONE "Save All Settings" (legacy
+  single-form concept). Header config + per-section on/off toggles + all 10
+  sections post together to /loyalty/save-all. Multi-row sections (cashback,
+  streak, product, BOGO, special) are inline-editable rows with add/remove;
+  removing a row drops it from the POST (the api soft-deletes it).
+  `d` = { company, cashback, tiers, referral, challenges, events,
+  reviewRewards, product, bogof, special }.
+
+  Used: Controllers/LoyaltyController.loyaltyConfig (shell layout).
+-%>
+<%
+    var sym = (brand && brand.currencySymbol) ? brand.currencySymbol : '£';
+    var co = d.company, cb = d.cashback, tc = d.tiers, rs = d.referral,
+        ch = d.challenges, ev = d.events, rr = d.reviewRewards,
+        pc = d.product, bg = d.bogof, so = d.special;
+    var isSuper = (typeof company_ctx !== 'undefined' && company_ctx) ? company_ctx.isSuper : false;
+    var soToday = new Date().toISOString().slice(0, 10);
+    var cashTierList = [['', 'All tiers'], ['bronze', 'Bronze'], ['silver', 'Silver'], ['gold', 'Gold']];
+    var tierRows = [['bronze', '🥉 Bronze', 'bronze'], ['silver', '🥈 Silver', 'silver'], ['gold', '🏅 Gold', 'gold']];
+    var evDefs = [[1, 'Sign-up bonus'], [2, 'Account completion'], [3, 'Google review']];
+    var chDefs = [['top_spenders', '💰 Top Spenders', 'Winners'], ['most_referrals', '👥 Most Referrals', 'Winners'], ['most_orders', '🛍 Most Orders', 'Winners'], ['most_reviews', '⭐ Most Reviews', 'Winners'], ['inactive', '😴 Win-back Inactive', 'Inactive days']];
+    function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+    function mSelect(name, opts, selected) {
+        var sel = {}; (selected || []).forEach(function (id) { sel[String(id)] = true; });
+        var h = '<select multiple size="4" name="' + name + '" class="ly-mselect">';
+        opts.forEach(function (o) { h += '<option value="' + o.id + '"' + (sel[String(o.id)] ? ' selected' : '') + '>' + esc(o.name) + '</option>'; });
+        return h + '</select>';
+    }
+    function tog(name, on) {
+        return '<label class="ly-switch ly-switch--inline"><input type="checkbox" name="' + name + '" value="1"' + (on ? ' checked' : '') + '><span class="ly-switch__ui" aria-hidden="true"></span></label>';
+    }
+%>
+<div class="ly">
+
+    <% if (load_error) { %>
+        <div class="ly__head"><div><h2 class="ly__title">🎁 Loyalty Configuration</h2></div></div>
+        <div class="ly-empty"><span class="ly-empty__ic" aria-hidden="true">🏢</span><p class="ly-empty__msg"><%= load_error %></p></div>
+    <% } else { %>
+
+    <form id="ly-config-form" method="post" action="/loyalty/save-all">
+
+        <div class="ly__head ly-cfg-head">
+            <div>
+                <h2 class="ly__title">🎁 Loyalty Configuration</h2>
+                <p class="ly__sub">All loyalty program rules &amp; cashback — saved together</p>
+            </div>
+            <button type="submit" class="ly-btn ly-btn--primary">💾 Save All Settings</button>
+        </div>
+
+        <%# ── Program + wallet header ── %>
+        <section class="card ly-card">
+            <h3 class="card__title">⚙️ Program &amp; wallet settings</h3>
+            <div class="ly-grid">
+                <% if (co && isSuper) { %>
+                <label class="ly-check"><input type="checkbox" name="loyalty_status" value="1" <%= co.loyaltyOn ? 'checked' : '' %>><span>Loyalty enabled for this company</span></label>
+                <% } %>
+                <label class="ly-check"><input type="checkbox" name="enable_loyalty_phone_order" value="1" <%= co && co.phoneOrders ? 'checked' : '' %>><span>Allow loyalty on phone orders</span></label>
+                <div class="ly-field"><label for="cf-commission">Platform commission %</label><input id="cf-commission" type="number" name="loyalty_commission" step="0.01" min="0" value="<%= co ? Number(co.commission || 0).toFixed(2) : '0.00' %>"></div>
+                <% if (cb) { %>
+                <div class="ly-field"><label for="cf-cashking">Base cashback (Cash King) %</label><input id="cf-cashking" type="number" name="cash_king" step="0.01" min="0" value="<%= cb.config.cash_king %>" required></div>
+                <div class="ly-field"><label for="cf-collection">Collection / Pickup cashback %</label><input id="cf-collection" type="number" name="collection_cashback" step="0.01" min="0" value="<%= cb.config.collection_cashback %>" required></div>
+                <div class="ly-field"><label for="cf-max">Max redeemable per order (<%= sym %>)</label><input id="cf-max" type="number" name="use_max_cashback" step="0.01" min="0" value="<%= cb.config.use_max_cashback %>" required></div>
+                <div class="ly-field"><label for="cf-expiry">Cashback expires after (days)</label><input id="cf-expiry" type="number" name="expiry_duration_days" min="0" value="<%= cb.config.expiry_duration_days %>" required></div>
+                <div class="ly-field"><label for="cf-notify">Remind before (days)</label><input id="cf-notify" type="number" name="notify_before_days" min="0" value="<%= cb.config.notify_before_days %>" required></div>
+                <% } %>
+            </div>
+        </section>
+
+        <%# ── 1. Account Setup (events) ── %>
+        <% if (ev) { %>
+        <section class="card ly-card">
+            <div class="ly-card__head"><h3 class="card__title">1. Account Setup</h3><%- tog('on_event', ev.masterOn) %></div>
+            <div class="ly-grid">
+                <% evDefs.forEach(function (def) { var id = def[0]; var e = ev.events[id] || { cashback: 0 }; %>
+                <div class="ly-field"><label for="ev<%= id %>-c"><%= def[1] %> (<%= sym %>)</label><div class="ly-money"><span class="ly-money__sym"><%= sym %></span><input id="ev<%= id %>-c" type="number" name="event_<%= id %>_cashback" step="0.01" min="0" value="<%= e.cashback %>"></div></div>
+                <% }); %>
+            </div>
+        </section>
+        <% } %>
+
+        <%# ── 2. Order Cashback (multi-row, %) ── %>
+        <% if (cb) { %>
+        <section class="card ly-card">
+            <div class="ly-card__head"><h3 class="card__title">2. Order Cashback</h3><div class="ly-card__headact"><%- tog('on_cashback', cb.masterOn) %><button type="button" class="ly-btn ly-btn--primary ly-btn--sm" data-action="ly-row-add" data-rows="cashback">+ Add</button></div></div>
+            <div class="ly-erows" data-rows-body="cashback" data-next="<%= cb.rules.length %>">
+                <% cb.rules.forEach(function (r, i) { %>
+                <div class="ly-erow" data-erow>
+                    <input type="hidden" name="cashback[<%= i %>][id]" value="<%= r.id %>">
+                    <div class="ly-field"><label>Tier</label><select name="cashback[<%= i %>][tier_type]"><% cashTierList.forEach(function (t) { %><option value="<%= t[0] %>" <%= (r.tier_type || '') === t[0] ? 'selected' : '' %>><%= t[1] %></option><% }); %></select></div>
+                    <div class="ly-field"><label>Min order (<%= sym %>)</label><input type="number" name="cashback[<%= i %>][min_order_amount]" step="0.01" min="0" value="<%= r.min_order_amount %>"></div>
+                    <div class="ly-field"><label>Cashback %</label><input type="number" name="cashback[<%= i %>][cashback]" step="0.01" min="0" value="<%= r.cashback %>"></div>
+                    <button type="button" class="ly-iconbtn ly-iconbtn--danger ly-erow__del" data-action="ly-row-del" aria-label="Remove">🗑</button>
+                </div>
+                <% }); %>
+            </div>
+            <p class="ly-none" data-rows-empty <%= cb.rules.length ? 'hidden' : '' %>>No cashback rules — click “+ Add”.</p>
+            <template data-row-template="cashback"><div class="ly-erow" data-erow><input type="hidden" name="cashback[__IDX__][id]" value=""><div class="ly-field"><label>Tier</label><select name="cashback[__IDX__][tier_type]"><% cashTierList.forEach(function (t) { %><option value="<%= t[0] %>"><%= t[1] %></option><% }); %></select></div><div class="ly-field"><label>Min order (<%= sym %>)</label><input type="number" name="cashback[__IDX__][min_order_amount]" step="0.01" min="0" value=""></div><div class="ly-field"><label>Cashback %</label><input type="number" name="cashback[__IDX__][cashback]" step="0.01" min="0" value=""></div><button type="button" class="ly-iconbtn ly-iconbtn--danger ly-erow__del" data-action="ly-row-del" aria-label="Remove">🗑</button></div></template>
+        </section>
+        <% } %>
+
+        <%# ── 3. Referral (single, £) ── %>
+        <% if (rs) { %>
+        <section class="card ly-card">
+            <div class="ly-card__head"><h3 class="card__title">3. Referral Cashback</h3><%- tog('on_referral', rs.masterReferral) %></div>
+            <div class="ly-grid">
+                <div class="ly-field"><label for="rf-rr">Referrer reward (<%= sym %>)</label><div class="ly-money"><span class="ly-money__sym"><%= sym %></span><input id="rf-rr" type="number" name="referrer_cashback" step="0.01" min="0" value="<%= rs.referral.referrer_cashback %>"></div></div>
+                <div class="ly-field"><label for="rf-re">Friend reward (<%= sym %>)</label><div class="ly-money"><span class="ly-money__sym"><%= sym %></span><input id="rf-re" type="number" name="referee_cashback" step="0.01" min="0" value="<%= rs.referral.referee_cashback %>"></div></div>
+                <div class="ly-field"><label for="rf-tr">Reward when</label><select id="rf-tr" name="trigger"><option value="1" <%= Number(rs.referral.trigger) === 1 ? 'selected' : '' %>>Friend signs up</option><option value="2" <%= Number(rs.referral.trigger) === 2 ? 'selected' : '' %>>Friend's first order</option></select></div>
+            </div>
+        </section>
+        <% } %>
+
+        <%# ── 4. Product Cashback (multi-row, £) ── %>
+        <% if (pc) { %>
+        <section class="card ly-card">
+            <div class="ly-card__head"><h3 class="card__title">4. Product Cashback</h3><div class="ly-card__headact"><%- tog('on_product', pc.masterOn) %><% if (pc.products.length) { %><button type="button" class="ly-btn ly-btn--primary ly-btn--sm" data-action="ly-row-add" data-rows="product">+ Add</button><% } %></div></div>
+            <% if (!pc.products.length) { %><p class="ly-none">No products found for this store yet.</p><% } else { %>
+            <p class="ly-hint">Cashback can’t exceed the lowest selected product’s price. Ctrl/Cmd-click to pick multiple products.</p>
+            <div class="ly-erows" data-rows-body="product" data-next="<%= pc.rules.length %>">
+                <% pc.rules.forEach(function (r, i) { %>
+                <div class="ly-erow ly-erow--wide" data-erow>
+                    <input type="hidden" name="product[<%= i %>][id]" value="<%= r.id %>">
+                    <div class="ly-field"><label>Cashback (<%= sym %>)</label><div class="ly-money"><span class="ly-money__sym"><%= sym %></span><input type="number" name="product[<%= i %>][cashback]" step="0.01" min="0" value="<%= r.cashback %>"></div></div>
+                    <div class="ly-field ly-field--grow"><label>Products</label><%- mSelect('product[' + i + '][product_ids][]', pc.products, r.product_ids) %></div>
+                    <button type="button" class="ly-iconbtn ly-iconbtn--danger ly-erow__del" data-action="ly-row-del" aria-label="Remove">🗑</button>
+                </div>
+                <% }); %>
+            </div>
+            <p class="ly-none" data-rows-empty <%= pc.rules.length ? 'hidden' : '' %>>No product cashback rules — click “+ Add”.</p>
+            <template data-row-template="product"><div class="ly-erow ly-erow--wide" data-erow><input type="hidden" name="product[__IDX__][id]" value=""><div class="ly-field"><label>Cashback (<%= sym %>)</label><div class="ly-money"><span class="ly-money__sym"><%= sym %></span><input type="number" name="product[__IDX__][cashback]" step="0.01" min="0" value=""></div></div><div class="ly-field ly-field--grow"><label>Products</label><%- mSelect('product[__IDX__][product_ids][]', pc.products, []) %></div><button type="button" class="ly-iconbtn ly-iconbtn--danger ly-erow__del" data-action="ly-row-del" aria-label="Remove">🗑</button></div></template>
+            <% } %>
+        </section>
+        <% } %>
+
+        <%# ── 5. Order Streak (multi-row, £) ── %>
+        <% if (rs) { %>
+        <section class="card ly-card">
+            <div class="ly-card__head"><h3 class="card__title">5. Order Streak Cashback</h3><div class="ly-card__headact"><%- tog('on_streak', rs.masterStreak) %><button type="button" class="ly-btn ly-btn--primary ly-btn--sm" data-action="ly-row-add" data-rows="streak">+ Add</button></div></div>
+            <div class="ly-erows" data-rows-body="streak" data-next="<%= rs.streaks.length %>">
+                <% rs.streaks.forEach(function (s, i) { %>
+                <div class="ly-erow" data-erow>
+                    <input type="hidden" name="streak[<%= i %>][id]" value="<%= s.id %>">
+                    <div class="ly-field"><label>Kind</label><select name="streak[<%= i %>][type]"><option value="1" <%= Number(s.type) === 1 ? 'selected' : '' %>>Streak</option><option value="2" <%= Number(s.type) === 2 ? 'selected' : '' %>>Milestone</option></select></div>
+                    <div class="ly-field"><label>Period</label><select name="streak[<%= i %>][duration_type]"><option value="1" <%= Number(s.duration_type) === 1 ? 'selected' : '' %>>Weekly</option><option value="2" <%= Number(s.duration_type) === 2 ? 'selected' : '' %>>Monthly</option></select></div>
+                    <div class="ly-field"><label>Orders</label><input type="number" name="streak[<%= i %>][order_count]" min="1" step="1" value="<%= s.order_count %>"></div>
+                    <div class="ly-field"><label>Min order (<%= sym %>)</label><input type="number" name="streak[<%= i %>][min_order_amount]" step="0.01" min="0" value="<%= s.min_order_amount %>"></div>
+                    <div class="ly-field"><label>Reward (<%= sym %>)</label><input type="number" name="streak[<%= i %>][cashback]" step="0.01" min="0" value="<%= s.cashback %>"></div>
+                    <button type="button" class="ly-iconbtn ly-iconbtn--danger ly-erow__del" data-action="ly-row-del" aria-label="Remove">🗑</button>
+                </div>
+                <% }); %>
+            </div>
+            <p class="ly-none" data-rows-empty <%= rs.streaks.length ? 'hidden' : '' %>>No streak milestones — click “+ Add”.</p>
+            <template data-row-template="streak"><div class="ly-erow" data-erow><input type="hidden" name="streak[__IDX__][id]" value=""><div class="ly-field"><label>Kind</label><select name="streak[__IDX__][type]"><option value="1">Streak</option><option value="2">Milestone</option></select></div><div class="ly-field"><label>Period</label><select name="streak[__IDX__][duration_type]"><option value="1">Weekly</option><option value="2">Monthly</option></select></div><div class="ly-field"><label>Orders</label><input type="number" name="streak[__IDX__][order_count]" min="1" step="1" value=""></div><div class="ly-field"><label>Min order (<%= sym %>)</label><input type="number" name="streak[__IDX__][min_order_amount]" step="0.01" min="0" value="0"></div><div class="ly-field"><label>Reward (<%= sym %>)</label><input type="number" name="streak[__IDX__][cashback]" step="0.01" min="0" value=""></div><button type="button" class="ly-iconbtn ly-iconbtn--danger ly-erow__del" data-action="ly-row-del" aria-label="Remove">🗑</button></div></template>
+        </section>
+        <% } %>
+
+        <%# ── 6. Review Cashback (8 types, £) ── %>
+        <% if (rr) { %>
+        <section class="card ly-card">
+            <div class="ly-card__head"><h3 class="card__title">6. Review Cashback</h3><%- tog('on_review', rr.masterOn) %></div>
+            <p class="ly-hint">A <%= sym %> reward per type. Leave at 0 to switch that reward off.</p>
+            <div class="ly-grid">
+                <% rr.types.forEach(function (t) { %>
+                <div class="ly-field"><label for="rv<%= t.id %>"><%= t.name %></label><div class="ly-money"><span class="ly-money__sym"><%= sym %></span><input id="rv<%= t.id %>" type="number" name="review_<%= t.id %>_cashback" step="0.01" min="0" value="<%= Number(t.cashback).toFixed(2) %>"></div></div>
+                <% }); %>
+            </div>
+        </section>
+        <% } %>
+
+        <%# ── 7. Buy X Get Y (multi-row) ── %>
+        <% if (bg) { %>
+        <section class="card ly-card">
+            <div class="ly-card__head"><h3 class="card__title">7. Buy X Get Y (BOGO)</h3><div class="ly-card__headact"><%- tog('on_bogof', bg.masterOn) %><% if (bg.products.length || bg.categories.length) { %><button type="button" class="ly-btn ly-btn--primary ly-btn--sm" data-action="ly-row-add" data-rows="bogof">+ Add</button><% } %></div></div>
+            <% if (!bg.products.length && !bg.categories.length) { %><p class="ly-none">No products or categories found yet.</p><% } else { %>
+            <p class="ly-hint">Pick “Apply on”, then fill the matching list (Ctrl/Cmd-click to multi-select).</p>
+            <div class="ly-erows" data-rows-body="bogof" data-next="<%= bg.rules.length %>">
+                <% bg.rules.forEach(function (r, i) { %>
+                <div class="ly-erow ly-erow--wide" data-erow>
+                    <input type="hidden" name="bogof[<%= i %>][id]" value="<%= r.id %>">
+                    <div class="ly-field"><label>Buy</label><input type="number" name="bogof[<%= i %>][buy_quantity]" min="1" step="1" value="<%= r.buy_quantity %>"></div>
+                    <div class="ly-field"><label>Get</label><input type="number" name="bogof[<%= i %>][get_quantity]" min="1" step="1" value="<%= r.get_quantity %>"></div>
+                    <div class="ly-field"><label>Apply on</label><select name="bogof[<%= i %>][apply_on]"><option value="1" <%= r.apply_on === 1 ? 'selected' : '' %>>Product</option><option value="2" <%= r.apply_on === 2 ? 'selected' : '' %>>Category</option></select></div>
+                    <div class="ly-field ly-field--grow"><label>Products</label><%- mSelect('bogof[' + i + '][product_ids][]', bg.products, r.product_ids) %></div>
+                    <div class="ly-field ly-field--grow"><label>Categories</label><%- mSelect('bogof[' + i + '][category_ids][]', bg.categories, r.category_ids) %></div>
+                    <button type="button" class="ly-iconbtn ly-iconbtn--danger ly-erow__del" data-action="ly-row-del" aria-label="Remove">🗑</button>
+                </div>
+                <% }); %>
+            </div>
+            <p class="ly-none" data-rows-empty <%= bg.rules.length ? 'hidden' : '' %>>No BOGO offers — click “+ Add”.</p>
+            <template data-row-template="bogof"><div class="ly-erow ly-erow--wide" data-erow><input type="hidden" name="bogof[__IDX__][id]" value=""><div class="ly-field"><label>Buy</label><input type="number" name="bogof[__IDX__][buy_quantity]" min="1" step="1" value="1"></div><div class="ly-field"><label>Get</label><input type="number" name="bogof[__IDX__][get_quantity]" min="1" step="1" value="1"></div><div class="ly-field"><label>Apply on</label><select name="bogof[__IDX__][apply_on]"><option value="1">Product</option><option value="2">Category</option></select></div><div class="ly-field ly-field--grow"><label>Products</label><%- mSelect('bogof[__IDX__][product_ids][]', bg.products, []) %></div><div class="ly-field ly-field--grow"><label>Categories</label><%- mSelect('bogof[__IDX__][category_ids][]', bg.categories, []) %></div><button type="button" class="ly-iconbtn ly-iconbtn--danger ly-erow__del" data-action="ly-row-del" aria-label="Remove">🗑</button></div></template>
+            <% } %>
+        </section>
+        <% } %>
+
+        <%# ── 8. Special Offer (multi-row) ── %>
+        <% if (so) { %>
+        <section class="card ly-card">
+            <div class="ly-card__head"><h3 class="card__title">8. Special Offer</h3><div class="ly-card__headact"><%- tog('on_special', so.masterOn) %><button type="button" class="ly-btn ly-btn--primary ly-btn--sm" data-action="ly-row-add" data-rows="special">+ Add</button></div></div>
+            <div class="ly-erows" data-rows-body="special" data-next="<%= so.offers.length %>">
+                <% so.offers.forEach(function (o, i) { %>
+                <div class="ly-erow" data-erow>
+                    <input type="hidden" name="special[<%= i %>][id]" value="<%= o.id %>">
+                    <div class="ly-field"><label>Cashback</label><input type="number" name="special[<%= i %>][cashback]" step="0.01" min="0" value="<%= o.cashback %>"></div>
+                    <div class="ly-field"><label>Type</label><select name="special[<%= i %>][value_type]"><option value="£" <%= o.value_type === '£' ? 'selected' : '' %>><%= sym %> flat</option><option value="%" <%= o.value_type === '%' ? 'selected' : '' %>>% percent</option></select></div>
+                    <div class="ly-field"><label>Offer date</label><input type="date" name="special[<%= i %>][offer_date]" value="<%= o.offer_date %>"></div>
+                    <button type="button" class="ly-iconbtn ly-iconbtn--danger ly-erow__del" data-action="ly-row-del" aria-label="Remove">🗑</button>
+                </div>
+                <% }); %>
+            </div>
+            <p class="ly-none" data-rows-empty <%= so.offers.length ? 'hidden' : '' %>>No special offers — click “+ Add”.</p>
+            <template data-row-template="special"><div class="ly-erow" data-erow><input type="hidden" name="special[__IDX__][id]" value=""><div class="ly-field"><label>Cashback</label><input type="number" name="special[__IDX__][cashback]" step="0.01" min="0" value=""></div><div class="ly-field"><label>Type</label><select name="special[__IDX__][value_type]"><option value="£"><%= sym %> flat</option><option value="%">% percent</option></select></div><div class="ly-field"><label>Offer date</label><input type="date" name="special[__IDX__][offer_date]" min="<%= soToday %>" value=""></div><button type="button" class="ly-iconbtn ly-iconbtn--danger ly-erow__del" data-action="ly-row-del" aria-label="Remove">🗑</button></div></template>
+        </section>
+        <% } %>
+
+        <%# ── 9. Membership Tiers ── %>
+        <% if (tc) { %>
+        <section class="card ly-card">
+            <div class="ly-card__head"><h3 class="card__title">9. Membership Tiers</h3><%- tog('on_tier', tc.masterOn) %></div>
+            <div class="ly-tiers">
+                <% tierRows.forEach(function (def) { var key = def[0]; var t = tc.tiers[key] || { min_amount: 0, max_amount: 0, free_delivery_lifetime: false }; %>
+                <section class="card ly-tiercard ly-tiercard--<%= def[2] %>">
+                    <h3 class="ly-tiercard__title"><%= def[1] %></h3>
+                    <div class="ly-grid">
+                        <div class="ly-field"><label for="<%= key %>-min">Min spend (<%= sym %>)</label><input id="<%= key %>-min" type="number" name="<%= key %>_min_amount" step="0.01" min="0" value="<%= t.min_amount %>"></div>
+                        <div class="ly-field">
+                            <label for="<%= key %>-max">Max spend (<%= sym %>)</label>
+                            <% if (key === 'gold') { %><input type="hidden" name="gold_max_amount" value="0"><div class="ly-tier-above">Above (no upper limit)</div><% } else { %><input id="<%= key %>-max" type="number" name="<%= key %>_max_amount" step="0.01" min="0" value="<%= t.max_amount %>"><% } %>
+                        </div>
+                    </div>
+                    <label class="ly-check"><input type="checkbox" name="<%= key %>_free" value="1" <%= t.free_delivery_lifetime ? 'checked' : '' %>><span>Lifetime free delivery</span></label>
+                </section>
+                <% }); %>
+            </div>
+        </section>
+        <% } %>
+
+        <%# ── 10. Smart Campaign ── %>
+        <% if (ch) { %>
+        <section class="card ly-card">
+            <div class="ly-card__head"><h3 class="card__title">10. Smart Campaign</h3><%- tog('on_campaign', ch.masterOn) %></div>
+            <div class="ly-camps">
+                <% chDefs.forEach(function (def) { var key = def[0]; var c = ch.campaigns[key] || { target_value: 0, value_type: '£', cashback: 0 }; %>
+                <section class="card ly-camp">
+                    <h3 class="ly-camp__title"><%= def[1] %></h3>
+                    <div class="ly-grid">
+                        <div class="ly-field"><label for="<%= key %>-t"><%= def[2] %></label><input id="<%= key %>-t" type="number" name="<%= key %>_target" min="0" step="1" value="<%= c.target_value %>"></div>
+                        <% if (key === 'inactive') { %>
+                        <div class="ly-field"><label for="<%= key %>-c">Reward</label><input id="<%= key %>-c" type="number" name="<%= key %>_cashback" step="0.01" min="0" value="<%= c.cashback %>"></div>
+                        <div class="ly-field"><label for="<%= key %>-vt">Type</label><select id="<%= key %>-vt" name="<%= key %>_vt"><option value="£" <%= c.value_type === '£' ? 'selected' : '' %>><%= sym %> flat</option><option value="%" <%= c.value_type === '%' ? 'selected' : '' %>>% percent</option></select></div>
+                        <% } else { %>
+                        <div class="ly-field"><label for="<%= key %>-c">Reward (<%= sym %>)</label><div class="ly-money"><span class="ly-money__sym"><%= sym %></span><input id="<%= key %>-c" type="number" name="<%= key %>_cashback" step="0.01" min="0" value="<%= c.cashback %>"></div></div>
+                        <% } %>
+                    </div>
+                </section>
+                <% }); %>
+            </div>
+        </section>
+        <% } %>
+
+        <div class="ly-saveall">
+            <button type="submit" class="ly-btn ly-btn--primary ly-btn--lg">💾 Save All Settings</button>
+        </div>
+
+    </form>
+
+    <% } %>
+</div>

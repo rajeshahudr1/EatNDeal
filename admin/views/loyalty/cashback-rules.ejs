@@ -1,0 +1,137 @@
+<%#
+  views/loyalty/cashback-rules.ejs
+
+  Cashback Rules screen. Master on/off toggle, the global company_loyalty
+  knobs (cash_king %, expiry, notify, max redeemable, collection cashback),
+  and the per-row cashback rules with add / edit / delete. All company-scoped
+  via the topbar selector. `cb` = the api payload (or null on error).
+
+  Used: Controllers/LoyaltyController.cashbackRules (shell layout).
+-%>
+<%
+    var sym = (brand && brand.currencySymbol) ? brand.currencySymbol : '£';
+    var TIERS = [['', 'All tiers'], ['bronze', '🥉 Bronze'], ['silver', '🥈 Silver'], ['gold', '🏅 Gold']];
+    var APPLY = { 1: 'Whole cart', 2: 'Category', 3: 'Product' };
+    function tierLabel(t) { var f = TIERS.find(function (x) { return x[0] === (t || ''); }); return f ? f[1] : 'All tiers'; }
+%>
+<div class="ly">
+
+    <%- include('../partials/loyalty-subnav') -%>
+
+    <div class="ly__head">
+        <div>
+            <h2 class="ly__title">💷 Cashback Rules</h2>
+            <p class="ly__sub">Order-value cashback tiers &amp; the global wallet settings</p>
+        </div>
+        <% if (cb) { %>
+        <form method="post" action="/loyalty/cashback-rules/toggle" class="ly-switch-form" data-toggle-form>
+            <input type="hidden" name="status" value="<%= cb.masterOn ? '2' : '1' %>">
+            <span class="ly-switch-form__lbl"><%= cb.masterOn ? 'Enabled' : 'Disabled' %></span>
+            <label class="ly-switch">
+                <input type="checkbox" data-action="ly-master-toggle" <%= cb.masterOn ? 'checked' : '' %> aria-label="Enable cashback">
+                <span class="ly-switch__ui" aria-hidden="true"></span>
+            </label>
+        </form>
+        <% } %>
+    </div>
+
+    <% if (load_error) { %>
+        <div class="ly-empty">
+            <span class="ly-empty__ic" aria-hidden="true">🏢</span>
+            <p class="ly-empty__msg"><%= load_error %></p>
+        </div>
+    <% } else if (cb) { %>
+
+        <%# ── Global settings ── %>
+        <section class="card ly-card">
+            <h3 class="card__title">Global wallet settings</h3>
+            <form method="post" action="/loyalty/cashback-rules/config" class="ly-grid">
+                <div class="ly-field">
+                    <label for="cf-cashking">Base cashback (Cash King) %</label>
+                    <input id="cf-cashking" type="number" name="cash_king" step="0.01" min="0" value="<%= cb.config.cash_king %>" required>
+                </div>
+                <div class="ly-field">
+                    <label for="cf-collection">Collection cashback %</label>
+                    <input id="cf-collection" type="number" name="collection_cashback" step="0.01" min="0" value="<%= cb.config.collection_cashback %>" required>
+                </div>
+                <div class="ly-field">
+                    <label for="cf-max">Max redeemable per order (<%= sym %>)</label>
+                    <input id="cf-max" type="number" name="use_max_cashback" step="0.01" min="0" value="<%= cb.config.use_max_cashback %>" required>
+                </div>
+                <div class="ly-field">
+                    <label for="cf-expiry">Cashback expires after (days)</label>
+                    <input id="cf-expiry" type="number" name="expiry_duration_days" min="0" value="<%= cb.config.expiry_duration_days %>" required>
+                </div>
+                <div class="ly-field">
+                    <label for="cf-notify">Remind before (days)</label>
+                    <input id="cf-notify" type="number" name="notify_before_days" min="0" value="<%= cb.config.notify_before_days %>" required>
+                </div>
+                <div class="ly-field ly-field--action">
+                    <button type="submit" class="ly-btn ly-btn--primary">Save settings</button>
+                </div>
+            </form>
+        </section>
+
+        <%# ── Per-row rules ── %>
+        <section class="card ly-card">
+            <div class="ly-card__head">
+                <h3 class="card__title">Order-value cashback rules</h3>
+                <button type="button" class="ly-btn ly-btn--primary ly-btn--sm" data-action="ly-add" data-form="ly-cashback-form">+ Add rule</button>
+            </div>
+
+            <%# Add / edit form — hidden until "Add" or "Edit". %>
+            <form id="ly-cashback-form" class="ly-rowform" method="post" action="/loyalty/cashback-rules/save" hidden>
+                <input type="hidden" name="id" value="">
+                <input type="hidden" name="apply_on" value="1">
+                <input type="hidden" name="order_count" value="5">
+                <h4 class="ly-rowform__title" data-form-title data-add-title="Add cashback rule" data-edit-title="Edit cashback rule">Add cashback rule</h4>
+                <div class="ly-grid">
+                    <div class="ly-field">
+                        <label for="cr-tier">Tier</label>
+                        <select id="cr-tier" name="tier_type">
+                            <% TIERS.forEach(function (t) { %><option value="<%= t[0] %>"><%= t[1] %></option><% }); %>
+                        </select>
+                    </div>
+                    <div class="ly-field">
+                        <label for="cr-min">Minimum order (<%= sym %>)</label>
+                        <input id="cr-min" type="number" name="min_order_amount" step="0.01" min="0" placeholder="20.00" required>
+                    </div>
+                    <div class="ly-field">
+                        <label for="cr-cashback">Cashback %</label>
+                        <input id="cr-cashback" type="number" name="cashback" step="0.01" min="0" placeholder="5.00" required>
+                    </div>
+                </div>
+                <div class="ly-rowform__foot">
+                    <button type="button" class="ly-btn ly-btn--ghost" data-action="ly-cancel" data-form="ly-cashback-form">Cancel</button>
+                    <button type="submit" class="ly-btn ly-btn--primary">Save rule</button>
+                </div>
+            </form>
+
+            <% if (!cb.rules.length) { %>
+                <p class="ly-none">No cashback rules yet. Add one above.</p>
+            <% } else { %>
+                <div class="ly-rules">
+                    <% cb.rules.forEach(function (r) { %>
+                    <div class="ly-rule" data-rule="<%= encodeURIComponent(JSON.stringify(r)) %>">
+                        <div class="ly-rule__main">
+                            <span class="ly-tier ly-tier--<%= r.tier_type || 'all' %>"><%= tierLabel(r.tier_type) %></span>
+                            <span class="ly-rule__text">
+                                Min <strong><%= sym %><%= r.min_order_amount.toFixed(2) %></strong>
+                                → <strong><%= r.value_type === '£' ? (sym + r.cashback.toFixed(2)) : (r.cashback + '%') %></strong> cashback
+                            </span>
+                        </div>
+                        <div class="ly-rule__act">
+                            <button type="button" class="ly-iconbtn" data-action="ly-edit" data-form="ly-cashback-form" aria-label="Edit rule">✎</button>
+                            <form method="post" action="/loyalty/cashback-rules/delete" class="ly-del">
+                                <input type="hidden" name="id" value="<%= r.id %>">
+                                <button type="button" class="ly-iconbtn ly-iconbtn--danger" data-action="ly-delete" aria-label="Delete rule">🗑</button>
+                            </form>
+                        </div>
+                    </div>
+                    <% }); %>
+                </div>
+            <% } %>
+        </section>
+
+    <% } %>
+</div>

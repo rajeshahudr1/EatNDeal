@@ -1,12 +1,16 @@
 <%#
   partials/sidebar.ejs — admin left navigation
 
-  Dark navy rail with the loyalty-management sections from the mockup.
-  On desktop it is fixed; on mobile it slides in as an off-canvas drawer
-  (toggled by the topbar hamburger, dismissed via .admin-scrim).
+  Dark navy rail. Mirrors the legacy POS "Settings" menu concept: a Settings
+  group holds Loyalty Configuration + Review CMS Pages + Store Settings; Review
+  Claims and Segments are their own items. Loyalty items show only when loyalty
+  is available (super admin, or a company whose loyalty is switched ON).
+  On mobile the rail slides in as an off-canvas drawer (topbar hamburger).
   active_nav (set per controller) highlights the current item.
 -%>
 <% var nav = active_nav || ''; %>
+<% var scc = (typeof company_ctx !== 'undefined' && company_ctx) ? company_ctx : { isSuper: false, loyaltyEnabled: false }; %>
+<% var loyaltyOn = scc.isSuper || scc.loyaltyEnabled; %>
 <aside class="admin-sidebar" id="admin-sidebar">
     <div class="admin-sidebar__brand">
         <img class="admin-sidebar__logo" src="<%= brand.logoUrl %>?v=<%= ASSET_VERSION %>" alt="<%= brand.name %>">
@@ -17,32 +21,41 @@
         <a class="admin-nav__item <%= nav === 'dashboard' ? 'is-active' : '' %>" href="/">
             <span class="admin-nav__ic" aria-hidden="true">📊</span><span>Dashboard</span>
         </a>
-        <a class="admin-nav__item <%= nav === 'cashback' ? 'is-active' : '' %>" href="/loyalty/cashback-rules">
-            <span class="admin-nav__ic" aria-hidden="true">💷</span><span>Cashback Rules</span>
+        <a class="admin-nav__item <%= nav === 'products' ? 'is-active' : '' %>" href="/products">
+            <span class="admin-nav__ic" aria-hidden="true">🍽️</span><span>Products</span>
         </a>
-        <a class="admin-nav__item <%= nav === 'tiers' ? 'is-active' : '' %>" href="/loyalty/tiers">
-            <span class="admin-nav__ic" aria-hidden="true">🏅</span><span>Tier Config</span>
+        <% if (scc.isSuper) { %>
+        <a class="admin-nav__item <%= nav === 'mp-categories' ? 'is-active' : '' %>" href="/marketplace-categories">
+            <span class="admin-nav__ic" aria-hidden="true">🗂️</span><span>Marketplace Categories</span>
         </a>
-        <a class="admin-nav__item <%= nav === 'referral' ? 'is-active' : '' %>" href="/loyalty/referral-streak">
-            <span class="admin-nav__ic" aria-hidden="true">🔥</span><span>Referral &amp; Streak</span>
-        </a>
-        <a class="admin-nav__item <%= nav === 'challenges' ? 'is-active' : '' %>" href="/loyalty/challenges">
-            <span class="admin-nav__ic" aria-hidden="true">🏆</span><span>Challenges</span>
-        </a>
-        <a class="admin-nav__item <%= nav === 'events' ? 'is-active' : '' %>" href="/loyalty/events">
-            <span class="admin-nav__ic" aria-hidden="true">🎉</span><span>Event Rewards</span>
-        </a>
-        <a class="admin-nav__item <%= nav === 'reviews' ? 'is-active' : '' %>" href="/loyalty/review-claims">
-            <span class="admin-nav__ic" aria-hidden="true">⭐</span><span>Review Claims</span>
-        </a>
-        <a class="admin-nav__item <%= nav === 'segments' ? 'is-active' : '' %>" href="/loyalty/segments">
-            <span class="admin-nav__ic" aria-hidden="true">👥</span><span>Segments</span>
-        </a>
-    </nav>
+        <% } %>
 
-    <form class="admin-sidebar__logout" method="post" action="/logout">
-        <button type="submit" class="admin-nav__item admin-nav__item--logout">
-            <span class="admin-nav__ic" aria-hidden="true">↩️</span><span>Sign out</span>
-        </button>
-    </form>
+        <%# Settings group (legacy "Settings" submenu). Open when a child is active. %>
+        <details class="admin-nav__group" <%= ['loyalty', 'cms', 'store-settings'].includes(nav) ? 'open' : '' %>>
+            <summary class="admin-nav__item admin-nav__sum">
+                <span class="admin-nav__ic" aria-hidden="true">⚙️</span><span>Settings</span>
+                <span class="admin-nav__chev" aria-hidden="true">▸</span>
+            </summary>
+            <div class="admin-nav__sub">
+                <% if (loyaltyOn) { %>
+                <a class="admin-nav__item admin-nav__subitem <%= nav === 'loyalty' ? 'is-active' : '' %>" href="/loyalty">
+                    <span class="admin-nav__ic" aria-hidden="true">🎁</span><span>Loyalty Configuration</span>
+                </a>
+                <a class="admin-nav__item admin-nav__subitem <%= nav === 'cms' ? 'is-active' : '' %>" href="/loyalty/cms-pages">
+                    <span class="admin-nav__ic" aria-hidden="true">📝</span><span>Review CMS Pages</span>
+                </a>
+                <% } %>
+                <a class="admin-nav__item admin-nav__subitem <%= nav === 'store-settings' ? 'is-active' : '' %>" href="/store-settings">
+                    <span class="admin-nav__ic" aria-hidden="true">🏪</span><span>Store Settings</span>
+                </a>
+            </div>
+        </details>
+
+        <% if (loyaltyOn) { %>
+        <a class="admin-nav__item <%= nav === 'reviews' ? 'is-active' : '' %>" href="/loyalty/review-claims">
+            <span class="admin-nav__ic" aria-hidden="true">✅</span><span>Cashback Review</span>
+        </a>
+        <% } %>
+    </nav>
+    <%# Sign out lives in the topbar account menu — not duplicated here. %>
 </aside>

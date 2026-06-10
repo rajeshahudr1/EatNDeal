@@ -46,8 +46,13 @@ const chalk       = require('chalk');
 
 const { fetchBrand } = require('./Helpers/apiClient');
 const { requireAdmin } = require('./Middlewares/auth');
+const { companyContext, requireLoyalty } = require('./Middlewares/companyContext');
 const AuthController      = require('./Controllers/AuthController');
 const DashboardController = require('./Controllers/DashboardController');
+const LoyaltyController   = require('./Controllers/LoyaltyController');
+const StoreSettingsController = require('./Controllers/StoreSettingsController');
+const ProductsController  = require('./Controllers/ProductsController');
+const MpCategoriesController = require('./Controllers/MarketplaceCategoriesController');
 
 const app    = express();
 const ENV    = process.env.APP_ENV || 'development';
@@ -124,6 +129,14 @@ if (yiiUploadsPath) {
     }));
 }
 
+// Customer review screenshots live in the web app's runtime folder
+// (web/runtime/review-images). Serve them here too so the Cashback Review
+// page shows them same-origin, even when the customer web app isn't running.
+app.use('/review-images', express.static(path.join(__dirname, '..', 'web', 'runtime', 'review-images'), {
+    maxAge: ENV === 'production' ? '7d' : 0,
+    fallthrough: true,
+}));
+
 // ── Session ────────────────────────────────────────────────────
 // Server-side session persisted to disk (session-file-store) so a server
 // restart does not log admins out. The cookie carries only the session id.
@@ -185,6 +198,27 @@ app.use((req, res, next) => {
     res.locals.admin         = (req.session && req.session.admin) || null;
     res.locals.page_title    = '';
     res.locals.active_nav    = '';
+    // Current path — so forms (e.g. the company switcher) can post a `next`
+    // and return the user to the SAME page. We can't rely on the Referer
+    // header: Helmet's default Referrer-Policy: no-referrer strips it.
+    res.locals.current_path  = req.originalUrl || '/';
+    next();
+});
+
+// ── Persist the session before every redirect ──────────────────
+// connect-flash stores messages on req.session, and session-file-store writes
+// to disk ASYNCHRONOUSLY. A bare res.redirect() can race that write: the
+// browser fetches the redirect target before the flash is persisted, so the
+// success/error toast never shows. Wrapping redirect to save first guarantees
+// the flash survives — globally, for every current and future handler.
+app.use((req, res, next) => {
+    const nativeRedirect = res.redirect.bind(res);
+    res.redirect = function patchedRedirect(...args) {
+        if (req.session && typeof req.session.save === 'function') {
+            return req.session.save(() => nativeRedirect(...args));
+        }
+        return nativeRedirect(...args);
+    };
     next();
 });
 
@@ -221,10 +255,335 @@ app.post('/forgot-password', AuthController.doForgot);
 app.get ('/reset-password',  AuthController.resetPage);
 app.post('/reset-password',  AuthController.doReset);
 
-// Dashboard (gated). Landing page after a successful login. The full
-// loyalty-management screens (Cashback Rules, Tiers, Challenges, Review
-// Claims, Segments — per the mockup) hang off this in later phases.
-app.get('/', requireAdmin, DashboardController.index);
+// Super-admin company switcher — store the picked company on the session.
+// Company logins are pinned to their own company on the api side, so this is
+// a no-op for them.
+//
+// IMPORTANT: the session-file-store writes to disk ASYNCHRONOUSLY, so we MUST
+// wait for req.session.save() to finish before redirecting — otherwise the
+// browser loads the next page before the file is written and companyContext
+// reads the OLD session (no company), making the selection appear not to
+// stick. We also sanitise the redirect target to a same-origin path so the
+// referer can never bounce us off-site or into a loop.
+app.post('/select-company', requireAdmin, (req, res) => {
+    const id = req.body && req.body.company_id;
+    req.session.company_id = (id != null && id !== '') ? Number(id) : null;
+
+    // Return to the SAME page the switch was made on. Use the hidden `next`
+    // field — the Referer header can't be trusted (Helmet's Referrer-Policy:
+    // no-referrer strips it). Only same-origin absolute paths are honoured.
+    let back = '/';
+    const raw = String((req.body && req.body.next) || '').trim();
+    if (raw.startsWith('/') && !raw.startsWith('//') && raw.indexOf('/select-company') !== 0) {
+        back = raw;
+    }
+
+    req.session.save(() => res.redirect(back));
+});
+
+// Dashboard (gated). Landing page after a successful login. companyContext
+// loads the company list + selected company for the topbar switcher and the
+// loyalty screens. The full loyalty-management screens (Cashback Rules, Tiers,
+// Challenges, Review Claims, Segments) mount the same middleware.
+app.get('/', requireAdmin, companyContext, DashboardController.index);
+
+// ── Account pages (topbar menu) ────────────────────────────────────
+app.get ('/profile',         requireAdmin, companyContext, AuthController.profilePage);
+app.post('/profile',         requireAdmin, companyContext, AuthController.updateProfile);
+app.get ('/change-password', requireAdmin, companyContext, AuthController.changePasswordPage);
+app.post('/change-password', requireAdmin, companyContext, AuthController.doChangePassword);
+
+// ── Store-settings image uploads (written into the Yii uploads tree) ──
+// multer is required lazily so the admin still boots if the package isn't
+// installed yet — uploads just stay unavailable until `npm install`.
+let storeImgUpload = null;
+try {
+    const multer = require('multer');
+    const STORE_IMG = {
+        business_image: { sub: 'branch',          prefix: 'branch' },
+        discount_icon:  { sub: 'discount_logos', prefix: 'discount' },
+        surprise_image: { sub: 'surprise_image', prefix: 'surprise' },
+        banner_image:   { sub: 'banner_image',   prefix: 'banner' },
+    };
+    const uploadCompanyId = (req) => {
+        const a = (req.session && req.session.admin) || {};
+        if (a.role && a.role !== 'super_admin' && Number(a.company_id) > 0) { return Number(a.company_id); }
+        return (req.session && req.session.company_id != null) ? Number(req.session.company_id) : null;
+    };
+    storeImgUpload = multer({
+        storage: multer.diskStorage({
+            destination: (req, file, cb) => {
+                const cfg = STORE_IMG[file.fieldname];
+                const cid = uploadCompanyId(req);
+                if (!cfg || !cid || !process.env.YII_UPLOADS_PATH) { return cb(new Error('upload_unavailable')); }
+                const dir = path.join(process.env.YII_UPLOADS_PATH, String(cid), cfg.sub);
+                try { fs.mkdirSync(dir, { recursive: true }); } catch (e) { /* ignore */ }
+                cb(null, dir);
+            },
+            filename: (req, file, cb) => {
+                const cfg = STORE_IMG[file.fieldname];
+                const cid = uploadCompanyId(req);
+                const ext = ({ 'image/png': '.png', 'image/jpeg': '.jpg', 'image/webp': '.webp' })[file.mimetype] || '.img';
+                cb(null, cfg.prefix + '_' + cid + '_' + Date.now() + ext);
+            },
+        }),
+        limits: { fileSize: 4 * 1024 * 1024 },
+        fileFilter: (req, file, cb) => cb(null, /^image\/(png|jpe?g|webp)$/.test(file.mimetype)),
+    });
+} catch (e) {
+    console.warn('[admin] multer not installed — store image uploads disabled until `npm install`.');
+}
+
+app.post('/store-settings/upload', requireAdmin, companyContext, (req, res) => {
+    if (!storeImgUpload || !process.env.YII_UPLOADS_PATH) {
+        if (req.flash) { req.flash('error', 'Image uploads aren’t configured on this environment yet.'); }
+        return res.redirect('/store-settings');
+    }
+    const mw = storeImgUpload.fields([
+        { name: 'business_image', maxCount: 1 },
+        { name: 'discount_icon', maxCount: 1 },
+        { name: 'surprise_image', maxCount: 1 },
+        { name: 'banner_image', maxCount: 1 },
+    ]);
+    mw(req, res, (err) => {
+        if (err) {
+            const msg = err.code === 'LIMIT_FILE_SIZE' ? 'Image must be under 4 MB.' : 'Could not upload that image. Use a PNG, JPG or WEBP.';
+            if (req.flash) { req.flash('error', msg); }
+            return res.redirect('/store-settings');
+        }
+        return StoreSettingsController.uploadImage(req, res);
+    });
+});
+
+// ── Loyalty Review-CMS screenshot uploads (uploads/<companyId>/loyalty/) ──
+// Matches the legacy getSubDomainDir() = "<companyId>/" path. multer parses the
+// multipart edit form (screenshot optional); the filename is posted to the api.
+let loyaltyCmsUpload = null;
+try {
+    const multer = require('multer');
+    const cmsCompanyId = (req) => {
+        const a = (req.session && req.session.admin) || {};
+        if (a.role && a.role !== 'super_admin' && Number(a.company_id) > 0) { return Number(a.company_id); }
+        return (req.session && req.session.company_id != null) ? Number(req.session.company_id) : null;
+    };
+    loyaltyCmsUpload = multer({
+        storage: multer.diskStorage({
+            destination: (req, file, cb) => {
+                const cid = cmsCompanyId(req);
+                if (!cid || !process.env.YII_UPLOADS_PATH) { return cb(new Error('upload_unavailable')); }
+                const dir = path.join(process.env.YII_UPLOADS_PATH, String(cid), 'loyalty');
+                try { fs.mkdirSync(dir, { recursive: true }); } catch (e) { /* ignore */ }
+                cb(null, dir);
+            },
+            filename: (req, file, cb) => {
+                const ext = ({ 'image/png': '.png', 'image/jpeg': '.jpg', 'image/webp': '.webp', 'image/gif': '.gif' })[file.mimetype] || '.img';
+                cb(null, Date.now() + '_' + Math.random().toString(36).slice(2, 10) + ext);
+            },
+        }),
+        limits: { fileSize: 4 * 1024 * 1024 },
+        fileFilter: (req, file, cb) => cb(null, /^image\/(png|jpe?g|webp|gif)$/.test(file.mimetype)),
+    });
+} catch (e) { /* store block already warned about missing multer */ }
+
+function cmsUploadMw(req, res, next) {
+    if (!loyaltyCmsUpload || !process.env.YII_UPLOADS_PATH) {
+        if (req.flash) { req.flash('error', 'Image uploads aren’t configured on this environment yet.'); }
+        return res.redirect('/loyalty/cms-pages');
+    }
+    loyaltyCmsUpload.single('screenshot')(req, res, (err) => {
+        if (err) {
+            const msg = err.code === 'LIMIT_FILE_SIZE' ? 'Image must be under 4 MB.' : 'Could not upload that image. Use a PNG, JPG, GIF or WEBP.';
+            if (req.flash) { req.flash('error', msg); }
+            return res.redirect('/loyalty/cms-pages');
+        }
+        return next();
+    });
+}
+
+// ── Product image uploads (uploads/<companyId>/products/) ──
+let productImgUpload = null;
+try {
+    const multer = require('multer');
+    const pCompanyId = (req) => {
+        const a = (req.session && req.session.admin) || {};
+        if (a.role && a.role !== 'super_admin' && Number(a.company_id) > 0) { return Number(a.company_id); }
+        return (req.session && req.session.company_id != null) ? Number(req.session.company_id) : null;
+    };
+    productImgUpload = multer({
+        storage: multer.diskStorage({
+            destination: (req, file, cb) => {
+                const cid = pCompanyId(req);
+                if (!cid || !process.env.YII_UPLOADS_PATH) { return cb(new Error('upload_unavailable')); }
+                const dir = path.join(process.env.YII_UPLOADS_PATH, String(cid), 'products');
+                try { fs.mkdirSync(dir, { recursive: true }); } catch (e) { /* ignore */ }
+                cb(null, dir);
+            },
+            filename: (req, file, cb) => {
+                const ext = ({ 'image/png': '.png', 'image/jpeg': '.jpg', 'image/webp': '.webp', 'image/gif': '.gif' })[file.mimetype] || '.img';
+                cb(null, 'prod_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8) + ext);
+            },
+        }),
+        limits: { fileSize: 5 * 1024 * 1024 },
+        fileFilter: (req, file, cb) => cb(null, /^image\/(png|jpe?g|webp|gif)$/.test(file.mimetype)),
+    });
+} catch (e) { /* store block already warned about missing multer */ }
+
+function productImgMw(req, res, next) {
+    if (!productImgUpload || !process.env.YII_UPLOADS_PATH) {
+        if (req.flash) { req.flash('error', 'Image uploads aren’t configured on this environment yet.'); }
+        return res.redirect('/products/new');
+    }
+    productImgUpload.single('image')(req, res, (err) => {
+        if (err) {
+            const msg = err.code === 'LIMIT_FILE_SIZE' ? 'Image must be under 5 MB.' : 'Could not upload that image. Use a PNG, JPG, GIF or WEBP.';
+            if (req.flash) { req.flash('error', msg); }
+            return res.redirect((req.body && req.body.id) ? ('/products/edit/' + req.body.id) : '/products/new');
+        }
+        return next();
+    });
+}
+
+// Products (Menu → Item) — Phase 1: the list page + its AJAX actions.
+app.get ('/products',               requireAdmin, companyContext, ProductsController.list);
+app.get ('/products/new',           requireAdmin, companyContext, ProductsController.form);
+app.get ('/products/view/:id',      requireAdmin, companyContext, ProductsController.view);
+app.get ('/products/edit/:id',      requireAdmin, companyContext, ProductsController.form);
+app.post('/products/save',          requireAdmin, companyContext, productImgMw, ProductsController.save);
+app.post('/products/price',         requireAdmin, companyContext, ProductsController.updatePrice);
+app.post('/products/status',        requireAdmin, companyContext, ProductsController.updateStatus);
+app.post('/products/delete',        requireAdmin, companyContext, ProductsController.remove);
+app.post('/products/online-prices', requireAdmin, companyContext, ProductsController.bulkOnlinePrice);
+app.post('/products/bulk-price',    requireAdmin, companyContext, ProductsController.bulkPrice);
+app.post('/products/marketplace',   requireAdmin, companyContext, ProductsController.marketplaceToggle);
+
+// ── Marketplace category image uploads (GLOBAL — uploads/marketplace/category/) ──
+let mpCatUpload = null;
+try {
+    const multer = require('multer');
+    mpCatUpload = multer({
+        storage: multer.diskStorage({
+            destination: (req, file, cb) => {
+                if (!process.env.YII_UPLOADS_PATH) { return cb(new Error('upload_unavailable')); }
+                const dir = path.join(process.env.YII_UPLOADS_PATH, 'marketplace', 'category');
+                try { fs.mkdirSync(dir, { recursive: true }); } catch (e) { /* ignore */ }
+                cb(null, dir);
+            },
+            filename: (req, file, cb) => {
+                const ext = ({ 'image/png': '.png', 'image/jpeg': '.jpg', 'image/webp': '.webp', 'image/gif': '.gif', 'image/svg+xml': '.svg' })[file.mimetype] || '.img';
+                cb(null, 'mpcat_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8) + ext);
+            },
+        }),
+        limits: { fileSize: 3 * 1024 * 1024 },
+        fileFilter: (req, file, cb) => cb(null, /^image\/(png|jpe?g|webp|gif|svg\+xml)$/.test(file.mimetype)),
+    });
+} catch (e) { /* multer not installed; uploads disabled */ }
+
+function mpCatImgMw(req, res, next) {
+    if (!mpCatUpload || !process.env.YII_UPLOADS_PATH) {
+        if (req.flash) { req.flash('error', 'Image uploads aren’t configured on this environment yet.'); }
+        return res.redirect('/marketplace-categories');
+    }
+    mpCatUpload.single('image')(req, res, (err) => {
+        if (err) {
+            const msg = err.code === 'LIMIT_FILE_SIZE' ? 'Image must be under 3 MB.' : 'Could not upload that image. Use a PNG, JPG, GIF, WEBP or SVG.';
+            if (req.flash) { req.flash('error', msg); }
+            return res.redirect((req.body && req.body.id) ? ('/marketplace-categories/edit/' + req.body.id) : '/marketplace-categories/new');
+        }
+        return next();
+    });
+}
+
+// Marketplace Categories (global master — super admin).
+app.get ('/marketplace-categories',           requireAdmin, companyContext, MpCategoriesController.list);
+app.get ('/marketplace-categories/arrange',   requireAdmin, companyContext, MpCategoriesController.arrange);
+app.get ('/marketplace-categories/new',       requireAdmin, companyContext, MpCategoriesController.form);
+app.get ('/marketplace-categories/edit/:id',  requireAdmin, companyContext, MpCategoriesController.form);
+app.post('/marketplace-categories/save',      requireAdmin, companyContext, mpCatImgMw, MpCategoriesController.save);
+app.post('/marketplace-categories/delete',    requireAdmin, companyContext, MpCategoriesController.remove);
+app.post('/marketplace-categories/status',    requireAdmin, companyContext, MpCategoriesController.statusToggle);
+app.get ('/marketplace-categories/companies', requireAdmin, companyContext, MpCategoriesController.companies);
+app.get ('/marketplace-categories/restaurants', requireAdmin, companyContext, MpCategoriesController.restaurants);
+app.post('/marketplace-categories/assign',    requireAdmin, companyContext, MpCategoriesController.assign);
+app.post('/marketplace-categories/reorder',   requireAdmin, companyContext, MpCategoriesController.reorder);
+
+// Store Settings — branch config (port of legacy admin/pos/store-settings).
+app.get ('/store-settings',                requireAdmin, companyContext, StoreSettingsController.index);
+app.post('/store-settings/save',           requireAdmin, companyContext, StoreSettingsController.save);
+app.post('/store-settings/website-status', requireAdmin, companyContext, StoreSettingsController.saveWebsiteStatus);
+app.post('/store-settings/tips',           requireAdmin, companyContext, StoreSettingsController.saveTips);
+app.get ('/store-settings/advance',        requireAdmin, companyContext, StoreSettingsController.advanceIndex);
+app.post('/store-settings/advance',        requireAdmin, companyContext, StoreSettingsController.advanceSave);
+app.post('/store-settings/advance/delete', requireAdmin, companyContext, StoreSettingsController.advanceDelete);
+
+// ── Loyalty management screens (gated + company-scoped) ────────────
+// Shared gate: signed-in admin → company context → loyalty availability
+// (a company login only reaches these when its loyalty is switched ON).
+const loyaltyGate = [requireAdmin, companyContext, requireLoyalty];
+// Loyalty Dashboard (the Loyalty menu landing / hub).
+app.get ('/loyalty', loyaltyGate, LoyaltyController.loyaltyConfig);
+// Company-level loyalty on/off (super admin enables loyalty for a company).
+app.post('/loyalty/master-toggle', loyaltyGate, LoyaltyController.masterToggle);
+// Company-level loyalty settings (commission % + phone orders).
+app.post('/loyalty/company-config', loyaltyGate, LoyaltyController.companyConfigSave);
+// Save All — the whole config page in one POST.
+app.post('/loyalty/save-all', loyaltyGate, LoyaltyController.saveAll);
+// ── Per-section save endpoints (the combined /loyalty page posts here; each
+// redirects back to /loyalty). The old standalone GET screens now just bounce
+// to the single Loyalty Configuration page. ──
+const toConfig = (req, res) => res.redirect('/loyalty');
+// Cashback Rules.
+app.get ('/loyalty/cashback-rules',        loyaltyGate, toConfig);
+app.post('/loyalty/cashback-rules/save',   loyaltyGate, LoyaltyController.cashbackSave);
+app.post('/loyalty/cashback-rules/delete', loyaltyGate, LoyaltyController.cashbackDelete);
+app.post('/loyalty/cashback-rules/toggle', loyaltyGate, LoyaltyController.cashbackToggle);
+app.post('/loyalty/cashback-rules/config', loyaltyGate, LoyaltyController.configSave);
+// Tier Config.
+app.get ('/loyalty/tiers',        loyaltyGate, toConfig);
+app.post('/loyalty/tiers/save',   loyaltyGate, LoyaltyController.tierSave);
+app.post('/loyalty/tiers/toggle', loyaltyGate, LoyaltyController.tierToggle);
+// Referral & Streak.
+app.get ('/loyalty/referral-streak',                 loyaltyGate, toConfig);
+app.post('/loyalty/referral-streak/referral/save',   loyaltyGate, LoyaltyController.referralSave);
+app.post('/loyalty/referral-streak/referral/toggle', loyaltyGate, LoyaltyController.referralToggle);
+app.post('/loyalty/referral-streak/streak/save',     loyaltyGate, LoyaltyController.streakSave);
+app.post('/loyalty/referral-streak/streak/toggle',   loyaltyGate, LoyaltyController.streakToggle);
+app.post('/loyalty/referral-streak/streak/delete',   loyaltyGate, LoyaltyController.streakDelete);
+// Challenges.
+app.get ('/loyalty/challenges',        loyaltyGate, toConfig);
+app.post('/loyalty/challenges/save',   loyaltyGate, LoyaltyController.challengesSave);
+app.post('/loyalty/challenges/toggle', loyaltyGate, LoyaltyController.challengesToggle);
+// Event Rewards.
+app.get ('/loyalty/events',        loyaltyGate, toConfig);
+app.post('/loyalty/events/save',   loyaltyGate, LoyaltyController.eventsSave);
+app.post('/loyalty/events/toggle', loyaltyGate, LoyaltyController.eventsToggle);
+// Review Claims.
+app.get ('/loyalty/review-claims',         loyaltyGate, LoyaltyController.reviewClaims);
+app.post('/loyalty/review-claims/approve', loyaltyGate, LoyaltyController.reviewApprove);
+app.post('/loyalty/review-claims/reject',  loyaltyGate, LoyaltyController.reviewReject);
+// Customer Segments — now shown on the Dashboard; old link redirects there.
+app.get ('/loyalty/segments', loyaltyGate, (req, res) => res.redirect('/'));
+// Special Offer (date-based cashback).
+app.get ('/loyalty/special-offer',        loyaltyGate, toConfig);
+app.post('/loyalty/special-offer/save',   loyaltyGate, LoyaltyController.specialOfferSave);
+app.post('/loyalty/special-offer/toggle', loyaltyGate, LoyaltyController.specialOfferToggle);
+app.post('/loyalty/special-offer/delete', loyaltyGate, LoyaltyController.specialOfferDelete);
+// Review Rewards (per review/share type).
+app.get ('/loyalty/review-rewards',        loyaltyGate, toConfig);
+app.post('/loyalty/review-rewards/save',   loyaltyGate, LoyaltyController.reviewRewardsSave);
+app.post('/loyalty/review-rewards/toggle', loyaltyGate, LoyaltyController.reviewRewardsToggle);
+// Product Cashback (rule + selected products).
+app.get ('/loyalty/product-cashback',        loyaltyGate, toConfig);
+app.post('/loyalty/product-cashback/save',   loyaltyGate, LoyaltyController.productCashbackSave);
+app.post('/loyalty/product-cashback/toggle', loyaltyGate, LoyaltyController.productCashbackToggle);
+app.post('/loyalty/product-cashback/delete', loyaltyGate, LoyaltyController.productCashbackDelete);
+// Buy X Get Y (BOGO).
+app.get ('/loyalty/bogof',        loyaltyGate, toConfig);
+app.post('/loyalty/bogof/save',   loyaltyGate, LoyaltyController.bogofSave);
+app.post('/loyalty/bogof/toggle', loyaltyGate, LoyaltyController.bogofToggle);
+app.post('/loyalty/bogof/delete', loyaltyGate, LoyaltyController.bogofDelete);
+// Review CMS Pages (per review-type instructional content + screenshot).
+app.get ('/loyalty/cms-pages',      loyaltyGate, LoyaltyController.cmsPages);
+app.post('/loyalty/cms-pages/save', loyaltyGate, cmsUploadMw, LoyaltyController.cmsPageSave);
 
 // ── 404 ────────────────────────────────────────────────────────
 app.use((req, res) => {

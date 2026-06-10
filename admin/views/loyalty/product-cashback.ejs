@@ -1,0 +1,109 @@
+<%#
+  views/loyalty/product-cashback.ejs
+
+  Section 4 — Product Cashback. A flat £ cashback on a chosen set of products
+  (legacy loyalty_product_cashback_rule + loyalty_product_cashback_items,
+  value_type locked to £). The cashback can't exceed the lowest selected
+  product's price. Multi-row CRUD (add / edit / two-click delete) + master
+  toggle. `pc` = { rules[], products[], masterOn } or null.
+
+  Used: Controllers/LoyaltyController.productCashback (shell layout).
+-%>
+<%
+    var sym = (brand && brand.currencySymbol) ? brand.currencySymbol : '£';
+%>
+<div class="ly">
+
+    <%- include('../partials/loyalty-subnav') -%>
+
+    <div class="ly__head">
+        <div>
+            <h2 class="ly__title">🏷️ Product Cashback</h2>
+            <p class="ly__sub">Cashback on selected (e.g. low-selling) products</p>
+        </div>
+    </div>
+
+    <% if (load_error) { %>
+        <div class="ly-empty"><span class="ly-empty__ic" aria-hidden="true">🏢</span><p class="ly-empty__msg"><%= load_error %></p></div>
+    <% } else if (pc) { %>
+
+        <section class="card ly-card">
+            <div class="ly-card__head">
+                <h3 class="card__title">🏷️ Product cashback rules</h3>
+                <div class="ly-card__headact">
+                    <form method="post" action="/loyalty/product-cashback/toggle" class="ly-switch-form" data-toggle-form>
+                        <input type="hidden" name="status" value="<%= pc.masterOn ? '2' : '1' %>">
+                        <span class="ly-switch-form__lbl"><%= pc.masterOn ? 'Enabled' : 'Disabled' %></span>
+                        <label class="ly-switch"><input type="checkbox" data-action="ly-master-toggle" <%= pc.masterOn ? 'checked' : '' %> aria-label="Enable product cashback"><span class="ly-switch__ui" aria-hidden="true"></span></label>
+                    </form>
+                    <% if (pc.products.length) { %>
+                    <button type="button" class="ly-btn ly-btn--primary ly-btn--sm" data-action="ly-add" data-form="ly-pc-form">+ Add</button>
+                    <% } %>
+                </div>
+            </div>
+
+            <% if (!pc.products.length) { %>
+                <p class="ly-none">No products found for this store yet — add products first, then set product cashback.</p>
+            <% } else { %>
+
+            <form id="ly-pc-form" class="ly-rowform" method="post" action="/loyalty/product-cashback/save" hidden>
+                <input type="hidden" name="id" value="">
+                <h4 class="ly-rowform__title" data-form-title data-add-title="Add product cashback" data-edit-title="Edit product cashback">Add product cashback</h4>
+                <div class="ly-grid">
+                    <div class="ly-field">
+                        <label for="pc-cashback">Cashback (<%= sym %>)</label>
+                        <div class="ly-money">
+                            <span class="ly-money__sym"><%= sym %></span>
+                            <input id="pc-cashback" type="number" name="cashback" step="0.01" min="0" placeholder="1.00" required>
+                        </div>
+                        <span class="ly-hint">Can’t exceed the lowest selected product’s price.</span>
+                    </div>
+                </div>
+                <div class="ly-field">
+                    <label>Products</label>
+                    <div class="ly-multi" data-multi>
+                        <input type="text" class="ly-multi__filter" data-multi-filter placeholder="🔍 Filter products…" autocomplete="off">
+                        <div class="ly-multi__list">
+                            <% pc.products.forEach(function (p) { %>
+                            <label class="ly-multi__opt" data-multi-option data-name="<%= p.name %>">
+                                <input type="checkbox" name="product_ids[]" value="<%= p.id %>">
+                                <span class="ly-multi__name"><%= p.name %></span>
+                                <span class="ly-multi__price"><%= sym %><%= Number(p.price).toFixed(2) %></span>
+                            </label>
+                            <% }); %>
+                        </div>
+                    </div>
+                </div>
+                <div class="ly-rowform__foot">
+                    <button type="button" class="ly-btn ly-btn--ghost" data-action="ly-cancel" data-form="ly-pc-form">Cancel</button>
+                    <button type="submit" class="ly-btn ly-btn--primary">Save</button>
+                </div>
+            </form>
+
+            <% if (!pc.rules.length) { %>
+                <p class="ly-none">No product cashback rules yet. Add one above.</p>
+            <% } else { %>
+                <div class="ly-rules">
+                    <% pc.rules.forEach(function (r) { %>
+                    <div class="ly-rule" data-rule="<%= encodeURIComponent(JSON.stringify(r)) %>">
+                        <div class="ly-rule__main">
+                            <span class="ly-tier ly-tier--bronze"><%= sym %><%= Number(r.cashback).toFixed(2) %></span>
+                            <span class="ly-rule__text"><strong><%= r.product_ids.length %></strong> product<%= r.product_ids.length === 1 ? '' : 's' %><% if (r.product_names.length) { %> — <%= r.product_names.slice(0, 4).join(', ') %><%= r.product_names.length > 4 ? ('  +' + (r.product_names.length - 4) + ' more') : '' %><% } %></span>
+                        </div>
+                        <div class="ly-rule__act">
+                            <button type="button" class="ly-iconbtn" data-action="ly-edit" data-form="ly-pc-form" aria-label="Edit">✎</button>
+                            <form method="post" action="/loyalty/product-cashback/delete" class="ly-del">
+                                <input type="hidden" name="id" value="<%= r.id %>">
+                                <button type="button" class="ly-iconbtn ly-iconbtn--danger" data-action="ly-delete" aria-label="Delete">🗑</button>
+                            </form>
+                        </div>
+                    </div>
+                    <% }); %>
+                </div>
+            <% } %>
+
+            <% } %>
+        </section>
+
+    <% } %>
+</div>

@@ -41,10 +41,18 @@
     max-width: none;
 }
 .admin-shell__body { margin-left: var(--sidebar-w); }
-.admin-topbar__burger { display: none; }
+/* Animate the collapse only after first paint (anim-ready) so a remembered
+   collapsed state doesn't slide-flash on every load. */
+body.anim-ready .admin-sidebar { transition: transform .22s ease; }
+body.anim-ready .admin-shell__body { transition: margin-left .22s ease; }
+/* The burger stays visible on desktop and collapses / expands the rail. */
+.admin-topbar__burger { display: inline-flex; }
 .admin-scrim { display: none !important; }
 /* The off-canvas open-state is a no-op on desktop (rail is always shown). */
 body.sidebar-open .admin-sidebar { transform: none; }
+/* Collapsed: slide the rail off-screen and let the content reclaim the width. */
+body.sidebar-collapsed .admin-sidebar { transform: translateX(-100%); }
+body.sidebar-collapsed .admin-shell__body { margin-left: 0; }
 
 .admin-main { padding: 26px 30px 48px; }
 

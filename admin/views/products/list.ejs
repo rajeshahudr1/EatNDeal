@@ -1,0 +1,218 @@
+<%#
+  views/products/list.ejs
+
+  Products (Menu → Item) list. Per item: checkbox, image, name (+ suffix),
+  inline Normal (green) + Online (red) + Marketplace (blue) price, marketplace
+  on/off, status select, View. On mobile a compact card: name row + kebab (⋮)
+  holding marketplace toggle + View, a tight 3-price row and full-width status;
+  filters move into a bottom-sheet. Top: search, category, sort, page-size,
+  select-all, bulk price/status/marketplace + bulk delete. Server-side paging.
+  `pd` = { products[], total, page, limit, total_pages, third_pct } or null.
+
+  Used: Controllers/ProductsController.list.
+-%>
+<%
+    var sym = (brand && brand.currencySymbol) ? brand.currencySymbol : '£';
+    var STATUSES = [[1, 'Available'], [0, 'Unavailable'], [4, 'Unavailable Today'], [5, 'Unavailable Until'], [3, 'Sold Out']];
+    var SORTS = [['newest', 'Newest'], ['name_asc', 'Name A–Z'], ['name_desc', 'Name Z–A'], ['price_asc', 'Price low→high'], ['price_desc', 'Price high→low']];
+    var SIZES = [['all', 'All'], ['10', '10'], ['25', '25'], ['50', '50'], ['100', '100'], ['500', '500'], ['1000', '1000']];
+    function statusSel(id, cur) {
+        var h = '<select class="pr-status" data-id="' + id + '">';
+        STATUSES.forEach(function (s) { h += '<option value="' + s[0] + '"' + (Number(cur) === s[0] ? ' selected' : '') + '>' + s[1] + '</option>'; });
+        return h + '</select>';
+    }
+    function pageUrl(n) {
+        var qp = [];
+        if (search_q) { qp.push('q=' + encodeURIComponent(search_q)); }
+        if (cur_category) { qp.push('category=' + encodeURIComponent(cur_category)); }
+        qp.push('sort=' + cur_sort); qp.push('limit=' + cur_limit); qp.push('page=' + n);
+        return '/products?' + qp.join('&');
+    }
+    var page = pd ? Number(pd.page) : 1;
+    var totalPages = pd ? Number(pd.total_pages) : 1;
+%>
+<div class="pr">
+
+    <div class="ly__head">
+        <div>
+            <h2 class="ly__title">🍽️ Products</h2>
+            <p class="ly__sub">Your menu items — prices &amp; availability</p>
+        </div>
+    </div>
+
+    <% if (load_error) { %>
+        <div class="ly-empty"><span class="ly-empty__ic" aria-hidden="true">🏢</span><p class="ly-empty__msg"><%= load_error %></p></div>
+    <% } else if (pd) { %>
+
+        <%# Search + sort + page-size + select-all %>
+        <div class="pr-toolbar">
+            <label class="pr-checkall"><input type="checkbox" data-action="pr-checkall"><span>All</span></label>
+            <form method="get" action="/products" class="pr-filter" id="pr-filter">
+                <div class="pr-search">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                    <input type="text" name="q" value="<%= search_q %>" placeholder="Search items…" autocomplete="off" data-live-search>
+                    <% if (search_q) { %><a href="/products" class="pr-search__clear" aria-label="Clear">✕</a><% } %>
+                </div>
+                <%# Mobile-only: open the filters sheet %>
+                <button type="button" class="pr-filterbtn" data-filter-toggle aria-label="Filters" title="Filters">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+                    <% var nfilters = (cur_category ? 1 : 0) + (cur_sort && cur_sort !== 'newest' ? 1 : 0); %>
+                    <% if (nfilters) { %><span class="pr-filterbtn__dot"></span><% } %>
+                </button>
+                <div class="pr-filters" data-filters>
+                    <div class="pr-filters__head"><span class="pr-filters__ttl">Filters</span><button type="button" class="pr-filters__x" data-filter-close aria-label="Close">✕</button></div>
+                    <div class="pr-catdd" data-catdd>
+                        <input type="hidden" name="category" value="<%= cur_category %>" data-catdd-input>
+                        <% var curCat = (pd.categories || []).find(function (c) { return String(c.id) === String(cur_category); }); %>
+                        <button type="button" class="pr-filter-sel pr-catdd__btn" data-catdd-open aria-haspopup="listbox">
+                            <span data-catdd-label><%= curCat ? curCat.name : 'All categories' %></span>
+                            <span class="pr-catdd__chev" aria-hidden="true">▾</span>
+                        </button>
+                        <div class="pr-catdd__panel" data-catdd-panel hidden>
+                            <div class="pr-catdd__search">
+                                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                                <input type="text" data-catdd-search placeholder="Search category…" autocomplete="off">
+                            </div>
+                            <ul class="pr-catdd__list" data-catdd-list role="listbox">
+                                <li><button type="button" class="pr-catdd__opt <%= !cur_category ? 'is-on' : '' %>" data-catdd-opt data-cid="">All categories</button></li>
+                                <% (pd.categories || []).forEach(function (c) { %>
+                                <li><button type="button" class="pr-catdd__opt <%= String(cur_category) === String(c.id) ? 'is-on' : '' %>" data-catdd-opt data-cid="<%= c.id %>"><%= c.name %></button></li>
+                                <% }); %>
+                            </ul>
+                            <p class="pr-catdd__empty" data-catdd-empty hidden>No category matches.</p>
+                        </div>
+                    </div>
+                    <select name="sort" class="pr-filter-sel" data-filter-submit aria-label="Sort">
+                        <% SORTS.forEach(function (s) { %><option value="<%= s[0] %>" <%= cur_sort === s[0] ? 'selected' : '' %>><%= s[1] %></option><% }); %>
+                    </select>
+                    <select name="limit" class="pr-filter-sel" data-filter-submit aria-label="Per page">
+                        <% SIZES.forEach(function (s) { %><option value="<%= s[0] %>" <%= cur_limit === s[0] ? 'selected' : '' %>>Show <%= s[1] %></option><% }); %>
+                    </select>
+                    <button type="button" class="ly-btn ly-btn--primary pr-filters__done" data-filter-close>Done</button>
+                </div>
+            </form>
+        </div>
+        <div class="pr-filters__backdrop" data-filter-backdrop hidden></div>
+
+        <%# Bulk action bar (shown when items are selected) %>
+        <div class="pr-actionbar" data-actionbar hidden>
+            <a href="javascript:void(0)" class="ly-btn ly-btn--ghost ly-btn--sm" data-action="pr-clearall">Clear all</a>
+            <span class="pr-actionbar__count"><span data-sel-count>0</span> selected</span>
+            <div class="pr-actionbar__right">
+                <button type="button" class="ly-btn ly-btn--primary ly-btn--sm" data-action="pr-bulk-price-open">💷 Set price</button>
+                <select data-bulk-status aria-label="Set status">
+                    <option value="">Set status…</option>
+                    <% STATUSES.forEach(function (s) { %><option value="<%= s[0] %>"><%= s[1] %></option><% }); %>
+                </select>
+                <select data-bulk-marketplace aria-label="Marketplace">
+                    <option value="">Marketplace…</option>
+                    <option value="1">Turn ON</option>
+                    <option value="0">Turn OFF</option>
+                </select>
+                <button type="button" class="ly-btn ly-btn--danger ly-btn--sm" data-action="pr-bulk-delete">Delete</button>
+            </div>
+        </div>
+
+        <p class="pr-note"><b>NOTE:</b> <span class="pr-dot pr-dot--green"></span> Normal &nbsp; <span class="pr-dot pr-dot--red"></span> Online &nbsp; <span class="pr-dot pr-dot--blue"></span> Marketplace</p>
+
+        <% if (!pd.products.length) { %>
+            <div class="ly-empty"><span class="ly-empty__ic" aria-hidden="true">🍽️</span><p class="ly-empty__msg"><%= search_q ? 'No items match your search.' : 'No products yet.' %></p></div>
+        <% } else { %>
+        <div class="pr-list" data-third-pct="<%= pd.third_pct %>" data-page="<%= page %>" data-total-pages="<%= totalPages %>">
+            <% pd.products.forEach(function (p) { %>
+            <div class="pr-item" data-id="<%= p.id %>" data-name="<%= p.name %>" data-normal="<%= p.price_before_tax %>" data-online="<%= p.online_platform_price %>" data-market="<%= p.marketplace_price %>" data-mp="<%= p.show_marketplace %>">
+                <div class="pr-item__main">
+                    <label class="pr-item__check"><input type="checkbox" class="pr-check" value="<%= p.id %>"></label>
+                    <span class="pr-item__img"><% if (p.image_url) { %><img src="<%= p.image_url %>" alt=""><% } else { %><span class="pr-item__noimg">🍽️</span><% } %></span>
+                    <span class="pr-item__name"><%= p.name %><% if (p.suffix) { %> <span class="pr-item__suffix">- <%= p.suffix %></span><% } %></span>
+                    <span class="pr-item__act pr-item__act--top"><a href="/products/view/<%= p.id %>" class="ly-iconbtn ly-iconbtn--view" title="View details">👁</a></span>
+                </div>
+                <div class="pr-item__controls">
+                    <span class="pr-price pr-price--normal"><span class="pr-price__box"><span class="pr-price__cur"><%= sym %></span><input class="pr-priceinput" inputmode="decimal" data-type="normal" data-id="<%= p.id %>" data-original="<%= p.price_before_tax %>" value="<%= p.price_before_tax %>"></span><span class="pr-price__lbl">Normal</span></span>
+                    <span class="pr-price pr-price--online"><span class="pr-price__box"><span class="pr-price__cur"><%= sym %></span><input class="pr-priceinput" inputmode="decimal" data-type="online" data-id="<%= p.id %>" data-original="<%= p.online_platform_price %>" value="<%= p.online_platform_price %>"></span><span class="pr-price__lbl">Online</span></span>
+                    <span class="pr-price pr-price--market"><span class="pr-price__box"><span class="pr-price__cur"><%= sym %></span><input class="pr-priceinput" inputmode="decimal" data-type="marketplace" data-id="<%= p.id %>" data-original="<%= p.marketplace_price %>" value="<%= p.marketplace_price %>"></span><span class="pr-price__lbl">Marketplace</span></span>
+                    <div class="pr-item__row2">
+                        <span class="pr-statuswrap">
+                            <%- statusSel(p.id, p.status) %>
+                            <span class="pr-until" data-until="<%= p.id %>" <%= p.status === 5 && p.availability_date ? '' : 'hidden' %>>until <%= p.availability_date %> <%= p.availability_time %></span>
+                        </span>
+                        <label class="pr-mp" title="Show on marketplace">
+                            <input type="checkbox" class="pr-mp-toggle" data-id="<%= p.id %>" <%= Number(p.show_marketplace) === 1 ? 'checked' : '' %>>
+                            <span class="pr-mp__ui" aria-hidden="true"></span>
+                            <span class="pr-mp__lbl">Marketplace</span>
+                        </label>
+                    </div>
+                    <span class="pr-item__act pr-item__act--inline"><a href="/products/view/<%= p.id %>" class="ly-iconbtn ly-iconbtn--view" title="View details">👁</a></span>
+                </div>
+            </div>
+            <% }); %>
+        </div>
+
+        <%# Pagination %>
+        <% if (totalPages > 1 || pd.total) { %>
+        <div class="pr-pager">
+            <span class="pr-pager__info"><%= pd.total %> item<%= pd.total === 1 ? '' : 's' %><% if (totalPages > 1) { %> · page <%= page %> of <%= totalPages %><% } %></span>
+            <% if (totalPages > 1) { %>
+            <div class="pr-pager__nav">
+                <% if (page > 1) { %><a class="pr-pager__btn" href="<%= pageUrl(page - 1) %>">‹ Prev</a><% } else { %><span class="pr-pager__btn is-disabled">‹ Prev</span><% } %>
+                <%
+                    var from = Math.max(1, page - 2), to = Math.min(totalPages, page + 2);
+                    if (from > 1) { %><a class="pr-pager__btn" href="<%= pageUrl(1) %>">1</a><% if (from > 2) { %><span class="pr-pager__dots">…</span><% } } %>
+                <% for (var n = from; n <= to; n++) { %><a class="pr-pager__btn <%= n === page ? 'is-active' : '' %>" href="<%= pageUrl(n) %>"><%= n %></a><% } %>
+                <% if (to < totalPages) { if (to < totalPages - 1) { %><span class="pr-pager__dots">…</span><% } %><a class="pr-pager__btn" href="<%= pageUrl(totalPages) %>"><%= totalPages %></a><% } %>
+                <% if (page < totalPages) { %><a class="pr-pager__btn" href="<%= pageUrl(page + 1) %>">Next ›</a><% } else { %><span class="pr-pager__btn is-disabled">Next ›</span><% } %>
+            </div>
+            <% } %>
+        </div>
+        <% } %>
+        <% } %>
+
+    <% } %>
+</div>
+
+<%# ── Modals ── %>
+<div class="pr-modal" data-modal="until" hidden>
+    <div class="pr-modal__panel">
+        <h3 class="pr-modal__title">Unavailable until</h3>
+        <label class="pr-field"><span>Select date &amp; time</span><input type="datetime-local" data-until-input></label>
+        <div class="pr-modal__foot">
+            <button type="button" class="ly-btn ly-btn--ghost" data-action="pr-modal-cancel">Cancel</button>
+            <button type="button" class="ly-btn ly-btn--primary" data-action="pr-until-confirm">Update</button>
+        </div>
+    </div>
+</div>
+
+<div class="pr-modal" data-modal="delete" hidden>
+    <div class="pr-modal__panel pr-modal__panel--sm">
+        <div class="pr-modal__icon">⚠️</div>
+        <h3 class="pr-modal__title">Are you sure?</h3>
+        <p class="pr-modal__msg" data-delete-msg>Delete this product?</p>
+        <div class="pr-modal__foot pr-modal__foot--center">
+            <button type="button" class="ly-btn ly-btn--ghost" data-action="pr-modal-cancel">No, cancel</button>
+            <button type="button" class="ly-btn ly-btn--danger" data-action="pr-delete-confirm">Yes, delete</button>
+        </div>
+    </div>
+</div>
+
+<div class="pr-modal" data-modal="bulkprice" hidden>
+    <div class="pr-modal__panel">
+        <h3 class="pr-modal__title">💷 Set price</h3>
+        <p class="pr-modal__msg">Set one price for <strong><span data-bp-count>0</span></strong> selected item(s).</p>
+        <label class="pr-field">
+            <span>Which price</span>
+            <select data-bulk-price-type>
+                <option value="normal">Normal price</option>
+                <option value="online">Online price</option>
+                <option value="marketplace">Marketplace price</option>
+            </select>
+        </label>
+        <label class="pr-field">
+            <span>Price (<%= sym %>)</span>
+            <input type="text" inputmode="decimal" data-bulk-price-val placeholder="0.00">
+        </label>
+        <div class="pr-modal__foot">
+            <button type="button" class="ly-btn ly-btn--ghost" data-action="pr-modal-cancel">Cancel</button>
+            <button type="button" class="ly-btn ly-btn--primary" data-action="pr-bulk-price">Apply</button>
+        </div>
+    </div>
+</div>

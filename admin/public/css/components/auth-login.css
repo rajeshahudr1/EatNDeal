@@ -1,0 +1,116 @@
+/*
+ * components/auth-login.css — admin sign-in screen
+ *
+ * Mobile-first: a single centred card over a navy gradient, with a compact
+ * brand row on top. The two-column split (dark branding panel + white card)
+ * is layered on at >= 900px in desktop.css per Conventions rule #4.
+ */
+
+/* ── Container ───────────────────────────────────────────────────────── */
+.adlogin {
+    min-height: 100dvh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px 18px;
+    background:
+        radial-gradient(900px 500px at 15% 0%, rgba(229,37,42,.20), transparent 55%),
+        radial-gradient(900px 600px at 100% 100%, rgba(46,124,246,.16), transparent 55%),
+        linear-gradient(160deg, var(--navy-800), var(--navy-900));
+}
+
+/* ── Dark branding panel — HIDDEN on mobile (shown >= 900px) ──────────── */
+.adlogin__brand { display: none; }
+.adlogin__brand-top { display: flex; align-items: center; gap: 12px; }
+.adlogin__logo-wrap {
+    width: 46px; height: 46px; border-radius: 12px; background: #fff;
+    display: inline-flex; align-items: center; justify-content: center; padding: 7px;
+    box-shadow: 0 6px 16px rgba(0,0,0,.25);
+}
+.adlogin__logo { width: 100%; height: 100%; object-fit: contain; }
+.adlogin__brand-name { color: #fff; font-weight: 700; font-size: 1.15rem; letter-spacing: .2px; }
+.adlogin__brand-name span { color: var(--color-primary); }
+.adlogin__headline {
+    color: #fff; font-size: 2.1rem; font-weight: 800; line-height: 1.18; margin-top: 40px;
+}
+.adlogin__headline em { color: var(--color-primary); font-style: normal; }
+.adlogin__subhead { color: #aeb6c9; font-size: 0.98rem; margin-top: 14px; max-width: 420px; }
+.adlogin__features { list-style: none; margin: 34px 0 0; padding: 0; display: grid; gap: 16px; }
+.adfeat { display: flex; align-items: flex-start; gap: 14px; }
+.adfeat__icon {
+    flex: 0 0 auto; width: 40px; height: 40px; border-radius: 11px;
+    background: var(--navy-700); border: 1px solid var(--navy-600);
+    display: inline-flex; align-items: center; justify-content: center; font-size: 1.15rem;
+}
+.adfeat__text { display: flex; flex-direction: column; }
+.adfeat__text strong { color: #fff; font-size: 0.95rem; font-weight: 600; }
+.adfeat__text span { color: #97a0b6; font-size: 0.82rem; }
+.adlogin__brand-foot { color: #6e7790; font-size: 0.78rem; margin-top: auto; padding-top: 28px; }
+
+/* ── Form panel + card ───────────────────────────────────────────────── */
+.adlogin__panel {
+    width: 100%;
+    max-width: 430px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.adlogin__card {
+    width: 100%;
+    background: #fff;
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-3);
+    padding: 30px 26px 26px;
+}
+
+/* Compact brand row — visible on mobile only (hidden >= 900px) */
+.adlogin__mobilebrand {
+    display: flex; align-items: center; gap: 10px; justify-content: center;
+    margin-bottom: 18px;
+}
+.adlogin__mobilebrand img {
+    width: 38px; height: 38px; object-fit: contain;
+    background: #fff; border-radius: 10px; padding: 4px; box-shadow: var(--shadow-1);
+    border: 1px solid var(--color-border-soft);
+}
+.adlogin__mobilebrand span { font-size: 1.02rem; color: var(--color-text); font-weight: 600; }
+.adlogin__mobilebrand strong { color: var(--color-primary); font-weight: 700; }
+
+.adlogin__title { font-size: 1.45rem; font-weight: 800; letter-spacing: -.2px; }
+.adlogin__sub { color: var(--color-text-muted); font-size: 0.92rem; margin-top: 4px; margin-bottom: 22px; }
+
+/* Field spacing (the primitives themselves live in base.css) */
+.adform__label { margin-top: 14px; }
+.adform__label:first-of-type { margin-top: 0; }
+
+/* Remember + forgot row */
+.adform__row {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-top: 14px; gap: 10px; flex-wrap: wrap;
+}
+.adform__check {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-size: 0.86rem; color: var(--color-text-muted); cursor: pointer; user-select: none;
+}
+.adform__check input {
+    width: 17px; height: 17px; accent-color: var(--color-primary); cursor: pointer;
+}
+.adform__forgot { font-size: 0.86rem; color: var(--color-primary); font-weight: 600; }
+.adform__forgot:hover { text-decoration: underline; }
+
+.adlogin__secure {
+    display: flex; align-items: center; justify-content: center; gap: 7px;
+    margin-top: 20px; color: var(--color-text-soft); font-size: 0.78rem;
+}
+.adlogin__secure svg { color: var(--color-success); }
+
+/* Forgot / reset helpers */
+.adlogin__back { margin-top: 18px; }
+.adlogin__sent-ic {
+    width: 56px; height: 56px; border-radius: 50%;
+    background: var(--color-primary-soft); color: var(--color-primary);
+    display: inline-flex; align-items: center; justify-content: center;
+    margin-bottom: 14px;
+}
+a.adform__submit { text-decoration: none; }
+.adform__error--block { display: block; }

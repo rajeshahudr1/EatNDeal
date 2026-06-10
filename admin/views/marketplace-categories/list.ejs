@@ -1,0 +1,236 @@
+<%#
+  views/marketplace-categories/list.ejs
+
+  Global marketplace category master — live search, restaurant (company) filter
+  autocomplete, status filter, sort, server-side pagination, inline status,
+  drag-and-drop reordering, click-the-count restaurant list, single + bulk
+  assign restaurants, single + bulk delete, Add / Edit. Reuses the products list
+  (.pr-*) styling. `pd` = { categories[], total, page, limit, total_pages } or null.
+
+  Used: Controllers/MarketplaceCategoriesController.list.
+-%>
+<%
+    var STATUSES = [[1, 'Active'], [0, 'Inactive']];
+    var SORTS = [['sort_order', 'Sort order'], ['restaurants', 'Restaurants first'], ['name_asc', 'Name A–Z'], ['name_desc', 'Name Z–A'], ['newest', 'Newest']];
+    var SIZES = [['all', 'All'], ['10', '10'], ['25', '25'], ['50', '50'], ['100', '100'], ['500', '500'], ['1000', '1000']];
+    var STATUS_F = [['', 'All status'], ['active', 'Active'], ['inactive', 'Inactive']];
+    function statusSel(id, cur) {
+        var h = '<select class="pr-status mpc-status" data-id="' + id + '">';
+        STATUSES.forEach(function (s) { h += '<option value="' + s[0] + '"' + (Number(cur) === s[0] ? ' selected' : '') + '>' + s[1] + '</option>'; });
+        return h + '</select>';
+    }
+    function pageUrl(n) {
+        var qp = [];
+        if (search_q) { qp.push('q=' + encodeURIComponent(search_q)); }
+        if (cur_status) { qp.push('status=' + encodeURIComponent(cur_status)); }
+        if (cur_company) { qp.push('company=' + encodeURIComponent(cur_company)); }
+        qp.push('sort=' + cur_sort); qp.push('limit=' + cur_limit); qp.push('page=' + n);
+        return '/marketplace-categories?' + qp.join('&');
+    }
+    var isImg = function (s) { return !!s && (s.indexOf('/') !== -1 || /\.[a-z0-9]{2,5}$/i.test(s)); };
+    var page = pd ? Number(pd.page) : 1;
+    var totalPages = pd ? Number(pd.total_pages) : 1;
+    // Drag-reorder is only globally correct when the whole list is on one page
+    // (the saved order = the posted order). Filters/search/sort would make the
+    // positions ambiguous, so they disable it too.
+    var sortable = (cur_sort === 'sort_order') && !cur_company && !search_q && !cur_status;
+    var canDrag = sortable && totalPages <= 1;
+    var dragNeedsAll = sortable && totalPages > 1;
+%>
+<div class="pr" data-mpc-root>
+
+    <div class="ly__head">
+        <div>
+            <h2 class="ly__title">🗂️ Marketplace Categories</h2>
+            <p class="ly__sub">Global cuisine / category list for the marketplace home</p>
+        </div>
+        <% if (pd) { %>
+        <div class="pr-head-act">
+            <a href="/marketplace-categories/arrange" class="ly-btn ly-btn--ghost ly-btn--sm">↕ Arrange order</a>
+            <a href="/marketplace-categories/new" class="ly-btn ly-btn--primary ly-btn--sm">➕ Add category</a>
+        </div>
+        <% } %>
+    </div>
+
+    <% if (load_error) { %>
+        <div class="ly-empty"><span class="ly-empty__ic" aria-hidden="true">🏢</span><p class="ly-empty__msg"><%= load_error %></p></div>
+    <% } else if (pd) { %>
+
+        <div class="pr-toolbar">
+            <label class="pr-checkall"><input type="checkbox" data-action="pr-checkall"><span>All</span></label>
+            <form method="get" action="/marketplace-categories" class="pr-filter" id="pr-filter">
+                <div class="pr-search">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                    <input type="text" name="q" value="<%= search_q %>" placeholder="Search categories…" autocomplete="off" data-live-search>
+                    <% if (search_q) { %><a href="/marketplace-categories" class="pr-search__clear" aria-label="Clear">✕</a><% } %>
+                </div>
+                <%# Mobile-only: open the filters sheet %>
+                <button type="button" class="pr-filterbtn" data-filter-toggle aria-label="Filters" title="Filters">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+                    <% if (cur_company || cur_status || (cur_sort && cur_sort !== 'sort_order')) { %><span class="pr-filterbtn__dot"></span><% } %>
+                </button>
+                <div class="pr-filters" data-filters>
+                    <div class="pr-filters__head"><span class="pr-filters__ttl">Filters</span><button type="button" class="pr-filters__x" data-filter-close aria-label="Close">✕</button></div>
+
+                    <%# Restaurant filter — autocomplete; selecting one filters categories %>
+                    <div class="mpc-ac mpc-ac--filter" data-ac="filter">
+                        <input type="hidden" name="company" value="<%= cur_company %>" data-ac-value>
+                        <span class="mpc-ac__ic" aria-hidden="true">🏪</span>
+                        <input type="text" class="mpc-ac__input" value="<%= cur_company_name %>" placeholder="Any restaurant" autocomplete="off" data-ac-input>
+                        <% if (cur_company) { %><button type="button" class="mpc-ac__clear" data-ac-clear aria-label="Clear restaurant">✕</button><% } %>
+                        <div class="mpc-ac__panel" data-ac-panel hidden></div>
+                    </div>
+
+                    <select name="status" class="pr-filter-sel" data-filter-submit aria-label="Status">
+                        <% STATUS_F.forEach(function (s) { %><option value="<%= s[0] %>" <%= cur_status === s[0] ? 'selected' : '' %>><%= s[1] %></option><% }); %>
+                    </select>
+                    <select name="sort" class="pr-filter-sel" data-filter-submit aria-label="Sort">
+                        <% SORTS.forEach(function (s) { %><option value="<%= s[0] %>" <%= cur_sort === s[0] ? 'selected' : '' %>><%= s[1] %></option><% }); %>
+                    </select>
+                    <select name="limit" class="pr-filter-sel" data-filter-submit aria-label="Per page">
+                        <% SIZES.forEach(function (s) { %><option value="<%= s[0] %>" <%= cur_limit === s[0] ? 'selected' : '' %>>Show <%= s[1] %></option><% }); %>
+                    </select>
+                    <button type="button" class="ly-btn ly-btn--primary pr-filters__done" data-filter-close>Done</button>
+                </div>
+            </form>
+        </div>
+        <div class="pr-filters__backdrop" data-filter-backdrop hidden></div>
+
+        <div class="pr-actionbar" data-actionbar hidden>
+            <a href="javascript:void(0)" class="ly-btn ly-btn--ghost ly-btn--sm" data-action="pr-clearall">Clear all</a>
+            <span class="pr-actionbar__count"><span data-sel-count>0</span> selected</span>
+            <div class="pr-actionbar__right">
+                <button type="button" class="ly-btn ly-btn--ghost ly-btn--sm" data-action="pr-bulk-assign">🏪 Assign restaurants</button>
+                <select data-bulk-status aria-label="Set status">
+                    <option value="">Set status…</option>
+                    <% STATUSES.forEach(function (s) { %><option value="<%= s[0] %>"><%= s[1] %></option><% }); %>
+                </select>
+                <button type="button" class="ly-btn ly-btn--danger ly-btn--sm" data-action="pr-bulk-delete">Delete</button>
+            </div>
+        </div>
+
+        <% if (canDrag) { %>
+        <p class="mpc-draghint">⠿ Drag rows to reorder, then save.</p>
+        <% } else if (dragNeedsAll) { %>
+        <p class="mpc-draghint">To reorder the whole list, open <a href="/marketplace-categories/arrange">Arrange order</a>.</p>
+        <% } %>
+
+        <% if (!pd.categories.length) { %>
+            <div class="ly-empty"><span class="ly-empty__ic" aria-hidden="true">🗂️</span><p class="ly-empty__msg"><%= (search_q || cur_company) ? 'No categories match your filters.' : 'No categories yet.' %></p></div>
+        <% } else { %>
+        <div class="pr-list<%= canDrag ? ' mpc-list--drag' : '' %>" data-list data-page="<%= page %>" data-total-pages="<%= totalPages %>"<%= canDrag ? ' data-draggable' : '' %>>
+            <% pd.categories.forEach(function (c) { %>
+            <div class="pr-item" data-id="<%= c.id %>" data-name="<%= c.name %>"<%= canDrag ? ' draggable="true"' : '' %>>
+                <div class="pr-item__main">
+                    <% if (canDrag) { %><span class="mpc-drag" data-drag-handle title="Drag to reorder" aria-hidden="true">⠿</span><% } %>
+                    <label class="pr-item__check"><input type="checkbox" class="pr-check" value="<%= c.id %>"></label>
+                    <span class="pr-item__img mpc-icon">
+                        <% if (c.image_url) { %><img src="<%= c.image_url %>" alt="">
+                        <% } else if (c.icon && isImg(c.icon)) { %><img src="<%= c.icon %>" alt="">
+                        <% } else if (c.icon) { %><span class="mpc-emoji"><%= c.icon %></span>
+                        <% } else { %><span class="pr-item__noimg">🗂️</span><% } %>
+                    </span>
+                    <span class="pr-item__name">
+                        <%= c.name %>
+                        <span class="mpc-sub">
+                            <span class="mpc-sub__slug"><%= c.slug %></span>
+                            <button type="button" class="mpc-count" data-action="mpc-restaurants" data-id="<%= c.id %>" data-name="<%= c.name %>"><%= c.restaurants %> restaurant<%= c.restaurants === 1 ? '' : 's' %></button>
+                        </span>
+                    </span>
+                </div>
+                <div class="pr-item__controls">
+                    <span class="mpc-sortcell" title="Sort order">#<%= c.sort_order %></span>
+                    <span class="pr-statuswrap"><%- statusSel(c.id, c.status) %></span>
+                    <span class="pr-item__act">
+                        <button type="button" class="ly-iconbtn" data-action="mpc-assign-one" data-id="<%= c.id %>" data-name="<%= c.name %>" title="Assign restaurants">🏪</button>
+                        <a href="/marketplace-categories/edit/<%= c.id %>" class="ly-iconbtn" title="Edit">✎</a>
+                        <button type="button" class="ly-iconbtn ly-iconbtn--danger" data-action="pr-delete" data-id="<%= c.id %>" title="Delete">🗑</button>
+                    </span>
+                </div>
+            </div>
+            <% }); %>
+        </div>
+
+        <% if (totalPages > 1 || pd.total) { %>
+        <div class="pr-pager">
+            <span class="pr-pager__info"><%= pd.total %> categor<%= pd.total === 1 ? 'y' : 'ies' %><% if (totalPages > 1) { %> · page <%= page %> of <%= totalPages %><% } %></span>
+            <% if (totalPages > 1) { %>
+            <div class="pr-pager__nav">
+                <% if (page > 1) { %><a class="pr-pager__btn" href="<%= pageUrl(page - 1) %>">‹ Prev</a><% } else { %><span class="pr-pager__btn is-disabled">‹ Prev</span><% } %>
+                <% var from = Math.max(1, page - 2), to = Math.min(totalPages, page + 2);
+                   if (from > 1) { %><a class="pr-pager__btn" href="<%= pageUrl(1) %>">1</a><% if (from > 2) { %><span class="pr-pager__dots">…</span><% } } %>
+                <% for (var n = from; n <= to; n++) { %><a class="pr-pager__btn <%= n === page ? 'is-active' : '' %>" href="<%= pageUrl(n) %>"><%= n %></a><% } %>
+                <% if (to < totalPages) { if (to < totalPages - 1) { %><span class="pr-pager__dots">…</span><% } %><a class="pr-pager__btn" href="<%= pageUrl(totalPages) %>"><%= totalPages %></a><% } %>
+                <% if (page < totalPages) { %><a class="pr-pager__btn" href="<%= pageUrl(page + 1) %>">Next ›</a><% } else { %><span class="pr-pager__btn is-disabled">Next ›</span><% } %>
+            </div>
+            <% } %>
+        </div>
+        <% } %>
+        <% } %>
+
+    <% } %>
+</div>
+
+<%# Sticky bar — appears after a drag, to save (or reset) the new order. %>
+<div class="mpc-reorderbar" data-reorderbar hidden>
+    <span class="mpc-reorderbar__msg">Order changed.</span>
+    <div class="mpc-reorderbar__act">
+        <button type="button" class="ly-btn ly-btn--ghost ly-btn--sm" data-action="mpc-reorder-reset">Reset</button>
+        <button type="button" class="ly-btn ly-btn--primary ly-btn--sm" data-action="mpc-reorder-save">Save order</button>
+    </div>
+</div>
+
+<%# Delete confirm modal. %>
+<div class="pr-modal" data-modal="delete" hidden>
+    <div class="pr-modal__panel pr-modal__panel--sm">
+        <div class="pr-modal__icon">⚠️</div>
+        <h3 class="pr-modal__title">Are you sure?</h3>
+        <p class="pr-modal__msg" data-delete-msg>Delete this category?</p>
+        <div class="pr-modal__foot pr-modal__foot--center">
+            <button type="button" class="ly-btn ly-btn--ghost" data-action="pr-modal-cancel">No, cancel</button>
+            <button type="button" class="ly-btn ly-btn--danger" data-action="pr-delete-confirm">Yes, delete</button>
+        </div>
+    </div>
+</div>
+
+<%# Restaurants-of-a-category list modal (click the count). %>
+<div class="pr-modal" data-modal="restaurants" hidden>
+    <div class="pr-modal__panel">
+        <h3 class="pr-modal__title" data-rest-title>Restaurants</h3>
+        <div class="mpc-restlist" data-rest-list>
+            <p class="mpc-restlist__loading">Loading…</p>
+        </div>
+        <div class="pr-modal__foot pr-modal__foot--center">
+            <button type="button" class="ly-btn ly-btn--ghost" data-action="pr-modal-cancel">Close</button>
+        </div>
+    </div>
+</div>
+
+<%# Assign restaurants modal (single + bulk). %>
+<div class="pr-modal" data-modal="assign" hidden>
+    <div class="pr-modal__panel">
+        <h3 class="pr-modal__title" data-assign-title>Assign restaurants</h3>
+        <p class="pr-modal__msg" data-assign-sub></p>
+
+        <div class="mpc-ac mpc-ac--assign" data-ac="assign">
+            <span class="mpc-ac__ic" aria-hidden="true">🔍</span>
+            <input type="text" class="mpc-ac__input" placeholder="Search restaurants to add…" autocomplete="off" data-ac-input>
+            <div class="mpc-ac__panel" data-ac-panel hidden></div>
+        </div>
+
+        <div class="mpc-sellist-head">Selected restaurants <span class="mpc-sellist-head__n" data-assign-selcount>0</span></div>
+        <div class="mpc-sellist" data-assign-chips></div>
+
+        <div class="mpc-mode" data-assign-moderow hidden>
+            <label class="mpc-mode__opt"><input type="radio" name="assignmode" value="add" checked> Add to existing</label>
+            <label class="mpc-mode__opt"><input type="radio" name="assignmode" value="set"> Replace all</label>
+        </div>
+
+        <p class="mpc-assign__err" data-assign-err hidden></p>
+
+        <div class="pr-modal__foot pr-modal__foot--center">
+            <button type="button" class="ly-btn ly-btn--ghost" data-action="assign-cancel">Cancel</button>
+            <button type="button" class="ly-btn ly-btn--primary" data-action="assign-save">Save assignment</button>
+        </div>
+    </div>
+</div>

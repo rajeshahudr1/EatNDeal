@@ -1,0 +1,43 @@
+/*
+ * mobile.css — admin layout for < 900px
+ *
+ * Loaded via <link media="(max-width: 899px)">. The component sheets are
+ * already mobile-first, so this file only holds small phone-only polish
+ * that would otherwise clutter the component files.
+ * (Conventions rule #4 — separate desktop / mobile layout.)
+ */
+
+/* Prevent the page behind the open sidebar drawer from scrolling. */
+body.sidebar-open { overflow: hidden; }
+
+/* Slightly tighter login card on small phones. */
+@media (max-width: 380px) {
+    .adlogin { padding: 16px 12px; }
+    .adlogin__card { padding: 24px 18px 22px; }
+    .adlogin__title { font-size: 1.3rem; }
+}
+
+/* Hide the username label on very narrow topbars — keep just the avatar. */
+@media (max-width: 420px) {
+    .admin-topbar__uname { display: none; }
+}
+
+/* Phone topbar: drop the page title (the page body already shows an H2),
+   keep the company switcher a FIXED width with the name truncating, and make
+   its dropdown a full-width sheet so it never overflows the screen. */
+@media (max-width: 640px) {
+    .admin-topbar { gap: 8px; padding: 0 10px; }
+    .admin-topbar__title { display: none; }
+
+    .admin-company { margin-left: 6px; }
+    .admin-company__btn { max-width: 150px; padding: 6px 10px; }
+    .admin-company__current { min-width: 0; }
+    .admin-company__panel {
+        position: fixed; left: 8px; right: 8px; top: calc(var(--topbar-h) + 4px);
+        width: auto; max-width: none;
+    }
+
+    .admin-topbar__company { margin-left: 6px; min-width: 0; }
+    .admin-topbar__company-label { max-width: 150px; margin-left: 6px; }
+    .admin-topbar__company-select { max-width: 150px; }
+}

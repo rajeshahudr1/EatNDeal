@@ -1,0 +1,131 @@
+<%#
+  views/dashboard/index.ejs
+
+  Main admin dashboard — the platform overview. Total companies, revenue,
+  orders and customers, plus (for a super admin viewing all companies) a
+  per-company breakdown. Loyalty has its own dashboard under the Loyalty menu.
+  `ov` = the /admin/overview payload (or null when it couldn't load).
+
+  Used: Controllers/DashboardController.index (shell layout).
+-%>
+<%
+    var cc  = (typeof company_ctx !== 'undefined' && company_ctx) ? company_ctx : { selectedCompany: null, isSuper: false, selectedCompanyId: null };
+    var sym = (brand && brand.currencySymbol) ? brand.currencySymbol : '£';
+    function money(n) { return sym + Number(n || 0).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+    function num(n) { return Number(n || 0).toLocaleString('en-GB'); }
+    var scopeLabel = cc.selectedCompany ? cc.selectedCompany.business_name : (cc.isSuper ? 'All companies' : 'Your company');
+%>
+<div class="dash">
+
+    <div class="dash__head">
+        <div>
+            <h2 class="dash__title">Dashboard</h2>
+            <p class="dash__sub"><%= scopeLabel %> · platform overview</p>
+        </div>
+    </div>
+
+    <% if (!ov) { %>
+        <p class="dash__note">Couldn’t load live data — make sure the API is running, then refresh.</p>
+    <% } else { %>
+
+        <div class="dash__metrics">
+            <% if (cc.selectedCompanyId == null && ov.scope.isSuper) { %>
+            <div class="metric metric--purple">
+                <span class="metric__val"><%= num(ov.companies) %></span>
+                <span class="metric__lbl">Companies</span>
+            </div>
+            <% } %>
+            <div class="metric metric--green">
+                <span class="metric__val"><%= money(ov.revenue) %></span>
+                <span class="metric__lbl">Revenue</span>
+            </div>
+            <div class="metric metric--blue">
+                <span class="metric__val"><%= num(ov.orders) %></span>
+                <span class="metric__lbl">Completed Orders</span>
+            </div>
+            <div class="metric metric--amber">
+                <span class="metric__val"><%= num(ov.customers) %></span>
+                <span class="metric__lbl"><%= cc.selectedCompanyId == null && ov.scope.isSuper ? 'Customers' : 'Customers' %></span>
+            </div>
+        </div>
+
+        <%# Per-company breakdown — super admin, all companies %>
+        <% if (ov.scope.isSuper && ov.scope.companyId == null && ov.perCompany && ov.perCompany.length) { %>
+        <section class="card">
+            <h3 class="card__title">🏢 Companies by revenue</h3>
+            <div class="dash-table">
+                <div class="dash-table__head"><span>Company</span><span>Orders</span><span>Revenue</span></div>
+                <% ov.perCompany.forEach(function (c) { %>
+                <div class="dash-table__row">
+                    <span class="dash-table__name"><%= c.business_name %></span>
+                    <span><%= num(c.orders) %></span>
+                    <span><%= money(c.revenue) %></span>
+                </div>
+                <% }); %>
+            </div>
+        </section>
+        <% } %>
+
+        <%# Platform customer segments (all companies) — every ordering customer
+            bucketed by lifetime spend. Shown only on the all-companies view. %>
+        <% if (ov.platformSegments && ov.platformSegments.length) { %>
+        <h3 class="dash__section-title">👥 Customer Segments</h3>
+        <section class="card">
+            <% var maxC = Math.max.apply(null, ov.platformSegments.map(function (s) { return s.count; }).concat([1])); %>
+            <% ov.platformSegments.forEach(function (s) { var pct = Math.round((s.count / maxC) * 100); %>
+            <div class="seg-row">
+                <div class="seg-row__top">
+                    <span class="seg-row__name"><%= s.label %></span>
+                    <span class="seg-row__band"><%= s.band.replace('GBP', sym) %></span>
+                    <span class="seg-row__count"><strong><%= num(s.count) %></strong> customers</span>
+                </div>
+                <div class="seg-bar"><span class="seg-bar__fill" data-w="<%= pct %>"></span></div>
+                <div class="seg-row__foot">Total spend: <strong><%= money(s.total) %></strong></div>
+            </div>
+            <% }); %>
+        </section>
+        <% } %>
+
+        <%# Customer Segments — auto-computed from lifetime spend & activity.
+            (Per-company view; shows when a single company is selected.) %>
+        <% if (sg) {
+            var TIER_META = { bronze: ['🥉 Bronze', '#cd7f32'], silver: ['🥈 Silver', '#b9b9b9'], gold: ['🏅 Gold', '#e7b400'] };
+        %>
+        <h3 class="dash__section-title">👥 Customer Segments</h3>
+        <div class="dash__metrics">
+            <div class="metric metric--blue"><span class="metric__val"><%= num(sg.totalCustomers) %></span><span class="metric__lbl">Active Customers</span></div>
+            <div class="metric metric--green"><span class="metric__val"><%= money(sg.totalSpend) %></span><span class="metric__lbl">Lifetime Spend</span></div>
+            <div class="metric metric--amber"><span class="metric__val"><%= num(sg.inactive.customerCount) %></span><span class="metric__lbl">Inactive (<%= sg.inactive.days %>d+)</span></div>
+        </div>
+
+        <section class="card">
+            <h3 class="card__title">🏅 Spend tiers</h3>
+            <% if (!sg.tiers.length) { %>
+                <p class="dash__note">No tiers configured yet — set them up in Loyalty Configuration.</p>
+            <% } else { %>
+                <% var maxCount = Math.max.apply(null, sg.tiers.map(function (t) { return t.customerCount; }).concat([1])); %>
+                <% sg.tiers.forEach(function (t) { var meta = TIER_META[t.type] || [t.type, '#cbd2dd']; var pct = Math.round((t.customerCount / maxCount) * 100); %>
+                <div class="seg-row">
+                    <div class="seg-row__top">
+                        <span class="seg-row__name"><%= meta[0] %></span>
+                        <span class="seg-row__band"><%= money(t.min) %><%= t.max > 0 ? ('–' + money(t.max)) : '+' %></span>
+                        <span class="seg-row__count"><strong><%= t.customerCount %></strong> customers</span>
+                    </div>
+                    <div class="seg-bar"><span class="seg-bar__fill" data-w="<%= pct %>"></span></div>
+                    <div class="seg-row__foot">Total spend: <strong><%= money(t.totalSpend) %></strong></div>
+                </div>
+                <% }); %>
+            <% } %>
+        </section>
+
+        <section class="card seg-inactive">
+            <div>
+                <h3 class="card__title">😴 Win-back segment</h3>
+                <p class="seg-inactive__sub">Customers with no order in the last <strong><%= sg.inactive.days %></strong> days. Configure their win-back reward in Loyalty Configuration.</p>
+            </div>
+            <span class="seg-inactive__count"><%= num(sg.inactive.customerCount) %></span>
+        </section>
+        <% } %>
+
+    <% } %>
+</div>

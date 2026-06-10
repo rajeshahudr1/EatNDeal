@@ -1,0 +1,94 @@
+<%#
+  views/loyalty/special-offer.ejs
+
+  Section 8 — Special Offer. Date-based cashback rows (legacy
+  loyalty_special_offer_rule): a £/% reward tied to a specific offer date.
+  Multi-row CRUD (add / edit / two-click delete) + a master toggle.
+  `so` = { offers[], masterOn } or null on error.
+
+  Used: Controllers/LoyaltyController.specialOffer (shell layout).
+-%>
+<%
+    var sym = (brand && brand.currencySymbol) ? brand.currencySymbol : '£';
+    var today = new Date().toISOString().slice(0, 10);
+    function vt(o) { return o.value_type === '£' ? (sym + Number(o.cashback).toFixed(2)) : (Number(o.cashback) + '%'); }
+%>
+<div class="ly">
+
+    <%- include('../partials/loyalty-subnav') -%>
+
+    <div class="ly__head">
+        <div>
+            <h2 class="ly__title">🎁 Special Offer</h2>
+            <p class="ly__sub">Date-based cashback for special events</p>
+        </div>
+    </div>
+
+    <% if (load_error) { %>
+        <div class="ly-empty"><span class="ly-empty__ic" aria-hidden="true">🏢</span><p class="ly-empty__msg"><%= load_error %></p></div>
+    <% } else if (so) { %>
+
+        <section class="card ly-card">
+            <div class="ly-card__head">
+                <h3 class="card__title">🎁 Special offers</h3>
+                <div class="ly-card__headact">
+                    <form method="post" action="/loyalty/special-offer/toggle" class="ly-switch-form" data-toggle-form>
+                        <input type="hidden" name="status" value="<%= so.masterOn ? '2' : '1' %>">
+                        <span class="ly-switch-form__lbl"><%= so.masterOn ? 'Enabled' : 'Disabled' %></span>
+                        <label class="ly-switch"><input type="checkbox" data-action="ly-master-toggle" <%= so.masterOn ? 'checked' : '' %> aria-label="Enable special offers"><span class="ly-switch__ui" aria-hidden="true"></span></label>
+                    </form>
+                    <button type="button" class="ly-btn ly-btn--primary ly-btn--sm" data-action="ly-add" data-form="ly-offer-form">+ Add</button>
+                </div>
+            </div>
+
+            <form id="ly-offer-form" class="ly-rowform" method="post" action="/loyalty/special-offer/save" hidden>
+                <input type="hidden" name="id" value="">
+                <h4 class="ly-rowform__title" data-form-title data-add-title="Add offer" data-edit-title="Edit offer">Add offer</h4>
+                <div class="ly-grid">
+                    <div class="ly-field">
+                        <label for="so-cashback">Cashback</label>
+                        <input id="so-cashback" type="number" name="cashback" step="0.01" min="0" placeholder="10.00" required>
+                    </div>
+                    <div class="ly-field">
+                        <label for="so-vt">Reward type</label>
+                        <select id="so-vt" name="value_type">
+                            <option value="£"><%= sym %> flat</option>
+                            <option value="%">% percent</option>
+                        </select>
+                    </div>
+                    <div class="ly-field">
+                        <label for="so-date">Offer date</label>
+                        <input id="so-date" type="date" name="offer_date" min="<%= today %>" required>
+                    </div>
+                </div>
+                <div class="ly-rowform__foot">
+                    <button type="button" class="ly-btn ly-btn--ghost" data-action="ly-cancel" data-form="ly-offer-form">Cancel</button>
+                    <button type="submit" class="ly-btn ly-btn--primary">Save offer</button>
+                </div>
+            </form>
+
+            <% if (!so.offers.length) { %>
+                <p class="ly-none">No special offers yet. Add one above.</p>
+            <% } else { %>
+                <div class="ly-rules">
+                    <% so.offers.forEach(function (o) { %>
+                    <div class="ly-rule" data-rule="<%= encodeURIComponent(JSON.stringify(o)) %>">
+                        <div class="ly-rule__main">
+                            <span class="ly-tier ly-tier--gold"><%= o.offer_date || '—' %></span>
+                            <span class="ly-rule__text">Cashback <strong><%= vt(o) %></strong></span>
+                        </div>
+                        <div class="ly-rule__act">
+                            <button type="button" class="ly-iconbtn" data-action="ly-edit" data-form="ly-offer-form" aria-label="Edit">✎</button>
+                            <form method="post" action="/loyalty/special-offer/delete" class="ly-del">
+                                <input type="hidden" name="id" value="<%= o.id %>">
+                                <button type="button" class="ly-iconbtn ly-iconbtn--danger" data-action="ly-delete" aria-label="Delete">🗑</button>
+                            </form>
+                        </div>
+                    </div>
+                    <% }); %>
+                </div>
+            <% } %>
+        </section>
+
+    <% } %>
+</div>

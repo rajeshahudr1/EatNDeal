@@ -1,0 +1,67 @@
+<%#
+  views/marketplace-categories/arrange.ejs
+
+  Full-page drag-and-drop reorder of EVERY marketplace category (all on one
+  page, so the saved order is global). Drag the rows, then "Save order" →
+  POST /marketplace-categories/reorder. Reuses the list drag logic in
+  pages/mp-categories.js (.pr-list[data-draggable] + the sticky reorder bar).
+
+  Used: Controllers/MarketplaceCategoriesController.arrange.
+-%>
+<%
+    var isImg = function (s) { return !!s && (s.indexOf('/') !== -1 || /\.[a-z0-9]{2,5}$/i.test(s)); };
+%>
+<div class="pr" data-mpc-root>
+
+    <div class="ly__head">
+        <div>
+            <h2 class="ly__title">↕ Arrange sort order</h2>
+            <p class="ly__sub">Drag categories into the order you want for the marketplace home, then save.</p>
+        </div>
+        <div class="pr-head-act">
+            <a href="/marketplace-categories" class="ly-btn ly-btn--ghost ly-btn--sm">← Back to list</a>
+            <button type="button" class="ly-btn ly-btn--ghost ly-btn--sm" data-action="mpc-reorder-reset">↺ Reset</button>
+            <button type="button" class="ly-btn ly-btn--primary ly-btn--sm" data-action="mpc-reorder-save">💾 Save order</button>
+        </div>
+    </div>
+
+    <% if (load_error) { %>
+        <div class="ly-empty"><span class="ly-empty__ic" aria-hidden="true">🏢</span><p class="ly-empty__msg"><%= load_error %></p></div>
+    <% } else if (!pd || !pd.categories.length) { %>
+        <div class="ly-empty"><span class="ly-empty__ic" aria-hidden="true">🗂️</span><p class="ly-empty__msg">No categories to arrange yet.</p></div>
+    <% } else { %>
+
+        <p class="mpc-draghint">⠿ Drag a row by its handle, or use the ▲▼ arrows to move it — then hit <strong>Save order</strong> at the top.</p>
+
+        <div class="pr-list mpc-list--drag mpc-list--arrange" data-list data-draggable data-arrange>
+            <% pd.categories.forEach(function (c, idx) { %>
+            <div class="pr-item" data-id="<%= c.id %>" data-name="<%= c.name %>">
+                <div class="pr-item__main">
+                    <span class="mpc-drag" data-drag-handle title="Drag to reorder" aria-hidden="true">⠿</span>
+                    <span class="pr-item__img mpc-icon">
+                        <% if (c.image_url) { %><img src="<%= c.image_url %>" alt="">
+                        <% } else if (c.icon && isImg(c.icon)) { %><img src="<%= c.icon %>" alt="">
+                        <% } else if (c.icon) { %><span class="mpc-emoji"><%= c.icon %></span>
+                        <% } else { %><span class="pr-item__noimg">🗂️</span><% } %>
+                    </span>
+                    <span class="pr-item__name">
+                        <%= c.name %>
+                        <span class="mpc-sub">
+                            <span class="mpc-sub__slug"><%= c.slug %></span>
+                            <span class="mpc-count mpc-count--static"><%= c.restaurants %> restaurant<%= c.restaurants === 1 ? '' : 's' %></span>
+                        </span>
+                    </span>
+                </div>
+                <div class="pr-item__controls">
+                    <span class="mpc-movewrap">
+                        <button type="button" class="mpc-move" data-action="mpc-move-up" aria-label="Move up" title="Move up">▲</button>
+                        <button type="button" class="mpc-move" data-action="mpc-move-down" aria-label="Move down" title="Move down">▼</button>
+                    </span>
+                    <span class="mpc-sortcell" title="Position">#<%= idx + 1 %></span>
+                </div>
+            </div>
+            <% }); %>
+        </div>
+
+    <% } %>
+</div>

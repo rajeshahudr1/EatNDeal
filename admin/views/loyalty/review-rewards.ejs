@@ -1,0 +1,58 @@
+<%#
+  views/loyalty/review-rewards.ejs
+
+  Section 6 — Review Cashback rewards. A flat £ payout for each of the 8 fixed
+  review / share types (legacy loyalty_review_cashback_rule, value_type locked
+  to £). Edited together, upserted by (company_id, type); leave a row blank /
+  0 to remove it. Master toggles the review rule. `rr` = { types[], masterOn }.
+
+  (This sets the reward amount. A customer's actual review submission is
+  approved on the Review Claims screen.)
+
+  Used: Controllers/LoyaltyController.reviewRewards (shell layout).
+-%>
+<%
+    var sym = (brand && brand.currencySymbol) ? brand.currencySymbol : '£';
+%>
+<div class="ly">
+
+    <%- include('../partials/loyalty-subnav') -%>
+
+    <div class="ly__head">
+        <div>
+            <h2 class="ly__title">⭐ Review Rewards</h2>
+            <p class="ly__sub">Cashback for reviews &amp; social shares (paid in <%= sym %>)</p>
+        </div>
+        <% if (rr) { %>
+        <form method="post" action="/loyalty/review-rewards/toggle" class="ly-switch-form" data-toggle-form>
+            <input type="hidden" name="status" value="<%= rr.masterOn ? '2' : '1' %>">
+            <span class="ly-switch-form__lbl"><%= rr.masterOn ? 'Enabled' : 'Disabled' %></span>
+            <label class="ly-switch"><input type="checkbox" data-action="ly-master-toggle" <%= rr.masterOn ? 'checked' : '' %> aria-label="Enable review rewards"><span class="ly-switch__ui" aria-hidden="true"></span></label>
+        </form>
+        <% } %>
+    </div>
+
+    <% if (load_error) { %>
+        <div class="ly-empty"><span class="ly-empty__ic" aria-hidden="true">🏢</span><p class="ly-empty__msg"><%= load_error %></p></div>
+    <% } else if (rr) { %>
+
+        <form method="post" action="/loyalty/review-rewards/save" class="card ly-card">
+            <p class="ly-hint">Set a <%= sym %> reward per type. Leave a field at 0 to switch that reward off.</p>
+            <div class="ly-grid">
+                <% rr.types.forEach(function (t) { %>
+                <div class="ly-field">
+                    <label for="rv<%= t.id %>"><%= t.name %></label>
+                    <div class="ly-money">
+                        <span class="ly-money__sym"><%= sym %></span>
+                        <input id="rv<%= t.id %>" type="number" name="review_<%= t.id %>_cashback" step="0.01" min="0" value="<%= Number(t.cashback).toFixed(2) %>">
+                    </div>
+                </div>
+                <% }); %>
+            </div>
+            <div class="ly-tiers__foot">
+                <button type="submit" class="ly-btn ly-btn--primary">Save review rewards</button>
+            </div>
+        </form>
+
+    <% } %>
+</div>

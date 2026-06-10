@@ -1,0 +1,200 @@
+/*
+ * base.css — EatNDeal Admin
+ *
+ * What:  Foundation styles loaded on every admin page. Self-hosted Poppins,
+ *        design tokens (:root variables), reset, base typography, form +
+ *        button primitives, and the shared error-page styling.
+ * Why:   Single, predictable cascade. Component sheets hold components,
+ *        desktop.css + mobile.css hold the responsive layout.
+ * Used:  Linked from views/_layout.ejs (always).
+ */
+
+/* ── Self-hosted fonts (Conventions rule #5 — no CDN) ───────────────── */
+@font-face { font-family:'Poppins'; src:url('/fonts/Poppins-Regular.woff2') format('woff2'), url('/fonts/Poppins-Regular.woff') format('woff'); font-weight:400; font-style:normal; font-display:swap; }
+@font-face { font-family:'Poppins'; src:url('/fonts/Poppins-Medium.woff2') format('woff2'), url('/fonts/Poppins-Medium.woff') format('woff'); font-weight:500; font-style:normal; font-display:swap; }
+@font-face { font-family:'Poppins'; src:url('/fonts/Poppins-SemiBold.woff2') format('woff2'), url('/fonts/Poppins-SemiBold.woff') format('woff'); font-weight:600; font-style:normal; font-display:swap; }
+@font-face { font-family:'Poppins'; src:url('/fonts/Poppins-Bold.woff2') format('woff2'), url('/fonts/Poppins-Bold.woff') format('woff'); font-weight:700; font-style:normal; font-display:swap; }
+@font-face { font-family:'Poppins'; src:url('/fonts/Poppins-ExtraBold.woff2') format('woff2'), url('/fonts/Poppins-ExtraBold.woff') format('woff'); font-weight:800; font-style:normal; font-display:swap; }
+
+/* ── Design tokens ──────────────────────────────────────────────────── *
+ * SINGLE SOURCE OF TRUTH for the admin console's visual design. The brand
+ * red drives CTAs; the navy drives the console chrome (sidebar / login
+ * branding panel) per the admin mockup. */
+:root {
+    /* Brand red (CTAs) */
+    --color-primary:      #E5252A;
+    --color-primary-dark: #C41E22;
+    --color-primary-soft: #FDE7E8;
+
+    /* Navy console chrome */
+    --navy-900: #12182e;   /* deepest — login panel base */
+    --navy-800: #16213e;   /* sidebar / branding gradient end */
+    --navy-700: #1f2b4d;   /* hover surfaces on navy */
+    --navy-600: #2c3a63;   /* borders on navy */
+
+    /* Neutrals */
+    --color-text:        #1C1C1C;
+    --color-text-muted:  #5B6472;
+    --color-text-soft:   #939AA6;
+    --color-bg:          #F4F6FA;   /* app canvas */
+    --color-surface:     #FFFFFF;   /* cards */
+    --color-bg-alt:      #F7F8FB;
+    --color-border:      #E5E8EE;
+    --color-border-soft: #EFF1F5;
+
+    /* Status */
+    --color-success: #16A34A;
+    --color-warn:    #F59E0B;
+    --color-error:   #E03131;
+    --color-info:    #2E7CF6;
+
+    /* Radius */
+    --radius-sm: 8px;
+    --radius-md: 12px;
+    --radius-lg: 16px;
+    --radius-xl: 22px;
+    --radius-pill: 999px;
+
+    /* Shadow */
+    --shadow-1: 0 1px 2px rgba(16,24,40,.05), 0 1px 3px rgba(16,24,40,.06);
+    --shadow-2: 0 6px 18px rgba(16,24,40,.08), 0 2px 6px rgba(16,24,40,.05);
+    --shadow-3: 0 18px 50px rgba(16,24,40,.18), 0 6px 16px rgba(16,24,40,.08);
+
+    --font-sans: 'Poppins', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+
+    --sidebar-w: 256px;
+    --topbar-h:  62px;
+
+    --z-sidebar: 60;
+    --z-scrim:   55;
+    --z-toast:   1300;
+}
+
+/* ── Reset ──────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+/* Guarantee the `hidden` attribute always wins — inline SVGs (e.g. the
+   password show/hide eye-off) otherwise stay visible if any rule sets
+   their display, so both eye icons appear at once. */
+[hidden] { display: none !important; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+    margin: 0;
+    font-family: var(--font-sans);
+    color: var(--color-text);
+    background: var(--color-bg);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    line-height: 1.5;
+}
+h1, h2, h3, h4, p { margin: 0; }
+img { max-width: 100%; display: block; }
+a { color: inherit; text-decoration: none; }
+button { font-family: inherit; cursor: pointer; }
+input, button, textarea, select { font-family: inherit; font-size: 100%; }
+
+/* ── Form primitives ────────────────────────────────────────────────── */
+.adform__label {
+    display: block;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--color-text-muted);
+    margin: 0 0 6px;
+}
+.adform__field {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: #fff;
+    border: 1.5px solid var(--color-border);
+    border-radius: var(--radius-md);
+    padding: 0 12px;
+    transition: border-color .15s ease, box-shadow .15s ease;
+}
+.adform__field:focus-within {
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 4px var(--color-primary-soft);
+}
+.adform__field.has-error {
+    border-color: var(--color-error);
+    box-shadow: 0 0 0 4px rgba(224,49,49,.12);
+}
+.adform__icon { color: var(--color-text-soft); display: inline-flex; }
+.adform__input {
+    flex: 1;
+    border: 0;
+    outline: none;
+    background: transparent;
+    padding: 13px 2px;
+    font-size: 0.95rem;
+    color: var(--color-text);
+    min-width: 0;
+}
+.adform__input::placeholder { color: #B6BCC7; }
+/* Hide the browser's NATIVE password reveal / clear glyphs (Edge/IE
+   ::-ms-reveal + ::-ms-clear) so they don't sit next to our own custom
+   show/hide eye toggle — otherwise the field shows two icons. */
+.adform__input::-ms-reveal,
+.adform__input::-ms-clear { display: none; }
+.adform__toggle {
+    border: 0; background: transparent; color: var(--color-text-soft);
+    display: inline-flex; align-items: center; padding: 4px; border-radius: 8px;
+}
+.adform__toggle:hover { color: var(--color-text-muted); }
+.adform__error {
+    margin: 6px 2px 0;
+    font-size: 0.78rem;
+    color: var(--color-error);
+    font-weight: 500;
+}
+.adform__field + .adform__error[hidden] { display: none; }
+
+/* Buttons */
+.adform__submit {
+    width: 100%;
+    margin-top: 18px;
+    border: 0;
+    border-radius: var(--radius-md);
+    background: var(--color-primary);
+    color: #fff;
+    font-weight: 700;
+    font-size: 0.98rem;
+    padding: 14px 18px;
+    display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+    transition: filter .15s ease, transform .05s ease;
+}
+.adform__submit:hover { filter: brightness(1.05); }
+.adform__submit:active { transform: translateY(1px); }
+.adform__submit.is-loading { pointer-events: none; opacity: .85; }
+.adform__submit.is-loading .adform__submit-label { opacity: .7; }
+.adform__spinner {
+    width: 16px; height: 16px; border-radius: 50%;
+    border: 2.5px solid rgba(255,255,255,.5); border-top-color: #fff;
+    display: none; animation: ad-spin .7s linear infinite;
+}
+.adform__submit.is-loading .adform__spinner { display: inline-block; }
+@keyframes ad-spin { to { transform: rotate(360deg); } }
+
+/* ── Shared error page (404 / 500) ──────────────────────────────────── */
+.errpage {
+    min-height: 100dvh; display: flex; align-items: center; justify-content: center;
+    padding: 24px; background:
+        radial-gradient(1200px 500px at 50% -10%, rgba(229,37,42,.10), transparent 60%),
+        var(--color-bg);
+}
+.errpage__card {
+    background: #fff; border: 1px solid var(--color-border); border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-2); padding: 40px 32px; text-align: center; max-width: 420px; width: 100%;
+}
+.errpage__code { font-size: 3.4rem; font-weight: 800; color: var(--color-primary); line-height: 1; }
+.errpage__title { font-size: 1.3rem; font-weight: 700; margin: 10px 0 6px; }
+.errpage__sub { color: var(--color-text-muted); font-size: 0.92rem; }
+.errpage__detail {
+    margin: 14px 0 0; text-align: left; background: #fdf2f2; border: 1px solid #f6caca;
+    color: #9a2222; border-radius: 10px; padding: 10px 12px; font-size: 0.78rem;
+    white-space: pre-wrap; word-break: break-word; overflow: auto; max-height: 180px;
+}
+.errpage__btn {
+    display: inline-block; margin-top: 20px; background: var(--color-primary); color: #fff;
+    font-weight: 700; padding: 11px 22px; border-radius: var(--radius-md);
+}
+.errpage__btn:hover { filter: brightness(1.05); }

@@ -1,0 +1,90 @@
+<%#
+  views/_layout.ejs — admin master layout
+
+  What:  Master layout wrapping every admin page. Renders <head> (brand
+         title + favicon + theme color + PWA manifest), then either:
+           • bare mode  → just the page body (login, 404, 500)
+           • shell mode → sidebar + topbar + page body (dashboard etc.)
+         plus the floating toast container and the shared scripts.
+  Why:   Single source of truth for the admin shell. Mirrors web/_layout.ejs.
+  Used:  ejs-locals picks this when a render call sets `_layoutFile`.
+
+  Conventions: NO inline <script>, NO inline <style>. External CSS only,
+  split base + desktop + mobile. Assets cache-busted with ASSET_VERSION.
+-%>
+<!doctype html>
+<html lang="<%= (brand.locale || 'en-GB').split('-')[0] %>">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#16213e">
+
+    <title><%= page_title ? page_title + ' · ' + brand.name + ' Admin' : brand.name + ' Admin' %></title>
+    <meta name="description" content="<%= brand.name %> admin console">
+    <meta name="robots" content="noindex, nofollow">
+
+    <link rel="icon"             href="<%= brand.faviconUrl %>?v=<%= ASSET_VERSION %>" type="image/png">
+    <link rel="apple-touch-icon" href="<%= brand.logoUrl %>?v=<%= ASSET_VERSION %>">
+    <link rel="manifest" href="/manifest.webmanifest">
+
+    <%# External-only stylesheets (CSP rule #6 — no inline <style>). Load
+        order: base (tokens/reset/forms) → components → responsive split. -%>
+    <link rel="stylesheet" href="/css/base.css?v=<%= ASSET_VERSION %>">
+    <link rel="stylesheet" href="/css/components/toast.css?v=<%= ASSET_VERSION %>">
+    <link rel="stylesheet" href="/css/components/auth-login.css?v=<%= ASSET_VERSION %>">
+    <link rel="stylesheet" href="/css/components/shell.css?v=<%= ASSET_VERSION %>">
+    <link rel="stylesheet" href="/css/components/loyalty.css?v=<%= ASSET_VERSION %>">
+    <link rel="stylesheet" href="/css/components/store-settings.css?v=<%= ASSET_VERSION %>">
+    <link rel="stylesheet" href="/css/components/products.css?v=<%= ASSET_VERSION %>">
+    <link rel="stylesheet" href="/css/desktop.css?v=<%= ASSET_VERSION %>" media="(min-width: 900px)">
+    <link rel="stylesheet" href="/css/mobile.css?v=<%= ASSET_VERSION %>"  media="(max-width: 899px)">
+</head>
+<body
+    data-api-url="<%= process.env.API_URL || 'http://localhost:4501' %>"
+    data-active-nav="<%= active_nav %>"
+    class="<%= (typeof bare !== 'undefined' && bare) ? 'is-bare' : 'has-shell' %>"
+>
+    <% var __bare = typeof bare !== 'undefined' && bare; %>
+
+    <%# Server flash → toast (no inline alert div). /js/ui/toast.js reads
+        these data-* attrs on DOM-ready and pops the toast. %>
+    <% if (flash_success || flash_error) { %>
+    <div id="server-flash" hidden
+         data-flash-success="<%= flash_success || '' %>"
+         data-flash-error="<%= flash_error || '' %>"></div>
+    <% } %>
+
+    <% if (__bare) { %>
+        <%# Focused-flow pages (login / errors): no chrome. %>
+        <main id="admin-main" role="main" class="admin-main--bare">
+            <%- locals.body || (typeof body !== 'undefined' ? body : '') -%>
+        </main>
+    <% } else { %>
+        <%# Full admin shell: sidebar + topbar + content. %>
+        <div class="admin-shell">
+            <%- include('partials/sidebar') -%>
+            <div class="admin-shell__body">
+                <%- include('partials/topbar') -%>
+                <main id="admin-main" role="main" class="admin-main">
+                    <%- locals.body || (typeof body !== 'undefined' ? body : '') -%>
+                </main>
+            </div>
+        </div>
+        <%# Dim layer for the mobile off-canvas sidebar. %>
+        <div class="admin-scrim" data-action="close-sidebar" hidden></div>
+        <%# Native-style bottom navigation (phones only — CSS @media). %>
+        <%- include('partials/bottomnav') -%>
+    <% } %>
+
+    <%- include('partials/toast') -%>
+
+    <%# External-only scripts (CSP rule #6). boot-reader → app (SW + nav) →
+        toast helper, then any per-page script via extra_js. -%>
+    <script defer src="/js/boot-reader.js?v=<%= ASSET_VERSION %>"></script>
+    <script defer src="/js/ui/toast.js?v=<%= ASSET_VERSION %>"></script>
+    <script defer src="/js/app.js?v=<%= ASSET_VERSION %>"></script>
+    <% if (typeof extra_js !== 'undefined' && extra_js) { %>
+    <script defer src="<%= extra_js %>?v=<%= ASSET_VERSION %>"></script>
+    <% } %>
+</body>
+</html>

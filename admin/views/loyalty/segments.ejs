@@ -1,0 +1,74 @@
+<%#
+  views/loyalty/segments.ejs
+
+  Customer Segments — a derived, READ-ONLY analytics view (legacy had no
+  segment table). Customers are bucketed into the company's tier bands by
+  lifetime completed spend, plus an "inactive" count (no order in N days).
+  `sg` = { tiers[], inactive:{days,customerCount}, totalCustomers, totalSpend }.
+
+  Used: Controllers/LoyaltyController.segments (shell layout).
+-%>
+<%
+    var sym = (brand && brand.currencySymbol) ? brand.currencySymbol : '£';
+    function money(n) { return sym + Number(n || 0).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+    var TIER_META = {
+        bronze: ['🥉 Bronze', '#cd7f32'],
+        silver: ['🥈 Silver', '#b9b9b9'],
+        gold:   ['🏅 Gold',   '#e7b400'],
+    };
+%>
+<div class="ly">
+
+    <div class="ly__head">
+        <div>
+            <h2 class="ly__title">👥 Customer Segments</h2>
+            <p class="ly__sub">Auto-computed from lifetime spend &amp; activity (read-only)</p>
+        </div>
+    </div>
+
+    <% if (load_error) { %>
+        <div class="ly-empty"><span class="ly-empty__ic" aria-hidden="true">🏢</span><p class="ly-empty__msg"><%= load_error %></p></div>
+    <% } else if (sg) { %>
+
+        <%# Summary %>
+        <div class="dash__metrics">
+            <div class="metric metric--blue"><span class="metric__val"><%= sg.totalCustomers.toLocaleString('en-GB') %></span><span class="metric__lbl">Active Customers</span></div>
+            <div class="metric metric--green"><span class="metric__val"><%= money(sg.totalSpend) %></span><span class="metric__lbl">Lifetime Spend</span></div>
+            <div class="metric metric--amber"><span class="metric__val"><%= sg.inactive.customerCount.toLocaleString('en-GB') %></span><span class="metric__lbl">Inactive (<%= sg.inactive.days %>d+)</span></div>
+        </div>
+
+        <%# Tier breakdown %>
+        <section class="card ly-card">
+            <h3 class="card__title">🏅 Spend tiers</h3>
+            <% if (!sg.tiers.length) { %>
+                <p class="ly-none">No tiers configured. Set them up on the Tier Config screen.</p>
+            <% } else { %>
+                <% var maxCount = Math.max.apply(null, sg.tiers.map(function (t) { return t.customerCount; }).concat([1])); %>
+                <% sg.tiers.forEach(function (t) {
+                    var meta = TIER_META[t.type] || [t.type, '#cbd2dd'];
+                    var pct = Math.round((t.customerCount / maxCount) * 100);
+                %>
+                <div class="seg-row">
+                    <div class="seg-row__top">
+                        <span class="seg-row__name"><%= meta[0] %></span>
+                        <span class="seg-row__band"><%= money(t.min) %><%= t.max > 0 ? ('–' + money(t.max)) : '+' %></span>
+                        <span class="seg-row__count"><strong><%= t.customerCount %></strong> customers</span>
+                    </div>
+                    <div class="seg-bar"><span class="seg-bar__fill" data-w="<%= pct %>"></span></div>
+                    <div class="seg-row__foot">Total spend: <strong><%= money(t.totalSpend) %></strong></div>
+                </div>
+                <% }); %>
+            <% } %>
+        </section>
+
+        <%# Inactive segment %>
+        <section class="card ly-card seg-inactive">
+            <div>
+                <h3 class="card__title">😴 Win-back segment</h3>
+                <p class="seg-inactive__sub">Customers with no order in the last <strong><%= sg.inactive.days %></strong> days. Configure their win-back reward on the Challenges screen.</p>
+            </div>
+            <span class="seg-inactive__count"><%= sg.inactive.customerCount.toLocaleString('en-GB') %></span>
+        </section>
+
+    <% } %>
+</div>

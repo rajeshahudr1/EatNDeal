@@ -1,0 +1,85 @@
+<%#
+  views/loyalty/challenges.ejs
+
+  Challenges (Smart Campaigns). Five fixed campaign types — Top Spenders,
+  Most Referrals, Most Orders, Most Reviews, Win-back Inactive — each with a
+  target (winners, or inactive days) + reward. Edited together, upserted by
+  (company_id, type). Master toggles the smart_campaign rule.
+  `ch` = { campaigns:{type:{target_value,cashback,value_type}}, masterOn }.
+
+  Used: Controllers/LoyaltyController.challenges (shell layout).
+-%>
+<%
+    var sym = (brand && brand.currencySymbol) ? brand.currencySymbol : '£';
+    var DEFS = [
+        ['top_spenders',   '💰 Top Spenders',   'Winners'],
+        ['most_referrals', '👥 Most Referrals', 'Winners'],
+        ['most_orders',    '🛍 Most Orders',     'Winners'],
+        ['most_reviews',   '⭐ Most Reviews',    'Winners'],
+        ['inactive',       '😴 Win-back Inactive', 'Inactive days'],
+    ];
+%>
+<div class="ly">
+
+    <%- include('../partials/loyalty-subnav') -%>
+
+    <div class="ly__head">
+        <div>
+            <h2 class="ly__title">🏆 Challenges</h2>
+            <p class="ly__sub">Leaderboard campaigns &amp; win-back rewards (winners are computed automatically)</p>
+        </div>
+        <% if (ch) { %>
+        <form method="post" action="/loyalty/challenges/toggle" class="ly-switch-form" data-toggle-form>
+            <input type="hidden" name="status" value="<%= ch.masterOn ? '2' : '1' %>">
+            <span class="ly-switch-form__lbl"><%= ch.masterOn ? 'Enabled' : 'Disabled' %></span>
+            <label class="ly-switch"><input type="checkbox" data-action="ly-master-toggle" <%= ch.masterOn ? 'checked' : '' %> aria-label="Enable challenges"><span class="ly-switch__ui" aria-hidden="true"></span></label>
+        </form>
+        <% } %>
+    </div>
+
+    <% if (load_error) { %>
+        <div class="ly-empty"><span class="ly-empty__ic" aria-hidden="true">🏢</span><p class="ly-empty__msg"><%= load_error %></p></div>
+    <% } else if (ch) { %>
+
+        <form method="post" action="/loyalty/challenges/save" class="ly-camps">
+            <% DEFS.forEach(function (def) {
+                var key = def[0]; var c = ch.campaigns[key] || { target_value:0, value_type:'£', cashback:0 };
+            %>
+            <section class="card ly-camp">
+                <h3 class="ly-camp__title"><%= def[1] %></h3>
+                <div class="ly-grid">
+                    <div class="ly-field">
+                        <label for="<%= key %>-target"><%= def[2] %></label>
+                        <input id="<%= key %>-target" type="number" name="<%= key %>_target" min="0" step="1" value="<%= c.target_value %>" required>
+                    </div>
+                    <%# Legacy: only "inactive" win-back is £/%-selectable; the
+                        count-based campaigns pay a flat £. %>
+                    <% if (key === 'inactive') { %>
+                    <div class="ly-field">
+                        <label for="<%= key %>-cashback">Reward</label>
+                        <input id="<%= key %>-cashback" type="number" name="<%= key %>_cashback" step="0.01" min="0" value="<%= c.cashback %>" required>
+                    </div>
+                    <div class="ly-field">
+                        <label for="<%= key %>-vt">Reward type</label>
+                        <select id="<%= key %>-vt" name="<%= key %>_vt">
+                            <option value="£" <%= c.value_type === '£' ? 'selected' : '' %>><%= sym %> flat</option>
+                            <option value="%" <%= c.value_type === '%' ? 'selected' : '' %>>% percent</option>
+                        </select>
+                    </div>
+                    <% } else { %>
+                    <div class="ly-field">
+                        <label for="<%= key %>-cashback">Reward (<%= sym %>)</label>
+                        <div class="ly-money"><span class="ly-money__sym"><%= sym %></span><input id="<%= key %>-cashback" type="number" name="<%= key %>_cashback" step="0.01" min="0" value="<%= c.cashback %>" required></div>
+                    </div>
+                    <% } %>
+                </div>
+            </section>
+            <% }); %>
+
+            <div class="ly-camps__foot">
+                <button type="submit" class="ly-btn ly-btn--primary">Save challenges</button>
+            </div>
+        </form>
+
+    <% } %>
+</div>

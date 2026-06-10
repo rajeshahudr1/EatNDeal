@@ -1,0 +1,141 @@
+<%#
+  views/loyalty/referral-streak.ejs
+
+  Two legacy sections on one screen:
+    • Referral program — single config (referrer + friend reward, type, when
+      it triggers) + its master toggle.
+    • Streaks & milestones — multi-row CRUD (order count, streak/milestone,
+      weekly/monthly, reward) + its master toggle.
+  `rs` = { referral, streaks[], masterReferral, masterStreak } or null.
+
+  Used: Controllers/LoyaltyController.referralStreak (shell layout).
+-%>
+<%
+    var sym = (brand && brand.currencySymbol) ? brand.currencySymbol : '£';
+    function vt(r) { return r.value_type === '£' ? (sym + Number(r.cashback).toFixed(2)) : (r.cashback + '%'); }
+    var TYPE = { 1: 'Streak', 2: 'Milestone' };
+    var DUR  = { 1: 'weekly', 2: 'monthly' };
+%>
+<div class="ly">
+
+    <%- include('../partials/loyalty-subnav') -%>
+
+    <div class="ly__head">
+        <div>
+            <h2 class="ly__title">🔥 Referral &amp; Streak</h2>
+            <p class="ly__sub">Invite rewards &amp; repeat-order streak milestones</p>
+        </div>
+    </div>
+
+    <% if (load_error) { %>
+        <div class="ly-empty"><span class="ly-empty__ic" aria-hidden="true">🏢</span><p class="ly-empty__msg"><%= load_error %></p></div>
+    <% } else if (rs) { %>
+
+        <%# ── Referral program ── %>
+        <section class="card ly-card">
+            <div class="ly-card__head">
+                <h3 class="card__title">👥 Referral program</h3>
+                <form method="post" action="/loyalty/referral-streak/referral/toggle" class="ly-switch-form" data-toggle-form>
+                    <input type="hidden" name="status" value="<%= rs.masterReferral ? '2' : '1' %>">
+                    <span class="ly-switch-form__lbl"><%= rs.masterReferral ? 'Enabled' : 'Disabled' %></span>
+                    <label class="ly-switch"><input type="checkbox" data-action="ly-master-toggle" <%= rs.masterReferral ? 'checked' : '' %> aria-label="Enable referral"><span class="ly-switch__ui" aria-hidden="true"></span></label>
+                </form>
+            </div>
+            <form method="post" action="/loyalty/referral-streak/referral/save" class="ly-grid">
+                <div class="ly-field">
+                    <label for="rf-referrer">Referrer reward (<%= sym %>)</label>
+                    <div class="ly-money"><span class="ly-money__sym"><%= sym %></span><input id="rf-referrer" type="number" name="referrer_cashback" step="0.01" min="0" value="<%= rs.referral.referrer_cashback %>" required></div>
+                </div>
+                <div class="ly-field">
+                    <label for="rf-referee">Friend reward (<%= sym %>)</label>
+                    <div class="ly-money"><span class="ly-money__sym"><%= sym %></span><input id="rf-referee" type="number" name="referee_cashback" step="0.01" min="0" value="<%= rs.referral.referee_cashback %>" required></div>
+                </div>
+                <div class="ly-field">
+                    <label for="rf-trigger">Reward when</label>
+                    <select id="rf-trigger" name="trigger">
+                        <option value="1" <%= Number(rs.referral.trigger) === 1 ? 'selected' : '' %>>Friend signs up</option>
+                        <option value="2" <%= Number(rs.referral.trigger) === 2 ? 'selected' : '' %>>Friend's first order</option>
+                    </select>
+                </div>
+                <div class="ly-field ly-field--action">
+                    <button type="submit" class="ly-btn ly-btn--primary">Save referral</button>
+                </div>
+            </form>
+        </section>
+
+        <%# ── Streaks & milestones ── %>
+        <section class="card ly-card">
+            <div class="ly-card__head">
+                <h3 class="card__title">🔥 Streaks &amp; milestones</h3>
+                <div class="ly-card__headact">
+                    <form method="post" action="/loyalty/referral-streak/streak/toggle" class="ly-switch-form" data-toggle-form>
+                        <input type="hidden" name="status" value="<%= rs.masterStreak ? '2' : '1' %>">
+                        <span class="ly-switch-form__lbl"><%= rs.masterStreak ? 'On' : 'Off' %></span>
+                        <label class="ly-switch"><input type="checkbox" data-action="ly-master-toggle" <%= rs.masterStreak ? 'checked' : '' %> aria-label="Enable streaks"><span class="ly-switch__ui" aria-hidden="true"></span></label>
+                    </form>
+                    <button type="button" class="ly-btn ly-btn--primary ly-btn--sm" data-action="ly-add" data-form="ly-streak-form">+ Add</button>
+                </div>
+            </div>
+
+            <form id="ly-streak-form" class="ly-rowform" method="post" action="/loyalty/referral-streak/streak/save" hidden>
+                <input type="hidden" name="id" value="">
+                <h4 class="ly-rowform__title" data-form-title data-add-title="Add milestone" data-edit-title="Edit milestone">Add milestone</h4>
+                <div class="ly-grid">
+                    <div class="ly-field">
+                        <label for="sk-type">Kind</label>
+                        <select id="sk-type" name="type">
+                            <option value="1">Streak (consecutive)</option>
+                            <option value="2">Milestone (total)</option>
+                        </select>
+                    </div>
+                    <div class="ly-field">
+                        <label for="sk-dur">Period</label>
+                        <select id="sk-dur" name="duration_type">
+                            <option value="1">Weekly</option>
+                            <option value="2">Monthly</option>
+                        </select>
+                    </div>
+                    <div class="ly-field">
+                        <label for="sk-count">Orders required</label>
+                        <input id="sk-count" type="number" name="order_count" min="1" step="1" placeholder="3" required>
+                    </div>
+                    <div class="ly-field">
+                        <label for="sk-min">Min order (<%= sym %>)</label>
+                        <input id="sk-min" type="number" name="min_order_amount" step="0.01" min="0" value="0">
+                    </div>
+                    <div class="ly-field">
+                        <label for="sk-cashback">Reward (<%= sym %>)</label>
+                        <div class="ly-money"><span class="ly-money__sym"><%= sym %></span><input id="sk-cashback" type="number" name="cashback" step="0.01" min="0" placeholder="5.00" required></div>
+                    </div>
+                </div>
+                <div class="ly-rowform__foot">
+                    <button type="button" class="ly-btn ly-btn--ghost" data-action="ly-cancel" data-form="ly-streak-form">Cancel</button>
+                    <button type="submit" class="ly-btn ly-btn--primary">Save milestone</button>
+                </div>
+            </form>
+
+            <% if (!rs.streaks.length) { %>
+                <p class="ly-none">No streak milestones yet. Add one above.</p>
+            <% } else { %>
+                <div class="ly-rules">
+                    <% rs.streaks.forEach(function (s) { %>
+                    <div class="ly-rule" data-rule="<%= encodeURIComponent(JSON.stringify(s)) %>">
+                        <div class="ly-rule__main">
+                            <span class="ly-tier ly-tier--<%= s.type === 2 ? 'gold' : 'bronze' %>"><%= TYPE[s.type] || 'Streak' %></span>
+                            <span class="ly-rule__text"><strong><%= s.order_count %></strong> orders <%= DUR[s.duration_type] || 'weekly' %> → <strong><%= vt(s) %></strong></span>
+                        </div>
+                        <div class="ly-rule__act">
+                            <button type="button" class="ly-iconbtn" data-action="ly-edit" data-form="ly-streak-form" aria-label="Edit">✎</button>
+                            <form method="post" action="/loyalty/referral-streak/streak/delete" class="ly-del">
+                                <input type="hidden" name="id" value="<%= s.id %>">
+                                <button type="button" class="ly-iconbtn ly-iconbtn--danger" data-action="ly-delete" aria-label="Delete">🗑</button>
+                            </form>
+                        </div>
+                    </div>
+                    <% }); %>
+                </div>
+            <% } %>
+        </section>
+
+    <% } %>
+</div>

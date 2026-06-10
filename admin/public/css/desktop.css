@@ -1,0 +1,62 @@
+/*
+ * desktop.css — admin layout for >= 900px
+ *
+ * Loaded via <link media="(min-width: 900px)"> so every rule here applies
+ * only on wider screens. Holds the layout that DIFFERS from the mobile-first
+ * defaults: the login two-column split + the fixed sidebar rail.
+ * (Conventions rule #4 — separate desktop / mobile layout.)
+ */
+
+/* ── Login: two-column split ─────────────────────────────────────────── */
+.adlogin {
+    display: grid;
+    grid-template-columns: 1.05fr 0.95fr;
+    align-items: stretch;
+    padding: 0;
+}
+.adlogin__brand {
+    display: flex;
+    flex-direction: column;
+    padding: 48px 52px;
+    position: relative;
+    overflow: hidden;
+}
+/* The white card panel sits on a clean light surface on desktop so the
+   card reads as a sheet, not a floating chip on navy. */
+.adlogin__panel {
+    background: var(--color-bg);
+    max-width: none;
+    padding: 40px;
+}
+.adlogin__card {
+    max-width: 420px;
+    padding: 40px 38px 34px;
+}
+.adlogin__mobilebrand { display: none; }
+.adlogin__title { font-size: 1.6rem; }
+
+/* ── Shell: fixed sidebar rail ───────────────────────────────────────── */
+.admin-sidebar {
+    transform: none;
+    max-width: none;
+}
+.admin-shell__body { margin-left: var(--sidebar-w); }
+/* Animate the collapse only after first paint (anim-ready) so a remembered
+   collapsed state doesn't slide-flash on every load. */
+body.anim-ready .admin-sidebar { transition: transform .22s ease; }
+body.anim-ready .admin-shell__body { transition: margin-left .22s ease; }
+/* The burger stays visible on desktop and collapses / expands the rail. */
+.admin-topbar__burger { display: inline-flex; }
+.admin-scrim { display: none !important; }
+/* The off-canvas open-state is a no-op on desktop (rail is always shown). */
+body.sidebar-open .admin-sidebar { transform: none; }
+/* Collapsed: slide the rail off-screen and let the content reclaim the width. */
+body.sidebar-collapsed .admin-sidebar { transform: translateX(-100%); }
+body.sidebar-collapsed .admin-shell__body { margin-left: 0; }
+
+.admin-main { padding: 26px 30px 48px; }
+
+/* Dashboard breathes out on wide screens */
+.dash__metrics { grid-template-columns: repeat(4, 1fr); }
+.dash__grid { grid-template-columns: 1fr 1fr; }
+.quick { grid-template-columns: repeat(3, 1fr); }

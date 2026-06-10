@@ -1,0 +1,29 @@
+<%#
+  partials/bottomnav.ejs — mobile bottom navigation (native-app style)
+
+  Shown only on phones (CSS @media). Quick access to the main sections. Loyalty
+  items appear only when loyalty is available. active_nav highlights the tab.
+-%>
+<% var bnav = active_nav || ''; %>
+<% var bcc = (typeof company_ctx !== 'undefined' && company_ctx) ? company_ctx : { isSuper: false, loyaltyEnabled: false }; %>
+<nav class="admin-bottomnav" aria-label="Primary">
+    <a class="admin-bottomnav__item <%= bnav === 'dashboard' ? 'is-active' : '' %>" href="/">
+        <span class="admin-bottomnav__ic" aria-hidden="true">📊</span><span class="admin-bottomnav__lbl">Dashboard</span>
+    </a>
+    <a class="admin-bottomnav__item <%= bnav === 'products' ? 'is-active' : '' %>" href="/products">
+        <span class="admin-bottomnav__ic" aria-hidden="true">🍽️</span><span class="admin-bottomnav__lbl">Products</span>
+    </a>
+    <% if (bcc.isSuper) { %>
+    <a class="admin-bottomnav__item <%= bnav === 'mp-categories' ? 'is-active' : '' %>" href="/marketplace-categories">
+        <span class="admin-bottomnav__ic" aria-hidden="true">🗂️</span><span class="admin-bottomnav__lbl">Categories</span>
+    </a>
+    <% } %>
+    <a class="admin-bottomnav__item <%= ['store-settings', 'loyalty', 'cms'].includes(bnav) ? 'is-active' : '' %>" href="/store-settings">
+        <span class="admin-bottomnav__ic" aria-hidden="true">⚙️</span><span class="admin-bottomnav__lbl">Settings</span>
+    </a>
+    <% if (bcc.isSuper || bcc.loyaltyEnabled) { %>
+    <a class="admin-bottomnav__item <%= bnav === 'reviews' ? 'is-active' : '' %>" href="/loyalty/review-claims">
+        <span class="admin-bottomnav__ic" aria-hidden="true">✅</span><span class="admin-bottomnav__lbl">Cashback</span>
+    </a>
+    <% } %>
+</nav>

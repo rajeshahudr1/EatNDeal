@@ -1,0 +1,68 @@
+<%#
+  views/loyalty/events.ejs
+
+  Event Rewards. One-off cashback granted when a customer hits a lifecycle
+  event: signs up, completes their profile, or leaves a Google review. Three
+  fixed event types, edited together, upserted by (company_id, event_type).
+  Master toggles the event_cashback rule. `ev` = { events:{1,2,3}, masterOn }.
+
+  (The £ for a Google review is set here; the actual claim is approved on the
+  Review Claims screen.)
+
+  Used: Controllers/LoyaltyController.events (shell layout).
+-%>
+<%
+    var sym = (brand && brand.currencySymbol) ? brand.currencySymbol : '£';
+    var DEFS = [
+        [1, '🎉 Sign-up bonus',        'Credited when a new customer registers'],
+        [2, '📝 Profile completion',   'Credited when they finish their profile'],
+        [3, '⭐ Google review',         'Credited when an external review is approved'],
+    ];
+%>
+<div class="ly">
+
+    <%- include('../partials/loyalty-subnav') -%>
+
+    <div class="ly__head">
+        <div>
+            <h2 class="ly__title">🎉 Event Rewards</h2>
+            <p class="ly__sub">One-off cashback for sign-up, profile completion &amp; reviews</p>
+        </div>
+        <% if (ev) { %>
+        <form method="post" action="/loyalty/events/toggle" class="ly-switch-form" data-toggle-form>
+            <input type="hidden" name="status" value="<%= ev.masterOn ? '2' : '1' %>">
+            <span class="ly-switch-form__lbl"><%= ev.masterOn ? 'Enabled' : 'Disabled' %></span>
+            <label class="ly-switch"><input type="checkbox" data-action="ly-master-toggle" <%= ev.masterOn ? 'checked' : '' %> aria-label="Enable event rewards"><span class="ly-switch__ui" aria-hidden="true"></span></label>
+        </form>
+        <% } %>
+    </div>
+
+    <% if (load_error) { %>
+        <div class="ly-empty"><span class="ly-empty__ic" aria-hidden="true">🏢</span><p class="ly-empty__msg"><%= load_error %></p></div>
+    <% } else if (ev) { %>
+
+        <form method="post" action="/loyalty/events/save" class="ly-events">
+            <% DEFS.forEach(function (def) {
+                var id = def[0]; var e = ev.events[id] || { value_type:'£', cashback:0 };
+            %>
+            <section class="card ly-event">
+                <div class="ly-event__head">
+                    <h3 class="ly-event__title"><%= def[1] %></h3>
+                    <p class="ly-event__sub"><%= def[2] %></p>
+                </div>
+                <div class="ly-grid">
+                    <div class="ly-field">
+                        <label for="ev<%= id %>-cashback">Reward (<%= sym %>)</label>
+                        <div class="ly-money"><span class="ly-money__sym"><%= sym %></span><input id="ev<%= id %>-cashback" type="number" name="event_<%= id %>_cashback" step="0.01" min="0" value="<%= e.cashback %>" required></div>
+                    </div>
+                </div>
+            </section>
+            <% }); %>
+
+            <div class="ly-events__foot">
+                <button type="submit" class="ly-btn ly-btn--primary">Save event rewards</button>
+            </div>
+        </form>
+
+    <% } %>
+</div>

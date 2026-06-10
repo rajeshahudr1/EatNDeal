@@ -1,0 +1,936 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>EatNDeal — Page → Table → Column → Logic Map</title>
+<style>
+  :root{
+    --bg:#0f172a; --panel:#fff; --ink:#0f172a; --soft:#475569; --rule:#e2e8f0;
+    --primary:#e5252a; --primary-soft:#fdecec; --ok:#16a34a; --warn:#f59e0b;
+    --code-bg:#0f172a; --code-ink:#e2e8f0;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;height:100%;background:var(--bg);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--ink)}
+  .deck{position:fixed;inset:0;overflow:hidden}
+  .slide{position:absolute;inset:0;background:var(--panel);padding:54px 70px 80px;overflow:auto;display:none}
+  .slide.is-active{display:block}
+  .slide.cover.is-active{display:flex}
+  .slide h1{font-size:2.4rem;margin:0 0 6px;font-weight:800}
+  .slide h2{font-size:1.6rem;margin:0 0 16px;font-weight:800;color:var(--primary)}
+  .slide h3{font-size:1.05rem;margin:18px 0 8px;font-weight:800;color:var(--ink)}
+  .slide p{line-height:1.5;margin:0 0 12px;color:var(--soft);font-size:0.98rem}
+  .slide ul{margin:0 0 12px;padding-left:1.2rem}
+  .slide li{line-height:1.55;color:var(--soft);font-size:0.95rem;margin-bottom:4px}
+  .slide li b, .slide li strong{color:var(--ink)}
+  table{border-collapse:collapse;width:100%;margin:8px 0 14px;font-size:0.86rem}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--rule);vertical-align:top}
+  th{font-weight:700;color:var(--ink);background:#f8fafc;border-bottom:2px solid var(--rule)}
+  td code, .col, code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:0.82rem;background:#f1f5f9;color:#0f172a;padding:1px 6px;border-radius:4px}
+  .stack{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:12px}
+  .card{background:#f8fafc;border:1px solid var(--rule);border-radius:10px;padding:14px 16px}
+  .card h4{margin:0 0 6px;font-size:0.95rem;font-weight:800}
+  .card p{margin:0;font-size:0.86rem}
+  .pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:0.75rem;font-weight:700;letter-spacing:0.02em;text-transform:uppercase}
+  .pill--ui{background:#eff6ff;color:#1d4ed8}
+  .pill--db{background:#ecfdf5;color:#047857}
+  .pill--calc{background:#fef3c7;color:#92400e}
+  .pill--api{background:#fdecec;color:#b91c1c}
+  pre{background:var(--code-bg);color:var(--code-ink);padding:14px 16px;border-radius:8px;font-size:0.82rem;line-height:1.4;overflow:auto;margin:8px 0 14px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+  pre code{background:transparent;color:inherit;padding:0}
+  .crumbs{display:flex;align-items:center;gap:6px;font-size:0.78rem;color:var(--soft);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:6px}
+  .crumbs b{color:var(--primary)}
+  .nav{position:fixed;left:0;right:0;bottom:0;height:46px;background:rgba(15,23,42,0.96);color:#e2e8f0;display:flex;align-items:center;justify-content:center;gap:14px;font-size:0.82rem;z-index:5}
+  .nav button{background:transparent;border:1px solid #475569;color:#e2e8f0;border-radius:6px;padding:5px 12px;cursor:pointer;font:inherit}
+  .nav button:hover{background:#1e293b}
+  .nav .count{min-width:84px;text-align:center;font-variant-numeric:tabular-nums}
+  .cover{flex-direction:column;justify-content:center;align-items:flex-start;background:linear-gradient(135deg,#0f172a 0%,#312e81 50%,#7c2d12 100%);color:#fff}
+  .cover h1{color:#fff;font-size:3.6rem;margin:0;letter-spacing:-0.02em}
+  .cover h2{color:rgba(255,255,255,0.85);font-size:1.4rem;margin:14px 0 28px;font-weight:600}
+  .cover p{color:rgba(255,255,255,0.7);font-size:1.02rem}
+  .toc{columns:2;column-gap:32px}
+  .toc ol{margin:0;padding-left:1.4rem}
+  .toc li{break-inside:avoid;padding:3px 0}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;margin:8px 0 14px}
+  .small{font-size:0.78rem;color:var(--soft);margin-top:18px}
+  .arrow{font-size:1.4rem;line-height:1;color:var(--primary);margin:0 6px}
+  .twocol{display:grid;grid-template-columns:1.1fr 1fr;gap:22px}
+  .frame{border:1px solid var(--rule);border-radius:10px;padding:12px 14px;background:#fafafa}
+  .frame h4{margin:0 0 6px;font-size:0.85rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--primary)}
+  .kvs{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:0.88rem;color:var(--soft)}
+  .kvs b{color:var(--ink);font-weight:700}
+  .note{background:#fffbeb;border-left:3px solid var(--warn);padding:10px 14px;border-radius:0 8px 8px 0;font-size:0.88rem;color:#78350f;margin:8px 0 14px}
+  .ok{color:var(--ok);font-weight:700}
+  .bad{color:var(--primary);font-weight:700}
+  @media (max-width:900px){
+    .slide{padding:30px 24px 70px}
+    .stack,.twocol{grid-template-columns:1fr}
+    .slide h1{font-size:1.8rem}
+    .slide h2{font-size:1.2rem}
+    .toc{columns:1}
+  }
+</style>
+</head>
+<body>
+<div class="deck" id="deck">
+
+<!-- 1 ─ COVER ─────────────────────────────────────────────────────── -->
+<section class="slide cover is-active">
+  <h1>EatNDeal Marketplace</h1>
+  <h2>Page → Table → Column → Logic Map</h2>
+  <p>For every page in the marketplace web app, this deck shows:</p>
+  <ul style="color:rgba(255,255,255,0.85)">
+    <li>What's rendered on screen</li>
+    <li>The exact <b>DB tables</b> + <b>columns</b> that feed it</li>
+    <li>Any <b>calculation / filter / fallback</b> logic applied before display</li>
+  </ul>
+  <p style="margin-top:24px">Use ◀ ▶ keys or the buttons at the bottom to navigate.</p>
+  <p class="small" style="color:rgba(255,255,255,0.55)">Source DB: <code style="background:rgba(255,255,255,0.1);color:#fff">wtw_eatndeal</code> · API: <code style="background:rgba(255,255,255,0.1);color:#fff">api/</code> (Node + Knex) · Web: <code style="background:rgba(255,255,255,0.1);color:#fff">web/</code> (Express + EJS)</p>
+</section>
+
+<!-- 2 ─ TOC ──────────────────────────────────────────────────────── -->
+<section class="slide">
+  <div class="crumbs"><b>Contents</b></div>
+  <h1>What's in this deck</h1>
+  <div class="toc">
+    <ol>
+      <li>Architecture overview</li>
+      <li>DB tables in scope</li>
+      <li><b>Home — Header</b></li>
+      <li>Home — Cuisine pills row</li>
+      <li>Home — "My Favourites" rail</li>
+      <li>Home — "Top restaurants near you"</li>
+      <li>Home — "For you" dish rail</li>
+      <li>Home — "Best offers" rail</li>
+      <li>Home — How it works (static)</li>
+      <li><b>Filters — sidebar + sheet</b></li>
+      <li>Filters — facet counts</li>
+      <li>Search overlay</li>
+      <li>Location modal</li>
+      <li><b>Restaurant detail — hero</b></li>
+      <li>Restaurant detail — Delivery / Pickup tabs</li>
+      <li>Restaurant detail — info bar + offers strip</li>
+      <li>Restaurant detail — menu + product sections</li>
+      <li><b>Product detail — hero + stock</b></li>
+      <li>Product detail — option groups</li>
+      <li>Product detail — linked sub-groups</li>
+      <li>Product detail — pricing</li>
+      <li><b>Offers page</b></li>
+      <li>Account — profile</li>
+      <li>Account — favourites tab</li>
+      <li>Account — addresses</li>
+      <li><b>Calc — distance (Haversine)</b></li>
+      <li>Calc — delivery time</li>
+      <li>Calc — pickup time</li>
+      <li>Calc — open/closed</li>
+      <li>Calc — price pick chain</li>
+      <li>Calc — has_offer subquery</li>
+      <li>Calc — average rating</li>
+      <li>Calc — veg/non-veg</li>
+    </ol>
+  </div>
+</section>
+
+<!-- 3 ─ ARCHITECTURE ─────────────────────────────────────────────── -->
+<section class="slide">
+  <div class="crumbs"><b>Overview</b></div>
+  <h1>Architecture in one picture</h1>
+  <div class="stack">
+    <div class="card">
+      <h4>web/  <span class="pill pill--ui">Express + EJS</span></h4>
+      <p>Renders HTML pages. <b>Never</b> talks to Postgres. Holds the session (file-backed). Proxies every data fetch to <code>api/</code> via <code>callApi(req, METHOD, path)</code>. Injects <code>customer_id</code> from <code>req.session.user.id</code> on every authed call.</p>
+    </div>
+    <div class="card">
+      <h4>api/  <span class="pill pill--api">Node + Knex</span></h4>
+      <p>One controller per resource (Restaurants / Products / Categories / Offers / Auth / Address / Favourite). Knex builds SQL against <code>wtw_eatndeal</code>. Returns envelope <code>{status, show, msg, data}</code>. Validators in <code>api/Validators/</code> gate every request.</p>
+    </div>
+    <div class="card">
+      <h4>wtw_eatndeal  <span class="pill pill--db">Postgres (live)</span></h4>
+      <p>Shared with the legacy Yii2 <code>eatndealclean</code> POS/webordering. Marketplace reads the same product / branch / company tables (filtered by <code>company.is_marketplace=1</code>). New tables prefixed <code>mp_</code> for things only the marketplace needs.</p>
+    </div>
+    <div class="card">
+      <h4>Browser  <span class="pill pill--ui">PWA</span></h4>
+      <p>EJS-rendered HTML. Client JS handles filters, the location sheet, the heart toggle, the cart pickers. Strict CSP (no inline JS/CSS); all assets served from the web origin.</p>
+    </div>
+  </div>
+  <p class="small">Flow on every page load: <b>Browser</b> <span class="arrow">→</span> <b>web/</b> renders shell + calls <b>api/</b> <span class="arrow">→</span> <b>api/</b> queries <b>Postgres</b> <span class="arrow">→</span> envelope back to web/ <span class="arrow">→</span> EJS renders, browser hydrates.</p>
+</section>
+
+<!-- 4 ─ DB TABLES IN SCOPE ───────────────────────────────────────── -->
+<section class="slide">
+  <div class="crumbs"><b>Overview</b></div>
+  <h1>Database tables in scope</h1>
+  <table>
+    <thead><tr><th>Group</th><th>Table</th><th>Used for</th></tr></thead>
+    <tbody>
+      <tr><td rowspan="3">Restaurant</td><td><code>company</code></td><td>The brand. <code>is_marketplace=1</code> is the eligibility gate.</td></tr>
+      <tr><td><code>branch</code></td><td>Coordinates, banner, hours, postcode, delivery waiting time.</td></tr>
+      <tr><td><code>store_delivery_charge_setup</code></td><td>Per-postcode delivery zones — fee / min order / free-over.</td></tr>
+      <tr><td rowspan="4">Menu</td><td><code>products</code></td><td>Dishes. Filtered by <code>show_marketplace=1 AND status='1'</code>.</td></tr>
+      <tr><td><code>categories</code> + <code>product_product_category</code></td><td>Menu categories (per-company) and product→category m2m.</td></tr>
+      <tr><td><code>product_image</code></td><td>Product photos (primary first).</td></tr>
+      <tr><td><code>product_store_inventory</code> + <code>product_sold_out</code></td><td>Stock counts and "sold out" flag.</td></tr>
+      <tr><td rowspan="4">Options</td><td><code>modifier_group_products</code></td><td>Product ↔ modifier-group link.</td></tr>
+      <tr><td><code>modifier_group</code></td><td>Group (Roll Back, Extra Toppings…). <code>modifier_type</code> = radio vs checkbox.</td></tr>
+      <tr><td><code>modifier_group_options</code></td><td>The actual choices (Onions, 12 Inch Pollodora Pizza, …).</td></tr>
+      <tr><td><code>modifier_copy_details</code></td><td>Nested sub-groups (option A in group X opens group Y).</td></tr>
+      <tr><td rowspan="3">Offers</td><td><code>store_offer_banner_table</code></td><td>Marketing banners per company.</td></tr>
+      <tr><td><code>coupons</code></td><td>Promo codes (WELCOME50 etc.) per branch.</td></tr>
+      <tr><td><code>discounts</code></td><td>Auto-applied % / £ discounts per company.</td></tr>
+      <tr><td rowspan="2">Customer</td><td><code>customer</code></td><td>Marketplace accounts are <code>company_id IS NULL</code> rows.</td></tr>
+      <tr><td><code>customer_address</code></td><td>Saved address book (extended with mp columns).</td></tr>
+      <tr><td>Reviews</td><td><code>review_rating</code></td><td>Star ratings (avg + count per company).</td></tr>
+      <tr><td>Marketplace-only</td><td><code>mp_marketplace_category</code> + <code>mp_marketplace_category_assign</code></td><td>Global cuisine master + company assignments.</td></tr>
+      <tr><td>Marketplace-only</td><td><code>mp_customer_favourite_restaurant</code></td><td>Heart-icon storage (per customer + company).</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- 5 ─ HOME / HEADER ────────────────────────────────────────────── -->
+<section class="slide">
+  <div class="crumbs">Home <b>/</b> Header</div>
+  <h1>Home — Header bar</h1>
+  <p>Sticky at top of every page. Shows: logo · location chip · search box · Delivery/Pickup toggle · Offers icon · Cart icon · Account dropdown / Sign in.</p>
+  <table>
+    <thead><tr><th>Element</th><th>Source</th><th>Logic</th></tr></thead>
+    <tbody>
+      <tr><td>Brand logo + name</td><td><code>brand</code> config (env / brand controller)</td><td>Same on every page.</td></tr>
+      <tr><td>Location chip (city · postcode)</td><td><code>req.session.userLocation</code></td><td>Set via the location modal. Hidden chip when <code>userLocation</code> is null (and the avatar pushes to right).</td></tr>
+      <tr><td>Search box</td><td>client-side filter over <code>data-search-id</code> on the current page</td><td>Live filter; opens an overlay on focus.</td></tr>
+      <tr><td>Delivery / Pickup toggle</td><td><code>?mode=pickup</code> or saved <code>userLocation.mode</code></td><td>Choice persisted onto the saved location.</td></tr>
+      <tr><td>Offers icon</td><td>links to <code>/offers</code></td><td>Static link.</td></tr>
+      <tr><td>Cart icon (badge)</td><td>cart cookie / session</td><td>Phase-1: count badge only.</td></tr>
+      <tr><td>Account dropdown</td><td><code>user_session</code> (= <code>req.session.user</code>)</td><td>If null → "Sign in" button. Else avatar + dropdown listing every <code>?tab=</code>.</td></tr>
+    </tbody>
+  </table>
+  <p class="small">Controller: <code>web/Controllers/SiteController.index</code> sets <code>user_location</code>, <code>order_mode</code>, <code>user_session</code> as render locals. Header partial: <code>web/views/partials/header.ejs</code>.</p>
+</section>
+
+<!-- 6 ─ HOME / CUISINE PILLS ─────────────────────────────────────── -->
+<section class="slide">
+  <div class="crumbs">Home <b>/</b> Cuisine pills row</div>
+  <h1>Home — "What's on your mind?"</h1>
+  <p>Round pills for cuisines (Pizza, Burger, Indian, …). Tap → adds <code>?cuisine=&lt;name&gt;</code> and filters the restaurant grid.</p>
+  <div class="twocol">
+    <div>
+      <h3>Where the pills come from</h3>
+      <table>
+        <thead><tr><th>Field on pill</th><th>Source column</th></tr></thead>
+        <tbody>
+          <tr><td>name</td><td><code>mp_marketplace_category.name</code></td></tr>
+          <tr><td>slug (URL)</td><td><code>mp_marketplace_category.slug</code></td></tr>
+          <tr><td>icon image</td><td><code>mp_marketplace_category.icon</code> → <code>yiiImageUrl('category', ...)</code></td></tr>
+          <tr><td>fallback initial / tint</td><td>derived from name (no photo case)</td></tr>
+        </tbody>
+      </table>
+      <p>Active row filter: <code>status = 1</code>, ordered by <code>sort_order ASC, id ASC</code>.</p>
+    </div>
+    <div>
+      <h3>Click behaviour</h3>
+      <ul>
+        <li>URL becomes <code>/?cuisine=&lt;searchName&gt;</code>.</li>
+        <li>RestaurantsController resolves slug → category id via <code>mp_marketplace_category</code> (plural/case-tolerant — "Burgers" matches "burger").</li>
+        <li>List query adds <code>EXISTS(... FROM mp_marketplace_category_assign WHERE category_id=? AND company_id=c.id)</code>.</li>
+        <li>If the cuisine matches zero restaurants, falls back to nearby (with a "No restaurants serving X — here's what else" note).</li>
+      </ul>
+    </div>
+  </div>
+  <p class="small">Endpoint: <code>GET /api/v1/marketplace/categories</code>. View: <code>views/site/index.ejs</code> cuisine row.</p>
+</section>
+
+<!-- 7 ─ HOME / MY FAVOURITES ─────────────────────────────────────── -->
+<section class="slide">
+  <div class="crumbs">Home <b>/</b> My Favourites rail</div>
+  <h1>Home — "My Favourites" (top section)</h1>
+  <p>Appears ABOVE "Top restaurants near you" when the signed-in customer has at least one heart. Same card shape as the main rail.</p>
+  <table>
+    <thead><tr><th>Card field</th><th>Source table.column</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td>row exists</td><td><code>mp_customer_favourite_restaurant</code> WHERE <code>customer_id=? AND status=1</code></td><td>Joined to <code>company</code> + <code>branch</code> for the card content.</td></tr>
+      <tr><td>name</td><td><code>company.business_name</code> (fallback <code>branch.trading_name</code> / <code>branch.name</code>)</td></tr>
+      <tr><td>cuisines</td><td><code>company.business_category</code> → split on <code>/ , | · •</code></td></tr>
+      <tr><td>image</td><td><code>branch.banner_image</code> (fallback <code>branch.business_image</code>) via <code>yiiImageUrl</code></td></tr>
+      <tr><td>rating</td><td>currently fixed 4.4 (rail keeps it light; main list pulls real avg)</td></tr>
+      <tr><td>distance km</td><td>Haversine(<code>userLocation.lat/lng</code>, <code>branch.direction_latitude/longitude</code>)</td><td>Null if either side missing.</td></tr>
+      <tr><td>delivery minutes</td><td><code>branch.delivery_waiting_time</code> if set; else <code>estimateDeliveryMinutes(km)</code></td></tr>
+      <tr><td>open / closed</td><td><code>branch.open_as_usual</code> + <code>closed_until</code> + <code>start_time/end_time</code> clock check</td></tr>
+    </tbody>
+  </table>
+  <h3>Display rules</h3>
+  <ul>
+    <li>Shown ONLY on truly default home (no <code>?cuisine</code>, no sidebar/sheet filters, not Pickup, not <code>?view=…</code>).</li>
+    <li>These company IDs are then <b>stripped</b> from "Top restaurants near you" so the same card never appears twice.</li>
+    <li>Heart icon always rendered active (filled). Click → un-favourite via <code>POST /favourite/toggle</code>; refresh removes from this rail.</li>
+  </ul>
+  <p class="small">Endpoint: <code>GET /api/v1/customer/favourites</code> · Controller: <code>api/Controllers/Customer/FavouriteController.list</code></p>
+</section>
+
+<!-- 8 ─ HOME / TOP RESTAURANTS ───────────────────────────────────── -->
+<section class="slide">
+  <div class="crumbs">Home <b>/</b> Top restaurants near you</div>
+  <h1>Home — "Top restaurants near you"</h1>
+  <p>Main restaurant grid. Driven by <code>RestaurantsController.list</code>. Filtered by sidebar/sheet (next slides).</p>
+  <table>
+    <thead><tr><th>Card field</th><th>Source table.column</th><th>Logic</th></tr></thead>
+    <tbody>
+      <tr><td>card eligibility</td><td><code>company</code> + <code>branch</code></td><td><code>company.is_marketplace=1 AND is_active=1 AND deleted_at IS NULL AND (is_maintenance=0 OR NULL) AND branch.status &lt;&gt; '2'</code></td></tr>
+      <tr><td>name</td><td><code>company.business_name</code> (fallback <code>branch.name/trading_name</code>)</td></tr>
+      <tr><td>slug</td><td><code>company.domain_name</code> if set, else slugified business_name + id</td></tr>
+      <tr><td>cuisines (≤ 3)</td><td><code>company.business_category</code></td><td>split on <code>/ , | · •</code>, trim, take 3</td></tr>
+      <tr><td>rating</td><td><code>review_rating</code> AVG / COUNT (correlated subquery)</td><td>Filter <code>publish_online=1</code>. Falls back to 4.4 when no rows.</td></tr>
+      <tr><td>image</td><td><code>branch.banner_image</code> then <code>branch.business_image</code></td><td>via <code>yiiImageUrl</code></td></tr>
+      <tr><td>distance</td><td>Haversine vs <code>branch.direction_latitude/longitude</code></td><td>null when no user location.</td></tr>
+      <tr><td>delivery minutes</td><td><code>branch.delivery_waiting_time</code> (real) else distance estimate</td></tr>
+      <tr><td>delivery fee / min order / free over</td><td><code>store_delivery_charge_setup</code> matched by postcode prefix</td><td>Longest prefix wins.</td></tr>
+      <tr><td>veg / non-veg badge</td><td>EXISTS(<code>products</code>) per company, <code>veg_non_veg = 1</code> vs ≠ 1</td><td>Pure-veg = all veg; one non-veg ⇒ "non-veg".</td></tr>
+      <tr><td>open / closed</td><td><code>branch.open_as_usual + closed_until + start/end_time</code></td></tr>
+      <tr><td>offer badge + count</td><td>banners + coupons + discounts + product.offer EXISTS</td><td>See <i>Calc — has_offer</i> slide.</td></tr>
+      <tr><td>isFavourite</td><td><code>mp_customer_favourite_restaurant</code> matched in one batched SET</td><td>True only for the signed-in customer.</td></tr>
+    </tbody>
+  </table>
+  <p class="small">Endpoint: <code>GET /api/v1/marketplace/restaurants</code> · DEDUP: <code>SELECT DISTINCT ON (company.id)</code> picks lowest branch id per company.</p>
+</section>
+
+<!-- 9 ─ HOME / FOR YOU DISH RAIL ────────────────────────────────── -->
+<section class="slide">
+  <div class="crumbs">Home <b>/</b> For you (dish rail)</div>
+  <h1>Home — "For you" dish rail</h1>
+  <p>Horizontal scroll of marketplace dishes from all eligible restaurants. Different from restaurant cards — these are products.</p>
+  <table>
+    <thead><tr><th>Card field</th><th>Source</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td>eligibility</td><td><code>products</code> joined to <code>company</code>/<code>branch</code></td><td><code>products.show_marketplace=1 AND status='1'</code> + the company gates from the previous slide.</td></tr>
+      <tr><td>name</td><td><code>products.name</code></td></tr>
+      <tr><td>image</td><td><code>product_image.url</code> (primary first)</td><td><code>yiiImageUrl('product', companyId, file)</code>.</td></tr>
+      <tr><td>price</td><td><code>products.marketplace_price → online_platform_price → price_after_tax</code></td><td>First non-zero. See <i>Calc — price chain</i>.</td></tr>
+      <tr><td>restaurant chip</td><td><code>company.business_name</code> + <code>domain_name</code></td></tr>
+      <tr><td>veg / non-veg dot</td><td><code>products.veg_non_veg</code></td><td>1 ⇒ veg, else non-veg.</td></tr>
+      <tr><td>stock line</td><td>SUM(<code>product_store_inventory.quantity</code>) + <code>product_sold_out.is_sold</code></td><td>"N stock" or "Out of stock". See <i>Restaurant detail menu</i> slide.</td></tr>
+      <tr><td>"offer" tag</td><td><code>products.offer</code> text (NULL/empty/'0' = no tag)</td></tr>
+    </tbody>
+  </table>
+  <p class="small">Endpoint: <code>GET /api/v1/marketplace/products</code></p>
+</section>
+
+<!-- 10 ─ HOME / BEST OFFERS RAIL ─────────────────────────────────── -->
+<section class="slide">
+  <div class="crumbs">Home <b>/</b> Best offers rail</div>
+  <h1>Home — "Best offers for you"</h1>
+  <p>Horizontal rail of active marketing banners. NOT coupons — pure marketing banners.</p>
+  <table>
+    <thead><tr><th>Card field</th><th>Source</th></tr></thead>
+    <tbody>
+      <tr><td>banner row</td><td><code>store_offer_banner_table</code> WHERE <code>publish_online=1 AND CURRENT_DATE BETWEEN start_date AND end_date</code></td></tr>
+      <tr><td>title</td><td><code>offer_title</code></td></tr>
+      <tr><td>details</td><td><code>offer_details</code></td></tr>
+      <tr><td>terms</td><td><code>offer_terms</code></td></tr>
+      <tr><td>restaurant link</td><td><code>company.id</code> + <code>domain_name</code> (joined)</td></tr>
+    </tbody>
+  </table>
+  <p>Endpoint: <code>GET /api/v1/marketplace/offers?limit=8</code> — returns ready-to-render cards.</p>
+  <p class="small">Coupons / discounts only surface on the dedicated <code>/offers</code> page and the restaurant detail strip — not on the home rail.</p>
+</section>
+
+<!-- 11 ─ FILTERS / SIDEBAR ───────────────────────────────────────── -->
+<section class="slide">
+  <div class="crumbs">Home <b>/</b> Filter sidebar + sheet</div>
+  <h1>Filters — every chip mapped</h1>
+  <table>
+    <thead><tr><th>Filter chip</th><th>Query param</th><th>Source data</th><th>Applied where</th></tr></thead>
+    <tbody>
+      <tr><td>Sort: Relevance / Distance / Rating / Time / Price ↑↓</td><td><code>sort</code></td><td>derived from card fields</td><td>application-side after the SQL pull</td></tr>
+      <tr><td>Rating ≥ 3.5 / 4.0 / 4.5</td><td><code>rating</code></td><td><code>review_rating</code> AVG (publish_online=1)</td><td>application-side after AVG</td></tr>
+      <tr><td>Distance ≤ N km</td><td><code>max_km</code></td><td>Haversine vs branch coords</td><td>application-side</td></tr>
+      <tr><td>Delivery time bucket (15/30/45/60)</td><td><code>delivery</code> (comma list)</td><td><code>estimateDeliveryMinutesNumeric(km)</code></td><td>application-side bucket match</td></tr>
+      <tr><td>Max delivery (single)</td><td><code>max_min</code></td><td>same as above</td><td>application-side</td></tr>
+      <tr><td>Open now</td><td><code>open_now=1</code></td><td><code>isOpenNow(branch)</code> — flag + clock</td><td>application-side</td></tr>
+      <tr><td>Pure veg only</td><td><code>veg=1</code></td><td>EXISTS subqueries on <code>products.veg_non_veg</code></td><td>application-side</td></tr>
+      <tr><td>Has offer</td><td><code>offer=1</code></td><td><code>has_offer</code> SQL subquery</td><td>application-side</td></tr>
+      <tr><td>Price for one (low/mid/high)</td><td><code>price</code></td><td>EXISTS on <code>products</code> with <code>pickPrice</code> bucket</td><td>application-side</td></tr>
+      <tr><td>Cuisine pill</td><td><code>cuisine</code></td><td><code>mp_marketplace_category_assign</code></td><td>SQL WHERE EXISTS</td></tr>
+      <tr><td>Postcode</td><td><code>postcode</code></td><td><code>store_delivery_charge_setup</code></td><td>SQL JOIN + longest-prefix match</td></tr>
+    </tbody>
+  </table>
+  <p class="small">Cuisine and postcode narrow IN SQL. Every other filter runs application-side after the SQL pull so we can compute dynamic facet counts over the unfiltered set (next slide).</p>
+</section>
+
+<!-- 12 ─ FILTERS / FACET COUNTS ──────────────────────────────────── -->
+<section class="slide">
+  <div class="crumbs">Filters <b>/</b> Facet counts</div>
+  <h1>Filter sidebar — the number next to each chip</h1>
+  <p>Each chip shows "(N)" — how many restaurants would match if you ticked it. These are computed over the candidate set <b>BEFORE</b> any sidebar filter is applied, so the numbers stay stable as you toggle chips.</p>
+  <pre><code>facets = {
+  total:    candidate.length,
+  delivery: { '15':?, '30':?, '45':?, '60':? },   // _mins bucket counts
+  price:    { low:?, mid:?, high:? },              // has_price_* EXISTS flags
+  rating:   { '4.5':?, '4.0':?, '3.5':?, '3.0':? },
+  veg:      ?,    // pure-veg count
+  open_now: ?,
+  offer:    ?,
+}</code></pre>
+  <h3>Helper subqueries on each candidate row</h3>
+  <table>
+    <thead><tr><th>Flag</th><th>Subquery</th></tr></thead>
+    <tbody>
+      <tr><td><code>has_veg</code> / <code>has_non_veg</code></td><td>EXISTS over <code>products</code> with <code>veg_non_veg = 1</code> / <code>≠ 1</code></td></tr>
+      <tr><td><code>avg_rating</code></td><td>(SELECT ROUND(AVG(rating),1) FROM <code>review_rating</code> WHERE company_id = c.id AND publish_online = 1)</td></tr>
+      <tr><td><code>has_offer</code></td><td>4-way EXISTS: banners ∨ coupons ∨ discounts ∨ product.offer</td></tr>
+      <tr><td><code>has_price_low/mid/high</code></td><td>EXISTS over <code>products</code> with <code>pickPrice ≤ 6</code> / <code>6..12</code> / <code>&gt; 12</code></td></tr>
+    </tbody>
+  </table>
+  <p class="small">All four subqueries live inside the single restaurant-list query, so the dashboard is one round trip.</p>
+</section>
+
+<!-- 13 ─ SEARCH OVERLAY ─────────────────────────────────────────── -->
+<section class="slide">
+  <div class="crumbs">Home <b>/</b> Search overlay</div>
+  <h1>Search overlay</h1>
+  <p>The header search box opens a full-page overlay with three sections: Restaurants · Dishes · Cuisines. Live filter as the user types.</p>
+  <table>
+    <thead><tr><th>Section</th><th>Source</th><th>Match rule</th></tr></thead>
+    <tbody>
+      <tr><td>Restaurants</td><td><code>company.business_name</code></td><td>case-insensitive substring on the typed term</td></tr>
+      <tr><td>Dishes</td><td><code>products.name</code> (marketplace-on)</td><td>substring + show restaurant name beside the dish</td></tr>
+      <tr><td>Cuisines</td><td><code>mp_marketplace_category.name</code> + <code>slug</code></td><td>via <code>normaliseName</code> → plural-tolerant ("burgers" matches "burger")</td></tr>
+    </tbody>
+  </table>
+  <p>Endpoint: <code>GET /api/v1/marketplace/search?q=…</code> — returns up to N per section.</p>
+  <p class="small">Picking a result navigates: restaurant → <code>/?restaurant=&lt;slug&gt;</code>, dish → <code>/?rest=&lt;rest&gt;&item=&lt;item&gt;</code>, cuisine → <code>/?cuisine=&lt;name&gt;</code>.</p>
+</section>
+
+<!-- 14 ─ LOCATION MODAL ─────────────────────────────────────────── -->
+<section class="slide">
+  <div class="crumbs">Home <b>/</b> Location modal</div>
+  <h1>Location modal (Zomato-style sheet)</h1>
+  <p>Triggered by the header chip or auto-opens on first visit. Five sources for picking an area, in order:</p>
+  <table>
+    <thead><tr><th>Source</th><th>Backed by</th></tr></thead>
+    <tbody>
+      <tr><td>Search bar (typeahead)</td><td><code>POST /api/v1/delivery/search-address</code> → ported from Yii's DeliveryController</td></tr>
+      <tr><td>"Use current location"</td><td>Browser <code>navigator.geolocation</code> → <code>POST /api/v1/delivery/postcode-coords</code> to confirm</td></tr>
+      <tr><td>Saved addresses</td><td><code>customer_address</code> (status=1) — only when signed in</td></tr>
+      <tr><td>Recently searched</td><td>Client-side cookie (not stored server-side)</td></tr>
+      <tr><td>Manual postcode</td><td>typed value → resolved via <code>postcode-coords</code></td></tr>
+    </tbody>
+  </table>
+  <h3>What gets saved</h3>
+  <p>The chosen pick writes to <code>req.session.userLocation</code>:</p>
+  <pre><code>userLocation = {
+  label:     "Buckie",            // display name
+  postcode:  "AB56 1AH",
+  lat:       57.677, lng: -2.964,
+  source:    "postcode"|"geolocation"|"saved"|"recent"|"searched"|"manual",
+  mode:      "delivery"|"pickup"
+}</code></pre>
+  <p class="small">Saved-address table extras (added by migration <code>m260529_120000</code>): <code>label, address_type, latitude, longitude, additional_details, drop_off_option, delivery_instructions, contact_no, is_default</code>.</p>
+</section>
+
+<!-- 15 ─ RESTAURANT DETAIL / HERO ───────────────────────────────── -->
+<section class="slide">
+  <div class="crumbs">Restaurant detail <b>/</b> Hero</div>
+  <h1>Restaurant detail — Hero</h1>
+  <p>Top of the page: banner photo, restaurant logo bubble, name + verified tick, rating + cuisine line, address.</p>
+  <table>
+    <thead><tr><th>Element</th><th>Source</th></tr></thead>
+    <tbody>
+      <tr><td>Banner photo</td><td><code>branch.banner_image</code> → <code>yiiImageUrl('banner', companyId, file)</code></td></tr>
+      <tr><td>Logo bubble</td><td><code>branch.business_image</code> → <code>yiiImageUrl('logo', ...)</code></td></tr>
+      <tr><td>Name</td><td><code>company.business_name</code></td></tr>
+      <tr><td>Rating</td><td>AVG(<code>review_rating.rating</code>) WHERE publish_online=1, ROUND(., 1)</td></tr>
+      <tr><td>Rating count</td><td>COUNT(*) on same predicate (shown as "(N+)")</td></tr>
+      <tr><td>Cuisines</td><td><code>company.business_category</code> split</td></tr>
+      <tr><td>Address</td><td><code>branch.direction_address</code> (fallback <code>address_1, address_2, city, postcode</code>)</td></tr>
+      <tr><td>Heart icon (login only)</td><td><code>mp_customer_favourite_restaurant</code> existence</td></tr>
+    </tbody>
+  </table>
+  <p class="small">Endpoint: <code>GET /api/v1/marketplace/restaurant?slug=…&customer_id=…&postcode=…</code></p>
+</section>
+
+<!-- 16 ─ RESTAURANT DETAIL / TABS ───────────────────────────────── -->
+<section class="slide">
+  <div class="crumbs">Restaurant detail <b>/</b> Delivery / Pickup tabs</div>
+  <h1>Delivery vs Pickup tabs</h1>
+  <div class="stack">
+    <div class="card">
+      <h4>Delivery tab</h4>
+      <table>
+        <thead><tr><th>Cell</th><th>Source</th></tr></thead>
+        <tbody>
+          <tr><td>Deliver to</td><td><code>session.userLocation.label</code></td></tr>
+          <tr><td>Delivery time</td><td><code>branch.delivery_waiting_time</code> if set (interpreted by <code>deliveryMinutesFromWaiting</code>), else <code>estimateDeliveryMinutes(distanceKm)</code></td></tr>
+          <tr><td>Distance</td><td>Haversine vs <code>branch.direction_latitude/longitude</code></td></tr>
+          <tr><td>Min order</td><td><code>store_delivery_charge_setup.minimum_order</code> (matched zone)</td></tr>
+          <tr><td>Delivery fee</td><td><code>store_delivery_charge_setup.charge</code> (matched zone) — "Free" if 0</td></tr>
+          <tr><td>Free over</td><td><code>store_delivery_charge_setup.free_delivery_above</code></td></tr>
+          <tr><td>"Doesn't deliver" warning</td><td>shown when postcode given AND no zone matched</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="card">
+      <h4>Pickup tab</h4>
+      <table>
+        <thead><tr><th>Cell</th><th>Source</th></tr></thead>
+        <tbody>
+          <tr><td>Collect from</td><td><code>branch.direction_address</code> (fallback name)</td></tr>
+          <tr><td>Pickup time</td><td><code>estimatePickupMinutes(km)</code> — customer travel + ready buffer</td></tr>
+          <tr><td>Distance</td><td>Haversine, same as delivery</td></tr>
+          <tr><td>Map</td><td>Branch lat/lng vs user lat/lng (rendered client-side)</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <p class="small">Difference: <b>delivery time</b> uses the merchant's waiting time + rider model; <b>pickup time</b> is purely distance-driven for the customer to reach the shop.</p>
+</section>
+
+<!-- 17 ─ RESTAURANT DETAIL / OFFERS STRIP ───────────────────────── -->
+<section class="slide">
+  <div class="crumbs">Restaurant detail <b>/</b> Offers strip</div>
+  <h1>Restaurant detail — Offers strip</h1>
+  <p>A row of "offer cards" pinned under the info bar. Three card types in one strip:</p>
+  <table>
+    <thead><tr><th>Card type</th><th>Source</th><th>Active rule</th></tr></thead>
+    <tbody>
+      <tr><td>Banner</td><td><code>store_offer_banner_table</code></td><td><code>publish_online=1 AND CURRENT_DATE BETWEEN start_date AND end_date</code></td></tr>
+      <tr><td>Promo code</td><td><code>coupons</code></td><td><code>is_active=1 AND platform IN (1,2) AND (expiry_date IS NULL OR expiry_date ≥ CURRENT_DATE)</code></td></tr>
+      <tr><td>Auto discount</td><td><code>discounts</code></td><td><code>status=1 AND CURRENT_DATE BETWEEN start_date AND end_date</code></td></tr>
+    </tbody>
+  </table>
+  <p>Day-of-week / postcode / per-customer gating is left to checkout — for <b>display</b> we keep it deliberately simple.</p>
+  <p class="small">Helper: <code>api/Helpers/offers.js</code> · <code>offersForRestaurant(companyId, branchId)</code></p>
+</section>
+
+<!-- 18 ─ RESTAURANT DETAIL / MENU + SECTIONS ───────────────────── -->
+<section class="slide">
+  <div class="crumbs">Restaurant detail <b>/</b> Menu + sections</div>
+  <h1>Restaurant detail — Menu + product sections</h1>
+  <h3>Left rail (category list)</h3>
+  <table>
+    <thead><tr><th>Field</th><th>Source</th></tr></thead>
+    <tbody>
+      <tr><td>category name</td><td><code>categories.name</code> (per company) — grouped by normalised name to dedupe per-branch duplicates</td></tr>
+      <tr><td>featured flag</td><td><code>categories.is_featured</code> — pushes "Featured Items" pseudo-category to the top</td></tr>
+      <tr><td>item count</td><td>count of marketplace-on products under that category</td></tr>
+      <tr><td>display gate</td><td><code>categories.status='1' AND (is_display_application_menu=1 OR NULL)</code></td></tr>
+    </tbody>
+  </table>
+  <h3>Product cards inside each section</h3>
+  <table>
+    <thead><tr><th>Field</th><th>Source</th></tr></thead>
+    <tbody>
+      <tr><td>eligibility</td><td><code>products.show_marketplace=1 AND status='1' AND ppc.status='1'</code></td></tr>
+      <tr><td>image</td><td><code>product_image.url</code> primary first</td></tr>
+      <tr><td>price</td><td><code>pickPrice(product)</code> — see Calc slide</td></tr>
+      <tr><td>veg dot</td><td><code>products.veg_non_veg = 1</code></td></tr>
+      <tr><td>stock</td><td>SUM(<code>product_store_inventory.quantity</code>) + <code>product_sold_out.is_sold</code></td></tr>
+      <tr><td>Featured Items pseudo-section</td><td>products with <code>is_featured=1</code></td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- 19 ─ PRODUCT DETAIL / HEADER + STOCK ───────────────────────── -->
+<section class="slide">
+  <div class="crumbs">Product detail <b>/</b> Header + stock</div>
+  <h1>Product detail — Header + stock</h1>
+  <table>
+    <thead><tr><th>Element</th><th>Source</th></tr></thead>
+    <tbody>
+      <tr><td>Breadcrumb</td><td>Home › <code>company.business_name</code> › <code>product.name</code></td></tr>
+      <tr><td>Image gallery</td><td><code>product_image</code> (status='1'), primary first</td></tr>
+      <tr><td>Name</td><td><code>products.name</code></td></tr>
+      <tr><td>Rating</td><td>uses restaurant avg as a stand-in until per-dish ratings exist</td></tr>
+      <tr><td>Description</td><td><code>products.description</code> (Phase 1 — many rows empty)</td></tr>
+      <tr><td>Base price</td><td><code>pickPrice(product)</code></td></tr>
+      <tr><td>Stock line</td><td>"Out of stock" if <code>product_sold_out.is_sold='1'</code> OR (<code>track_stock_level=1 AND SUM(qty) ≤ 0</code>); else "N stock available" if qty &gt; 0; else "Available"</td></tr>
+      <tr><td>Quantity stepper max</td><td>capped at SUM(qty) when known; else 99</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- 20 ─ PRODUCT DETAIL / OPTION GROUPS ────────────────────────── -->
+<section class="slide">
+  <div class="crumbs">Product detail <b>/</b> Option groups</div>
+  <h1>Option groups — exact legacy parity</h1>
+  <p>Loaded from <b>one and only one</b> source: <code>modifier_group_products</code> (status='1', ordered by sequence). The two other option tables (<code>product_variants_group</code>, <code>product_meal_deals_group</code>) are <b>not read</b> — same as legacy webordering.</p>
+  <table>
+    <thead><tr><th>Group field</th><th>Source column</th><th>Meaning</th></tr></thead>
+    <tbody>
+      <tr><td>type (radio / checkbox)</td><td><code>modifier_group.modifier_type</code></td><td><code>'Single Choice'</code> / <code>'radio'</code> ⇒ radio; <code>'Multiple Choice'</code> / <code>'checkbox'</code> ⇒ checkbox</td></tr>
+      <tr><td>min / max</td><td><code>has_modifier_limit</code> + <code>min_limit</code> + <code>max_limit</code></td><td><code>has_modifier_limit ≠ 1</code> ⇒ unbounded (min=0, max=0). Single Choice always min=1, max=1.</td></tr>
+      <tr><td>required</td><td>derived</td><td><code>isSingle OR min ≥ 1</code> — matches legacy <code>products.js</code> line 336.</td></tr>
+      <tr><td>option name</td><td><code>modifier_group_options.option_name</code></td><td>Excluded if name ∈ <code>['Free','No','Less','On Chips','On Burger']</code> (POS-only dummies).</td></tr>
+      <tr><td>option price</td><td><code>price_tax_include</code> / <code>price_tax_included</code> / <code>price_tax_excluded</code></td><td>First non-empty wins.</td></tr>
+      <tr><td>pre-checked</td><td><code>is_default = 1</code></td><td>EJS pre-ticks ONLY these. No auto-pick-first fallback.</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- 21 ─ PRODUCT DETAIL / LINKED SUB-GROUPS ────────────────────── -->
+<section class="slide">
+  <div class="crumbs">Product detail <b>/</b> Linked sub-groups</div>
+  <h1>Linked sub-groups (option → nested group)</h1>
+  <p>When an option in group A "opens" group B, there's a row in <code>modifier_copy_details</code>:</p>
+  <pre><code>modifier_copy_details
+  (group_id, modifier_option_id, link_group_id)</code></pre>
+  <h3>Dedup rule (same as legacy)</h3>
+  <ul>
+    <li>Collect every <code>link_group_id</code> referenced by the product's groups.</li>
+    <li>If a group's id is in that set, <b>skip it</b> from the top-level list — it will appear nested inside its parent option instead.</li>
+    <li>Without this, "Extra Toppings" would render twice (top level + nested) on Roll Back Pizza.</li>
+  </ul>
+  <h3>Rendering</h3>
+  <ul>
+    <li>Top-level group renders as a fieldset.</li>
+    <li>Nested sub-groups render as their own <code>.pd-linked-section</code> <b>after</b> the parent fieldset (not inside the grid).</li>
+    <li>Hidden until the parent option is checked. Switching to another option in the same parent group hides the previous sub-group and clears its picks (so they don't sneak into the price).</li>
+    <li>Validation skips a nested group while it's hidden.</li>
+  </ul>
+</section>
+
+<!-- 22 ─ PRODUCT DETAIL / PRICING ──────────────────────────────── -->
+<section class="slide">
+  <div class="crumbs">Product detail <b>/</b> Pricing</div>
+  <h1>Pricing — how the live total is computed</h1>
+  <pre><code>perItem = product.basePrice
+         + Σ price_of_every_checked_option
+
+lineTotal = perItem × qty
+subtotal  = lineTotal     (this-item summary, no fees/discounts yet)
+total     = lineTotal     (header "Add to cart £X.XX")</code></pre>
+  <h3>base price</h3>
+  <p><code>pickPrice(product)</code> chain: <code>marketplace_price → online_platform_price → price_after_tax → 0</code>. First non-zero wins.</p>
+  <h3>option price</h3>
+  <p>Stored on <code>modifier_group_options</code>. Falls back through <code>price_tax_included → price_tax_include → price_tax_excluded</code> (first non-empty).</p>
+  <h3>multipliers / fees</h3>
+  <p>Delivery fee, service charge, tax split are <b>NOT</b> applied here — those land at checkout. The product page total is item + selected options only.</p>
+</section>
+
+<!-- 23 ─ OFFERS PAGE ───────────────────────────────────────────── -->
+<section class="slide">
+  <div class="crumbs"><b>/offers</b></div>
+  <h1>Offers page — categorised</h1>
+  <p>Three rails: <b>Restaurant Offers</b>, <b>Common Offers</b>, <b>Product Offers</b>. All cards filterable by search + tab.</p>
+  <table>
+    <thead><tr><th>Rail</th><th>Source</th><th>What's a row</th></tr></thead>
+    <tbody>
+      <tr><td>Restaurant Offers</td><td><code>coupons</code> + <code>discounts</code> grouped by company</td><td>One card per (offer, restaurant) — code or auto.</td></tr>
+      <tr><td>Common Offers</td><td><code>store_offer_banner_table</code> with no <code>category_id</code></td><td>Generic banners (not tied to a single restaurant).</td></tr>
+      <tr><td>Product Offers</td><td><code>products.offer</code> non-null + show_marketplace=1</td><td>One card per product carrying an offer label.</td></tr>
+    </tbody>
+  </table>
+  <p>Endpoint: <code>GET /api/v1/marketplace/offers?page=1</code> · Helper: <code>offers.offersPageData()</code> — five batched queries total.</p>
+  <p class="small">Tabs (All / Restaurant / Product / Common) are client-side filters; the search box matches restaurant name, code, label.</p>
+</section>
+
+<!-- 24 ─ ACCOUNT / PROFILE ─────────────────────────────────────── -->
+<section class="slide">
+  <div class="crumbs">Account <b>/</b> Profile</div>
+  <h1>Account — Profile tab</h1>
+  <table>
+    <thead><tr><th>Field</th><th>Source</th></tr></thead>
+    <tbody>
+      <tr><td>Avatar</td><td><code>customer.image</code> (filename) served from <code>/avatars/&lt;file&gt;</code></td></tr>
+      <tr><td>Name</td><td><code>customer.first_name + last_name</code></td></tr>
+      <tr><td>Mobile</td><td><code>customer.phone</code> (identity key — change requires re-OTP later)</td></tr>
+      <tr><td>Email</td><td><code>customer.email</code></td></tr>
+      <tr><td>Date of birth</td><td><code>customer.birthdate</code></td></tr>
+      <tr><td>Gender</td><td><code>customer.gender</code> (added by migration m260529_140000)</td></tr>
+      <tr><td>Reward points</td><td><code>customer.loyalty_points</code></td></tr>
+    </tbody>
+  </table>
+  <h3>Stats strip (top of dashboard)</h3>
+  <p><code>orders</code>: 0 (Phase-1 placeholder — no marketplace orders yet) · <code>favourites</code>: live count from <code>mp_customer_favourite_restaurant</code> · <code>rewardPoints</code>: <code>customer.loyalty_points</code> · <code>offers</code>: 0 (placeholder).</p>
+  <p class="small">Endpoint refresh: <code>GET /api/v1/auth/me</code>. Update: <code>POST /api/v1/auth/update-profile</code>.</p>
+</section>
+
+<!-- 25 ─ ACCOUNT / FAVOURITES ──────────────────────────────────── -->
+<section class="slide">
+  <div class="crumbs">Account <b>/</b> Favourites</div>
+  <h1>Account — Favourites tab</h1>
+  <p>Same card shape as the home rail (rating, time, distance, image). One card per active row in <code>mp_customer_favourite_restaurant</code>.</p>
+  <table>
+    <thead><tr><th>Field</th><th>Source</th></tr></thead>
+    <tbody>
+      <tr><td>row exists</td><td><code>mp_customer_favourite_restaurant</code> (status=1, this customer)</td></tr>
+      <tr><td>name / image / cuisines / open / time / km</td><td>Same fields as "Top restaurants" — joined company + branch.</td></tr>
+      <tr><td>heart (always filled)</td><td>Click → unfav via <code>POST /favourite/toggle</code></td></tr>
+      <tr><td>Empty state</td><td>"No favourites yet — Browse restaurants" CTA</td></tr>
+    </tbody>
+  </table>
+  <p class="small">Endpoint: <code>GET /api/v1/customer/favourites?customer_id=…&lat=…&lng=…</code></p>
+</section>
+
+<!-- 26 ─ ACCOUNT / ADDRESSES ───────────────────────────────────── -->
+<section class="slide">
+  <div class="crumbs">Account <b>/</b> Addresses</div>
+  <h1>Account — Addresses (via location modal)</h1>
+  <p>Stored in <code>customer_address</code> (extended by migration <code>m260529_120000</code>). Columns shown below — additive nullable, safe on the live table.</p>
+  <table>
+    <thead><tr><th>Field</th><th>Column</th></tr></thead>
+    <tbody>
+      <tr><td>Label</td><td><code>label</code> (e.g. "Home")</td></tr>
+      <tr><td>Address line</td><td><code>address</code></td></tr>
+      <tr><td>Postcode / city</td><td><code>post_code, line1, line2, post_town</code></td></tr>
+      <tr><td>Building type</td><td><code>address_type</code></td></tr>
+      <tr><td>Lat / lng</td><td><code>latitude, longitude</code></td></tr>
+      <tr><td>Additional details</td><td><code>additional_details</code></td></tr>
+      <tr><td>Drop-off preference</td><td><code>drop_off_option</code></td></tr>
+      <tr><td>Delivery notes</td><td><code>delivery_instructions</code></td></tr>
+      <tr><td>Per-address phone</td><td><code>contact_no</code></td></tr>
+      <tr><td>Default flag</td><td><code>is_default</code> (only one active per customer)</td></tr>
+      <tr><td>Soft delete</td><td><code>status = 2</code></td></tr>
+    </tbody>
+  </table>
+  <p>CRUD: <code>GET /customer/addresses</code>, <code>POST /customer/address/save</code> (upsert), <code>POST /customer/address/delete</code>.</p>
+</section>
+
+<!-- 27 ─ CALC / HAVERSINE ──────────────────────────────────────── -->
+<section class="slide">
+  <div class="crumbs">Calculations <b>/</b> Distance</div>
+  <h1>Distance — Haversine</h1>
+  <p>Used everywhere "X.X km" appears on a card and to drive the delivery/pickup time estimates.</p>
+  <pre><code>R = 6371                                  // Earth radius in km
+dLat = toRad(lat2 − lat1)
+dLng = toRad(lng2 − lng1)
+a    = sin²(dLat/2) + cos(lat1)·cos(lat2)·sin²(dLng/2)
+km   = 2R · asin(√a)
+return round(km, 1)</code></pre>
+  <h3>Guards</h3>
+  <ul>
+    <li>Any missing / empty input ⇒ <code>null</code> (UI hides the chip).</li>
+    <li>Branch coords from <code>branch.direction_latitude / direction_longitude</code>.</li>
+    <li>User coords from <code>session.userLocation.lat / lng</code>.</li>
+  </ul>
+  <p class="small">Implementation: <code>api/Helpers/distance.js · kmBetween()</code>.</p>
+</section>
+
+<!-- 28 ─ CALC / DELIVERY TIME ──────────────────────────────────── -->
+<section class="slide">
+  <div class="crumbs">Calculations <b>/</b> Delivery time</div>
+  <h1>Delivery-time — exact legacy formula</h1>
+  <p>Ports <code>Commonquery::getAdvancedTime</code> + <code>displayRealOrderTime</code> from the legacy <code>eatndealclean</code> webordering. No distance estimate, no fallback — <b>if it's 0 in the DB, it shows 0</b>.</p>
+  <pre><code>total_min  =  baseTime
+           +  valueTime
+           +  volumeTime
+           +  advanced_order_waiting_time_minute (stored on the order)</code></pre>
+  <h3>baseTime — branch cooking baseline</h3>
+  <p><code>branch.delivery_waiting_time</code> stored as <code>D:H:M</code> by admin. Parsed via:</p>
+  <pre><code>parts = value.split(':')
+3 parts → mins = parts[2] + parts[1] × 60   // last + middle×60
+2 parts → mins = parts[1] + parts[0] × 60   // H:M
+1 part  → mins = parts[0]                   // bare integer
+0 / unset / null → null  (chip hides)</code></pre>
+  <p>Matches legacy's <code>date('s') + date('i') × 60</code> reading of strtotime — the admin's "minutes" land in the seconds slot, "hours" in the minutes slot.</p>
+  <h3>valueTime — order-value rule</h3>
+  <pre><code>SELECT time_for_new_order_min FROM advance_order_waiting_time
+ WHERE status=1 AND order_type=1
+   AND service_type = 4               -- 4 = delivery, 1 = pickup
+   AND branch_id = ? AND company_id = ?
+   AND min_subtotal_amount &lt;= cart_total
+   AND max_subtotal_amount &gt;= cart_total
+ ORDER BY id ASC LIMIT 1</code></pre>
+  <h3>volumeTime — order-volume rule</h3>
+  <pre><code>count = SELECT COUNT(*) FROM orders
+         WHERE branch_id = ? AND company_id = ?
+           AND status IN (4, 5, 6, 10)
+           AND DATE(created_at) = CURRENT_DATE
+
+SELECT time_for_new_order_min FROM advance_order_waiting_time
+ WHERE status=1 AND order_type=2
+   AND service_type = 4
+   AND min_subtotal_amount &lt;= count
+   AND max_subtotal_amount &gt;= count
+ LIMIT 1</code></pre>
+  <h3>Display — range, not single value</h3>
+  <p>Listing pages don't have the cart total or live volume count, so they can't pick the EXACT row. Instead they show the worst-case range:</p>
+  <pre><code>low  = baseTime
+high = baseTime + sum(time_for_new_order_min)
+       across every active advance row for this branch+service
+
+Examples:
+  base 20, no advance rules        → "20 min"
+  base 20, value 15 + volume 20    → "20-55 min"
+  base 0                            → null (chip hides)</code></pre>
+  <h3>One common entry point</h3>
+  <p>Every page (list / detail / favourites / dishes) calls:</p>
+  <pre><code>const times = await OrderTime.computeForBranches(branchRows);
+//   times[branchId] = { delivery: "20-55 min" | null,
+//                       pickup:   "30-60 min" | null }</code></pre>
+  <p>One round trip for the whole page. Controllers just map <code>branch_id → t.delivery / t.pickup</code>; the parse + lookup + format dance lives ONLY in <code>orderTime.js</code>.</p>
+  <p class="small">Implementation: <code>api/Helpers/orderTime.js</code> · <code>computeForBranches(rows)</code> · for checkout: <code>totalMinutes(branch, cartTotal, mode)</code>.</p>
+</section>
+
+<!-- 29 ─ CALC / PICKUP TIME ────────────────────────────────────── -->
+<section class="slide">
+  <div class="crumbs">Calculations <b>/</b> Pickup time</div>
+  <h1>Pickup-time — same formula, different columns</h1>
+  <p>Identical math to delivery, just with the pickup-side data:</p>
+  <table>
+    <thead><tr><th>Piece</th><th>Delivery</th><th>Pickup</th></tr></thead>
+    <tbody>
+      <tr><td>Branch baseline column</td><td><code>delivery_waiting_time</code></td><td><code>pickup_waiting_time</code></td></tr>
+      <tr><td>service_type code in threshold table</td><td>4</td><td>1</td></tr>
+      <tr><td>orders.serve_type at placement</td><td>3</td><td>2</td></tr>
+    </tbody>
+  </table>
+  <p>Everything else — <code>valueTime</code>, <code>volumeTime</code>, sum, format — is identical. <b>No</b> Haversine, <b>no</b> distance × km/min math. If the merchant didn't set <code>pickup_waiting_time</code>, the pickup chip hides (or shows "0 mins" at checkout).</p>
+  <p class="small">Implementation: <code>orderTime.baseMinutes(branch, 'pickup')</code> · <code>orderTime.advancedTime(branchId, companyId, cartTotal, 'pickup')</code>.</p>
+</section>
+
+<!-- 30 ─ CALC / OPEN-CLOSED ────────────────────────────────────── -->
+<section class="slide">
+  <div class="crumbs">Calculations <b>/</b> Open / Closed</div>
+  <h1>Is the branch open right now?</h1>
+  <pre><code>// 1. Flag check
+if (branch.open_as_usual === 0 AND branch.closed_until in the future)
+   ⇒ CLOSED
+else                              ⇒ pass
+
+// 2. Clock check
+open  = HH:MM from branch.start_time
+close = HH:MM from branch.end_time
+now   = local now
+
+If open == close OR either missing  ⇒ OPEN (treat as always-on)
+If open &lt; close (e.g. 11:00–22:00) ⇒ OPEN iff now ∈ [open, close)
+If open &gt; close (e.g. 18:00–02:00) ⇒ OPEN iff now ≥ open OR now &lt; close</code></pre>
+  <p>Result used as the "Closed" label on cards + the "Open now" filter chip.</p>
+  <p class="small">Implementation: <code>marketplace.isOpenNow(branch)</code> · helpers: <code>isBranchOpen</code>, <code>clockMinutes</code>.</p>
+</section>
+
+<!-- 31 ─ CALC / PRICE CHAIN ───────────────────────────────────── -->
+<section class="slide">
+  <div class="crumbs">Calculations <b>/</b> Price pick chain</div>
+  <h1>Which price column does the UI show?</h1>
+  <p>Many real rows haven't been re-priced for the marketplace yet — <code>marketplace_price</code> is often 0. Falling back to the next column means we always show <b>something</b> sensible.</p>
+  <pre><code>pickPrice(product):
+  candidates = [
+    product.marketplace_price,       // explicit marketplace listing
+    product.online_platform_price,   // existing webordering price
+    product.price_after_tax,         // in-store price
+  ]
+  for v in candidates:
+      n = Number(v)
+      if isFinite(n) AND n &gt; 0:
+          return round(n, 2)
+  return 0</code></pre>
+  <p>Same chain feeds: card prices, product page basePrice, price-bucket filter (low ≤ £6 / mid £6-12 / high &gt; £12).</p>
+  <p class="small">Implementation: <code>marketplace.pickPrice(row)</code>.</p>
+</section>
+
+<!-- 32 ─ CALC / HAS_OFFER ──────────────────────────────────────── -->
+<section class="slide">
+  <div class="crumbs">Calculations <b>/</b> has_offer</div>
+  <h1>"Has offer" — 4-way EXISTS</h1>
+  <p>One SQL flag per restaurant card, true if ANY of the four conditions holds:</p>
+  <pre><code>EXISTS (SELECT 1 FROM store_offer_banner_table sob
+        WHERE sob.company_id = c.id
+          AND sob.publish_online = 1
+          AND (sob.start_date IS NULL OR sob.start_date &lt;= CURRENT_DATE)
+          AND (sob.end_date   IS NULL OR sob.end_date   &gt;= CURRENT_DATE))
+OR EXISTS (SELECT 1 FROM coupons cp
+        WHERE cp.company_id = c.id
+          AND cp.is_active = 1
+          AND cp.platform IN (1, 2)
+          AND (cp.expiry_date IS NULL OR cp.expiry_date &gt;= CURRENT_DATE))
+OR EXISTS (SELECT 1 FROM discounts d
+        WHERE d.company_id = c.id
+          AND d.status = 1
+          AND (d.start_date IS NULL OR d.start_date &lt;= CURRENT_DATE)
+          AND (d.end_date   IS NULL OR d.end_date   &gt;= CURRENT_DATE))
+OR EXISTS (SELECT 1 FROM products op
+        WHERE op.company_id = c.id
+          AND op.show_marketplace = 1
+          AND op.status = '1'
+          AND op.offer IS NOT NULL AND op.offer &lt;&gt; '' AND op.offer &lt;&gt; '0')</code></pre>
+  <p>The badge label + count come from a second pass (<code>offerSummaries</code>) — the largest %-off wins, else "Free delivery", else "£N OFF", else "Offer".</p>
+</section>
+
+<!-- 33 ─ CALC / AVG RATING ─────────────────────────────────────── -->
+<section class="slide">
+  <div class="crumbs">Calculations <b>/</b> Rating</div>
+  <h1>Restaurant rating</h1>
+  <pre><code>avg_rating  = ROUND(AVG(rr.rating), 1)
+rating_count = COUNT(*)
+
+  FROM review_rating rr
+ WHERE rr.company_id = c.id
+   AND rr.publish_online = 1</code></pre>
+  <h3>Display</h3>
+  <ul>
+    <li>Card: shows <code>avg_rating</code>; falls back to <b>4.4</b> when no published rows (avoids zero stars on a brand-new restaurant).</li>
+    <li>Detail page: also shows "(N+)" rating count when count &gt; 0.</li>
+    <li>Filter "Rating ≥ 4.0" uses the real avg — fallback 4.4 still applies if no rows, which means an unrated restaurant can pass a 4.0+ filter.</li>
+  </ul>
+</section>
+
+<!-- 34 ─ CALC / VEG NON-VEG ───────────────────────────────────── -->
+<section class="slide">
+  <div class="crumbs">Calculations <b>/</b> Veg classification</div>
+  <h1>Veg / Non-veg / Pure-veg</h1>
+  <h3>Per product</h3>
+  <p><code>products.veg_non_veg</code>: 1 ⇒ veg · 2 ⇒ non-veg · 3 ⇒ egg/other. We treat <b>1 only</b> as veg.</p>
+  <h3>Per restaurant card</h3>
+  <pre><code>has_veg     = EXISTS(product WHERE company_id = c.id AND veg_non_veg = 1
+                              AND show_marketplace = 1 AND status='1')
+has_non_veg = EXISTS(product WHERE company_id = c.id AND veg_non_veg &lt;&gt; 1
+                              AND show_marketplace = 1 AND status='1')
+
+vegType =
+   'pure-veg' if has_veg AND NOT has_non_veg
+   'non-veg'  if has_non_veg                  (one non-veg ⇒ non-veg overall,
+                                               FSSAI-style)
+   null       if neither (no marketplace products yet)</code></pre>
+  <p>The "Pure veg only" filter keeps only <code>pure-veg</code> restaurants.</p>
+</section>
+
+<!-- 35 ─ END ──────────────────────────────────────────────────── -->
+<section class="slide cover">
+  <h1>That's the full map.</h1>
+  <h2>Every page, every column, every formula.</h2>
+  <p style="color:rgba(255,255,255,0.85)">For deeper drill-ins (cart / checkout / OTP flow / Yii image upload tree), spin a focused deck. This one covers everything the marketplace renders today.</p>
+  <p class="small" style="color:rgba(255,255,255,0.55);margin-top:30px">Open this file in any browser. Use ◀ ▶ keys or the bottom bar. Print to PDF if a static handout is needed.</p>
+</section>
+
+</div>
+
+<div class="nav" role="navigation" aria-label="Slide controls">
+  <button id="prev" type="button" aria-label="Previous slide">◀ Prev</button>
+  <span class="count"><span id="cur">1</span> / <span id="total">0</span></span>
+  <button id="next" type="button" aria-label="Next slide">Next ▶</button>
+</div>
+
+<script>
+(function () {
+  var slides = document.querySelectorAll('.slide');
+  var cur = 0;
+  document.getElementById('total').textContent = slides.length;
+
+  function show(i) {
+    i = Math.max(0, Math.min(slides.length - 1, i));
+    slides[cur].classList.remove('is-active');
+    slides[i].classList.add('is-active');
+    slides[i].scrollTop = 0;
+    cur = i;
+    document.getElementById('cur').textContent = (i + 1);
+    try { history.replaceState(null, '', '#s' + (i + 1)); } catch (e) {}
+  }
+  function next() { show(cur + 1); }
+  function prev() { show(cur - 1); }
+
+  document.getElementById('next').addEventListener('click', next);
+  document.getElementById('prev').addEventListener('click', prev);
+
+  document.addEventListener('keydown', function (ev) {
+    if (ev.target && /input|textarea/i.test(ev.target.tagName)) { return; }
+    if (ev.key === 'ArrowRight' || ev.key === 'PageDown' || ev.key === ' ') { ev.preventDefault(); next(); }
+    else if (ev.key === 'ArrowLeft' || ev.key === 'PageUp') { ev.preventDefault(); prev(); }
+    else if (ev.key === 'Home') { ev.preventDefault(); show(0); }
+    else if (ev.key === 'End')  { ev.preventDefault(); show(slides.length - 1); }
+  });
+
+  // Open at slide # from the URL fragment (#s5).
+  var m = (location.hash || '').match(/^#s(\d+)$/);
+  if (m) { show(parseInt(m[1], 10) - 1); }
+})();
+</script>
+</body>
+</html>

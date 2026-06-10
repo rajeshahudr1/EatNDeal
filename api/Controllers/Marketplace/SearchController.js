@@ -166,10 +166,7 @@ async function search(req, res) {
             .innerJoin('company as c', 'c.id', 'cat.company_id')
             .select('cat.id', 'cat.name', 'cat.company_id', 'cat.category_image', 'c.business_name', 'c.domain_name')
             .where(tokenClause('cat.name'))
-            .andWhere('c.is_marketplace', 1)
-            .andWhere('c.is_active', 1)
-            .andWhere(function () { this.where('c.is_maintenance', 0).orWhereNull('c.is_maintenance'); })
-            .whereNull('c.deleted_at')
+            .modify(M.eligibleCompanyScope, 'c')
             .andWhere('cat.is_display_application_menu', 1);
 
         // Global MARKETPLACE categories (the home cuisine pills) — a
@@ -199,16 +196,12 @@ async function search(req, res) {
             .where(tokenClause('p.name'))
             .andWhere('p.show_marketplace', 1)
             .andWhere('p.status', '1')
-            .andWhere('c.is_marketplace', 1)
-            .andWhere('c.is_active', 1)
-            .whereNull('c.deleted_at');
+            .modify(M.eligibleCompanyScope, 'c');
 
         const matchedRests = await db('company as c')
             .select('c.id')
             .where(tokenClause('c.business_name'))
-            .andWhere('c.is_marketplace', 1)
-            .andWhere('c.is_active', 1)
-            .whereNull('c.deleted_at');
+            .modify(M.eligibleCompanyScope, 'c');
 
         // Working sets as JS Sets for O(1) membership + dedupe.
         const catRowsById = new Map();   // id → {id, name, company_id}
@@ -230,9 +223,7 @@ async function search(req, res) {
                 .andWhere('ppc.status', '1')
                 .andWhere('p.show_marketplace', 1)
                 .andWhere('p.status', '1')
-                .andWhere('c.is_marketplace', 1)
-                .andWhere('c.is_active', 1)
-                .whereNull('c.deleted_at');
+                .modify(M.eligibleCompanyScope, 'c');
             for (const r of expProds) {
                 prodIds.add(String(r.product_id));
                 restIds.add(String(r.company_id));

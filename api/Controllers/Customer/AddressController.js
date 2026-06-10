@@ -37,30 +37,7 @@ const TABLE        = 'customer_address';
 const STATUS_ACTIVE  = 1;
 const STATUS_DELETED = 2;
 
-/**
- * loadActiveCustomer
- *
- * What:  Fetches the marketplace customer (company_id IS NULL) by id and
- *        confirms it's allowed to manage addresses. Returns { row } on
- *        success or { error: {msg, status} } for the caller to relay.
- * Type:  READ.
- */
-async function loadActiveCustomer(customerId) {
-    const row = await db('customer')
-        .where({ id: customerId })
-        .whereNull('company_id')
-        .first();
-    if (!row) { return { error: { msg: MSG.resource.notFound, status: 404 } }; }
-
-    const state = customers.classify(row);
-    if (state === 'deleted' || state === 'disabled') {
-        return { error: { msg: MSG.auth.accountDisabled, status: 403 } };
-    }
-    if (state === 'banned') {
-        return { error: { msg: MSG.auth.accountBanned, status: 403 } };
-    }
-    return { row };
-}
+// Marketplace-customer guard is shared — see Helpers/customerLookup.
 
 /**
  * mapAddress
@@ -94,12 +71,8 @@ function mapAddress(r, originLat, originLng) {
     };
 }
 
-// Coerce a possibly-empty query/body coordinate to a number or null.
-function numOrNull(v) {
-    if (v == null || v === '') { return null; }
-    const n = Number(v);
-    return Number.isFinite(n) ? n : null;
-}
+// numOrNull lives in customerLookup as coerceNum — alias for readability.
+const numOrNull = customers.coerceNum;
 
 /**
  * list
@@ -118,7 +91,7 @@ async function list(req, res) {
         const lat = numOrNull(req.query.lat);
         const lng = numOrNull(req.query.lng);
 
-        const { row: cust, error } = await loadActiveCustomer(customer_id);
+        const { row: cust, error } = await customers.loadMarketplaceCustomer(customer_id);
         if (error) { return H.errorResponse(res, error.msg, error.status); }
 
         const rows = await db(TABLE)
@@ -154,7 +127,7 @@ async function save(req, res) {
         const b = req.body;
         const customerId = b.customer_id;
 
-        const { error } = await loadActiveCustomer(customerId);
+        const { error } = await customers.loadMarketplaceCustomer(customerId);
         if (error) { return H.errorResponse(res, error.msg, error.status); }
 
         // Build the column set from the validated body. We only write
@@ -252,7 +225,7 @@ async function remove(req, res) {
     try {
         const { customer_id, id } = req.body;
 
-        const { error } = await loadActiveCustomer(customer_id);
+        const { error } = await customers.loadMarketplaceCustomer(customer_id);
         if (error) { return H.errorResponse(res, error.msg, error.status); }
 
         const owned = await db(TABLE)

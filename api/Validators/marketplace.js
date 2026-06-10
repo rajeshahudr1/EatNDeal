@@ -137,6 +137,15 @@ const listQuerySchema = Joi.object({
     // Single-product flags — used by the restaurant detail page.
     recommended: Joi.string().valid('1'),
     featured:    Joi.string().valid('1'),
+
+    // Signed-in customer id (Phase-1 trust model — web supplies it
+    // from session). When present, the controller attaches an
+    // `isFavourite` flag to each restaurant card so the heart icon
+    // can paint filled vs outline without a second request.
+    customer_id: Joi.alternatives().try(
+        Joi.number().integer().positive(),
+        Joi.string().pattern(/^[0-9]+$/),
+    ).messages({ 'alternatives.match': 'Customer id is not valid.' }),
 });
 
 // /api/v1/marketplace/restaurant — single restaurant detail page.
@@ -152,6 +161,12 @@ const detailQuerySchema = Joi.object({
     lat:  Joi.number().min(-90).max(90),
     lng:  Joi.number().min(-180).max(180),
     postcode: Joi.string().trim().max(12).allow(''),
+    // Signed-in customer id — paints the heart icon on the detail
+    // header without a second round trip.
+    customer_id: Joi.alternatives().try(
+        Joi.number().integer().positive(),
+        Joi.string().pattern(/^[0-9]+$/),
+    ).messages({ 'alternatives.match': 'Customer id is not valid.' }),
 });
 
 // /api/v1/marketplace/search — the home page live-filter.

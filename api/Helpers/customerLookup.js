@@ -34,6 +34,7 @@
  */
 
 const { db } = require('../config/db');
+const MSG    = require('./messages');
 
 const TABLE = 'customer';
 
@@ -143,7 +144,90 @@ function publicView(row) {
         image:         row.image != null ? String(row.image) : '',
         loyalty_points: Number(row.loyalty_points) || 0,
         is_registered: Number(row.is_registered) === 1,
+        // The customer's OWN referral code — shown on their Rewards
+        // "Invite & Earn" card so they can share it (legacy webordering
+        // shows it on the profile page). Safe to expose to the owner.
+        referral_code: row.referral_code || '',
     };
+}
+
+// ── Referral code generation (matches legacy common/helper
+//    generateReferralCode) ─────────────────────────────────────────
+// 8 uppercase chars from a set that omits the ambiguous I/O/0/1.
+const REFERRAL_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+function generateReferralCode(length = 8) {
+    const a = REFERRAL_CHARS.split('');
+    for (let i = a.length - 1; i > 0; i--) {            // Fisher-Yates (≈ PHP str_shuffle)
+        const j = Math.floor(Math.random() * (i + 1));
+        const t = a[i]; a[i] = a[j]; a[j] = t;
+    }
+    return a.slice(0, length).join('');
+}
+
+/**
+ * resolveReferrer — given a typed referral code, return the marketplace
+ * customer id that owns it (or null). Global (company_id NULL) lookup —
+ * the marketplace has one customer per person across all restaurants.
+ */
+async function resolveReferrer(referredCode) {
+    const code = String(referredCode || '').trim().toUpperCase();
+    if (!code) { return null; }
+    const { db } = require('../config/db');
+    const row = await db('customer')
+        .whereRaw('UPPER(referral_code) = ?', [code])
+        .whereNull('company_id')
+        .first('id');
+    return row ? String(row.id) : null;
+}
+
+/**
+ * loadMarketplaceCustomer
+ *
+ * What:  THE one guard every authed marketplace endpoint should call
+ *        BEFORE touching customer-scoped data (addresses, favourites,
+ *        orders…). Returns either:
+ *           { row }                       — caller proceeds
+ *           { error: { msg, status } }    — caller relays via H.errorResponse
+ *
+ *        Rules:
+ *          • `company_id IS NULL` — marketplace customer (not a tenant staff
+ *            account).
+ *          • classify(row) gates: disabled / deleted / banned all reject
+ *            with the canonical wording.
+ *
+ *        Was previously duplicated in AddressController + FavouriteController.
+ *        Single source of truth means a future status rule (e.g. "soft-
+ *        suspended" pending KYC) auto-applies everywhere.
+ * Type:  READ.
+ */
+async function loadMarketplaceCustomer(customerId) {
+    const row = await db(TABLE)
+        .where({ id: customerId })
+        .whereNull('company_id')
+        .first();
+    if (!row) { return { error: { msg: MSG.resource.notFound, status: 404 } }; }
+
+    const state = classify(row);
+    if (state === 'deleted' || state === 'disabled') {
+        return { error: { msg: MSG.auth.accountDisabled, status: 403 } };
+    }
+    if (state === 'banned') {
+        return { error: { msg: MSG.auth.accountBanned, status: 403 } };
+    }
+    return { row };
+}
+
+/**
+ * coerceNum
+ *
+ * What:  Number-or-null. Empty / non-numeric inputs return null so the
+ *        caller can decide "treat as missing" instead of getting NaN.
+ * Type:  READ (pure).
+ */
+function coerceNum(v) {
+    if (v == null || v === '') { return null; }
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
 }
 
 module.exports = {
@@ -151,4 +235,8 @@ module.exports = {
     classify,
     publicView,
     normalisePhone,
+    loadMarketplaceCustomer,
+    coerceNum,
+    generateReferralCode,
+    resolveReferrer,
 };

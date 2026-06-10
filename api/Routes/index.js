@@ -181,6 +181,7 @@ const {
     updateProfileSchema,
     updateAvatarSchema,
     meSchema,
+    updateAboutSchema,
     socialSigninSchema,
 }             = require('../Validators/auth');
 
@@ -208,9 +209,342 @@ router.post('/auth/update-avatar',
     validate(updateAvatarSchema),
     AuthCtl.updateAvatar);
 
+// Optional "About You" marketplace profile (customer_profile) backing
+// the account page's "Complete your profile" section. Reuses meSchema for
+// the GET (single customer_id query param).
+router.get('/auth/about',
+    validateQuery(meSchema),
+    AuthCtl.getAbout);
+
+router.post('/auth/update-about',
+    validate(updateAboutSchema),
+    AuthCtl.updateAbout);
+
 router.post('/auth/social-signin',
     validate(socialSigninSchema),
     AuthCtl.socialSignin);
+
+// ── Admin console auth (super-admin / staff + company) ─────────────
+// Powers the admin/ layer (port 4503). Authenticates against the EXISTING
+// live tables: `user` (role 6 = super admin) + `company` (owner login).
+// Public endpoints — the whole point is to sign an admin in.
+const AdminAuthCtl = require('../Controllers/Admin/AuthController');
+const {
+    adminLoginSchema,
+    adminForgotSchema,
+    adminResetSchema,
+    adminProfileSchema,
+    adminChangePasswordSchema,
+} = require('../Validators/adminAuth');
+const { authenticate: adminAuthMw } = require('../Middlewares/auth');
+const { requireRole: adminRequireRole } = require('../Middlewares/requireRole');
+
+router.post('/admin/auth/login',
+    validate(adminLoginSchema),
+    AdminAuthCtl.login);
+
+router.post('/admin/auth/forgot-password',
+    validate(adminForgotSchema),
+    AdminAuthCtl.forgotPassword);
+
+router.post('/admin/auth/reset-password',
+    validate(adminResetSchema),
+    AdminAuthCtl.resetPassword);
+
+// My Profile + Change Password (authenticated admin account)
+router.get('/admin/auth/me',
+    adminAuthMw, adminRequireRole('admin'),
+    AdminAuthCtl.me);
+
+router.post('/admin/auth/profile',
+    adminAuthMw, adminRequireRole('admin'), validate(adminProfileSchema),
+    AdminAuthCtl.updateProfile);
+
+router.post('/admin/auth/change-password',
+    adminAuthMw, adminRequireRole('admin'), validate(adminChangePasswordSchema),
+    AdminAuthCtl.changePassword);
+
+// ── Admin console — loyalty management (JWT-gated) ─────────────────
+// Every endpoint runs: authenticate (Bearer JWT) → requireRole('admin')
+// (both super-admin + company logins carry kind='admin') → controller,
+// which resolves the company scope via Helpers/adminScope. Super admins
+// pass ?company_id= (selector); company logins are pinned to their own.
+const { authenticate }          = require('../Middlewares/auth');
+const { requireRole }           = require('../Middlewares/requireRole');
+const AdminCompaniesCtl         = require('../Controllers/Admin/CompaniesController');
+const AdminLoyaltyCtl           = require('../Controllers/Admin/LoyaltyController');
+
+router.get('/admin/companies',
+    authenticate, requireRole('admin'),
+    AdminCompaniesCtl.list);
+
+const AdminOverviewCtl = require('../Controllers/Admin/OverviewController');
+router.get('/admin/overview',
+    authenticate, requireRole('admin'),
+    AdminOverviewCtl.overview);
+
+// ── Admin console — Store Settings (branch config) ────────────────
+const AdminStoreSettingsCtl = require('../Controllers/Admin/StoreSettingsController');
+const {
+    storeSettingsSchema, storeScopeQuery, websiteStatusSchema,
+    tipsSaveSchema, advanceSaveSchema, advanceDeleteSchema, imageSaveSchema,
+} = require('../Validators/adminStoreSettings');
+router.get('/admin/store-settings',
+    authenticate, requireRole('admin'), validateQuery(storeScopeQuery),
+    AdminStoreSettingsCtl.getSettings);
+router.post('/admin/store-settings',
+    authenticate, requireRole('admin'), validate(storeSettingsSchema),
+    AdminStoreSettingsCtl.saveSettings);
+router.post('/admin/store-settings/website-status',
+    authenticate, requireRole('admin'), validate(websiteStatusSchema),
+    AdminStoreSettingsCtl.saveWebsiteStatus);
+router.post('/admin/store-settings/tips',
+    authenticate, requireRole('admin'), validate(tipsSaveSchema),
+    AdminStoreSettingsCtl.saveTips);
+router.get('/admin/store-settings/advance',
+    authenticate, requireRole('admin'), validateQuery(storeScopeQuery),
+    AdminStoreSettingsCtl.advanceList);
+router.post('/admin/store-settings/advance',
+    authenticate, requireRole('admin'), validate(advanceSaveSchema),
+    AdminStoreSettingsCtl.advanceSave);
+router.post('/admin/store-settings/advance/delete',
+    authenticate, requireRole('admin'), validate(advanceDeleteSchema),
+    AdminStoreSettingsCtl.advanceDelete);
+router.post('/admin/store-settings/image',
+    authenticate, requireRole('admin'), validate(imageSaveSchema),
+    AdminStoreSettingsCtl.saveImage);
+
+const {
+    scopeQuerySchema,
+    cashbackRowSchema,
+    toggleSchema,
+    configSchema,
+    companyConfigSchema,
+    tiersSchema,
+    referralSchema,
+    streakSchema,
+    challengesSchema,
+    eventsSchema,
+    reviewListSchema,
+    reviewApproveSchema,
+    reviewRejectSchema,
+    specialOfferSchema,
+    reviewRewardsSchema,
+    productCashbackSchema,
+    bogofSchema,
+    cmsPageSchema,
+} = require('../Validators/adminLoyalty');
+
+router.get('/admin/loyalty/dashboard',
+    authenticate, requireRole('admin'), validateQuery(scopeQuerySchema),
+    AdminLoyaltyCtl.dashboard);
+
+// Company-level loyalty on/off (gates whether a company sees the Loyalty menu)
+router.post('/admin/loyalty/master-toggle',
+    authenticate, requireRole('admin'), validate(toggleSchema),
+    AdminLoyaltyCtl.masterToggle);
+
+// Company-level loyalty settings (commission % + phone-order toggle)
+router.post('/admin/loyalty/company-config',
+    authenticate, requireRole('admin'), validate(companyConfigSchema),
+    AdminLoyaltyCtl.companyConfigSave);
+
+// Save All — the whole config page in one POST (dynamic nested body; the
+// controller coerces every field safely, so no Joi schema is applied).
+router.post('/admin/loyalty/save-all',
+    authenticate, requireRole('admin'),
+    AdminLoyaltyCtl.saveAll);
+
+// Cashback Rules
+router.get('/admin/loyalty/cashback',
+    authenticate, requireRole('admin'), validateQuery(scopeQuerySchema),
+    AdminLoyaltyCtl.cashbackGet);
+
+router.post('/admin/loyalty/cashback',
+    authenticate, requireRole('admin'), validate(cashbackRowSchema),
+    AdminLoyaltyCtl.cashbackUpsert);
+
+router.delete('/admin/loyalty/cashback/:id',
+    authenticate, requireRole('admin'),
+    AdminLoyaltyCtl.cashbackDelete);
+
+router.post('/admin/loyalty/cashback/toggle',
+    authenticate, requireRole('admin'), validate(toggleSchema),
+    AdminLoyaltyCtl.cashbackToggle);
+
+router.post('/admin/loyalty/config',
+    authenticate, requireRole('admin'), validate(configSchema),
+    AdminLoyaltyCtl.configSave);
+
+// Tier Config
+router.get('/admin/loyalty/tiers',
+    authenticate, requireRole('admin'), validateQuery(scopeQuerySchema),
+    AdminLoyaltyCtl.tiersGet);
+
+router.post('/admin/loyalty/tiers',
+    authenticate, requireRole('admin'), validate(tiersSchema),
+    AdminLoyaltyCtl.tiersSave);
+
+router.post('/admin/loyalty/tiers/toggle',
+    authenticate, requireRole('admin'), validate(toggleSchema),
+    AdminLoyaltyCtl.tiersToggle);
+
+// Referral & Streak
+router.get('/admin/loyalty/referral-streak',
+    authenticate, requireRole('admin'), validateQuery(scopeQuerySchema),
+    AdminLoyaltyCtl.referralStreakGet);
+
+router.post('/admin/loyalty/referral',
+    authenticate, requireRole('admin'), validate(referralSchema),
+    AdminLoyaltyCtl.referralSave);
+
+router.post('/admin/loyalty/referral/toggle',
+    authenticate, requireRole('admin'), validate(toggleSchema),
+    AdminLoyaltyCtl.referralToggle);
+
+router.post('/admin/loyalty/streak',
+    authenticate, requireRole('admin'), validate(streakSchema),
+    AdminLoyaltyCtl.streakUpsert);
+
+router.delete('/admin/loyalty/streak/:id',
+    authenticate, requireRole('admin'),
+    AdminLoyaltyCtl.streakDelete);
+
+router.post('/admin/loyalty/streak/toggle',
+    authenticate, requireRole('admin'), validate(toggleSchema),
+    AdminLoyaltyCtl.streakToggle);
+
+// Challenges (Smart Campaigns)
+router.get('/admin/loyalty/challenges',
+    authenticate, requireRole('admin'), validateQuery(scopeQuerySchema),
+    AdminLoyaltyCtl.challengesGet);
+
+router.post('/admin/loyalty/challenges',
+    authenticate, requireRole('admin'), validate(challengesSchema),
+    AdminLoyaltyCtl.challengesSave);
+
+router.post('/admin/loyalty/challenges/toggle',
+    authenticate, requireRole('admin'), validate(toggleSchema),
+    AdminLoyaltyCtl.challengesToggle);
+
+// Event Rewards
+router.get('/admin/loyalty/events',
+    authenticate, requireRole('admin'), validateQuery(scopeQuerySchema),
+    AdminLoyaltyCtl.eventsGet);
+
+router.post('/admin/loyalty/events',
+    authenticate, requireRole('admin'), validate(eventsSchema),
+    AdminLoyaltyCtl.eventsSave);
+
+router.post('/admin/loyalty/events/toggle',
+    authenticate, requireRole('admin'), validate(toggleSchema),
+    AdminLoyaltyCtl.eventsToggle);
+
+// Review Claims (approve / reject)
+router.get('/admin/loyalty/review-claims',
+    authenticate, requireRole('admin'), validateQuery(reviewListSchema),
+    AdminLoyaltyCtl.reviewClaimsGet);
+
+router.post('/admin/loyalty/review-claims/approve',
+    authenticate, requireRole('admin'), validate(reviewApproveSchema),
+    AdminLoyaltyCtl.reviewApprove);
+
+router.post('/admin/loyalty/review-claims/reject',
+    authenticate, requireRole('admin'), validate(reviewRejectSchema),
+    AdminLoyaltyCtl.reviewReject);
+
+// Customer Segments (read-only analytics)
+router.get('/admin/loyalty/segments',
+    authenticate, requireRole('admin'), validateQuery(scopeQuerySchema),
+    AdminLoyaltyCtl.segmentsGet);
+
+// Section 8 — Special Offer (date-based cashback rows)
+router.get('/admin/loyalty/special-offer',
+    authenticate, requireRole('admin'), validateQuery(scopeQuerySchema),
+    AdminLoyaltyCtl.specialOfferGet);
+router.post('/admin/loyalty/special-offer',
+    authenticate, requireRole('admin'), validate(specialOfferSchema),
+    AdminLoyaltyCtl.specialOfferUpsert);
+router.delete('/admin/loyalty/special-offer/:id',
+    authenticate, requireRole('admin'), validateQuery(scopeQuerySchema),
+    AdminLoyaltyCtl.specialOfferDelete);
+router.post('/admin/loyalty/special-offer/toggle',
+    authenticate, requireRole('admin'), validate(toggleSchema),
+    AdminLoyaltyCtl.specialOfferToggle);
+
+// Section 6 — Review Cashback rewards (8 review/share types)
+router.get('/admin/loyalty/review-rewards',
+    authenticate, requireRole('admin'), validateQuery(scopeQuerySchema),
+    AdminLoyaltyCtl.reviewRewardsGet);
+router.post('/admin/loyalty/review-rewards',
+    authenticate, requireRole('admin'), validate(reviewRewardsSchema),
+    AdminLoyaltyCtl.reviewRewardsSave);
+router.post('/admin/loyalty/review-rewards/toggle',
+    authenticate, requireRole('admin'), validate(toggleSchema),
+    AdminLoyaltyCtl.reviewRewardsToggle);
+
+// Section 4 — Product Cashback (rule + selected products)
+router.get('/admin/loyalty/product-cashback',
+    authenticate, requireRole('admin'), validateQuery(scopeQuerySchema),
+    AdminLoyaltyCtl.productCashbackGet);
+router.post('/admin/loyalty/product-cashback',
+    authenticate, requireRole('admin'), validate(productCashbackSchema),
+    AdminLoyaltyCtl.productCashbackUpsert);
+router.delete('/admin/loyalty/product-cashback/:id',
+    authenticate, requireRole('admin'), validateQuery(scopeQuerySchema),
+    AdminLoyaltyCtl.productCashbackDelete);
+router.post('/admin/loyalty/product-cashback/toggle',
+    authenticate, requireRole('admin'), validate(toggleSchema),
+    AdminLoyaltyCtl.productCashbackToggle);
+
+// Section 7 — Buy X Get Y (BOGO)
+router.get('/admin/loyalty/bogof',
+    authenticate, requireRole('admin'), validateQuery(scopeQuerySchema),
+    AdminLoyaltyCtl.bogofGet);
+router.post('/admin/loyalty/bogof',
+    authenticate, requireRole('admin'), validate(bogofSchema),
+    AdminLoyaltyCtl.bogofUpsert);
+router.delete('/admin/loyalty/bogof/:id',
+    authenticate, requireRole('admin'), validateQuery(scopeQuerySchema),
+    AdminLoyaltyCtl.bogofDelete);
+router.post('/admin/loyalty/bogof/toggle',
+    authenticate, requireRole('admin'), validate(toggleSchema),
+    AdminLoyaltyCtl.bogofToggle);
+
+// Review CMS Pages (loyalty_cms_pages — per review-type instructional content)
+router.get('/admin/loyalty/cms-pages',
+    authenticate, requireRole('admin'), validateQuery(scopeQuerySchema),
+    AdminLoyaltyCtl.cmsPagesGet);
+router.post('/admin/loyalty/cms-pages',
+    authenticate, requireRole('admin'), validate(cmsPageSchema),
+    AdminLoyaltyCtl.cmsPageSave);
+
+// ── Products (Menu → Item) — Phase 1: the list page ────────────────
+// Dynamic bodies (id/ids arrays, items arrays); the controller coerces every
+// field safely, so no Joi schema is applied.
+const AdminProductsCtl = require('../Controllers/Admin/ProductsController');
+router.get ('/admin/products',               authenticate, requireRole('admin'), AdminProductsCtl.list);
+router.get ('/admin/products/get',           authenticate, requireRole('admin'), AdminProductsCtl.getProduct);
+router.get ('/admin/products/meta',          authenticate, requireRole('admin'), AdminProductsCtl.formMeta);
+router.post('/admin/products/save',          authenticate, requireRole('admin'), AdminProductsCtl.save);
+
+// Marketplace categories (GLOBAL master — not company-scoped)
+const AdminMpCatCtl = require('../Controllers/Admin/MarketplaceCategoriesController');
+router.get ('/admin/marketplace-categories',        authenticate, requireRole('admin'), AdminMpCatCtl.list);
+router.get ('/admin/marketplace-categories/get',    authenticate, requireRole('admin'), AdminMpCatCtl.getCategory);
+router.post('/admin/marketplace-categories/save',   authenticate, requireRole('admin'), AdminMpCatCtl.save);
+router.post('/admin/marketplace-categories/delete', authenticate, requireRole('admin'), AdminMpCatCtl.remove);
+router.post('/admin/marketplace-categories/status', authenticate, requireRole('admin'), AdminMpCatCtl.statusToggle);
+router.get ('/admin/marketplace-categories/companies',   authenticate, requireRole('admin'), AdminMpCatCtl.companies);
+router.get ('/admin/marketplace-categories/restaurants', authenticate, requireRole('admin'), AdminMpCatCtl.restaurants);
+router.post('/admin/marketplace-categories/assign',      authenticate, requireRole('admin'), AdminMpCatCtl.assign);
+router.post('/admin/marketplace-categories/reorder',     authenticate, requireRole('admin'), AdminMpCatCtl.reorder);
+router.post('/admin/products/price',         authenticate, requireRole('admin'), AdminProductsCtl.updatePrice);
+router.post('/admin/products/bulk-price',    authenticate, requireRole('admin'), AdminProductsCtl.bulkPrice);
+router.post('/admin/products/marketplace',   authenticate, requireRole('admin'), AdminProductsCtl.marketplaceToggle);
+router.post('/admin/products/status',        authenticate, requireRole('admin'), AdminProductsCtl.updateStatus);
+router.post('/admin/products/delete',        authenticate, requireRole('admin'), AdminProductsCtl.remove);
+router.post('/admin/products/online-prices', authenticate, requireRole('admin'), AdminProductsCtl.bulkOnlinePrice);
 
 // ── Customer saved addresses ───────────────────────────────────────
 // The signed-in customer's address book (Home / Work / ...) backing the
@@ -234,6 +568,248 @@ router.post('/customer/address/save',
 router.post('/customer/address/delete',
     validate(addressDeleteSchema),
     AddressCtl.remove);
+
+// ── Customer favourite restaurants (heart icon) ────────────────────
+// Signed-in only. The web layer supplies customer_id from session;
+// the validator rejects requests with no id.
+const FavouriteCtl = require('../Controllers/Customer/FavouriteController');
+const {
+    favouriteListSchema,
+    favouriteToggleSchema,
+} = require('../Validators/favourite');
+
+router.get('/customer/favourites',
+    validateQuery(favouriteListSchema),
+    FavouriteCtl.list);
+
+router.post('/customer/favourite/toggle',
+    validate(favouriteToggleSchema),
+    FavouriteCtl.toggle);
+
+// ── Customer cart (signed-in marketplace customers only) ───────────
+// Phase 2A.3 — read-only. Write endpoints (add / update / remove /
+// place) land in 2A.4+ once this read path is verified.
+const CartCtl = require('../Controllers/Customer/CartController');
+const {
+    cartGetSchema,
+    cartAddSchema,
+    cartUpdateQtySchema,
+    cartRemoveItemSchema,
+    cartClearSchema,
+    cartSetModeSchema,
+    cartSetAddressSchema,
+    cartSetScheduleSchema,
+    cartSetInstructionsSchema,
+    cartApplyCouponSchema,
+    cartRemoveCouponSchema,
+    cartApplyVoucherSchema,
+    cartRemoveVoucherSchema,
+    cartApplyLoyaltySchema,
+    cartRemoveLoyaltySchema,
+    cartSetCharitySchema,
+} = require('../Validators/cart');
+
+router.get('/customer/cart',
+    validateQuery(cartGetSchema),
+    CartCtl.get);
+
+router.get('/customer/cart/count',
+    validateQuery(cartGetSchema),
+    CartCtl.count);
+
+router.get('/customer/cart/promotions',
+    validateQuery(cartGetSchema),
+    CartCtl.promotions);
+
+router.post('/customer/cart/add',
+    validate(cartAddSchema),
+    CartCtl.add);
+
+router.post('/customer/cart/update-qty',
+    validate(cartUpdateQtySchema),
+    CartCtl.updateQty);
+
+router.post('/customer/cart/remove-item',
+    validate(cartRemoveItemSchema),
+    CartCtl.removeItem);
+
+router.post('/customer/cart/clear',
+    validate(cartClearSchema),
+    CartCtl.clear);
+
+router.post('/customer/cart/set-mode',
+    validate(cartSetModeSchema),
+    CartCtl.setMode);
+
+router.post('/customer/cart/set-address',
+    validate(cartSetAddressSchema),
+    CartCtl.setAddress);
+
+router.post('/customer/cart/set-schedule',
+    validate(cartSetScheduleSchema),
+    CartCtl.setSchedule);
+
+router.post('/customer/cart/set-instructions',
+    validate(cartSetInstructionsSchema),
+    CartCtl.setInstructions);
+
+router.post('/customer/cart/apply-coupon',
+    validate(cartApplyCouponSchema),
+    CartCtl.applyCoupon);
+
+router.post('/customer/cart/remove-coupon',
+    validate(cartRemoveCouponSchema),
+    CartCtl.removeCoupon);
+
+router.post('/customer/cart/apply-voucher',
+    validate(cartApplyVoucherSchema),
+    CartCtl.applyVoucher);
+
+router.post('/customer/cart/remove-voucher',
+    validate(cartRemoveVoucherSchema),
+    CartCtl.removeVoucher);
+
+router.post('/customer/cart/apply-loyalty',
+    validate(cartApplyLoyaltySchema),
+    CartCtl.applyLoyalty);
+
+router.post('/customer/cart/remove-loyalty',
+    validate(cartRemoveLoyaltySchema),
+    CartCtl.removeLoyalty);
+
+router.post('/customer/cart/set-charity',
+    validate(cartSetCharitySchema),
+    CartCtl.setCharity);
+
+// ── Customer orders (place + list + detail) ─────────────────────────
+// Phase-2D ships only /place. List + detail land in Phase-2E.
+const OrderCtl = require('../Controllers/Customer/OrderController');
+const {
+    orderPlaceSchema,
+    orderListSchema,
+    orderDetailSchema,
+    orderStatusSchema,
+    orderReorderSchema,
+    orderReportIssueSchema,
+    orderIssueResponseSchema,
+} = require('../Validators/order');
+
+router.post('/customer/order/place',
+    validate(orderPlaceSchema),
+    OrderCtl.place);
+
+router.get('/customer/orders',
+    validateQuery(orderListSchema),
+    OrderCtl.list);
+
+router.get('/customer/order',
+    validateQuery(orderDetailSchema),
+    OrderCtl.detail);
+
+router.get('/customer/order/status',
+    validateQuery(orderStatusSchema),
+    OrderCtl.status);
+
+router.post('/customer/order/reorder',
+    validate(orderReorderSchema),
+    OrderCtl.reorder);
+
+router.post('/customer/order/report-issue',
+    validate(orderReportIssueSchema),
+    OrderCtl.reportIssue);
+
+router.get('/customer/order/issue-response',
+    validateQuery(orderIssueResponseSchema),
+    OrderCtl.issueResponse);
+
+// ── Post-order reviews ──────────────────────────────────────────────
+// The customer rates (1–5) + writes text + optional photo for one of their
+// orders (saved to review_rating, one per order). The public list (read by
+// the restaurant page) is registered with the marketplace routes below.
+const ReviewCtl = require('../Controllers/Customer/ReviewController');
+const { submitReviewSchema, listReviewsSchema, cashbackReviewSchema } = require('../Validators/review');
+
+router.post('/customer/review',
+    validate(submitReviewSchema),
+    ReviewCtl.submit);
+
+// Cashback review — customer uploads a screenshot of an external review to
+// earn cashback (customer_review, pending admin approval in the POS).
+router.post('/customer/review-cashback',
+    validate(cashbackReviewSchema),
+    ReviewCtl.submitCashbackReview);
+
+// ── Loyalty (per-restaurant reward cards) ───────────────────────────
+const LoyaltyCtl = require('../Controllers/Customer/LoyaltyController');
+const { walletSchema: loyaltyWalletSchema, balanceSchema: loyaltyBalanceSchema } = require('../Validators/loyalty');
+
+router.get('/customer/loyalty/wallet',
+    validateQuery(loyaltyWalletSchema),
+    LoyaltyCtl.wallet);
+
+router.get('/customer/loyalty/balance',
+    validateQuery(loyaltyBalanceSchema),
+    LoyaltyCtl.balance);
+
+// ── Customer payments (Stripe-backed) ───────────────────────────────
+// createIntent returns a Stripe PaymentIntent the browser confirms via
+// Stripe.js. Verification at order-place time happens inside
+// OrderController.place (server reads the intent + checks succeeded).
+const PaymentCtl = require('../Controllers/Customer/PaymentController');
+const { paymentIntentSchema } = require('../Validators/payment');
+
+router.post('/customer/payment/intent',
+    validate(paymentIntentSchema),
+    PaymentCtl.createIntent);
+
+// Stripe webhook — Stripe POSTs signed events here. No Joi validation:
+// the body is verified via HMAC against req.rawBody (set by the
+// express.json verify hook in api/index.js).
+router.post('/customer/payment/webhook',
+    PaymentCtl.webhook);
+
+// ── Customer saved payment methods (Stripe Customer + SetupIntents) ─
+// list pulls cards from Stripe at read time (no PAN stored locally);
+// setup returns a SetupIntent client_secret for Stripe.js confirm;
+// delete detaches the payment_method from the customer.
+const PaymentMethodCtl = require('../Controllers/Customer/PaymentMethodController');
+const { paymentMethodListSchema,
+        paymentMethodSetupSchema,
+        paymentMethodDeleteSchema } = require('../Validators/paymentMethod');
+
+router.get('/customer/payment-methods',
+    validateQuery(paymentMethodListSchema),
+    PaymentMethodCtl.list);
+
+router.post('/customer/payment-method/setup',
+    validate(paymentMethodSetupSchema),
+    PaymentMethodCtl.setupIntent);
+
+router.post('/customer/payment-method/delete',
+    validate(paymentMethodDeleteSchema),
+    PaymentMethodCtl.remove);
+
+// ── Merchant dashboard (staff-allowlist gated) ──────────────────────
+// Phase 4 ships with an env-driven allowlist (Helpers/merchant.js); a
+// proper mp_merchant_staff table comes in Phase-5.
+const MerchOrdersCtl = require('../Controllers/Merchant/OrdersController');
+const {
+    merchantOrdersSchema,
+    merchantOrderSchema,
+    merchantAdvanceSchema,
+} = require('../Validators/merchant');
+
+router.get('/merchant/orders',
+    validateQuery(merchantOrdersSchema),
+    MerchOrdersCtl.list);
+
+router.get('/merchant/order',
+    validateQuery(merchantOrderSchema),
+    MerchOrdersCtl.detail);
+
+router.post('/merchant/order/advance',
+    validate(merchantAdvanceSchema),
+    MerchOrdersCtl.advance);
 
 // ── Marketplace dashboard (public read-only feeds) ─────────────────
 // Powers the homepage restaurant grid + "For you" dish rail. Both are
@@ -279,6 +855,11 @@ router.get('/marketplace/search',
 
 // Active store-offer banners across marketplace restaurants (home rail).
 router.get('/marketplace/offers', RestaurantsCtl.offers);
+
+// Published reviews for one restaurant (+ average + count) — restaurant page.
+router.get('/marketplace/reviews',
+    validateQuery(listReviewsSchema),
+    ReviewCtl.listForRestaurant);
 
 // ── Future namespaces ──────────────────────────────────────────────
 // router.use('/customer',   require('./customer'));

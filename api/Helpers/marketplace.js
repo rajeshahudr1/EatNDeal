@@ -33,12 +33,14 @@
  * What:  Returns the "best" price for a product row, in priority order:
  *          1. marketplace_price (when > 0)  — the explicit marketplace listing
  *          2. online_platform_price (> 0)   — the existing webordering price
- *          3. price_after_tax (> 0)         — the in-store price
- *          4. 0                             — fallback
- * Why:   Many existing rows haven't been re-priced for marketplace yet
- *        — zero marketplace_price means "use the regular price". Per
- *        the user decision, the dashboard prefers showing SOMETHING
- *        over an embarrassing empty grid.
+ *          3. price_after_tax (> 0)         — the in-store / base price
+ *          4. 0                             — fallback (genuinely no price)
+ *
+ * Why:   Many existing rows haven't been re-priced for marketplace yet.
+ *        Falling back to the regular base price keeps the catalog full
+ *        instead of blanking out 28% of dishes; rows where every column
+ *        is 0 surface as £0.00 — the customer sees the price for what
+ *        it is and the add-to-cart guard still blocks the line.
  * Type:  READ (pure).
  */
 function pickPrice(row) {
@@ -49,6 +51,47 @@ function pickPrice(row) {
         if (Number.isFinite(n) && n > 0) { return Math.round(n * 100) / 100; }
     }
     return 0;
+}
+
+/**
+ * applyProductDiscount
+ *
+ * What:  Reduces a unit price by the product's own discount — EXACT legacy
+ *        webordering rule (CartController::actionAdd lines 711-720):
+ *          discount_type 1 = flat £ off  → price − discount_value
+ *          discount_type 2 = % off       → price − price·value/100
+ *          anything else / value ≤ 0     → no discount
+ *        Never below 0. discount_type/discount_value live on products.
+ * Type:  READ (pure).
+ */
+function applyProductDiscount(price, row) {
+    const base  = Number(price) || 0;
+    const type  = Number(row && row.discount_type) || 0;
+    const value = Number(row && row.discount_value) || 0;
+    if (value <= 0 || base <= 0) { return base; }
+    let net = base;
+    if (type === 1)      { net = base - value; }
+    else if (type === 2) { net = base - (base * value / 100); }
+    if (net < 0) { net = 0; }
+    return Math.round(net * 100) / 100;
+}
+
+/**
+ * discountedPrice — pickPrice with the product discount applied, plus the
+ * original (for the struck-through display). { original, final, hasDiscount,
+ * discountType, discountValue }.
+ * Type:  READ (pure).
+ */
+function discountedPrice(row) {
+    const original = pickPrice(row);
+    const final    = applyProductDiscount(original, row);
+    return {
+        original,
+        final,
+        hasDiscount:   final < original,
+        discountType:  Number(row && row.discount_type) || 0,
+        discountValue: Number(row && row.discount_value) || 0,
+    };
 }
 
 /**
@@ -315,6 +358,35 @@ function normalisePostcode(pc) {
 }
 
 /**
+ * loadActiveBranch
+ *
+ * What:  Returns the canonical row for ONE branch id, joined to its
+ *        company, with the marketplace-eligibility scope chain applied.
+ *        Used by every endpoint that touches a cart's branch — cart
+ *        get/set-mode/set-address, order place, payment intent, webhook.
+ *        Returns null when the branch is missing / soft-deleted / its
+ *        company is offline.
+ *
+ *        Centralises the 4-line eligibility chain that was duplicated
+ *        across 7 controllers — single source of truth.
+ * Type:  READ.
+ *
+ * Usage: const branch = await M.loadActiveBranch(cart.branch_id);
+ *        if (!branch) return H.errorResponse(res, 'Restaurant unavailable.', 404);
+ */
+async function loadActiveBranch(branchId) {
+    const { db } = require('../config/db');
+    if (!branchId) { return null; }
+    const row = await db('branch as b')
+        .innerJoin('company as c', 'c.id', 'b.company_id')
+        .where('b.id', branchId)
+        .modify(eligibleCompanyScope, 'c')
+        .modify(eligibleBranchScope,  'b')
+        .first('b.*');
+    return row || null;
+}
+
+/**
  * matchDeliveryZone
  *
  * What:   Given a customer postcode and a branch's delivery zones
@@ -340,12 +412,202 @@ function matchDeliveryZone(customerPostcode, zones) {
 /**
  * deliveryMinutesFromWaiting
  *
- * What:   Parses a branch.delivery_waiting_time value into whole
- *         minutes. Accepts "HH:MM:SS" / "H:M" / a plain number. Returns
- *         null when it can't yield a sensible (> 0) minute value — the
- *         caller then falls back to the distance estimate.
+ * What:   Parses a branch.delivery_waiting_time / pickup_waiting_time
+ *         value into whole minutes. Matches the legacy webordering
+ *         formula EXACTLY (see common/Commonquery::displayRealOrderTime):
+ *
+ *             total_min  =  (last_part as MINUTES)
+ *                        +  (middle_part as HOURS × 60)
+ *
+ *         i.e. the PHP code does `date('s', strtotime($t))` for the last
+ *         field and `date('i', strtotime($t)) * 60` for the middle field.
+ *         The legacy admin form stores values as `day:hour:minute`, and
+ *         after PHP's strtotime re-reads it as HH:MM:SS, the admin's
+ *         minutes end up in the seconds slot and the admin's hours end
+ *         up in the minutes slot. Reading the LAST field as minutes and
+ *         the MIDDLE field as hours rebuilds the admin's intent.
+ *
+ *         Examples that match the legacy renderer:
+ *           "0:0:25"   → 25 min            (admin set 25 min)
+ *           "0:1:0"    → 60 min            (admin set 1 hour)
+ *           "0:1:30"   → 90 min
+ *           "00:00:20" → 20 min            (real EatNDeal row)
+ *           "00:00:00" → null              (unset)
+ *           "00:30"    → 30 min            (legacy two-part: H:M)
+ *           "45"       → 45 min            (bare integer)
+ *
+ *         Days (the leading field on three-part values) are intentionally
+ *         dropped — matches legacy displayRealOrderTime.
+ *
  * Type:   READ (pure).
  */
+/**
+ * eligibleCompanyScope
+ *
+ * What:  Adds the standard "company is a live marketplace tenant" filter
+ *        to a Knex query — used by RestaurantsController.list/detail,
+ *        ProductsController.list, FavouriteController.list, SearchController,
+ *        OffersController, etc. so they all share one definition of
+ *        eligibility:
+ *
+ *           c.is_marketplace = 1
+ *           c.is_active      = 1
+ *           c.deleted_at IS NULL
+ *           (c.is_maintenance = 0 OR c.is_maintenance IS NULL)
+ *
+ *        Usage (inside a Knex builder):
+ *           db('company as c')
+ *             .modify(M.eligibleCompanyScope, 'c')
+ *             .select(...);
+ *
+ *        The `alias` argument (default 'c') lets callers name the table
+ *        whatever they want; the filter qualifies its columns.
+ * Type:  READ (query-builder modifier).
+ */
+function eligibleCompanyScope(qb, alias) {
+    const a = alias || 'c';
+    qb.where(a + '.is_marketplace', 1)
+      .andWhere(a + '.is_active', 1)
+      .whereNull(a + '.deleted_at')
+      .andWhere(function () { this.where(a + '.is_maintenance', 0).orWhereNull(a + '.is_maintenance'); });
+}
+
+/**
+ * eligibleBranchScope
+ *
+ * What:  Companion to eligibleCompanyScope — adds the branch-side filter
+ *        (`b.status <> '2'` = not soft-deleted). Usually called alongside
+ *        eligibleCompanyScope on every join that includes branches.
+ * Type:  READ (query-builder modifier).
+ */
+function eligibleBranchScope(qb, alias) {
+    const a = alias || 'b';
+    qb.andWhere(a + '.status', '<>', '2');
+}
+
+/**
+ * avgRatingSubq
+ *
+ * What:  Correlated subquery that yields a company's average published
+ *        review rating (1-dp) as `avg_rating`, or NULL when it has no
+ *        reviews. toRestaurantCard reads `row.avg_rating`, so EVERY card
+ *        query (home grid, favourites rail, account favourites…) must
+ *        SELECT this — otherwise the card silently shows no rating even
+ *        for a restaurant that has reviews.
+ * Why:   One definition so a new card surface can't forget it (the
+ *        favourites rail did, which hid real ratings).
+ * Type:  READ (query fragment). `alias` is the company table alias.
+ */
+function avgRatingSubq(dbi, alias) {
+    const a = alias || 'c';
+    return dbi.raw(
+        `(SELECT ROUND(AVG(rr.rating)::numeric, 1)
+            FROM review_rating rr
+           WHERE rr.company_id = ${a}.id
+             AND rr.publish_online = 1) AS avg_rating`
+    );
+}
+
+/**
+ * toRestaurantCard
+ *
+ * What:  Canonical (company,branch) row → public card shape. ONE definition
+ *        of "what a restaurant card looks like" so every surface that
+ *        renders cards (home grid, favourites rail, account favourites,
+ *        future search results, pickup map) shares the exact same fields.
+ *
+ *        Was previously duplicated across:
+ *          • RestaurantsController.list   (inline map)
+ *          • FavouriteController.list     (parallel mapper with subtle
+ *                                          differences — drift risk).
+ *
+ *        Caller supplies the joined DB row (with company + branch
+ *        columns) plus a small opts bag for things the DB row doesn't
+ *        carry (customer location, pre-computed time labels, favourite
+ *        state, offer summaries, postcode zone).
+ *
+ *        Required columns on `row`:
+ *          c.id (company_id), c.business_name, c.domain_name,
+ *          c.business_category,
+ *          b.id (branch_id), b.banner_image, b.business_image,
+ *          b.direction_latitude, b.direction_longitude,
+ *          b.start_time, b.end_time, b.open_as_usual, b.closed_until,
+ *          b.delivery_waiting_time, b.pickup_waiting_time   (for time labels)
+ *
+ *        opts:
+ *          lat, lng              — customer coords (for distance)
+ *          times                 — { delivery, pickup } strings from
+ *                                   OrderTime.computeForBranches
+ *          isFavourite           — bool
+ *          offer / offerCount    — strings from Offers.offerSummaries
+ *          zone                  — matched delivery zone row (from
+ *                                   store_delivery_charge_setup) when
+ *                                   the user supplied a postcode
+ *
+ * Why:   Cards stay visually consistent across pages even when one
+ *        controller adds a new field — adding `rating_count` here once
+ *        means it appears everywhere.
+ * Type:  READ (pure).
+ */
+function toRestaurantCard(row, opts) {
+    opts = opts || {};
+    const distance = require('./distance');
+
+    // Tolerate either { c.id as company_id, b.id as branch_id } aliasing
+    // OR the raw column names — callers vary.
+    const companyId  = row.company_id || row.id;
+    const branchId   = row.branch_id || row.bid || null;
+    const businessName = row.business_name || row.company_name || row.branch_trading_name || row.branch_name || '';
+    const name = String(businessName).trim();
+
+    const lat = opts.lat, lng = opts.lng;
+    const branchLat = row.branch_lat != null ? row.branch_lat : row.direction_latitude;
+    const branchLng = row.branch_lng != null ? row.branch_lng : row.direction_longitude;
+    const km = distance.kmBetween(lat, lng, branchLat, branchLng);
+
+    const times = opts.times || { delivery: null, pickup: null };
+    const zone  = opts.zone || null;
+
+    const avgRating = row.avg_rating != null ? Number(row.avg_rating) : null;
+
+    // Veg classification — only available when the caller pre-computed
+    // the EXISTS flags (used on the main grid; favourites skips it).
+    let vegType = null;
+    if (row.has_veg != null || row.has_non_veg != null) {
+        if (row.has_veg && !row.has_non_veg)       { vegType = 'pure-veg'; }
+        else if (row.has_non_veg)                  { vegType = 'non-veg';  }
+    }
+
+    return {
+        id:               String(companyId),
+        branchId:         branchId ? String(branchId) : null,
+        slug:             row.domain_name ? slugify(row.domain_name) : slugify(name, companyId),
+        name,
+        cuisines:         cuisinesFor({ business_category: row.business_category }),
+        rating:           avgRating,   // null when no published reviews — UI hides the badge (no fake number)
+        isOpen:           isOpenNow(row),
+        tint:             tintFor(companyId),
+        initial:          initialFor(name),
+        distanceKm:       km != null ? km : null,
+        deliveryMinutes:  times.delivery,
+        pickupMinutes:    times.pickup,
+        image:            yiiImageUrl('banner', companyId, row.banner_image)
+                          || yiiImageUrl('logo', companyId, row.business_image)
+                          || null,
+        isFavourite:      !!opts.isFavourite,
+        // Optional bits — only populated when the caller passed them.
+        offer:            opts.offer || null,
+        offerCount:       opts.offerCount || 0,
+        vegType,
+        lat:              branchLat != null && branchLat !== '' ? Number(branchLat) : null,
+        lng:              branchLng != null && branchLng !== '' ? Number(branchLng) : null,
+        deliverable:      opts.postcode ? !!zone : true,
+        deliveryFee:      zone ? Number(zone.charge) : null,
+        minOrder:         zone ? Number(zone.minimum_order) : null,
+        freeDeliveryOver: zone ? Number(zone.free_delivery_above) : null,
+    };
+}
+
 function deliveryMinutesFromWaiting(val) {
     if (val == null || val === '') { return null; }
     const s = String(val).trim();
@@ -353,14 +615,16 @@ function deliveryMinutesFromWaiting(val) {
     const parts = s.split(':').map(n => parseInt(n, 10));
     if (parts.some(isNaN)) { return null; }
     let mins = 0;
-    if (parts.length === 3)      { mins = parts[0] * 60 + parts[1]; }   // H:M:S → ignore seconds
-    else if (parts.length === 2) { mins = parts[0] * 60 + parts[1]; }   // H:M
+    if (parts.length === 3)      { mins = parts[2] + parts[1] * 60; }   // D:H:M → minutes + hours×60
+    else if (parts.length === 2) { mins = parts[1] + parts[0] * 60; }   // H:M  → minutes + hours×60
     else                         { mins = parts[0]; }
     return mins > 0 ? mins : null;
 }
 
 module.exports = {
     pickPrice,
+    applyProductDiscount,
+    discountedPrice,
     tintFor,
     initialFor,
     isBranchOpen,
@@ -373,4 +637,9 @@ module.exports = {
     isVegProduct,
     yiiImageUrl,
     normaliseName,
+    eligibleCompanyScope,
+    eligibleBranchScope,
+    avgRatingSubq,
+    loadActiveBranch,
+    toRestaurantCard,
 };

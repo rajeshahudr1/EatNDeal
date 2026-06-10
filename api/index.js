@@ -125,7 +125,15 @@ app.use(compression({
 app.use(requestId);
 
 // ── Body parsing (JSON + urlencoded, 2 MB cap) ────────────────────
-app.use(express.json({ limit: '2mb' }));
+// `verify` stashes the raw bytes on req.rawBody so Stripe webhook
+// signature verification (Helpers/payments.verifyWebhookSignature) can
+// recompute the HMAC over the exact payload Stripe signed. Without
+// this Express would only give us the parsed JSON and the signature
+// check would never match.
+app.use(express.json({
+    limit: '2mb',
+    verify: (req, res, buf) => { req.rawBody = buf; },
+}));
 app.use(express.urlencoded({ extended: true, limit: '2mb' }));
 
 // ── Static serve: logo + favicon under /brand/* ───────────────────

@@ -36,7 +36,11 @@ const MSG            = require('../../Helpers/messages');
 const { db }         = require('../../config/db');
 const distance       = require('../../Helpers/distance');
 const M              = require('../../Helpers/marketplace');
+const A              = require('../../Helpers/availability');
 const Offers         = require('../../Helpers/offers');
+const OrderTime      = require('../../Helpers/orderTime');
+const StoreHours     = require('../../Helpers/storeHours');
+const Favourites     = require('../Customer/FavouriteController');
 
 /**
  * resolveMpCategoryId
@@ -239,7 +243,7 @@ async function list(req, res) {
         // They drive BOTH the "Price for one" filter and its dynamic
         // facet counts.
         const priceExpr = 'COALESCE(pb.marketplace_price, pb.online_platform_price, pb.price_after_tax, 0)';
-        const priceLowSubq  = db.raw(`EXISTS (SELECT 1 FROM products pb WHERE pb.company_id = c.id AND pb.show_marketplace = 1 AND pb.status = '1' AND ${priceExpr} <= 6) AS has_price_low`);
+        const priceLowSubq  = db.raw(`EXISTS (SELECT 1 FROM products pb WHERE pb.company_id = c.id AND pb.show_marketplace = 1 AND pb.status = '1' AND ${priceExpr} > 0 AND ${priceExpr} <= 6) AS has_price_low`);
         const priceMidSubq  = db.raw(`EXISTS (SELECT 1 FROM products pb WHERE pb.company_id = c.id AND pb.show_marketplace = 1 AND pb.status = '1' AND ${priceExpr} > 6 AND ${priceExpr} <= 12) AS has_price_mid`);
         const priceHighSubq = db.raw(`EXISTS (SELECT 1 FROM products pb WHERE pb.company_id = c.id AND pb.show_marketplace = 1 AND pb.status = '1' AND ${priceExpr} > 12) AS has_price_high`);
 
@@ -267,7 +271,14 @@ async function list(req, res) {
                 'b.open_as_usual',
                 'b.start_time',
                 'b.end_time',
+                // Close-flag + per-service columns for the real open/closed
+                // verdict (Helpers/storeHours), batched across the list.
+                'b.closed', 'b.closed_reopen_date', 'b.clossed_repoen_time', 'b.clossed_text',
+                'b.closed_for', 'b.closed_for_time',
+                'b.show_delivery_option', 'b.show_delivery_option_tab', 'b.delivery_closed_util_date',
+                'b.show_pickup_option', 'b.show_pickup_option_tab', 'b.pickup_closed_util_date',
                 'b.delivery_waiting_time',
+                'b.pickup_waiting_time',
                 'b.branch_description',
                 hasVegSubq,
                 hasNonVegSubq,
@@ -277,11 +288,8 @@ async function list(req, res) {
                 priceMidSubq,
                 priceHighSubq,
             )
-            .where('c.is_marketplace', 1)
-            .andWhere('c.is_active', 1)
-            .andWhere(function () { this.where('c.is_maintenance', 0).orWhereNull('c.is_maintenance'); })
-            .whereNull('c.deleted_at')
-            .andWhere('b.status', '<>', '2')
+            .modify(M.eligibleCompanyScope, 'c')
+            .modify(M.eligibleBranchScope,  'b')
             // ── Cuisine filter ────────────────────────────────────
             // Primary path: the cuisine resolved to a global
             // marketplace category → keep only companies ASSIGNED to
@@ -351,78 +359,54 @@ async function list(req, res) {
         // card badge: "50% OFF" + a count chip when there's more than one).
         const offerSums = await Offers.offerSummaries(uniq.map(r => ({ companyId: r.company_id, branchId: r.branch_id })));
 
+        // Heart-icon state for the signed-in customer (single batched
+        // lookup). Empty Set when no customer_id was supplied → every
+        // card renders isFavourite=false and the view hides the icon.
+        const customerId = req.query.customer_id ? String(req.query.customer_id) : null;
+        const favSet = await Favourites.favouriteIdSet(customerId, uniq.map(r => r.company_id));
+
+        // Single batched call → per-branch formatted delivery+pickup
+        // labels ("20-50 min" / null). One source of truth for the time
+        // chip across list/detail/favourites/dishes.
+        const timesByBranch = await OrderTime.computeForBranches(uniq);
+
+        // Real open/closed + hours for every card in ONE batched pass
+        // (store_business_hours per service + close-flag precedence).
+        const availByBranch = await StoreHours.availabilityForBranches(uniq);
+
         const restaurants = uniq.map(r => {
-            const name = String(r.company_name || r.branch_name || r.branch_trading_name || '').trim();
-            // Distance + time — null when the user has no location yet
-            // OR the branch has no coords. The view already handles
-            // those cases (chip simply hides).
-            const km = distance.kmBetween(lat, lng, r.branch_lat, r.branch_lng);
-            // vegType:
-            //   'pure-veg'  → has veg products AND no non-veg products
-            //   'non-veg'   → has any non-veg product (mixed restaurants
-            //                  count as non-veg per the FSSAI convention
-            //                  most food apps follow — if even one item
-            //                  is non-veg, the restaurant isn't veg-only)
-            //   null        → no marketplace products yet (no badge)
-            let vegType = null;
-            if (r.has_veg && !r.has_non_veg)       { vegType = 'pure-veg'; }
-            else if (r.has_non_veg)                { vegType = 'non-veg';  }
-            // avg_rating comes back as a string from Postgres NUMERIC.
-            // Coerce to a Number so the comparator below works
-            // numerically (string compare would treat "10.0" < "4.0").
-            const avgRating = r.avg_rating != null ? Number(r.avg_rating) : null;
-            // Real delivery info from the matched postcode zone.
+            // Postcode-zone delivery facts (matched application-side).
             const zones = zonesByBranch.get(String(r.branch_id)) || [];
             const zone  = postcode ? M.matchDeliveryZone(postcode, zones) : null;
-            const wMins = M.deliveryMinutesFromWaiting(r.delivery_waiting_time);
-            return {
-                id:              String(r.company_id),
-                slug:            r.domain_name ? M.slugify(r.domain_name) : M.slugify(name, r.company_id),
-                name,
-                cuisines:        M.cuisinesFor({ business_category: r.business_category }),
-                // Show the real average when we have one; fall back
-                // to a friendly default until enough customers rate.
-                rating:          avgRating != null ? avgRating : 4.4,
-                // Representative offer label + total count. Falls back to a
-                // plain "Offer" when the only offer is a per-product one
-                // (not covered by the banner/coupon/discount summary).
-                offer:           (offerSums[String(r.company_id)] && offerSums[String(r.company_id)].label) || (r.has_offer ? 'Offer' : null),
-                offerCount:      (offerSums[String(r.company_id)] && offerSums[String(r.company_id)].count) || (r.has_offer ? 1 : 0),
-                isOpen:          M.isOpenNow(r),
-                tint:            M.tintFor(r.company_id),
-                initial:         M.initialFor(name),
-                distanceKm:      km != null ? km : null,
-                // Real delivery time (merchant waiting time) when set,
-                // else the distance estimate as a fallback.
-                deliveryMinutes: wMins != null ? (wMins + ' min') : (km != null ? distance.estimateDeliveryMinutes(km) : null),
-                // Postcode-zone delivery facts. deliverable is true when
-                // no postcode was given (unknown) or a zone matched.
-                deliverable:      postcode ? !!zone : true,
-                deliveryFee:      zone ? Number(zone.charge) : null,
-                minOrder:         zone ? Number(zone.minimum_order) : null,
-                freeDeliveryOver: zone ? Number(zone.free_delivery_above) : null,
-                // Branch coordinates — used by the Pickup map to plot
-                // each restaurant by its real position. Null when the
-                // branch has no coords stored.
-                lat:             r.branch_lat != null && r.branch_lat !== '' ? Number(r.branch_lat) : null,
-                lng:             r.branch_lng != null && r.branch_lng !== '' ? Number(r.branch_lng) : null,
-                vegType,
-                // Banner first (`banner_image` lives under
-                // <co>/banner_image/), then logo (`business_image` →
-                // <co>/branch_logos/). yiiImageUrl returns null when
-                // the filename is empty so the placeholder shows
-                // through automatically.
-                image:           M.yiiImageUrl('banner', r.company_id, r.banner_image)
-                                 || M.yiiImageUrl('logo', r.company_id, r.business_image)
-                                 || null,
-                // ── Internal fields (stripped before the response) ──
-                // Used only for application-side filtering + facet
-                // counts; not part of the public card shape.
-                _mins:      km != null ? distance.estimateDeliveryMinutesNumeric(km) : null,
-                _priceLow:  !!r.has_price_low,
-                _priceMid:  !!r.has_price_mid,
-                _priceHigh: !!r.has_price_high,
-            };
+            // Shared card mapper (rating, distance, image, vegType, lat/lng,
+            // zone fields, etc. — single source of truth across surfaces).
+            const summary = offerSums[String(r.company_id)] || {};
+            const card = M.toRestaurantCard(r, {
+                lat, lng,
+                times:       timesByBranch[String(r.branch_id)],
+                isFavourite: favSet.has(String(r.company_id)),
+                offer:       summary.label || (r.has_offer ? 'Offer' : null),
+                offerCount:  summary.count || (r.has_offer ? 1 : 0),
+                postcode,
+                zone,
+            });
+            // Override the card's open/closed with the real per-service
+            // verdict (store_business_hours), so cards + the open_now facet
+            // match the detail page.
+            const av = availByBranch.get(String(r.branch_id));
+            if (av) {
+                card.isOpen     = av.isOpen;
+                card.openStatus = av.status;
+                card.hours      = av.hours;
+                card.opensAt    = av.reopenAt;
+            }
+            // Append internal sort/facet keys (stripped before the
+            // response slice — see _-prefix strip below).
+            card._mins      = card.distanceKm != null ? distance.estimateDeliveryMinutesNumeric(card.distanceKm) : null;
+            card._priceLow  = !!r.has_price_low;
+            card._priceMid  = !!r.has_price_mid;
+            card._priceHigh = !!r.has_price_high;
+            return card;
         });
 
         // ── Dynamic facet counts ───────────────────────────────────
@@ -560,7 +544,7 @@ async function detail(req, res) {
         let companyId = idArg;
         if (!companyId && slug) {
             const candidates = await db('company as c')
-                .where('c.is_marketplace', 1).andWhere('c.is_active', 1).whereNull('c.deleted_at')
+                .modify(M.eligibleCompanyScope, 'c')
                 .select('c.id', 'c.business_name', 'c.domain_name');
             const hit = candidates.find(c => {
                 const s = c.domain_name ? M.slugify(c.domain_name) : M.slugify(c.business_name, c.id);
@@ -574,18 +558,23 @@ async function detail(req, res) {
         const row = await db('company as c')
             .innerJoin('branch as b', 'b.company_id', 'c.id')
             .where('c.id', companyId)
-            .andWhere('c.is_marketplace', 1)
-            .andWhere('c.is_active', 1)
-            .whereNull('c.deleted_at')
-            .andWhere('b.status', '<>', '2')
+            .modify(M.eligibleCompanyScope, 'c')
+            .modify(M.eligibleBranchScope,  'b')
             .select(
                 'c.id as company_id', 'b.id as branch_id', 'c.business_name', 'c.domain_name', 'c.business_category',
                 'b.direction_address', 'b.address_1', 'b.address_2', 'b.city', 'b.postcode',
                 'b.contact_number', 'b.website', 'b.website_domain',
-                'b.start_time', 'b.end_time', 'b.delivery_waiting_time',
+                'b.start_time', 'b.end_time', 'b.delivery_waiting_time', 'b.pickup_waiting_time',
                 'b.banner_image', 'b.business_image',
                 'b.direction_latitude as branch_lat', 'b.direction_longitude as branch_lng',
-                'b.open_as_usual', 'b.closed_until',
+                'b.open_as_usual', 'b.closed_until', 'b.name as branch_name',
+                // Close-flag + per-service columns — drive the real
+                // open/closed verdict (Helpers/storeHours), per legacy POS.
+                'b.closed', 'b.closed_reopen_date', 'b.clossed_repoen_time', 'b.clossed_text',
+                'b.closed_for', 'b.closed_for_time',
+                'b.show_delivery_option', 'b.show_delivery_option_tab', 'b.delivery_closed_util_date',
+                'b.show_pickup_option', 'b.show_pickup_option_tab', 'b.pickup_closed_util_date',
+                'b.pre_order',
                 db.raw(`(SELECT ROUND(AVG(rr.rating)::numeric, 1) FROM review_rating rr
                           WHERE rr.company_id = c.id AND rr.publish_online = 1) AS avg_rating`),
                 db.raw(`(SELECT COUNT(*) FROM review_rating rr
@@ -613,21 +602,42 @@ async function detail(req, res) {
                 .select('postcode', 'charge', 'minimum_order', 'free_delivery_above');
             zone = M.matchDeliveryZone(postcode, zoneRows);
         }
-        const wMins = M.deliveryMinutesFromWaiting(row.delivery_waiting_time);
+        // Single source of truth for delivery + pickup labels.
+        const detailTimes = (await OrderTime.computeForBranches([row]))[String(row.branch_id)]
+                            || { delivery: null, pickup: null };
+
+        // Heart-icon state for the signed-in customer (single row lookup).
+        const detailCustomerId = req.query.customer_id ? String(req.query.customer_id) : null;
+        const detailFavSet = await Favourites.favouriteIdSet(detailCustomerId, [row.company_id]);
+
+        // Real open/closed + hours from store_business_hours (per service) +
+        // the close-flag precedence — replaces the stale start_time/end_time.
+        const avail = await StoreHours.availabilityForBranch(row);
 
         const restaurant = {
             id:              String(row.company_id),
             slug:            row.domain_name ? M.slugify(row.domain_name) : M.slugify(name, row.company_id),
             name,
+            branchId:        String(row.branch_id),
+            isFavourite:     detailFavSet.has(String(row.company_id)),
             cuisines:        M.cuisinesFor({ business_category: row.business_category }),
-            rating:          avgRating != null ? avgRating : 4.4,
+            rating:          avgRating,   // null when no published reviews — UI hides the badge
             ratingCount:     row.rating_count != null ? Number(row.rating_count) : 0,
-            isOpen:          M.isOpenNow(row),
+            isOpen:          avail ? avail.isOpen : M.isOpenNow(row),
+            // Availability detail (per legacy POS) for the "Restaurant info"
+            // chip: status (open/preorder/closed), per-service, why-closed.
+            openStatus:      avail ? avail.status : null,
+            deliveryOpen:    avail ? (avail.services.delivery.status === 'open') : null,
+            pickupOpen:      avail ? (avail.services.takeaway.status === 'open') : null,
+            closedReason:    avail ? avail.closedReason : null,
+            closedMessage:   avail ? avail.message : null,
+            opensAt:         avail ? avail.reopenAt : null,
+            preOrder:        Number(row.pre_order) === 1,
             distanceKm:      km != null ? km : null,
-            deliveryMinutes: wMins != null ? (wMins + ' min') : (km != null ? distance.estimateDeliveryMinutes(km) : null),
-            // Pickup time is location-driven (the customer travels to the
-            // shop), so it's a distance estimate — not the delivery/postcode time.
-            pickupMinutes:   km != null ? distance.estimatePickupMinutes(km) : null,
+            deliveryMinutes: detailTimes.delivery,
+            // Pickup time = pickup_waiting_time + max pickup advance.
+            // No distance guess — matches legacy webordering exactly.
+            pickupMinutes:   detailTimes.pickup,
             deliverable:      postcode ? !!zone : true,
             deliveryFee:      zone ? Number(zone.charge) : null,
             minOrder:         zone ? Number(zone.minimum_order) : null,
@@ -635,7 +645,7 @@ async function detail(req, res) {
             address:         addr,
             phone:           row.contact_number || null,
             website:         row.website || row.website_domain || null,
-            hours:           (open && close) ? (open + ' – ' + close) : null,
+            hours:           avail && avail.hours ? avail.hours : ((open && close) ? (open + ' – ' + close) : null),
             lat:             row.branch_lat != null && row.branch_lat !== '' ? Number(row.branch_lat) : null,
             lng:             row.branch_lng != null && row.branch_lng !== '' ? Number(row.branch_lng) : null,
             image:           M.yiiImageUrl('banner', row.company_id, row.banner_image) || null,
@@ -676,40 +686,47 @@ async function detail(req, res) {
             )
             .where('p.company_id', companyId)
             .andWhere('p.show_marketplace', 1)
-            .andWhere('p.status', '1')
+            // Restaurant menu surface: show Available + the temporary
+            // states (Sold out / Unavailable today / Unavailable until)
+            // greyed with a badge; plain Unavailable ('0') + Deleted ('2')
+            // stay hidden. Availability is status-driven (no stock).
+            .whereIn('p.status', A.SURFACE_STATUSES)
             .andWhere('ppc.status', '1')
             .orderBy([{ column: 'p.is_featured', order: 'desc' }, { column: 'p.is_recommended', order: 'desc' }, { column: 'p.id', order: 'asc' }])
             .select(
                 'p.id as product_id', 'p.name as product_name', 'p.veg_non_veg',
                 'p.marketplace_price', 'p.online_platform_price', 'p.price_after_tax',
-                'p.is_recommended', 'p.is_featured', 'p.track_stock_level', 'ppc.category_id', 'pi.url as image_url',
-                db.raw("EXISTS (SELECT 1 FROM product_sold_out so WHERE so.product_id = p.id AND so.is_sold::text = '1') AS is_sold_out"),
-                db.raw("(SELECT COALESCE(SUM(si.quantity::numeric), 0) FROM product_store_inventory si WHERE si.product_id = p.id) AS stock_qty"),
+                'p.discount_type', 'p.discount_value',
+                'p.is_recommended', 'p.is_featured', 'ppc.category_id', 'pi.url as image_url',
+                ...A.selectColumns(db, 'p'),
             );
 
+        // BOGOF map for the whole menu (one pass) → "Buy X Get Y" badges.
+        const bogoMap = await require('../../Helpers/loyalty').bogoMapFor(companyId);
+
         const mapProd = (r) => {
-            // Out of stock when explicitly marked sold-out, OR it tracks
-            // stock and the counted quantity has run out.
-            const tracks = Number(r.track_stock_level) === 1;
-            const qty    = r.stock_qty != null ? Number(r.stock_qty) : 0;
-            const outOfStock = !!r.is_sold_out || (tracks && qty <= 0);
+            const avail = A.evaluate(r);
+            const disc  = M.discountedPrice(r);
+            const bogo  = bogoMap.get(String(r.product_id)) || null;
             return {
+                bogo:          bogo,   // { buyQty, getQty } | null
                 id:            String(r.product_id),
                 name:          String(r.product_name || '').trim(),
                 slug:          M.slugify(r.product_name),
-                price:         M.pickPrice(r),
-                rating:        avgRating != null ? avgRating : 4.5,
+                price:         disc.final,
+                // Original (struck-through) price shown only when discounted.
+                originalPrice: disc.hasDiscount ? disc.original : null,
+                // Products have no per-dish reviews, so no real rating — null
+                // hides the badge (we don't show the restaurant's avg as a
+                // fake per-product rating).
+                rating:        null,
                 veg:           M.isVegProduct(r),
                 isFeatured:    Number(r.is_featured) === 1,
                 isRecommended: Number(r.is_recommended) === 1,
-                inStock:       !outOfStock,
-                // Counted inventory across the company's stores. Exposed
-                // for EVERY product so the restaurant page can show a
-                // real "N stock available" line. `tracksStock` tells the
-                // view whether that number is authoritative (made-to-order
-                // items don't track inventory → number isn't meaningful).
-                stockQty:      qty,
-                tracksStock:   tracks,
+                // Availability — status-driven (no stock). Full verdict +
+                // convenience boolean for the menu card / Add button.
+                availability:  avail,
+                available:     avail.available,
                 image:         M.yiiImageUrl('product', companyId, r.image_url) || null,
                 tint:          M.tintFor(r.product_id),
                 initial:       M.initialFor(r.product_name),

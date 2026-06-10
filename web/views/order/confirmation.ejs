@@ -1,0 +1,32 @@
+<%#
+  views/order/confirmation.ejs
+
+  What:  Phase-2D minimal confirmation page. Shown right after a
+         successful POST /order/place — the cart's been written as an
+         order, the items are queued for the restaurant, and the
+         customer just needs to know:
+             • the order's been received
+             • their order number
+             • where to find it later
+         Phase-2E expands this into a real tracker page.
+
+  Data:  OrderController.confirmation passes `order_id` only (the place
+         response already gave the client the number + total — the
+         client-side success handler can stash it in sessionStorage if
+         we want richer detail here; for now we keep it minimal).
+-%>
+<section class="order-confirm">
+    <div class="order-confirm__card">
+        <span class="order-confirm__icon" aria-hidden="true">
+            <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="20 6 9 17 4 12"/>
+            </svg>
+        </span>
+        <h1 class="order-confirm__title">Order placed!</h1>
+        <p class="order-confirm__sub">Your order #<%= order_id %> is with the restaurant. We'll let you know when it's on the way.</p>
+        <div class="order-confirm__cta">
+            <a class="btn btn--primary" href="/order/<%= encodeURIComponent(order_id) %>">View this order</a>
+            <a class="btn btn--ghost"   href="/">Order again</a>
+        </div>
+    </div>
+</section>

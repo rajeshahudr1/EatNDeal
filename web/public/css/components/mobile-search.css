@@ -112,3 +112,9 @@
  * cleaner, app-like top bar. */
 body.view-restaurant .mobile-search__filter,
 body.view-product .mobile-search__filter { display: none; }
+
+/* The search + filter bar STAYS sticky and never hides on scroll — it
+ * owns the top of the screen exactly like the cuisines row below it
+ * (mobile.css .section--cuisines). Only the bottom-nav hides on scroll
+ * (bottom-nav.css, driven by body.is-header-hidden); the top chrome is
+ * deliberately left pinned so search/filter is always one tap away. */

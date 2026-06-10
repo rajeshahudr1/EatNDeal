@@ -104,7 +104,16 @@
             search behaviour later (page-filter vs results-overlay).
             Removed from this slot earlier: Restaurants / Offers / Help
             links — the user asked to drop them; same content is still
-            reachable from the mobile drawer + footer. %>
+            reachable from the mobile drawer + footer.
+
+            Gated on `show_search` — only the browse surfaces (home feed,
+            all-restaurants / all-cuisines grids, search results, a single
+            restaurant's menu) render it. On every other page (cart,
+            account, orders, merchant, offers, product detail, static
+            pages) there is nothing to search, so the box is omitted.
+            The local is always defined (defaults to false in
+            web/index.js), so no typeof guard is needed. %>
+        <% if (show_search) { %>
         <form class="site-header__search" role="search" data-no-loader>
             <svg class="site-header__search-icon" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <circle cx="11" cy="11" r="7"/>
@@ -120,6 +129,7 @@
                 data-search-scope="home"
             >
         </form>
+        <% } %>
 
         <%# Delivery / Pickup segmented toggle — sits in the header
             beside the quick-links / Order Now, matching the Uber-Eats
@@ -127,7 +137,11 @@
             paints the active segment) so no JS is needed. Default
             = Delivery. Persisted/handled server-side later. %>
         <%# Reflect the mode the user chose on the location page
-            (stored on user_location.mode). Defaults to delivery. %>
+            (stored on user_location.mode). Defaults to delivery.
+            Shown ONLY on the browse surfaces (home / restaurant / product)
+            via show_mode_toggle — hidden on cart / account / orders / etc.
+            The local is always defined (defaults false in web/index.js). %>
+        <% if (show_mode_toggle) { %>
         <% var orderMode = (user_location && user_location.mode === 'pickup') ? 'pickup' : 'delivery'; %>
         <div class="mode-toggle" role="radiogroup" aria-label="Delivery or pickup">
             <input type="radio" name="order-mode" id="mode-delivery" value="delivery" <%= orderMode === 'delivery' ? 'checked' : '' %>>
@@ -135,6 +149,7 @@
             <input type="radio" name="order-mode" id="mode-pickup" value="pickup" <%= orderMode === 'pickup' ? 'checked' : '' %>>
             <label for="mode-pickup">Pickup</label>
         </div>
+        <% } %>
 
         <%# Quick-access cluster (desktop) — Rewards · Orders · Cart,
             matching the mockup. Icon + label stacked. Cart carries a
@@ -150,8 +165,10 @@
             </a>
             <a href="/cart" class="header-quick__item header-quick__cart">
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
+                <%# data-cart-count is always rendered so client JS can flip
+                    the badge without re-rendering after an add/remove. -%>
                 <% var cartCount = (typeof cart_count !== 'undefined' && cart_count) ? cart_count : 0; %>
-                <% if (cartCount > 0) { %><span class="header-quick__badge" aria-hidden="true"><%= cartCount > 99 ? '99+' : cartCount %></span><% } %>
+                <span class="header-quick__badge" data-cart-count aria-hidden="true"<%= cartCount > 0 ? '' : ' hidden' %>><%= cartCount > 99 ? '99+' : (cartCount || 0) %></span>
                 <span>Cart</span>
             </a>
         </nav>

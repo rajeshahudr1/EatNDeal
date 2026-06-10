@@ -686,6 +686,23 @@
         delegateOpenTriggers();
     }
 
+    // openFormFor — open the modal directly on its form view, optionally
+    // pre-filled with an existing address row. Used by the inline
+    // addresses tab on /account?tab=addresses so the "Add new" / "Edit"
+    // buttons there reuse this modal's map + form + save plumbing.
+    function openFormFor(addr) {
+        cacheNodes();
+        if (!modal) { return; }
+        modal.hidden = false;
+        modal.setAttribute('aria-hidden', 'false');
+        document.body.style.overflow = 'hidden';
+        openCount += 1;
+        openForm(addr || null);
+    }
+
     window.EatNDealUi = window.EatNDealUi || {};
-    window.EatNDealUi.locationModal = { open: open, close: close, save: save };
+    window.EatNDealUi.locationModal = { open: open, close: close, save: save, openForm: openFormFor };
+    // Convenience alias used by /js/pages/account.js — same surface,
+    // shorter name so the calling code reads cleanly.
+    window.EatNDealLocationModal = { open: open, openForm: openFormFor };
 })();

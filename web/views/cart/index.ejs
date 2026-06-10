@@ -1,0 +1,539 @@
+<%#
+  views/cart/index.ejs
+
+  What:  Uber Eats-style checkout page. Two-column on desktop, stacked
+         on mobile.
+
+           LEFT:
+             • Delivery details card — mode toggle (Delivery / Pickup),
+               address row with Edit pill (opens address popup), schedule
+               row with Edit pill (opens schedule popup).
+             • Payment card — saved-card row with Edit pill OR an
+               "Add payment method" placeholder. Edit/Add opens the
+               payment popup (saved-card picker + Stripe Elements
+               new-card form + Cash radio).
+
+           RIGHT:
+             • Restaurant info chip — banner + name + address; links to
+               the restaurant page.
+             • Soft warnings (cart_warnings) — surfaced inline.
+             • Big dark "Continue to payment" CTA — fires the existing
+               data-action="cart-checkout" handler.
+             • Basket summary disclosure — collapsed-by-default list of
+               line items with the existing stepper / remove controls.
+             • Promotions row — applied chip OR "Add a promo code" with
+               Edit pill (opens promo popup).
+             • Order total breakdown — Subtotal / Bag / Service /
+               Charity / Delivery / Discount / Total.
+             • Legal disclaimer.
+
+  Reuse: ALL the existing data-action hooks (cart-set-mode, cart-set-
+         address, cart-sched-*, cart-apply-coupon, cart-remove-coupon,
+         cart-set-pay, cart-qty-*, cart-remove, cart-clear, cart-checkout,
+         cart-save-card, stripe-mount, etc.) move into popups but keep
+         their behaviour — /js/ui/cart.js handlers are unchanged.
+         New popup open/close lives in /js/ui/checkout-popups.js.
+
+  Data:  cart, cart_warnings, cart_addresses (existing), plus the new
+         cart_payment_methods and cart_restaurant locals from
+         CartController.page().
+-%>
+<% var sym = brand.currencySymbol; %>
+<% var addrList = (typeof cart_addresses !== 'undefined' && cart_addresses) ? cart_addresses : []; %>
+<% var payList  = (typeof cart_payment_methods !== 'undefined' && cart_payment_methods) ? cart_payment_methods : []; %>
+<% var rest     = (typeof cart_restaurant !== 'undefined' && cart_restaurant) ? cart_restaurant : null; %>
+<% var promoList = (typeof cart_promotions !== 'undefined' && cart_promotions) ? cart_promotions : []; %>
+
+<section class="cart-page" data-cart-root>
+
+    <% if (!cart || !cart.items.length) { %>
+        <%# ── Empty state ───────────────────────────────────────────── %>
+        <div class="cart-empty">
+            <span class="cart-empty__icon" aria-hidden="true">
+                <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="9" cy="21" r="1.6"/>
+                    <circle cx="18" cy="21" r="1.6"/>
+                    <path d="M2 3h2l2 13h13l2-9H6"/>
+                </svg>
+            </span>
+            <h2 class="cart-empty__title">Your cart is empty</h2>
+            <p class="cart-empty__sub">Pick a restaurant and add a few dishes — your cart will fill up here.</p>
+            <a class="btn btn--primary btn--lg cart-empty__cta" href="/">Browse restaurants</a>
+        </div>
+    <% } else { %>
+
+    <%
+        // Build the datetime-local default value (carried inside the
+        // schedule popup): already-scheduled → that timestamp, else a
+        // sensible "now + 15 min" start so the picker isn't blank.
+        var schedDefault = '';
+        if (cart.preOrderTime) {
+            try {
+                var d = new Date(cart.preOrderTime);
+                if (!isNaN(d.getTime())) {
+                    var pad = function (n) { return n < 10 ? '0' + n : String(n); };
+                    schedDefault = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+                }
+            } catch (e) { /* ignore */ }
+        }
+        var schedMin = '';
+        try {
+            var nMin = new Date(Date.now() + 15 * 60 * 1000);
+            var pad2 = function (n) { return n < 10 ? '0' + n : String(n); };
+            schedMin = nMin.getFullYear() + '-' + pad2(nMin.getMonth() + 1) + '-' + pad2(nMin.getDate()) + 'T' + pad2(nMin.getHours()) + ':' + pad2(nMin.getMinutes());
+        } catch (e) { /* ignore */ }
+
+        // Which saved address is the cart ACTUALLY using? The cart only
+        // stores the formatted line + postcode (no address_id). We
+        // rebuild each saved address's formatted string the SAME way
+        // setAddress() builds cart.deliveryAddress and compare them
+        // (normalised). This is robust regardless of whether the
+        // address's postcode lives in its own field or inside the
+        // address line. Falls back to a postcode-only match, then to
+        // NOTHING (no isDefault fallback — that wrongly highlighted +
+        // locked the default when a different address was active).
+        var __norm = function (s) { return String(s || '').trim().toLowerCase().replace(/\s+/g, ' '); };
+        var __fmt  = function (a) {
+            return __norm([a.address, a.line1, a.line2, a.postTown, a.postCode]
+                .map(function (s) { return String(s || '').trim(); }).filter(Boolean).join(', '));
+        };
+        var __actNorm = __norm(cart.deliveryAddress);
+        var __actPc   = String(cart.deliveryPostcode || '').trim().toLowerCase().replace(/\s+/g, '');
+        var selected = null;
+        addrList.forEach(function (a) { if (!selected && __actNorm && __fmt(a) === __actNorm) { selected = a; } });
+        if (!selected && __actPc) {
+            addrList.forEach(function (a) {
+                if (selected) { return; }
+                var aPc = String(a.postCode || '').trim().toLowerCase().replace(/\s+/g, '');
+                if (aPc && aPc === __actPc) { selected = a; }
+            });
+        }
+
+        var stripeOn = !!stripe_publishable_key;
+    %>
+
+    <div class="cart-page__grid">
+
+        <%# ════════════════════ LEFT COLUMN ════════════════════ %>
+        <div class="cart-page__main">
+
+            <%# ── Delivery details card ───────────────────────────── %>
+            <section class="ckt-card" aria-label="Delivery details">
+                <header class="ckt-card__head">
+                    <h2 class="ckt-card__title"><%= cart.serveType === 2 ? 'Pickup details' : 'Delivery details' %></h2>
+                    <div class="ckt-mode" role="tablist" aria-label="Order type">
+                        <button type="button" class="ckt-mode__tab<%= cart.serveType === 3 ? ' is-active' : '' %>" data-action="cart-set-mode" data-mode="3" role="tab" aria-selected="<%= cart.serveType === 3 ? 'true' : 'false' %>">Delivery</button>
+                        <button type="button" class="ckt-mode__tab<%= cart.serveType === 2 ? ' is-active' : '' %>" data-action="cart-set-mode" data-mode="2" role="tab" aria-selected="<%= cart.serveType === 2 ? 'true' : 'false' %>">Pickup</button>
+                    </div>
+                </header>
+
+                <% if (cart.serveType === 3) { %>
+                <div class="ckt-row" data-cart-addresses>
+                    <span class="ckt-row__icon ckt-row__icon--pin" aria-hidden="true">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s7-7.5 7-13a7 7 0 0 0-14 0c0 5.5 7 13 7 13z"/><circle cx="12" cy="9" r="2.5"/></svg>
+                    </span>
+                    <div class="ckt-row__body">
+                        <p class="ckt-row__title"><%= (selected && selected.label) || cart.deliveryLabel || 'Delivery address' %></p>
+                        <p class="ckt-row__sub"><%= cart.deliveryAddress || 'Pick a delivery address to see the fee.' %></p>
+                    </div>
+                    <button type="button" class="ckt-row__edit" data-action="ckt-open-address">Edit</button>
+                </div>
+
+                <%# Drop-off / delivery instructions row — delivery only. %>
+                <div class="ckt-row" data-cart-instructions>
+                    <span class="ckt-row__icon" aria-hidden="true">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                    </span>
+                    <div class="ckt-row__body">
+                        <p class="ckt-row__title"><%= cart.dropOffLabel || 'Drop-off options' %></p>
+                        <p class="ckt-row__sub" data-ckt-instr-sub>
+                            <% if (cart.driverInstructions) { %><%= cart.driverInstructions %><% } else if (cart.dropOffLabel) { %>Add delivery instructions<% } else { %>Add delivery instructions<% } %>
+                        </p>
+                    </div>
+                    <button type="button" class="ckt-row__edit" data-action="ckt-open-instructions">Edit</button>
+                </div>
+                <% } else { %>
+                <div class="ckt-row">
+                    <span class="ckt-row__icon ckt-row__icon--pin" aria-hidden="true">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/></svg>
+                    </span>
+                    <div class="ckt-row__body">
+                        <p class="ckt-row__title">Collect from</p>
+                        <p class="ckt-row__sub"><%= rest && rest.address ? rest.address : (rest && rest.name) ? rest.name : 'Restaurant' %></p>
+                    </div>
+                </div>
+                <% } %>
+
+                <%# Schedule row %>
+                <div class="ckt-row" data-cart-sched>
+                    <span class="ckt-row__icon" aria-hidden="true">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>
+                    </span>
+                    <div class="ckt-row__body">
+                        <p class="ckt-row__title">When</p>
+                        <p class="ckt-row__sub" data-cart-sched-display>
+                            <% if (cart.isPreOrder && cart.preOrderTime) { %>
+                                Scheduled for <%= new Date(cart.preOrderTime).toLocaleString() %>
+                            <% } else { %>
+                                <%= cart.serveType === 2 ? 'ASAP — pickup as soon as ready' : 'ASAP — deliver as soon as ready' %>
+                            <% } %>
+                        </p>
+                    </div>
+                    <button type="button" class="ckt-row__edit" data-action="ckt-open-schedule">Edit</button>
+                </div>
+            </section>
+
+            <%# ── Payment card ───────────────────────────────────── %>
+            <section class="ckt-card" aria-label="Payment">
+                <header class="ckt-card__head">
+                    <h2 class="ckt-card__title">Payment</h2>
+                </header>
+
+                <%# Pay with Cash OR Card — an EXPLICIT choice; no card is
+                    auto-selected (legacy webordering shows Cash first too).
+                    Cash needs no popup; Card opens the card picker (and the
+                    card popup no longer carries a Cash row). JS reads
+                    [data-ckt-pay-mode] for the active selection. %>
+                <% var cashLbl = 'Pay on ' + (cart.serveType === 2 ? 'pickup' : 'delivery'); %>
+                <div class="ckt-paychoice" data-cart-pay data-stripe-key="<%= stripe_publishable_key %>" data-ckt-pay-mode="cash">
+                    <button type="button" class="ckt-paytile is-active" data-action="ckt-pick-cash" data-paytile="cash">
+                        <span class="ckt-paytile__icon" aria-hidden="true">
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="3"/></svg>
+                        </span>
+                        <span class="ckt-paytile__txt">
+                            <span class="ckt-paytile__label">Cash</span>
+                            <span class="ckt-paytile__sub"><%= cashLbl %></span>
+                        </span>
+                    </button>
+                    <% if (stripeOn) { %>
+                    <button type="button" class="ckt-paytile" data-action="ckt-open-payment" data-paytile="card">
+                        <span class="ckt-paytile__icon" aria-hidden="true">
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+                        </span>
+                        <span class="ckt-paytile__txt">
+                            <span class="ckt-paytile__label" data-ckt-pay-title>Card</span>
+                            <span class="ckt-paytile__sub" data-ckt-pay-sub>Choose a card</span>
+                        </span>
+                    </button>
+                    <% } %>
+                </div>
+            </section>
+
+        </div>
+
+        <%# ════════════════════ RIGHT COLUMN ════════════════════ %>
+        <aside class="cart-page__side" aria-label="Order summary">
+
+            <%# Restaurant info chip %>
+            <% if (rest) { %>
+            <a class="ckt-rest" href="/?restaurant=<%= encodeURIComponent(rest.slug || rest.id) %>">
+                <span class="ckt-rest__media" data-tint="<%= rest.tint || '#f3f4f6' %>">
+                    <% if (rest.image) { %>
+                        <img src="<%= rest.image %>" alt="" loading="lazy" data-img-fallback>
+                    <% } else { %>
+                        <span class="ckt-rest__initial"><%= rest.initial || 'R' %></span>
+                    <% } %>
+                </span>
+                <div class="ckt-rest__body">
+                    <p class="ckt-rest__name"><%= rest.name %></p>
+                    <% if (rest.address) { %><p class="ckt-rest__addr"><%= rest.address %></p><% } %>
+                </div>
+                <span class="ckt-rest__chev" aria-hidden="true">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                </span>
+            </a>
+            <% } %>
+
+            <%# Soft warnings %>
+            <% if (cart_warnings && cart_warnings.length) { %>
+            <ul class="ckt-warns" data-cart-warnings role="list">
+                <% cart_warnings.forEach(function (w) { %>
+                    <li class="ckt-warns__item"><%= w.msg %></li>
+                <% }); %>
+            </ul>
+            <% } %>
+
+            <%# Big dark CTA — opens the review-order confirmation popup
+                (with full payment / schedule / totals) before placing. %>
+            <button type="button" class="ckt-cta" data-action="ckt-open-confirm">
+                <span>Continue to payment</span>
+            </button>
+
+            <%# Basket summary disclosure — collapsed by default. Wraps
+                the existing items list verbatim so stepper/remove
+                handlers keep firing through /js/ui/cart.js. A "Clear"
+                button sits in the header (always visible); its click
+                preventDefault stops the <summary> from toggling. %>
+            <details class="ckt-basket">
+                <summary class="ckt-basket__summary">
+                    <span class="ckt-basket__icon" aria-hidden="true">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2l-3 6v13a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8l-3-6z"/><line x1="3" y1="8" x2="21" y2="8"/><path d="M16 12a4 4 0 0 1-8 0"/></svg>
+                    </span>
+                    <span class="ckt-basket__label">Basket summary (<%= cart.totalQty %> item<%= cart.totalQty === 1 ? '' : 's' %>)</span>
+                    <button type="button" class="ckt-basket__clearbtn" data-action="cart-clear">Clear</button>
+                    <span class="ckt-basket__chev" aria-hidden="true">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                    </span>
+                </summary>
+                <ol class="cart-items" role="list" aria-label="Items in your cart">
+                    <% cart.items.forEach(function (it) { %>
+                        <li class="cart-item" data-cart-item="<%= it.id %>" data-product-id="<%= it.productId %>">
+                            <div class="cart-item__body">
+                                <p class="cart-item__name"><%= it.name %></p>
+                                <% if (it.modifiers && it.modifiers.length) { %>
+                                    <p class="cart-item__mods"><%= it.modifiers.map(function (m) { return m.name; }).filter(Boolean).join(' · ') %></p>
+                                <% } %>
+                                <% if (it.remark) { %><p class="cart-item__remark"><%= it.remark %></p><% } %>
+                                <div class="cart-item__controls">
+                                    <div class="cart-stepper" data-cart-stepper>
+                                        <button type="button" class="cart-stepper__btn" data-action="cart-qty-dec" aria-label="Decrease quantity">−</button>
+                                        <span class="cart-stepper__value" data-cart-qty><%= it.qty %></span>
+                                        <button type="button" class="cart-stepper__btn" data-action="cart-qty-inc" aria-label="Increase quantity">+</button>
+                                    </div>
+                                    <button type="button" class="cart-item__remove" data-action="cart-remove" aria-label="Remove from cart">Remove</button>
+                                </div>
+                            </div>
+                            <div class="cart-item__side">
+                                <span class="cart-item__price" data-cart-line-price><%= sym %><%= it.linePrice.toFixed(2) %></span>
+                            </div>
+                        </li>
+                    <% }); %>
+                </ol>
+            </details>
+
+            <%# Promotions row — applied chip OR "Add a promo code" %>
+            <div class="ckt-row ckt-row--side" data-cart-coupon>
+                <span class="ckt-row__icon" aria-hidden="true">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41 13.42 20.58a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+                </span>
+                <% var couponApplied = (cart.promocode && cart.discountSource === 'coupon'); %>
+                <div class="ckt-row__body">
+                    <% if (couponApplied) { %>
+                        <p class="ckt-row__title"><%= cart.promocode %></p>
+                        <p class="ckt-row__sub">
+                            <% if (cart.discount > 0) { %>− <%= sym %><%= cart.discount.toFixed(2) %><% } %>
+                            <% if (cart.freeDelivery) { %><%= cart.discount > 0 ? ' · ' : '' %>Free delivery<% } %>
+                        </p>
+                    <% } else if (promoList.length) { %>
+                        <p class="ckt-row__title">Promotions</p>
+                        <p class="ckt-row__sub"><%= promoList.length %> promotion<%= promoList.length === 1 ? '' : 's' %> available</p>
+                    <% } else { %>
+                        <p class="ckt-row__title">Promotions</p>
+                        <p class="ckt-row__sub">Have a promo code? Apply it for instant savings.</p>
+                    <% } %>
+                </div>
+                <button type="button" class="ckt-row__edit" data-action="ckt-open-promo"><%= couponApplied ? 'Edit' : 'Add' %></button>
+            </div>
+
+            <%# Voucher — a SEPARATE box for customer reward vouchers
+                (mutually exclusive with a coupon). Mirrors the legacy
+                "Have a Voucher?" box. Shows the applied voucher + Remove,
+                or a code input. %>
+            <div class="ckt-voucher" data-cart-voucher>
+                <% if (cart.discountSource === 'voucher') { %>
+                    <div class="ckt-voucher__applied">
+                        <div class="ckt-voucher__info">
+                            <p class="ckt-voucher__code">🎟️ <%= cart.promocode %></p>
+                            <% if (cart.discount > 0) { %><p class="ckt-voucher__sub">− <%= sym %><%= cart.discount.toFixed(2) %></p><% } %>
+                        </div>
+                        <button type="button" class="ckt-voucher__remove" data-action="cart-remove-voucher">Remove</button>
+                    </div>
+                <% } else { %>
+                    <p class="ckt-voucher__title">🎟️ Have a Voucher?</p>
+                    <div class="ckt-voucher__row">
+                        <input type="text" class="ckt-voucher__input" data-cart-voucher-input placeholder="Enter voucher code" autocomplete="off" maxlength="10" spellcheck="false">
+                        <button type="button" class="ckt-voucher__apply" data-action="cart-apply-voucher">Apply</button>
+                    </div>
+                <% } %>
+            </div>
+
+            <%# Loyalty redeem — spend THIS restaurant's reward balance on
+                the order. Shown only when the signed-in customer has a
+                usable balance here (or already applied some). Independent of
+                coupon/voucher — it stacks. The API re-clamps the amount to
+                balance / cap / sub-total. %>
+            <%
+                var rwBal  = cart.rewardBalance || 0;
+                var rwMax  = cart.rewardMax || 0;
+                var rwUsed = cart.usedCashback || 0;
+            %>
+            <% if (rwUsed > 0 || rwMax > 0) { %>
+            <div class="ckt-loyalty" data-cart-loyalty
+                 data-reward-balance="<%= rwBal.toFixed(2) %>"
+                 data-reward-max="<%= rwMax.toFixed(2) %>"
+                 data-reward-used="<%= rwUsed.toFixed(2) %>">
+                <% if (rwUsed > 0) { %>
+                    <div class="ckt-loyalty__applied">
+                        <div class="ckt-loyalty__info">
+                            <p class="ckt-loyalty__code">🎁 Reward applied</p>
+                            <p class="ckt-loyalty__sub">− <%= sym %><%= rwUsed.toFixed(2) %> · <%= sym %><%= rwBal.toFixed(2) %> balance left</p>
+                        </div>
+                        <button type="button" class="ckt-loyalty__remove" data-action="cart-remove-loyalty">Remove</button>
+                    </div>
+                <% } else { %>
+                    <p class="ckt-loyalty__title">🎁 Use your reward
+                        <span class="ckt-loyalty__bal"><%= sym %><%= rwBal.toFixed(2) %> available</span></p>
+                    <div class="ckt-loyalty__row">
+                        <span class="ckt-loyalty__cur"><%= sym %></span>
+                        <input type="number" class="ckt-loyalty__input" data-cart-loyalty-input min="0" step="0.01" max="<%= rwMax.toFixed(2) %>" inputmode="decimal" placeholder="0.00" value="<%= rwMax.toFixed(2) %>">
+                        <button type="button" class="ckt-loyalty__apply" data-action="cart-apply-loyalty">Use</button>
+                    </div>
+                    <% if (rwMax < rwBal) { %>
+                    <p class="ckt-loyalty__note">Up to <%= sym %><%= rwMax.toFixed(2) %> can be used on this order.</p>
+                    <% } %>
+                <% } %>
+            </div>
+            <% } %>
+
+            <%# Charity contribution — No / % tiers / Custom. The chosen
+                amount is ADDED to the total and donated to the restaurant.
+                Mirrors the legacy "Add a Charity Contribution" selector. %>
+            <%
+                var charityAmt = cart.charityAmount || 0;
+                var charitySub = cart.subTotal || 0;
+                var charityTiers = cart.charityTiers || [5, 10, 15];
+                // Which % tier (if any) the current amount matches (±1p).
+                var activeTier = null;
+                charityTiers.forEach(function (pct) {
+                    var tierAmt = Math.round(charitySub * pct / 100 * 100) / 100;
+                    if (charityAmt > 0 && Math.abs(tierAmt - charityAmt) < 0.01) { activeTier = pct; }
+                });
+                var charityIsNo     = charityAmt <= 0;
+                var charityIsCustom = (!charityIsNo && activeTier === null);
+            %>
+            <div class="ckt-charity" data-cart-charity data-sub="<%= charitySub %>">
+                <p class="ckt-charity__title">💚 Add a Charity Contribution</p>
+                <div class="ckt-charity__btns" role="group" aria-label="Charity contribution">
+                    <button type="button" class="ckt-charity__btn<%= charityIsNo ? ' is-active' : '' %>" data-action="cart-charity" data-charity-mode="no">No</button>
+                    <% charityTiers.forEach(function (pct) { %>
+                        <button type="button" class="ckt-charity__btn<%= activeTier === pct ? ' is-active' : '' %>" data-action="cart-charity" data-charity-mode="pct" data-charity-pct="<%= pct %>"><%= pct %>%</button>
+                    <% }); %>
+                    <button type="button" class="ckt-charity__btn<%= charityIsCustom ? ' is-active' : '' %>" data-action="cart-charity" data-charity-mode="custom">Custom</button>
+                </div>
+                <div class="ckt-charity__custom" data-charity-custom<%= charityIsCustom ? '' : ' hidden' %>>
+                    <span class="ckt-charity__cur"><%= sym %></span>
+                    <input type="number" class="ckt-charity__input" data-charity-input min="0" step="0.01" inputmode="decimal" placeholder="0.00" value="<%= charityIsCustom ? charityAmt.toFixed(2) : '' %>">
+                    <button type="button" class="ckt-charity__apply" data-action="cart-charity-custom">Add</button>
+                </div>
+            </div>
+
+            <%# Donated banner — total going to charity = the company's
+                automatic donation (fixCharityDiscount) + the customer's
+                contribution. Shown whenever ANYTHING is being donated —
+                including when the customer picks "No" but the company
+                still donates its fixed share. Patched in-place by cart.js. %>
+            <div class="ckt-donated" data-cart-donated<%= cart.donatedTotal > 0 ? '' : ' hidden' %>>
+                <div class="ckt-donated__left">
+                    <span class="ckt-donated__icon" aria-hidden="true">❤️</span>
+                    <div>
+                        <p class="ckt-donated__title">Thank You for Your Contribution!</p>
+                        <p class="ckt-donated__sub">This amount will be donated</p>
+                    </div>
+                </div>
+                <div class="ckt-donated__badge">
+                    <span class="ckt-donated__label">DONATED</span>
+                    <span class="ckt-donated__amt" data-cart-donated-amt><%= sym %><%= cart.donatedTotal.toFixed(2) %></span>
+                </div>
+            </div>
+
+            <%# Order total breakdown %>
+            <div class="ckt-totals">
+                <h3 class="ckt-totals__title">Order total</h3>
+                <dl class="ckt-totals__rows">
+                    <div class="ckt-totals__row">
+                        <dt>Subtotal</dt>
+                        <dd><%= sym %><%= cart.subTotal.toFixed(2) %></dd>
+                    </div>
+                    <% if (cart.serveType === 3) { %>
+                    <div class="ckt-totals__row">
+                        <dt>Delivery fee</dt>
+                        <dd>
+                            <% if (cart.freeDelivery || cart.deliveryFees === 0) { %>
+                                <span class="ckt-totals__free">Free</span>
+                            <% } else { %>
+                                <%= sym %><%= cart.deliveryFees.toFixed(2) %>
+                            <% } %>
+                        </dd>
+                    </div>
+                    <% } %>
+                    <% if (cart.bagCharge > 0 || cart.serviceCharge > 0) { %>
+                    <div class="ckt-totals__row">
+                        <dt>Other fees</dt>
+                        <dd><%= sym %><%= (cart.bagCharge + cart.serviceCharge).toFixed(2) %></dd>
+                    </div>
+                    <% } %>
+                    <div class="ckt-totals__row ckt-totals__row--charity" data-cart-charity-row<%= cart.charityAmount > 0 ? '' : ' hidden' %>>
+                        <dt>Charity contribution</dt>
+                        <dd data-cart-charity-amt><%= sym %><%= cart.charityAmount.toFixed(2) %></dd>
+                    </div>
+                    <% if (cart.discount > 0) { %>
+                    <div class="ckt-totals__row ckt-totals__row--discount">
+                        <dt><%= cart.discountSource === 'auto' ? 'Auto-discount' : (cart.discountSource === 'voucher' ? 'Voucher' : 'Discount') %></dt>
+                        <dd>− <%= sym %><%= cart.discount.toFixed(2) %></dd>
+                    </div>
+                    <% } %>
+                    <% if (cart.usedCashback > 0) { %>
+                    <div class="ckt-totals__row ckt-totals__row--discount">
+                        <dt>Reward applied</dt>
+                        <dd>− <%= sym %><%= cart.usedCashback.toFixed(2) %></dd>
+                    </div>
+                    <% } %>
+                    <%# Card service charge — shown + added to the total only
+                        when a card is the selected payment (cart.js toggles
+                        it on payment change). Cash/COD carry none. %>
+                    <div class="ckt-totals__row ckt-totals__row--cardcharge" data-cart-cardcharge-row hidden>
+                        <dt>Card service charge</dt>
+                        <dd data-cart-cardcharge-amt><%= sym %><%= cart.cardServiceCharge.toFixed(2) %></dd>
+                    </div>
+                    <div class="ckt-totals__row ckt-totals__row--total">
+                        <dt>Total</dt>
+                        <dd data-cart-grandtotal
+                            data-base-grand="<%= cart.grandtotal.toFixed(2) %>"
+                            data-card-charge="<%= cart.cardServiceCharge.toFixed(2) %>"><%= sym %><%= cart.grandtotal.toFixed(2) %></dd>
+                    </div>
+                </dl>
+            </div>
+
+            <%# Card-payment surcharge note — the exact amount is added to
+                the total at the review step (and charged by Stripe) when a
+                card is the chosen payment. Cash never carries it. %>
+            <% if (cart.cardServiceCharge > 0) { %>
+            <p class="ckt-card-note">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+                Paying by card adds a <%= sym %><%= cart.cardServiceCharge.toFixed(2) %> service charge.
+            </p>
+            <% } %>
+
+            <p class="ckt-legal">By placing your order, you agree to take full responsibility for it once it's delivered. Orders containing alcohol or other restricted items may not be eligible.</p>
+        </aside>
+    </div>
+
+    <%# Mobile sticky CTA — duplicates the desktop CTA so it stays in
+        view while the customer scrolls the long left column. Opens the
+        same review-order confirmation popup. -%>
+    <button type="button" class="ckt-sticky-cta" data-action="ckt-open-confirm" aria-hidden="true">
+        <span data-cart-cta-total>Continue · <%= sym %><%= cart.grandtotal.toFixed(2) %></span>
+    </button>
+
+    <%- include('../partials/checkout-popups', {
+        cart: cart,
+        addrList: addrList,
+        payList: payList,
+        promoList: promoList,
+        selected: selected,
+        schedDefault: schedDefault,
+        schedMin: schedMin,
+        stripeOn: stripeOn,
+        stripe_publishable_key: stripe_publishable_key
+    }) %>
+
+    <% } %>
+
+</section>
+
+<%# Stripe.js v3 — loaded once when configured. The new payment popup
+    mounts Stripe Elements inside it (data-stripe-mount lives in the
+    checkout-popups partial). -%>
+<% if (stripe_publishable_key) { %>
+<script src="https://js.stripe.com/v3"></script>
+<% } %>

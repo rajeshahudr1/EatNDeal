@@ -62,7 +62,12 @@
         <%# Restaurant cards %>
         <% if (__cards.length > 0) { %>
         <ul class="pickup-cards" role="list" data-pickup-cards>
-            <% __cards.forEach(function (r) { %>
+            <% __cards.forEach(function (r) {
+                // Pickup view → show the PICKUP time everywhere (cards,
+                // map markers, popups). Fall back to deliveryMinutes
+                // when the merchant hasn't set a separate pickup
+                // baseline so the time chip still surfaces. %>
+                <% var rTime = r.pickupMinutes || r.deliveryMinutes || ''; %>
                 <li class="pickup-card"
                     data-id="<%= r.id %>"
                     data-slug="<%= r.slug || r.id %>"
@@ -70,7 +75,7 @@
                     data-lng="<%= (r.lng != null) ? r.lng : '' %>"
                     data-rating="<%= r.rating %>"
                     data-name="<%= r.name %>"
-                    data-eta="<%= r.deliveryMinutes || '' %>"
+                    data-eta="<%= rTime %>"
                     data-dist="<%= (typeof r.distanceKm === 'number' && r.distanceKm >= 0) ? r.distanceKm.toFixed(1) : '' %>"
                     data-image="<%= r.image || '' %>"
                     data-tint="<%= r.tint %>"
@@ -83,15 +88,17 @@
                         <div class="pickup-card__body">
                             <div class="pickup-card__row">
                                 <span class="pickup-card__name"><%= r.name %></span>
+                                <% if (r.rating) { %>
                                 <span class="pickup-card__rating">
                                     <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
                                     <%= r.rating %>
                                 </span>
+                                <% } %>
                             </div>
                             <% if ((r.cuisines || []).length) { %><p class="pickup-card__cuisines"><%= (r.cuisines || []).slice(0, 3).join(' · ') %></p><% } %>
                             <p class="pickup-card__meta">
-                                <% if (r.deliveryMinutes) { %><span><%= r.deliveryMinutes %></span><% } %>
-                                <% if (typeof r.distanceKm === 'number' && r.distanceKm >= 0) { %><span class="pickup-card__dot">·</span><span><%= r.distanceKm.toFixed(1) %> km</span><% } %>
+                                <% if (rTime) { %><span><%= rTime %></span><% } %>
+                                <% if (typeof r.distanceKm === 'number' && r.distanceKm >= 0) { %><% if (rTime) { %><span class="pickup-card__dot">·</span><% } %><span><%= r.distanceKm.toFixed(1) %> km</span><% } %>
                             </p>
                         </div>
                     </a>

@@ -47,12 +47,18 @@ async function fetchMarketplace(req, lat, lng, cuisine, filters, postcode) {
     // unknown fields, so categories can't see e.g. ?rating= and
     // products can't see ?max_km=. The base block (lat/lng/cuisine)
     // is shared.
+    // Signed-in customer (if any) → forwarded to the api so cards
+    // come back with `isFavourite` already painted. Guests omit it.
+    const sessUser = (req.session && req.session.user) || null;
+    const customerId = sessUser && sessUser.id ? String(sessUser.id) : null;
+
     function baseQs() {
         const qs = new URLSearchParams();
         if (Number.isFinite(lat)) qs.set('lat', String(lat));
         if (Number.isFinite(lng)) qs.set('lng', String(lng));
         if (cuisine)              qs.set('cuisine', cuisine);
         if (postcode)             qs.set('postcode', postcode);
+        if (customerId)           qs.set('customer_id', customerId);
         return qs;
     }
     // Restaurants: every restaurant-level filter.
@@ -278,6 +284,9 @@ async function index(req, res, next) {
     let liveRestaurant     = null;   // populated only when viewMode === 'restaurant'
     let liveMenuCategories = [];     // restaurant page: left-rail menu
     let liveSections       = [];     // restaurant page: products grouped by category
+    let liveReviews        = null;   // restaurant page: published customer reviews (+ avg + count)
+    let liveRewardBalance  = 0;      // restaurant page: this customer's reward-card balance here
+    let liveRewardStreak   = null;   // restaurant page: order-streak progress ("1 more order → £5")
     let liveOffers         = null;   // restaurant page: active offers (banners/coupons/discounts)
     let liveProduct        = null;   // product page: the product
     let liveProductGroups  = [];     // product page: selectable option groups
@@ -287,6 +296,7 @@ async function index(req, res, next) {
     let liveFacets         = null;   // dynamic filter counts for the sidebar
     let liveHomeOffers     = [];     // home "Best offers" rail (real banners)
     let cuisineNoMatch     = false;  // cuisine filter returned 0 → showing fallback restaurants
+    let myFavourites       = [];     // signed-in customer's saved restaurants (default home only)
     if (userLocation) {
         try {
             const lat = userLocation.lat != null ? Number(userLocation.lat) : null;
@@ -296,6 +306,10 @@ async function index(req, res, next) {
             const custPostcode = userLocation.postcode ? String(userLocation.postcode) : '';
             const latLng = (Number.isFinite(lat) ? '&lat=' + lat : '')
                          + (Number.isFinite(lng) ? '&lng=' + lng : '');
+            // Signed-in customer id → forwarded so the api paints the
+            // heart icon (isFavourite) on every card / detail header.
+            const sessUser   = (req.session && req.session.user) || null;
+            const customerId = sessUser && sessUser.id ? String(sessUser.id) : null;
 
             if (viewMode === 'restaurants') {
                 // Full restaurants grid — pull the largest page the
@@ -314,6 +328,7 @@ async function index(req, res, next) {
                 if (filters.offer)    fqs.set('offer',    '1');
                 if (filters.price)    fqs.set('price',    filters.price);
                 if (filters.delivery) fqs.set('delivery', filters.delivery);
+                if (customerId)       fqs.set('customer_id', customerId);
                 const r = await callApi(req, 'GET',
                     '/api/v1/marketplace/restaurants?' + fqs.toString());
                 liveFeatured = (r.body && r.body.status === 200 && r.body.data && r.body.data.restaurants) || [];
@@ -340,12 +355,34 @@ async function index(req, res, next) {
                 if (Number.isFinite(lat)) dqs.set('lat', String(lat));
                 if (Number.isFinite(lng)) dqs.set('lng', String(lng));
                 if (custPostcode)         dqs.set('postcode', custPostcode);
+                if (customerId)           dqs.set('customer_id', customerId);
                 const d = await callApi(req, 'GET', '/api/v1/marketplace/restaurant?' + dqs.toString());
                 const dd = (d.body && d.body.status === 200 && d.body.data) || null;
                 liveRestaurant     = dd ? dd.restaurant : null;
                 liveMenuCategories = dd ? (dd.categories || []) : [];
                 liveSections       = dd ? (dd.sections   || []) : [];
                 liveOffers         = dd ? (dd.offers     || null) : null;
+                // Published customer reviews for this restaurant (separate
+                // call — keeps the detail endpoint lean). Best-effort.
+                if (liveRestaurant && liveRestaurant.id) {
+                    try {
+                        const rv = await callApi(req, 'GET',
+                            '/api/v1/marketplace/reviews?sort=best&limit=5&company_id=' + encodeURIComponent(liveRestaurant.id));
+                        liveReviews = (rv.body && rv.body.status === 200 && rv.body.data) || null;
+                    } catch (e) { liveReviews = null; }
+
+                    // Signed-in customer's reward-card balance at THIS
+                    // restaurant (loyalty, per company_id). Best-effort.
+                    if (customerId) {
+                        try {
+                            const lb = await callApi(req, 'GET',
+                                '/api/v1/customer/loyalty/balance?customer_id=' + encodeURIComponent(customerId) +
+                                '&company_id=' + encodeURIComponent(liveRestaurant.id));
+                            liveRewardBalance = (lb.body && lb.body.status === 200 && lb.body.data && Number(lb.body.data.balance)) || 0;
+                            liveRewardStreak  = (lb.body && lb.body.status === 200 && lb.body.data && lb.body.data.streak) || null;
+                        } catch (e) { liveRewardBalance = 0; liveRewardStreak = null; }
+                    }
+                }
             } else if (viewMode === 'product') {
                 // Single-product page — product + its selectable option
                 // groups (sizes / toppings / add-ons) from the api.
@@ -370,6 +407,7 @@ async function index(req, res, next) {
                 if (Number.isFinite(lat)) pqs.set('lat', String(lat));
                 if (Number.isFinite(lng)) pqs.set('lng', String(lng));
                 if (cuisine)              pqs.set('cuisine', cuisine);
+                if (customerId)           pqs.set('customer_id', customerId);
                 const [rRes, cRes] = await Promise.all([
                     callApi(req, 'GET', '/api/v1/marketplace/restaurants?' + pqs.toString()),
                     callApi(req, 'GET', '/api/v1/marketplace/categories'),
@@ -399,12 +437,41 @@ async function index(req, res, next) {
                     if (Number.isFinite(lat)) fqs.set('lat', String(lat));
                     if (Number.isFinite(lng)) fqs.set('lng', String(lng));
                     if (custPostcode)         fqs.set('postcode', custPostcode);
+                    if (customerId)           fqs.set('customer_id', customerId);
                     const fb = await callApi(req, 'GET', '/api/v1/marketplace/restaurants?' + fqs.toString());
                     if (fb.body && fb.body.status === 200 && fb.body.data) {
                         liveFeatured   = fb.body.data.restaurants || [];
                         featuredMore   = !!fb.body.data.has_more;
                         liveFacets     = fb.body.data.facets || liveFacets;
                         cuisineNoMatch = true;
+                    }
+                }
+
+                // ── My Favourites rail ──────────────────────────────
+                // Only on the truly default home (no cuisine, no
+                // sidebar/sheet filter active) — when the user is
+                // narrowing the list with anything, the page should
+                // honour that narrowing without an extra rail above it.
+                const hasActiveFilters = !!(
+                    filters.sort || filters.rating || filters.max_km || filters.max_min ||
+                    filters.open_now || filters.veg || filters.offer ||
+                    filters.price || filters.delivery ||
+                    filters.recommended || filters.featured
+                );
+                if (customerId && !cuisine && !hasActiveFilters) {
+                    const fqs = new URLSearchParams({ customer_id: customerId });
+                    if (Number.isFinite(lat)) fqs.set('lat', String(lat));
+                    if (Number.isFinite(lng)) fqs.set('lng', String(lng));
+                    const favRes = await callApi(req, 'GET', '/api/v1/customer/favourites?' + fqs.toString());
+                    if (favRes.body && favRes.body.status === 200 && favRes.body.data) {
+                        myFavourites = favRes.body.data.favourites || [];
+                    }
+                    // Strip favourites from the main "Top restaurants
+                    // near you" rail so the same card never appears in
+                    // both places.
+                    if (myFavourites.length && Array.isArray(liveFeatured) && liveFeatured.length) {
+                        const favIds = new Set(myFavourites.map(f => String(f.id)));
+                        liveFeatured = liveFeatured.filter(r => !favIds.has(String(r.id)));
                     }
                 }
             }
@@ -672,6 +739,7 @@ async function index(req, res, next) {
         // the api was unreachable — the sidebar then hides the numbers).
         facet_counts:     liveFacets,
         featured:         finalFeatured,
+        my_favourites:    myFavourites,
         home_offers:      liveHomeOffers,
         for_you:          finalForYou,
         // has_more flags from the api → drive both the "View all"
@@ -687,10 +755,26 @@ async function index(req, res, next) {
         //                        'restaurant'  single restaurant + its menu
         //   selected_restaurant: the restaurant object (when viewMode='restaurant')
         view_mode:           viewMode,
+        // Show the header search + mobile search/filter row on every
+        // browse surface this controller serves — default home feed,
+        // the all-restaurants / all-cuisines grids, search results and
+        // a single restaurant's menu — but NOT on the product-detail
+        // page (viewMode === 'product'), where there is a single item
+        // and nothing to search. The pre-location landing page renders
+        // 'site/location' (separate branch) and never sets this, so it
+        // inherits the default OFF.
+        show_search:         viewMode !== 'product',
+        // Delivery/Pickup header toggle shows on every browse surface this
+        // controller serves — home, restaurants/cuisines grids, a single
+        // restaurant, AND the product page.
+        show_mode_toggle:    true,
         selected_restaurant: liveRestaurant,
         // Restaurant page: left-rail menu categories + product sections.
         menu_categories:     liveMenuCategories,
         menu_sections:       liveSections,
+        restaurant_reviews:  liveReviews,
+        restaurant_reward_balance: liveRewardBalance,
+        restaurant_reward_streak:  liveRewardStreak,
         restaurant_offers:   liveOffers,
         // Product page: the product + its selectable option groups + related.
         product:             liveProduct,
@@ -734,4 +818,25 @@ async function offersPage(req, res, next) {
     }
 }
 
-module.exports = { index, offersPage };
+/**
+ * restaurantReviews — GET /restaurant-reviews
+ *
+ * JSON proxy for the restaurant page's reviews panel (sort / star filter /
+ * load-more pagination). Forwards the query to the api and relays its
+ * envelope so /js/ui/reviews-list.js can fetch from the web origin.
+ * Type: READ.
+ */
+async function restaurantReviews(req, res) {
+    try {
+        const qs = new URLSearchParams();
+        ['company_id', 'sort', 'stars', 'offset', 'limit'].forEach((k) => {
+            if (req.query[k] != null && req.query[k] !== '') { qs.set(k, String(req.query[k])); }
+        });
+        const apiRes = await callApi(req, 'GET', '/api/v1/marketplace/reviews?' + qs.toString());
+        return res.status(200).json(apiRes.body || { status: 502, show: false, msg: 'Could not load reviews.' });
+    } catch (e) {
+        return res.status(200).json({ status: 500, show: false, msg: 'Could not load reviews.' });
+    }
+}
+
+module.exports = { index, offersPage, restaurantReviews };

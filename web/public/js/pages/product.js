@@ -22,9 +22,8 @@
     function toast(type, msg) { if (window.EatNDealUi && window.EatNDealUi.showToast) { window.EatNDealUi.showToast(type, msg); } }
 
     var root, basePrice = 0, sym = '£', qty = 1;
-    // Upper bound for the stepper. When the product has a real counted
-    // stock (> 0) the user can't add more than that; otherwise it's a
-    // soft cap of 99 (made-to-order items with no inventory count).
+    // Soft upper bound for the stepper (no stock counting — availability
+    // is status-driven, see /api Helpers/availability.js).
     var maxQty = 99;
 
     function applyTints(scope) {
@@ -78,11 +77,37 @@
         }
     }
 
+    /**
+     * syncLinkedGroups — show/hide nested sub-groups based on the parent
+     * option's checked state. Mirrors legacy `modifier_copy_details`
+     * behaviour: when a parent option is selected, its linkedGroup
+     * appears inline below; when deselected (or a different radio in
+     * the same group is picked) the sub-group hides AND its inputs are
+     * cleared so unseen options never count toward the price.
+     */
+    function syncLinkedGroups() {
+        qa('[data-linked-for]', root).forEach(function (wrap) {
+            var optionId = wrap.getAttribute('data-linked-for');
+            var name     = wrap.getAttribute('data-linked-name');
+            // Match the parent option by its name + value (the radio /
+            // checkbox immediately above the wrap).
+            var input = root.querySelector('input[name="' + name + '"][value="' + optionId + '"]');
+            var show  = !!(input && input.checked);
+            wrap.hidden = !show;
+            if (!show) {
+                // Clear any picks inside a hidden sub-group so they
+                // don't sneak into the price total or the summary.
+                qa('input:checked', wrap).forEach(function (i) { i.checked = false; });
+            }
+        });
+    }
+
     function bindOptions() {
         root.addEventListener('change', function (ev) {
             var inp = ev.target;
             if (!inp || (inp.type !== 'checkbox' && inp.type !== 'radio')) { return; }
             enforceMax(inp);
+            syncLinkedGroups();
             recompute();
         });
     }
@@ -109,10 +134,9 @@
             var dec = ev.target.closest && ev.target.closest('[data-action="pd-qty-dec"]');
             if (!inc && !dec) { return; }
             ev.preventDefault();
-            // Hard stop at the available stock — can't add an 8th when only
-            // 7 are in stock.
+            // Soft cap on the per-line quantity.
             if (inc && qty >= maxQty) {
-                toast('info', 'Only ' + maxQty + ' in stock.');
+                toast('info', 'Maximum ' + maxQty + ' per item.');
                 return;
             }
             qty = Math.max(1, Math.min(maxQty, qty + (inc ? 1 : -1)));
@@ -140,49 +164,23 @@
         note.addEventListener('input', function () { count.textContent = String(note.value.length); });
     }
 
-    /** firstInvalidGroup — a required group with fewer than `min` picks. */
-    function firstInvalidGroup() {
-        var bad = null;
-        qa('.pd-group', root).forEach(function (g) {
-            if (bad) { return; }
-            var min = Number(g.getAttribute('data-min')) || 0;
-            if (min < 1) { return; }
-            if (qa('input:checked', g).length < min) { bad = g; }
-        });
-        return bad;
-    }
-
-    function bindAdd() {
-        root.addEventListener('click', function (ev) {
-            var add = ev.target.closest && ev.target.closest('[data-action="pd-add"]');
-            if (!add) { return; }
-            ev.preventDefault();
-            var bad = firstInvalidGroup();
-            if (bad) {
-                var name = bad.querySelector('.pd-group__name');
-                toast('error', 'Please choose: ' + (name ? name.textContent : 'a required option') + '.');
-                bad.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                bad.classList.add('is-invalid');
-                window.setTimeout(function () { bad.classList.remove('is-invalid'); }, 1500);
-                return;
-            }
-            toast('success', 'Added ' + qty + ' to cart — checkout coming soon.');
-        });
-    }
+    // Add-to-cart click handling (incl. required-group validation) lives
+    // in /js/ui/cart.js (global UI module loaded by the layout). This
+    // page only owns gallery, qty stepper, option-group sync, and
+    // live price total — all view-only concerns.
 
     /**
-     * applyStock — when the product is out of stock, disable the Add
-     * buttons and relabel them so the user can browse but not order.
+     * applyAvailability — when the product isn't available (status-driven:
+     * sold out / unavailable today / unavailable until), keep the Add
+     * buttons disabled so the user can browse but not order. The server
+     * already renders them disabled with the right label + badge; this is
+     * the client-side belt-and-braces (and covers any future hydration).
      */
-    function applyStock() {
-        if (root.getAttribute('data-instock') !== '0') { return; }
+    function applyAvailability() {
+        if (root.getAttribute('data-available') !== '0') { return; }
         qa('[data-action="pd-add"]', root).forEach(function (btn) {
             btn.disabled = true;
             btn.classList.add('is-disabled');
-            var label = btn.querySelector('span');
-            if (label) { label.textContent = 'Out of stock'; }
-            var total = btn.querySelector('[data-total]');
-            if (total) { total.textContent = ''; }
         });
     }
 
@@ -191,9 +189,8 @@
         if (!root) { return; }
         basePrice = parseFloat(root.getAttribute('data-base-price')) || 0;
         sym = root.getAttribute('data-currency') || '£';
-        // Counted stock caps the stepper; 0 (untracked) → soft cap of 99.
-        var stock = parseInt(root.getAttribute('data-stock-qty'), 10);
-        maxQty = (isFinite(stock) && stock > 0) ? stock : 99;
+        // No stock counting — the stepper just uses a soft cap of 99.
+        maxQty = 99;
 
         bindImageFallback();
         applyTints();
@@ -201,9 +198,14 @@
         bindOptions();
         bindQty();
         bindNote();
-        bindAdd();
+        // Reveal nested groups for any options that came pre-checked
+        // (is_default=1). Without this, defaults sit selected but their
+        // linked sub-groups stay hidden until the user clicks something.
+        // Matches legacy webordering products.js (line 236) where the
+        // initial display flag is derived from `is_default`.
+        syncLinkedGroups();
         recompute();
-        applyStock();
+        applyAvailability();
         syncIncState();
     }
 

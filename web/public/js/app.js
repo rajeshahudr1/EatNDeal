@@ -38,6 +38,140 @@
         bindNotificationsBell();
         bindOrderModeToggle();
         bindDrawerStubs();
+        bindScrollHide();
+        bindReorder();
+    }
+
+    /**
+     * bindReorder
+     *
+     * What:   Click handler for the "Reorder" button on the order-detail
+     *         page. POSTs to /order/:id/reorder (the api clones the past
+     *         order's items into a fresh cart) and, on success, sends the
+     *         customer to /cart. A note about any items that couldn't be
+     *         re-added (now unavailable) is stashed for the cart page to
+     *         surface as a toast.
+     * Type:   WRITE (creates a cart server-side).
+     */
+    function bindReorder() {
+        document.addEventListener('click', function (ev) {
+            var btn = ev.target.closest && ev.target.closest('[data-action="order-reorder"]');
+            if (!btn || btn.disabled) { return; }
+            ev.preventDefault();
+            var orderId = btn.getAttribute('data-order-id');
+            if (!orderId) { return; }
+            var orig = btn.textContent;
+            btn.disabled = true;
+            btn.textContent = 'Adding…';
+            fetch('/order/' + encodeURIComponent(orderId) + '/reorder', {
+                method:      'POST',
+                credentials: 'same-origin',
+                headers:     { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                body:        '{}',
+            }).then(function (r) {
+                return r.json().catch(function () { return null; });
+            }).then(function (env) {
+                if (env && env.status === 401) {
+                    window.location.href = '/signin?next=' + encodeURIComponent('/order/' + orderId);
+                    return;
+                }
+                if (!env || env.status !== 200) {
+                    if (window.EatNDealUi && window.EatNDealUi.showToast) {
+                        window.EatNDealUi.showToast('error', (env && env.msg) || 'Could not reorder.');
+                    }
+                    btn.disabled = false;
+                    btn.textContent = orig;
+                    return;
+                }
+                // Carry the result message (incl. any skipped items) to /cart.
+                try { sessionStorage.setItem('reorder.msg', env.msg || ''); } catch (e) { /* ignore */ }
+                window.location.href = '/cart';
+            }).catch(function () {
+                if (window.EatNDealUi && window.EatNDealUi.showToast) {
+                    window.EatNDealUi.showToast('error', 'Could not reorder. Please try again.');
+                }
+                btn.disabled = false;
+                btn.textContent = orig;
+            });
+        });
+    }
+
+    /**
+     * bindScrollHide
+     *
+     * What:   Shows the mobile bottom-nav ONLY while the top header band
+     *         (logo / location / bell) is actually on screen, and hides it
+     *         once that header has scrolled out of view. Driven by an
+     *         `is-header-hidden` class on <body> that bottom-nav.css uses
+     *         to slide the menu down off the bottom edge.
+     * Why:    The user's rule: "the bottom menu should appear only when
+     *         the top header appears". Earlier this keyed off scroll
+     *         DIRECTION, so a tiny scroll-up halfway down the page flashed
+     *         the menu back. That was wrong. We now key off the header's
+     *         POSITION (on screen vs off screen) instead — a small up-
+     *         scroll mid-page does nothing; the menu returns only when the
+     *         user scrolls up far enough that the header itself reappears.
+     * How:    On mobile the header is position:static (mobile.css), so it
+     *         only sits in the viewport near the top of the page. An
+     *         IntersectionObserver watches it: intersecting → header
+     *         visible → show the nav; not intersecting → header gone →
+     *         hide the nav. Position-based, so there is zero flicker from
+     *         small back-and-forth scrolls.
+     * Type:   WRITE (toggles a body class as the header enters/leaves).
+     * Inputs: none — observes the .site-header element directly.
+     * Output: void.
+     * Used:   Called once from onReady().
+     *
+     * Notes:  Desktop keeps a sticky header and renders no bottom-nav, so
+     *         the class is force-cleared there and the bottom-nav.css hide
+     *         rule lives inside the max-width:767px media query anyway —
+     *         a stale class on desktop has no visual effect.
+     */
+    function bindScrollHide() {
+        var mq     = window.matchMedia('(max-width: 767px)');
+        var header = document.querySelector('.site-header');
+        var nav    = document.querySelector('.bottom-nav');
+        // No header or no bottom-nav (logged-out / bare pages) → nothing
+        // to sync.
+        if (!header || !nav) { return; }
+
+        // Reflect "header is off screen" onto <body>. On desktop always
+        // clear it — the header is sticky there and there is no nav to
+        // hide.
+        function setHeaderHidden(hidden) {
+            if (!mq.matches) {
+                document.body.classList.remove('is-header-hidden');
+                return;
+            }
+            document.body.classList.toggle('is-header-hidden', !!hidden);
+        }
+
+        // Preferred path: observe the header's actual visibility.
+        // threshold 0 → "intersecting" stays true while ANY pixel of the
+        // header is in the viewport, and flips false only once it has
+        // fully scrolled off. So the nav is present exactly while the
+        // header is on screen.
+        if ('IntersectionObserver' in window) {
+            var io = new IntersectionObserver(function (entries) {
+                setHeaderHidden(!entries[0].isIntersecting);
+            }, { threshold: 0 });
+            io.observe(header);
+            return;
+        }
+
+        // Fallback (very old browsers): hide once scrolled past the
+        // header's height. Still position-based, not direction-based.
+        var ticking = false;
+        function apply() {
+            ticking = false;
+            var h = header.offsetHeight || 64;
+            setHeaderHidden((window.pageYOffset || 0) > h);
+        }
+        window.addEventListener('scroll', function () {
+            if (ticking) { return; }
+            ticking = true;
+            window.requestAnimationFrame(apply);
+        }, { passive: true });
     }
 
     /**

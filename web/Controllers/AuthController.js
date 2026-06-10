@@ -212,7 +212,14 @@ async function startOtp(req, res) {
         req.flash('success', 'Demo OTP: ' + apiRes.body.data.dev_otp);
     }
 
-    return res.redirect('/signin?step=otp');
+    // Persist the session (pendingAuth + flash) BEFORE redirecting. The
+    // file-backed store writes async, so a bare redirect races the next
+    // GET /signin?step=otp — which then finds no pendingAuth and bounces
+    // straight back to step 1 (only the flash shows, the OTP page never
+    // loads). Saving first guarantees the OTP page sees the pending number.
+    return req.session.save(function () {
+        res.redirect('/signin?step=otp');
+    });
 }
 
 /**
@@ -265,12 +272,19 @@ async function verifyOtp(req, res) {
         req.session.user        = data.customer;
         req.session.pendingAuth = null;
         req.flash('success', 'Welcome back, ' + (data.customer.firstname || '').trim() + '.');
-        return redirectAfterSave(req, res, safeNext(pending.next));
+        // Save before redirect so the landing page sees the logged-in user
+        // (same async-store race as startOtp).
+        return req.session.save(function () {
+            redirectAfterSave(req, res, safeNext(pending.next));
+        });
     }
 
-    // 'new' or 'pending' → ask for Personal Details.
+    // 'new' or 'pending' → ask for Personal Details. Save first so the
+    // step=profile page finds otp_verified=true (it gates on it).
     req.session.pendingAuth = { ...pending, otp_verified: true, dev_otp: null };
-    return res.redirect('/signin?step=profile');
+    return req.session.save(function () {
+        res.redirect('/signin?step=profile');
+    });
 }
 
 /**
@@ -294,6 +308,8 @@ async function saveProfile(req, res) {
     const firstname = spaceIdx === -1 ? nameRaw : nameRaw.slice(0, spaceIdx);
     const lastname  = spaceIdx === -1 ? ''      : nameRaw.slice(spaceIdx + 1);
     const email     = String((req.body && req.body.email) || '').trim();
+    // Optional "Invite & Earn" code from a friend → binds referred_by.
+    const referredCode = String((req.body && req.body.referred_code) || '').trim();
 
     if (!firstname) {
         req.flash('error', 'Please enter your name.');
@@ -301,11 +317,12 @@ async function saveProfile(req, res) {
     }
 
     const apiRes = await callApi(req, 'POST', '/api/v1/auth/save-profile', {
-        country_code: pending.country_code,
-        contact_no:   pending.contact_no,
+        country_code:  pending.country_code,
+        contact_no:    pending.contact_no,
         firstname,
         lastname,
         email,
+        referred_code: referredCode,
     });
 
     const body = apiRes.body || {};
@@ -322,7 +339,10 @@ async function saveProfile(req, res) {
     req.session.user        = body.data.customer;
     req.session.pendingAuth = null;
     req.flash('success', 'Welcome to ' + (res.locals.brand && res.locals.brand.name ? res.locals.brand.name : 'EatNDeal') + ', ' + firstname + '.');
-    return redirectAfterSave(req, res, safeNext(pending.next));
+    // Save before redirect so the landing page is already signed-in.
+    return req.session.save(function () {
+        redirectAfterSave(req, res, safeNext(pending.next));
+    });
 }
 
 /**
@@ -355,16 +375,28 @@ async function accountPage(req, res) {
         }
     } catch (e) { /* keep the session copy */ }
 
-    // Profile stats. rewardPoints comes from the real loyalty_points;
-    // orders / favourites / offers aren't tracked for marketplace
-    // customers yet (no customer↔orders link), so they're honest zeros
-    // until those features land.
+    // Profile stats — fetched in parallel on every render so the
+    // counts at the bottom of the My Profile card are accurate even
+    // when the customer hasn't opened the Orders / Favourites tabs
+    // yet. Each call is wrapped in its own try/catch so one slow or
+    // failing endpoint can't blank the whole stats row.
     const stats = {
         orders:       0,
         favourites:   0,
         rewardPoints: Number(user.loyalty_points) || 0,
         offers:       0,
     };
+    const statQS = new URLSearchParams({ customer_id: String(user.id) });
+    const [ordersStatRes, favsStatRes] = await Promise.all([
+        callApi(req, 'GET', '/api/v1/customer/orders?'     + statQS.toString()).catch(() => null),
+        callApi(req, 'GET', '/api/v1/customer/favourites?' + statQS.toString()).catch(() => null),
+    ]);
+    if (ordersStatRes && ordersStatRes.body && ordersStatRes.body.status === 200 && ordersStatRes.body.data) {
+        stats.orders = (ordersStatRes.body.data.orders || []).length;
+    }
+    if (favsStatRes && favsStatRes.body && favsStatRes.body.status === 200 && favsStatRes.body.data) {
+        stats.favourites = (favsStatRes.body.data.favourites || []).length;
+    }
 
     // Which account tab is active. Only "profile" has a real screen today;
     // the rest render a placeholder panel (with the tab highlighted) until
@@ -382,10 +414,112 @@ async function accountPage(req, res) {
     let activeTab = String((req.query && req.query.tab) || 'profile').toLowerCase();
     if (!TABS[activeTab]) { activeTab = 'profile'; }
 
+    // Favourites tab — fetch the customer's saved restaurants so the
+    // panel renders the live list. Other tabs still show their
+    // placeholder until those features land.
+    let favourites = null;
+    if (activeTab === 'favourites') {
+        try {
+            const loc = (req.session && req.session.userLocation) || {};
+            const qs = new URLSearchParams({ customer_id: String(user.id) });
+            if (loc.lat != null && loc.lat !== '') { qs.set('lat', String(loc.lat)); }
+            if (loc.lng != null && loc.lng !== '') { qs.set('lng', String(loc.lng)); }
+            const favRes = await callApi(req, 'GET', '/api/v1/customer/favourites?' + qs.toString());
+            if (favRes.body && favRes.body.status === 200 && favRes.body.data) {
+                favourites = favRes.body.data.favourites || [];
+            } else {
+                favourites = [];
+            }
+        } catch (e) { favourites = []; }
+        stats.favourites = favourites.length;
+    }
+
+    // Orders tab — fetch the customer's marketplace orders (newest
+    // first, paginated). Same envelope handling as favourites.
+    let orders = null;
+    // Order filters carried in the URL query (?status=&search=&date_from=&date_to=).
+    const orderFilters = {
+        status:    ['active', 'completed', 'cancelled'].indexOf(String(req.query.status || '')) !== -1 ? String(req.query.status) : '',
+        search:    String(req.query.search || '').trim().slice(0, 60),
+        date_from: /^\d{4}-\d{2}-\d{2}$/.test(req.query.date_from || '') ? req.query.date_from : '',
+        date_to:   /^\d{4}-\d{2}-\d{2}$/.test(req.query.date_to || '') ? req.query.date_to : '',
+    };
+    if (activeTab === 'orders') {
+        try {
+            const qs = new URLSearchParams({ customer_id: String(user.id), limit: '20' });
+            if (orderFilters.status)    { qs.set('status', orderFilters.status); }
+            if (orderFilters.search)    { qs.set('search', orderFilters.search); }
+            if (orderFilters.date_from) { qs.set('date_from', orderFilters.date_from); }
+            if (orderFilters.date_to)   { qs.set('date_to', orderFilters.date_to); }
+            const oRes = await callApi(req, 'GET', '/api/v1/customer/orders?' + qs.toString());
+            orders = (oRes.body && oRes.body.status === 200 && oRes.body.data && oRes.body.data.orders) || [];
+        } catch (e) { orders = []; }
+        stats.orders = orders.length;
+    }
+
+    // Addresses tab — fetch the customer's saved-address book so the
+    // tab renders the live list inline (same cards + actions the
+    // location modal shows, no popup needed).
+    let addresses = null;
+    if (activeTab === 'addresses') {
+        try {
+            const qs = new URLSearchParams({ customer_id: String(user.id) });
+            const aRes = await callApi(req, 'GET', '/api/v1/customer/addresses?' + qs.toString());
+            addresses = (aRes.body && aRes.body.status === 200 && aRes.body.data && aRes.body.data.addresses) || [];
+        } catch (e) { addresses = []; }
+    }
+
+    // Payment Methods tab — pull saved cards from Stripe via the api.
+    // Returns an empty list when Stripe isn't configured OR the customer
+    // has never saved one; the UI handles both with the same empty state.
+    let paymentMethods = null;
+    if (activeTab === 'payment') {
+        try {
+            const qs = new URLSearchParams({ customer_id: String(user.id) });
+            const pmRes = await callApi(req, 'GET', '/api/v1/customer/payment-methods?' + qs.toString());
+            paymentMethods = (pmRes.body && pmRes.body.status === 200 && pmRes.body.data && pmRes.body.data.paymentMethods) || [];
+        } catch (e) { paymentMethods = []; }
+    }
+
+    // Profile tab — load the optional "About You" preferences so the
+    // "Complete your profile" section renders pre-filled. Best-effort:
+    // null (no row / not enabled / failed) just shows an empty form.
+    let about = null;
+    if (activeTab === 'profile') {
+        try {
+            const abRes = await callApi(req, 'GET', '/api/v1/auth/about?customer_id=' + encodeURIComponent(user.id));
+            if (abRes.body && abRes.body.status === 200 && abRes.body.data) {
+                about = abRes.body.data.about || null;
+            }
+        } catch (e) { about = null; }
+    }
+
+    // Rewards tab — the customer's per-restaurant reward cards (loyalty).
+    // Each restaurant is a separate card/balance; null/[] = empty wallet.
+    let rewardCards = null;
+    if (activeTab === 'rewards') {
+        try {
+            const rwRes = await callApi(req, 'GET', '/api/v1/customer/loyalty/wallet?customer_id=' + encodeURIComponent(user.id));
+            rewardCards = (rwRes.body && rwRes.body.status === 200 && rwRes.body.data && rwRes.body.data.cards) || [];
+        } catch (e) { rewardCards = []; }
+    }
+
     return res.render('account/index', {
         page_title:       TABS[activeTab],
         _layoutFile:      '../_layout',
-        active_nav:       'profile',
+        // The account page hosts both the Profile area and the Orders
+        // tab (the bottom-nav "Orders" item routes here via /orders).
+        // Highlight the matching bottom-nav icon: Orders when the orders
+        // tab is open, otherwise Profile.
+        active_nav:       activeTab === 'orders' ? 'orders' : 'profile',
+        // Only the Profile EDIT screen becomes the chrome-less focused
+        // "app screen" on mobile (it has its own sticky save bar). Every
+        // other tab (Addresses / Payment / Orders / Favourites / Rewards)
+        // keeps the site header + bottom-nav like the Orders screen, so the
+        // whole account section feels consistent on a phone. The CSS keys
+        // the focused treatment off the body class `view-profilefocus`
+        // (set via view_mode) instead of active_nav.
+        view_mode:        activeTab === 'profile' ? 'profilefocus' : '',
         extra_js:         '/js/pages/account.js',
         // Full site chrome (header + footer) like the mockup, but NO promo
         // strip on this page.
@@ -395,6 +529,16 @@ async function accountPage(req, res) {
         account_stats:    stats,
         active_tab:       activeTab,
         active_tab_label: TABS[activeTab],
+        favourites:       favourites,
+        orders:           orders,
+        addresses:        addresses,
+        payment_methods:  paymentMethods,
+        account_about:    about,
+        reward_cards:     rewardCards,
+        // Invite & Earn — the customer's own referral code (from /auth/me).
+        referral_code:    user.referral_code || '',
+        // Order-history filter state (echoed back into the filter bar).
+        order_filters:    orderFilters,
     });
 }
 
@@ -451,18 +595,9 @@ async function updateProfile(req, res) {
         payload.country_code = country;
         payload.contact_no   = contact;
     }
-    // Date of birth — HTML date input gives YYYY-MM-DD. Forward only a
-    // valid value (or empty to clear); the api validates the format.
-    const dob = String((req.body && req.body.birthdate) || '').trim();
-    if (/^\d{4}-\d{2}-\d{2}$/.test(dob) || dob === '') {
-        payload.birthdate = dob;
-    }
-    // Gender — forward the known options (api validates + persists only
-    // once the customer.gender column exists).
-    const gender = String((req.body && req.body.gender) || '').trim().toLowerCase();
-    if (['male', 'female', 'other', 'na', ''].indexOf(gender) !== -1) {
-        payload.gender = gender;
-    }
+    // NOTE: gender + date-of-birth are NOT sent here anymore — they're
+    // saved into customer_profile via /auth/update-about below (forwarded
+    // in aboutPayload). Only name / email / phone live on the customer row.
 
     const apiRes = await callApi(req, 'POST', '/api/v1/auth/update-profile', payload);
 
@@ -485,6 +620,47 @@ async function updateProfile(req, res) {
     }
 
     req.session.user = body.data.customer;
+
+    // Optional "About You" preferences — present only when the profile
+    // form's section was rendered (hidden about_present=1). Forwarded to
+    // the api, which sanitises every value against the allowed option
+    // lists. Best-effort: a failure here doesn't undo the profile save —
+    // it just surfaces a soft warning. (gender / DOB / photo are NOT here —
+    // they were saved above on the customer row.)
+    if (String((req.body && req.body.about_present) || '') === '1') {
+        const arr = function (v) { return Array.isArray(v) ? v : (v == null || v === '' ? [] : [v]); };
+        const aboutPayload = {
+            customer_id:                  user.id,
+            // gender + dob now save into customer_profile (the basic-card
+            // Gender/DOB controls post into this same form).
+            gender:                       String((req.body && req.body.gender) || '').trim().toLowerCase(),
+            dob:                          String((req.body && req.body.birthdate) || '').trim(),
+            anniversary_date:             String((req.body && req.body.anniversary_date) || '').trim(),
+            favorite_food_category:       arr(req.body && req.body.favorite_food_category),
+            other_food_category:          String((req.body && req.body.other_food_category) || '').trim(),
+            order_type:                   String((req.body && req.body.order_type) || '').trim(),
+            takeaway_frequency:           String((req.body && req.body.takeaway_frequency) || '').trim(),
+            offer_time:                   arr(req.body && req.body.offer_time),
+            hear_about_us:                String((req.body && req.body.hear_about_us) || '').trim(),
+            work_in_hospitality_industry: String((req.body && req.body.work_in_hospitality_industry) || '').trim(),
+            family_size:                  String((req.body && req.body.family_size) || '').trim(),
+            has_children:                 String((req.body && req.body.has_children) || '').trim(),
+            is_student:                   String((req.body && req.body.is_student) || '').trim(),
+            work_nearby:                  String((req.body && req.body.work_nearby) || '').trim(),
+            marketing_preferences:        arr(req.body && req.body.marketing_preferences),
+        };
+        try {
+            const abRes = await callApi(req, 'POST', '/api/v1/auth/update-about', aboutPayload);
+            if (!abRes.body || abRes.body.status !== 200) {
+                req.flash('error', (abRes.body && abRes.body.msg) || 'Your details were saved, but some preferences could not be.');
+                return res.redirect('/account');
+            }
+        } catch (e) {
+            req.flash('error', 'Your details were saved, but your preferences could not be saved — please try again.');
+            return res.redirect('/account');
+        }
+    }
+
     req.flash('success', 'Your profile has been updated.');
     return res.redirect('/account');
 }
@@ -669,21 +845,29 @@ async function uploadAvatar(req, res) {
 /**
  * signOut
  *
- * What:  Clears the session user + pending auth and bounces home. Mounted
- *        on POST so it can't be triggered by a stray <img src> or link.
+ * What:  Signs the customer out and bounces home — but KEEPS the chosen
+ *        delivery/pickup location so the home page shows the restaurant
+ *        feed, not the "Step 1 of 3" location picker. The location isn't
+ *        tied to the account (the guest already picked it), so wiping it on
+ *        logout just made people re-enter their postcode for no reason.
+ *        Mounted on POST so it can't be triggered by a stray <img src>.
  * Type:  WRITE.
  */
 function signOut(req, res) {
     if (!req.session) { return res.redirect('/'); }
-    // DESTROY the session (not just null the user) and clear the cookie
-    // before redirecting. With the file-backed session store a plain
-    // `user = null` + immediate redirect races the async disk write, so
-    // the next page load could still read the old session and keep showing
-    // the username until a manual refresh. Destroying in the callback
-    // guarantees the store is cleared before we send the user home.
-    req.session.destroy(function () {
-        res.clearCookie(process.env.SESSION_NAME || 'eatndeal_web', { path: '/' });
-        res.redirect('/');
+    // Stash the location, then REGENERATE the session (fresh id — drops the
+    // signed-in user + everything else, a clean sign-out) and re-attach
+    // only that location. regenerate()'s callback runs AFTER the store
+    // write, so there's no stale-session race (the reason the old code
+    // destroyed the whole session instead of nulling the user).
+    const loc = req.session.userLocation || null;
+    req.session.regenerate(function (err) {
+        if (!err && loc && req.session) { req.session.userLocation = loc; }
+        const done = function () { res.redirect('/'); };
+        if (req.session && typeof req.session.save === 'function') {
+            return req.session.save(done);
+        }
+        return done();
     });
 }
 

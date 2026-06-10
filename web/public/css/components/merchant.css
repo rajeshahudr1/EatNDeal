@@ -1,0 +1,151 @@
+/*
+ * components/merchant.css
+ *
+ * What:  Merchant dashboard (views/merchant/orders.ejs). PWA-responsive
+ *        single-column list. Each card carries the order's status,
+ *        customer summary, and the actions the merchant can take.
+ *
+ *        Status pills + button colours echo the customer-side
+ *        orders + order-detail vocabulary so staff + customer see the
+ *        same colour language.
+ */
+
+.merchant { max-width: 960px; margin: 0 auto; padding: var(--space-5) var(--space-4) var(--space-10); }
+
+.merchant__head { margin-bottom: var(--space-4); }
+.merchant__title { font-size: 1.7rem; font-weight: 800; margin: 0; }
+.merchant__sub { color: var(--color-text-soft); margin: 4px 0 0; font-size: 0.92rem; }
+
+.merchant__blocked {
+    background: #fff; border: 1px solid var(--color-border-soft); border-radius: var(--radius-lg);
+    padding: var(--space-8) var(--space-5); text-align: center;
+    margin: var(--space-6) auto; max-width: 520px;
+}
+.merchant__blocked h1 { font-size: 1.3rem; margin: 0 0 8px; }
+.merchant__blocked p  { color: var(--color-text-soft); margin: 0; }
+
+/* ── State tabs ─────────────────────────────────────────────────── */
+.merchant-tabs { display: flex; gap: var(--space-4); border-bottom: 1px solid var(--color-border-soft); margin-bottom: var(--space-4); overflow-x: auto; scrollbar-width: none; }
+.merchant-tabs::-webkit-scrollbar { display: none; }
+.merchant-tabs__tab {
+    flex: 0 0 auto; padding: 10px 2px; font: inherit; font-weight: 700;
+    color: var(--color-text-soft); border-bottom: 2px solid transparent;
+    text-decoration: none; white-space: nowrap;
+}
+.merchant-tabs__tab:hover { color: var(--color-text); }
+.merchant-tabs__tab.is-active { color: var(--color-primary); border-bottom-color: var(--color-primary); }
+
+/* ── Empty state ────────────────────────────────────────────────── */
+.merchant-empty {
+    background: #fff; border: 1px solid var(--color-border-soft); border-radius: var(--radius-lg);
+    padding: var(--space-6) var(--space-4); text-align: center; color: var(--color-text-soft);
+    display: flex; flex-direction: column; align-items: center; gap: var(--space-2);
+}
+.merchant-empty__icon {
+    width: 64px; height: 64px; border-radius: 50%;
+    background: var(--color-primary-soft); color: var(--color-primary);
+    display: grid; place-items: center;
+}
+.merchant-empty h2 { font-size: 1.1rem; margin: 0; color: var(--color-text); }
+.merchant-empty p  { margin: 0; font-size: 0.9rem; }
+
+/* ── Order cards ────────────────────────────────────────────────── */
+.merchant-orders { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: var(--space-3); }
+.merchant-order {
+    background: #fff; border: 1px solid var(--color-border-soft); border-radius: var(--radius-lg);
+    padding: var(--space-4); transition: opacity 120ms ease, border-color 120ms ease;
+}
+.merchant-order.is-busy { opacity: 0.55; pointer-events: none; }
+.merchant-order.is-new { border-color: var(--color-primary); box-shadow: 0 0 0 2px var(--color-primary-soft); }
+
+.merchant-order__head { display: flex; justify-content: space-between; align-items: center; gap: var(--space-2); margin-bottom: 6px; }
+.merchant-order__name { display: inline-flex; align-items: center; gap: 8px; min-width: 0; flex-wrap: wrap; }
+.merchant-order__number { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-weight: 800; font-size: 0.95rem; }
+.merchant-order__chip {
+    font-size: 0.66rem; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase;
+    padding: 2px 8px; border-radius: 999px; background: #e0f2fe; color: #0369a1;
+}
+.merchant-order__chip--pre { background: #fef3c7; color: #92400e; }
+
+.merchant-order__status {
+    flex: 0 0 auto;
+    font-size: 0.72rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+    padding: 3px 10px; border-radius: 999px;
+}
+.merchant-order__status--pending   { background: #fff7e6; color: #b45309; }
+.merchant-order__status--active    { background: #e0f2fe; color: #0369a1; }
+.merchant-order__status--completed { background: #dcfce7; color: #166534; }
+.merchant-order__status--cancelled { background: #fee2e2; color: #b91c1c; }
+
+.merchant-order__meta { color: var(--color-text-soft); margin: 0 0 4px; font-size: 0.88rem; }
+.merchant-order__cust { margin: 4px 0 0; font-weight: 700; color: var(--color-text); font-size: 0.9rem; }
+.merchant-order__addr { margin: 4px 0 0; font-size: 0.85rem; color: var(--color-text-soft); }
+.merchant-order__note { margin: 6px 0 0; padding: 8px 10px; background: var(--color-primary-soft); border-radius: 8px; font-size: 0.85rem; }
+
+.merchant-order__actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: var(--space-3); }
+
+/* ── Buttons ────────────────────────────────────────────────────── */
+.merchant-btn {
+    flex: 0 0 auto; border: 0; cursor: pointer; font: inherit; font-weight: 700;
+    padding: 9px 16px; border-radius: 10px;
+    transition: transform 60ms ease, opacity 120ms ease;
+}
+.merchant-btn:active { transform: scale(0.97); }
+.merchant-btn:disabled { opacity: 0.6; cursor: progress; }
+.merchant-btn--primary { background: var(--color-primary); color: #fff; }
+.merchant-btn--primary:hover { background: var(--color-primary-dark, #b91c1c); }
+.merchant-btn--danger  { background: transparent; color: var(--color-primary); border: 1px solid var(--color-primary); }
+.merchant-btn--danger:hover { background: var(--color-primary-soft); }
+
+/* Dashboard card's order number is now a link to the detail page. */
+.merchant-order__number { text-decoration: none; color: inherit; }
+.merchant-order__number:hover { color: var(--color-primary); text-decoration: underline; }
+
+/* ── Order detail page ──────────────────────────────────────────── */
+.merchant-detail__head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); margin-bottom: var(--space-4); }
+.merchant-detail__head-text { min-width: 0; }
+.merchant-detail__crumbs { font-size: 0.82rem; color: var(--color-text-soft); margin: 0 0 4px; }
+.merchant-detail__crumbs a { color: var(--color-text-soft); text-decoration: none; }
+.merchant-detail__crumbs a:hover { color: var(--color-primary); }
+.merchant-detail__title { font-size: 1.4rem; font-weight: 800; margin: 0; }
+.merchant-detail__sub { color: var(--color-text-soft); margin: 4px 0 0; font-size: 0.88rem; }
+
+.merchant-detail__actions {
+    display: flex; flex-wrap: wrap; gap: 10px;
+    margin-bottom: var(--space-4);
+}
+
+.merchant-detail__grid {
+    display: grid; grid-template-columns: 1fr 340px; gap: var(--space-4); align-items: start;
+}
+.merchant-detail__main { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; }
+.merchant-detail__summary {
+    background: #fff; border: 1px solid var(--color-border-soft); border-radius: var(--radius-lg);
+    padding: var(--space-4); position: sticky; top: calc(var(--space-4) + 64px);
+}
+.merchant-detail__card {
+    background: #fff; border: 1px solid var(--color-border-soft); border-radius: var(--radius-lg);
+    padding: var(--space-3) var(--space-4);
+}
+.merchant-detail__card-title { font-size: 0.95rem; font-weight: 800; margin: 0 0 var(--space-2); }
+.merchant-detail__line { margin: 0 0 4px; font-size: 0.9rem; color: var(--color-text); }
+.merchant-detail__line strong { color: var(--color-text-soft); font-weight: 700; margin-right: 6px; }
+.merchant-detail__line a { color: var(--color-primary); text-decoration: none; font-weight: 700; }
+.merchant-detail__line a:hover { text-decoration: underline; }
+.merchant-detail__note {
+    background: var(--color-primary-soft); color: var(--color-text);
+    padding: 10px 12px; border-radius: 8px; font-size: 0.9rem; margin: var(--space-2) 0 0;
+}
+
+@media (max-width: 1023px) {
+    .merchant-detail__grid { grid-template-columns: 1fr; }
+    .merchant-detail__summary { position: static; }
+}
+@media (max-width: 640px) {
+    .merchant { padding: var(--space-4) var(--space-3) var(--space-10); }
+    .merchant__title { font-size: 1.35rem; }
+    .merchant-detail__title { font-size: 1.2rem; }
+    .merchant-order { padding: var(--space-3); }
+    .merchant-btn { flex: 1 1 auto; }
+    .merchant-detail__actions .merchant-btn { flex: 1 1 100%; }
+}

@@ -84,7 +84,7 @@ const pages = {
                 items: [
                     { q: 'How do I place an order?',          a: 'Set your delivery location, pick a restaurant, add items to your cart, and check out. You don\'t need an account to browse — only to place the order.' },
                     { q: 'Can I schedule an order for later?', a: 'Yes. At checkout, choose "Schedule for later" and pick the date and time you\'d like your food to arrive. Available at supported restaurants.' },
-                    { q: 'How do I track my order?',          a: 'Once placed, your order shows up under Orders with a live timeline — Placed, Accepted, Preparing, Ready, On the way, Delivered. You\'ll also get push notifications at each step.' },
+                    { q: 'How do I track my order?',          a: 'Once placed, your order shows up under Orders with a live timeline — Placed, Accepted, then Out for delivery (delivery) or Ready to collect (pickup), and finally Completed. You\'ll also get push notifications at each step.' },
                 ],
             },
             {

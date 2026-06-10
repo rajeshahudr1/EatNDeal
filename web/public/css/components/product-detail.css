@@ -42,6 +42,7 @@
 .pd__stars { display: inline-flex; align-items: center; gap: 4px; color: #f59e0b; }
 .pd__rating-count { color: var(--color-text-soft); font-weight: 500; }
 .pd__price { font-size: 1.5rem; font-weight: 800; margin: 0 0 var(--space-2); }
+.pd__price--na { font-size: 1rem; font-style: italic; color: var(--color-text-soft); }
 .pd__desc { color: var(--color-text-soft); line-height: 1.5; margin: 0 0 var(--space-5); }
 
 /* ── Option groups ─────────────────────────────────────────────────── */
@@ -83,6 +84,19 @@
 .pd-qty__btn.is-disabled:hover, .pd-qty__btn:disabled:hover { background: var(--color-bg-alt); color: var(--color-border); }
 .pd-group.is-invalid .pd-group__legend { color: var(--color-primary); }
 .pd-group.is-invalid .pd-opt { border-color: var(--color-primary); }
+
+/* Linked sub-group — appears as its own section after the parent
+   group's fieldset, only when the parent option is selected. A thin
+   left accent + a slight indent reads as "this depends on what you
+   picked above" without breaking the page rhythm. */
+.pd-linked-section {
+    margin: 0 0 var(--space-5);
+    border-left: 3px solid var(--color-primary-soft);
+    padding-left: var(--space-3);
+}
+.pd-linked-section[hidden] { display: none; }
+.pd-linked-section .pd-group { margin-bottom: 0; }
+.pd-linked-section .pd-group__legend { padding-top: 0; }
 
 /* ── Customization note ────────────────────────────────────────────── */
 .pd-note { display: block; position: relative; margin: 0 0 var(--space-6); }

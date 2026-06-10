@@ -1,0 +1,69 @@
+<%#
+  views/order/receipt.ejs
+
+  What:  Standalone printable receipt for one order (bare layout — no site
+         chrome). The marketplace equivalent of the legacy Mpdf receipt:
+         the customer prints or saves as PDF from the browser. All amounts
+         come from the same /api/v1/customer/order payload as the detail page.
+-%>
+<% var sym = brand.currencySymbol; %>
+<% var o = order; %>
+<link rel="stylesheet" href="/css/components/receipt.css?v=<%= ASSET_VERSION %>">
+
+<div class="receipt">
+    <div class="receipt__bar receipt__no-print">
+        <a class="receipt__back" href="/order/<%= o.id %>">&lsaquo; Back to order</a>
+        <button type="button" class="receipt__print" onclick="window.print()">Print / Save as PDF</button>
+    </div>
+
+    <div class="receipt__paper">
+        <header class="receipt__head">
+            <h1 class="receipt__brand"><%= (brand && brand.name) ? brand.name : 'EatNDeal' %></h1>
+            <p class="receipt__rest"><%= o.restaurant.name %></p>
+            <% if (o.restaurant.address) { %><p class="receipt__line"><%= o.restaurant.address %></p><% } %>
+            <% if (o.restaurant.phone) { %><p class="receipt__line"><%= o.restaurant.phone %></p><% } %>
+        </header>
+
+        <div class="receipt__meta">
+            <div><span>Order</span><strong><%= o.number || ('#' + o.id) %></strong></div>
+            <% if (o.createdAt) { %><div><span>Date</span><strong><%= new Date(o.createdAt).toLocaleString() %></strong></div><% } %>
+            <div><span>Type</span><strong><%= o.serveType === 2 ? 'Pickup' : 'Delivery' %></strong></div>
+            <% if (o.customerName) { %><div><span>Customer</span><strong><%= o.customerName %></strong></div><% } %>
+            <% if (o.customerNumber) { %><div><span>Phone</span><strong><%= o.customerNumber %></strong></div><% } %>
+            <% if (o.serveType !== 2 && o.deliveryAddress) { %><div><span>Deliver to</span><strong><%= o.deliveryAddress %></strong></div><% } %>
+        </div>
+
+        <table class="receipt__items">
+            <tbody>
+            <% (o.items || []).forEach(function (it) { %>
+                <tr>
+                    <td class="receipt__qty"><%= it.qty %>&times;</td>
+                    <td class="receipt__name">
+                        <%= it.name %>
+                        <% if (it.modifiers && it.modifiers.length) { %>
+                            <span class="receipt__mods"><% it.modifiers.forEach(function (m, mi) { %><%= mi ? ', ' : '' %><%= m.name %><% }); %></span>
+                        <% } %>
+                        <% if (it.remark) { %><span class="receipt__note">“<%= it.remark %>”</span><% } %>
+                    </td>
+                    <td class="receipt__amt"><%= sym %><%= (it.linePrice || 0).toFixed(2) %></td>
+                </tr>
+            <% }); %>
+            </tbody>
+        </table>
+
+        <div class="receipt__totals">
+            <div class="receipt__row"><span>Subtotal</span><span><%= sym %><%= (o.subTotal || 0).toFixed(2) %></span></div>
+            <% if (o.discount > 0) { %><div class="receipt__row"><span>Discount</span><span>&minus;<%= sym %><%= o.discount.toFixed(2) %></span></div><% } %>
+            <% if (o.serveType !== 2) { %><div class="receipt__row"><span>Delivery</span><span><%= (o.freeDelivery || o.deliveryFees === 0) ? 'Free' : (sym + o.deliveryFees.toFixed(2)) %></span></div><% } %>
+            <% if (o.serviceCharge > 0) { %><div class="receipt__row"><span>Service charge</span><span><%= sym %><%= o.serviceCharge.toFixed(2) %></span></div><% } %>
+            <% if (o.cardServiceCharge > 0) { %><div class="receipt__row"><span>Card charge</span><span><%= sym %><%= o.cardServiceCharge.toFixed(2) %></span></div><% } %>
+            <% if (o.bagCharge > 0) { %><div class="receipt__row"><span>Bag charge</span><span><%= sym %><%= o.bagCharge.toFixed(2) %></span></div><% } %>
+            <% if (o.charityAmount > 0) { %><div class="receipt__row"><span>Charity</span><span><%= sym %><%= o.charityAmount.toFixed(2) %></span></div><% } %>
+            <div class="receipt__row receipt__row--total"><span>Total</span><span><%= sym %><%= (o.grandTotal || 0).toFixed(2) %></span></div>
+        </div>
+
+        <footer class="receipt__foot">
+            <p>Thank you for your order!</p>
+        </footer>
+    </div>
+</div>

@@ -96,4 +96,40 @@
  * of the feed. */
 @media (max-width: 767px) {
     body.has-bottom-nav #app-main { padding-bottom: 76px; }
+
+    /* Show the nav ONLY while the top header is on screen. /js/app.js
+     * sets `is-header-hidden` on <body> the moment the header band (logo /
+     * location / bell) scrolls fully out of view, and clears it once the
+     * header is visible again — keyed off the header's POSITION, not the
+     * scroll direction, so a small up-scroll mid-page never flashes the
+     * menu back ("bottom menu shows only when the top header shows").
+     * translateY(100%) is relative to the nav's own height (incl. the
+     * safe-area padding), so it clears the viewport completely. */
+    .bottom-nav {
+        transition: transform 240ms ease;
+        will-change: transform;
+    }
+    body.is-header-hidden .bottom-nav {
+        transform: translateY(100%);
+    }
+}
+
+/* Respect a reduced-motion preference — snap rather than slide. */
+@media (max-width: 767px) and (prefers-reduced-motion: reduce) {
+    .bottom-nav { transition: none; }
+}
+
+/* ── Product-detail page: hide the nav ──────────────────────────────
+ * The product page carries its own fixed Add-to-cart bar (.pd-bar,
+ * product-detail.css) pinned at the bottom. The 5-tab nav (higher
+ * z-index) would stack on top of it, so we hide the nav on that page —
+ * the Add-to-cart bar is the primary action there. (Desktop already
+ * hides the nav via the min-width rule above; this covers mobile.) */
+body.view-product .bottom-nav { display: none; }
+
+/* With the nav hidden on the product page, drop its 76px bottom
+ * reservation so there's no empty gap below the content — the .pd
+ * section already reserves room for its own sticky Add-to-cart bar. */
+@media (max-width: 767px) {
+    body.view-product.has-bottom-nav #app-main { padding-bottom: 0; }
 }

@@ -1,0 +1,112 @@
+<%#
+  views/partials/product-modal.ejs
+
+  What:  Fullscreen product detail modal — replaces the standalone
+         /?rest=X&item=Y page for in-app navigation. Two stacked sheets
+         so option-group customisation also opens as its own popup
+         (matches the user's spec: "option group ke selection pe bhi
+         popup open kr ke select karna hai").
+
+           • Main sheet: image, name, price, description, quantity,
+                         a card per option group ("Customise" button),
+                         live order summary, Add to cart CTA.
+           • Group sheet: one group at a time — title, options as
+                          radios (single) or checkboxes (multi), Apply.
+
+  Why:   Keeps customers on the restaurant page (no full navigation)
+         while still surfacing every option Yii's product detail page
+         carries. Works as a PWA on mobile (full viewport sheet) and
+         as a centred card on desktop.
+
+  Used:  Included from views/_layout.ejs. JS = /js/ui/product-modal.js
+         (loaded by the layout). Triggered by any element that carries
+         data-action="open-product" + data-rest + data-item (set on
+         home dish cards, restaurant menu cards, related cards).
+-%>
+<div id="product-modal" class="pm" role="dialog" aria-modal="true"
+     aria-labelledby="product-modal-title" aria-hidden="true" hidden>
+    <div class="pm__backdrop" data-action="pm-close" aria-hidden="true"></div>
+
+    <div class="pm__sheet" role="document">
+        <%# Header bar — Uber Eats style: × on the LEFT, share on the
+            RIGHT, no centered title. JS sets aria-label on the dialog
+            to the product name once loaded, so screen readers still get
+            announcement without a duplicate visible H2. %>
+        <header class="pm__head">
+            <button type="button" class="pm__head-icon" data-action="pm-close" aria-label="Close">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+            <span class="pm__head-spacer" aria-hidden="true"></span>
+            <button type="button" class="pm__head-icon" data-action="pm-share" aria-label="Share">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/>
+                    <polyline points="16 6 12 2 8 6"/>
+                    <line x1="12" y1="2" x2="12" y2="15"/>
+                </svg>
+            </button>
+        </header>
+
+        <%# Two-pane main area: hero on the LEFT (static — never scrolls
+            on desktop), info column on the RIGHT (scrolls). On mobile
+            the same two children stack and the BODY column carries the
+            scroll for the whole thing. JS injects the hero markup into
+            [data-pm-hero] and the info/groups/note into [data-pm-content]. %>
+        <div class="pm__main">
+            <div class="pm__hero" data-pm-hero>
+                <%# Loading placeholder so the left pane isn't empty
+                    during the fetch — JS replaces it on success. %>
+                <span class="pm__hero-placeholder" aria-hidden="true"></span>
+            </div>
+            <div class="pm__body" data-pm-body>
+                <p class="pm__loading" data-pm-loading>Loading…</p>
+                <p class="pm__error"   data-pm-error hidden></p>
+                <div class="pm__content" data-pm-content hidden>
+                    <%# Filled in by /js/ui/product-modal.js — keeps the
+                        EJS minimal so the JS owns the rendering pipeline
+                        (one source of truth for the modal layout). %>
+                </div>
+            </div>
+        </div>
+
+        <%# Single dark CTA in the footer (Uber-Eats pattern). Qty
+            stepper sits inline on the left so customers can still
+            change quantity without hunting for it; the button label
+            mirrors the current qty + line total. %>
+        <footer class="pm__foot" data-pm-foot hidden>
+            <div class="pm-qty" aria-label="Quantity">
+                <button type="button" class="pm-qty__btn" data-action="pm-qty-dec" aria-label="Decrease">−</button>
+                <span class="pm-qty__value" data-pm-qty>1</span>
+                <button type="button" class="pm-qty__btn" data-action="pm-qty-inc" aria-label="Increase">+</button>
+            </div>
+            <button type="button" class="pm-add" data-action="pm-add">
+                <span class="pm-add__label" data-pm-add-label>Add to order</span>
+                <span class="pm-add__sep" aria-hidden="true">·</span>
+                <span class="pm-add__total" data-pm-total></span>
+            </button>
+        </footer>
+    </div>
+
+    <%# ───────────────────────────── nested group sheet ───────────────────────────── %>
+    <%# Layered above the main sheet (same fullscreen behaviour). One
+        group at a time. Closing it returns the user to the main sheet
+        with that group's choice reflected in the summary card. %>
+    <div class="pm-group" data-pm-group hidden role="dialog" aria-modal="true" aria-labelledby="pm-group-title">
+        <div class="pm-group__backdrop" data-action="pm-group-cancel" aria-hidden="true"></div>
+        <div class="pm-group__sheet" role="document">
+            <header class="pm-group__head">
+                <button type="button" class="pm-group__back" data-action="pm-group-cancel" aria-label="Back">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+                </button>
+                <h3 id="pm-group-title" class="pm-group__title" data-pm-group-title>Choose</h3>
+                <span class="pm-group__hint" data-pm-group-hint></span>
+            </header>
+            <div class="pm-group__body" data-pm-group-body>
+                <%# Filled in by JS each time a group is opened. %>
+            </div>
+            <footer class="pm-group__foot">
+                <button type="button" class="pm-group__cancel" data-action="pm-group-cancel">Cancel</button>
+                <button type="button" class="pm-group__apply"  data-action="pm-group-apply">Apply</button>
+            </footer>
+        </div>
+    </div>
+</div>

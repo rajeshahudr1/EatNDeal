@@ -68,6 +68,7 @@
     <link rel="stylesheet" href="/css/components/location-modal.css?v=<%= ASSET_VERSION %>">
     <link rel="stylesheet" href="/css/components/toast.css?v=<%= ASSET_VERSION %>">
     <link rel="stylesheet" href="/css/components/dialog.css?v=<%= ASSET_VERSION %>">
+    <link rel="stylesheet" href="/css/components/product-modal.css?v=<%= ASSET_VERSION %>">
     <link rel="stylesheet" href="/css/components/loader.css?v=<%= ASSET_VERSION %>">
     <link rel="stylesheet" href="/css/components/search-overlay.css?v=<%= ASSET_VERSION %>">
     <link rel="stylesheet" href="/css/components/bottom-nav.css?v=<%= ASSET_VERSION %>">
@@ -85,6 +86,10 @@
     <link rel="stylesheet" href="/css/components/product-detail.css?v=<%= ASSET_VERSION %>">
     <link rel="stylesheet" href="/css/components/offers-page.css?v=<%= ASSET_VERSION %>">
     <link rel="stylesheet" href="/css/components/location-landing.css?v=<%= ASSET_VERSION %>">
+    <link rel="stylesheet" href="/css/components/cart-page.css?v=<%= ASSET_VERSION %>">
+    <link rel="stylesheet" href="/css/components/order-confirm.css?v=<%= ASSET_VERSION %>">
+    <link rel="stylesheet" href="/css/components/order-detail.css?v=<%= ASSET_VERSION %>">
+    <link rel="stylesheet" href="/css/components/merchant.css?v=<%= ASSET_VERSION %>">
 
     <link rel="stylesheet" href="/css/desktop.css?v=<%= ASSET_VERSION %>" media="(min-width: 768px)">
     <link rel="stylesheet" href="/css/mobile.css?v=<%= ASSET_VERSION %>"  media="(max-width: 767px)">
@@ -123,7 +128,13 @@
     <% var __bare = typeof bare !== 'undefined' && bare; %>
     <% if (!__bare) { %>
         <%- include('partials/header') -%>
-        <%- include('partials/mobile-search') -%>
+        <%# Mobile search + filter row — same `show_search` gate as the
+            desktop header search box: only the browse surfaces render it,
+            so cart / account / orders / product / static pages get a
+            clean top bar with no stray search field. %>
+        <% if (show_search) { %>
+            <%- include('partials/mobile-search') -%>
+        <% } %>
         <% if (typeof show_promo_strip === 'undefined' || show_promo_strip) { %>
             <%- include('partials/promo-strip') -%>
         <% } %>
@@ -166,6 +177,9 @@
     <%- include('partials/toast') -%>
     <%- include('partials/dialog') -%>
     <%- include('partials/loader') -%>
+    <% if (!__bare) { %>
+        <%- include('partials/product-modal') -%>
+    <% } %>
     <% if (!__bare) { %>
         <%- include('partials/search-overlay') -%>
     <% } %>
@@ -212,6 +226,15 @@
     <script defer src="/js/ui/account-menu.js?v=<%= ASSET_VERSION %>"></script>
     <script defer src="/js/ui/cookie-consent.js?v=<%= ASSET_VERSION %>"></script>
     <script defer src="/js/ui/filter-sidebar.js?v=<%= ASSET_VERSION %>"></script>
+    <script defer src="/js/ui/favourites.js?v=<%= ASSET_VERSION %>"></script>
+    <script defer src="/js/ui/cart.js?v=<%= ASSET_VERSION %>"></script>
+    <script defer src="/js/ui/checkout-popups.js?v=<%= ASSET_VERSION %>"></script>
+    <script defer src="/js/ui/product-modal.js?v=<%= ASSET_VERSION %>"></script>
+    <script defer src="/js/ui/order-track.js?v=<%= ASSET_VERSION %>"></script>
+    <script defer src="/js/ui/review.js?v=<%= ASSET_VERSION %>"></script>
+    <script defer src="/js/ui/reviews-list.js?v=<%= ASSET_VERSION %>"></script>
+    <script defer src="/js/ui/order-issue.js?v=<%= ASSET_VERSION %>"></script>
+    <script defer src="/js/ui/merchant.js?v=<%= ASSET_VERSION %>"></script>
     <script defer src="/js/app.js?v=<%= ASSET_VERSION %>"></script>
 
     <%#

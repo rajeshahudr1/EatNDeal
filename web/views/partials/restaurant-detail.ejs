@@ -22,7 +22,54 @@
 <% var cats = (typeof menu_categories !== 'undefined' && menu_categories) ? menu_categories : []; %>
 <% var secs = (typeof menu_sections   !== 'undefined' && menu_sections)   ? menu_sections   : []; %>
 <% var sym  = brand.currencySymbol; %>
+<% var __rv = (typeof restaurant_reviews !== 'undefined' && restaurant_reviews) ? restaurant_reviews : null; %>
 <div class="rd" data-restaurant data-rslug="<%= r.slug %>">
+
+    <%# Mobile-only rating bar — sits right under the search box (top of the
+        restaurant content) and opens the reviews modal. Desktop uses the
+        rail card + hero rating instead. Dynamic: only when reviews exist. %>
+    <% if (__rv && __rv.count) { %>
+    <button type="button" class="rd-ratingbar" data-action="open-reviews" aria-label="See ratings and reviews">
+        <span class="rd-ratingbar__star">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            <strong><%= __rv.average %></strong>
+        </span>
+        <span class="rd-ratingbar__count"><%= __rv.count %> ratings &amp; reviews</span>
+        <svg class="rd-ratingbar__chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+    </button>
+    <% } %>
+
+    <%# Reward-card balance — the signed-in customer's usable reward at THIS
+        restaurant (loyalty, per company_id). Tap → Rewards wallet. Only > 0. %>
+    <% var __rb = (typeof restaurant_reward_balance !== 'undefined' && restaurant_reward_balance) ? Number(restaurant_reward_balance) : 0; %>
+    <% if (__rb > 0) { %>
+    <a class="rd-rewardbar" href="/account?tab=rewards">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+        <span>You have <strong><%= sym %><%= __rb.toFixed(2) %></strong> reward to use here</span>
+        <svg class="rd-rewardbar__chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+    </a>
+    <% } %>
+
+    <%# Order-streak progress — nudge toward the next reward (loyalty
+        product_streak). Stamp-card dots: <target> dots, first <current>
+        filled. "ready" = the next order earns the reward. Only when a rule
+        exists for this restaurant. %>
+    <% var __rs = (typeof restaurant_reward_streak !== 'undefined' && restaurant_reward_streak) ? restaurant_reward_streak : null; %>
+    <% if (__rs && __rs.target > 0) { %>
+    <div class="rd-streakbar<%= __rs.ready ? ' rd-streakbar--ready' : '' %>">
+        <span class="rd-streakbar__icon" aria-hidden="true">🎁</span>
+        <div class="rd-streakbar__body">
+            <% if (__rs.ready) { %>
+                <p class="rd-streakbar__title">Reward ready — your next order earns <%= __rs.rewardLabel %>!</p>
+            <% } else { %>
+                <p class="rd-streakbar__title"><%= __rs.remaining %> more order<%= __rs.remaining === 1 ? '' : 's' %> → <%= __rs.rewardLabel %> reward</p>
+            <% } %>
+            <span class="rd-streakbar__dots" aria-hidden="true">
+                <% for (var __i = 0; __i < __rs.target; __i++) { %><span class="rd-streakbar__dot<%= (__rs.ready || __i < __rs.current) ? ' is-on' : '' %>"></span><% } %>
+            </span>
+        </div>
+    </div>
+    <% } %>
 
     <%# ── Hero ───────────────────────────────────────────────────── %>
     <section class="rd-hero">
@@ -31,13 +78,19 @@
             <span class="rd-hero__logo" data-tint="<%= r.tint %>">
                 <% if (r.logo) { %><img src="<%= r.logo %>" alt="<%= r.name %>" loading="lazy" data-img-fallback><% } else { %><span class="rd-hero__logo-initial"><%= r.initial %></span><% } %>
             </span>
+            <%# Heart icon — login-only. Top-right of the hero. %>
+            <% if (user_session) { %>
+            <button type="button" class="rd-hero__fav<%= r.isFavourite ? ' is-active' : '' %>" data-fav-toggle="<%= r.id %>" data-fav-branch="<%= r.branchId || '' %>" data-fav-name="<%= r.name %>" aria-label="<%= r.isFavourite ? 'Remove from favourites' : 'Add to favourites' %>" aria-pressed="<%= r.isFavourite ? 'true' : 'false' %>">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+            </button>
+            <% } %>
             <div class="rd-hero__overlay">
                 <h1 class="rd-hero__name">
                     <%= r.name %>
                     <svg class="rd-hero__verified" width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2 4 5v6c0 5 8 11 8 11s8-6 8-11V5l-8-3z" fill="none" stroke="currentColor" stroke-width="2"/><path d="m9 12 2 2 4-4" fill="none" stroke="currentColor" stroke-width="2"/></svg>
                 </h1>
                 <p class="rd-hero__meta">
-                    <span class="rd-hero__rating"><svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg> <%= r.rating %><% if (r.ratingCount) { %> <span class="rd-hero__rating-count">(<%= r.ratingCount %>+)</span><% } %></span>
+                    <% if (r.rating) { %><span class="rd-hero__rating rd-hero__rating--btn" data-action="open-reviews" role="button" tabindex="0" aria-label="See ratings and reviews"><svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg> <%= r.rating %><% if (r.ratingCount) { %> <span class="rd-hero__rating-count">(<%= r.ratingCount %>+)</span><% } %></span><% } %>
                     <% if ((r.cuisines || []).length) { %><span class="rd-hero__dot">·</span><span><%= (r.cuisines || []).slice(0, 3).join(', ') %></span><% } %>
                 </p>
                 <% if (r.address) { %><p class="rd-hero__address"><%= r.address %></p><% } %>
@@ -204,9 +257,14 @@
                 </div>
                 <ul class="rd-products" role="list">
                     <% s.products.forEach(function (p) { %>
-                        <li class="rd-product<%= p.inStock === false ? ' is-soldout' : '' %>" data-slug="<%= p.slug %>">
+                        <%# Availability — status-driven (no stock). Unavailable
+                            items (sold out / unavailable today / until) stay in
+                            the menu but greyed with a badge + Add disabled. %>
+                        <% var av = p.availability || { available: (p.available !== false), soldOut: false, label: 'Available' }; %>
+                        <% var unavail = (av.available === false); %>
+                        <li class="rd-product<%= unavail ? ' is-soldout' : '' %>" data-slug="<%= p.slug %>">
                             <div class="rd-product__media" data-tint="<%= p.tint %>">
-                                <% if (p.inStock === false) { %><span class="rd-product__soldout">Out of stock</span><% } %>
+                                <% if (unavail) { %><span class="rd-product__soldout"><%= av.soldOut ? 'Sold out' : 'Unavailable' %></span><% } %>
                                 <% if (p.image) { %><img src="<%= p.image %>" alt="" loading="lazy" data-img-fallback><% } else { %><span class="rd-product__initial" aria-hidden="true"><%= p.initial %></span><% } %>
                                 <% if (p.veg) { %><span class="veg-marker veg-marker--veg" aria-label="Vegetarian"></span><% } else { %><span class="veg-marker veg-marker--non-veg" aria-label="Non-vegetarian"></span><% } %>
                                 <% if (p.isFeatured) { %><span class="rd-product__badge">Bestseller</span><% } %>
@@ -214,30 +272,33 @@
                             <div class="rd-product__body">
                                 <h3 class="rd-product__name"><%= p.name %></h3>
                                 <p class="rd-product__meta">
-                                    <span class="rd-product__rating"><svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg> <%= p.rating %></span>
+                                    <% if (p.rating) { %><span class="rd-product__rating"><svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg> <%= p.rating %></span><% } %>
                                 </p>
-                                <%# Stock line on EVERY product: out of stock, an exact
-                                    count when we have one, or just "Available". %>
-                                <% if (p.inStock === false) { %>
+                                <%# Availability badge — ONLY when there's something to
+                                    flag (Sold out / the precise reason e.g. "Available
+                                    from 5 Jun"). An available item shows nothing — no
+                                    redundant "Available" line. %>
+                                <% if (av.soldOut) { %>
                                     <span class="rd-product__stockline rd-product__stockline--out">
                                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
-                                        Out of stock
+                                        Sold out
                                     </span>
-                                <% } else if (typeof p.stockQty === 'number' && p.stockQty > 0) { %>
-                                    <span class="rd-product__stockline rd-product__stockline--in">
-                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
-                                        <%= p.stockQty %> stock available
-                                    </span>
-                                <% } else { %>
-                                    <span class="rd-product__stockline rd-product__stockline--in">
-                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
-                                        Available
+                                <% } else if (unavail) { %>
+                                    <span class="rd-product__stockline rd-product__stockline--out">
+                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+                                        <%= av.label %>
                                     </span>
                                 <% } %>
+                                <% if (p.bogo && p.bogo.buyQty > 0 && p.bogo.getQty > 0) { %>
+                                    <span class="rd-product__bogo">🎁 Buy <%= p.bogo.buyQty %> Get <%= p.bogo.getQty %> Free</span>
+                                <% } %>
                                 <div class="rd-product__foot">
-                                    <span class="rd-product__price"><%= sym %><%= (typeof p.price === 'number' ? p.price : 0).toFixed(2) %></span>
-                                    <% if (p.inStock === false) { %>
-                                        <span class="rd-product__oos">Sold out</span>
+                                    <% if (typeof p.originalPrice === 'number' && p.originalPrice > 0) { %>
+                                        <span class="rd-product__price-was"><%= sym %><%= p.originalPrice.toFixed(2) %></span>
+                                    <% } %>
+                                    <span class="rd-product__price<%= (typeof p.originalPrice === 'number' && p.originalPrice > 0) ? ' rd-product__price--off' : '' %>"><%= sym %><%= (typeof p.price === 'number' ? p.price : 0).toFixed(2) %></span>
+                                    <% if (unavail) { %>
+                                        <span class="rd-product__oos"><%= av.soldOut ? 'Sold out' : 'Unavailable' %></span>
                                     <% } else { %>
                                         <button type="button" class="rd-product__add" data-action="rd-add" data-id="<%= p.id %>" data-name="<%= p.name %>">
                                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -258,15 +319,6 @@
 
     <%# ── Right rail: cart · delivery to · restaurant info ───────── %>
     <aside class="rd__right" id="rd-info">
-        <div class="rd-card rd-order">
-            <h2 class="rd-card__title"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg> Your Order</h2>
-            <div class="rd-order__empty">
-                <span class="rd-order__bag" aria-hidden="true">🛍️</span>
-                <p class="rd-order__title">Your cart is empty</p>
-                <p class="rd-order__sub">Add items to get started</p>
-            </div>
-        </div>
-
         <div class="rd-card rd-deliver">
             <h3 class="rd-card__subtitle"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s7-7.5 7-13a7 7 0 0 0-14 0c0 5.5 7 13 7 13z"/><circle cx="12" cy="9" r="2.5"/></svg> <%= (order_mode === 'pickup') ? 'Pickup from' : 'Delivery to' %></h3>
             <p class="rd-deliver__addr"><%= (user_location && user_location.label) ? user_location.label : 'Set your location' %></p>
@@ -279,10 +331,49 @@
                 <li class="rd-rinfo__row">
                     <span class="rd-rinfo__dot <%= r.isOpen ? 'is-open' : 'is-closed' %>"></span>
                     <span class="rd-rinfo__text">
-                        <span class="rd-rinfo__label"><%= r.isOpen ? 'Open now' : 'Closed' %></span>
-                        <% if (r.hours) { %><span class="rd-rinfo__sub"><%= r.hours %></span><% } %>
+                        <span class="rd-rinfo__label"><%= r.isOpen ? 'Open now' : (r.openStatus === 'preorder' ? 'Closed — pre-order' : 'Closed') %></span>
+                        <% if (!r.isOpen && r.closedMessage) { %>
+                            <span class="rd-rinfo__sub"><%= r.closedMessage %></span>
+                        <% } else if (!r.isOpen && r.opensAt) { %>
+                            <span class="rd-rinfo__sub">Opens at <%= r.opensAt %><% if (r.hours) { %> · <%= r.hours %><% } %></span>
+                        <% } else if (r.hours) { %>
+                            <span class="rd-rinfo__sub"><%= r.hours %></span>
+                        <% } %>
                     </span>
                 </li>
+
+                <%# Per-service availability — Delivery / Pickup / Pre-order
+                    (real open/closed from store_business_hours + ETA). %>
+                <li class="rd-rinfo__row">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+                    <span class="rd-rinfo__text">
+                        <span class="rd-rinfo__label">Delivery
+                            <span class="rd-rinfo__badge <%= r.deliveryOpen ? 'is-open' : 'is-closed' %>"><%= r.deliveryOpen ? 'Open' : 'Closed' %></span>
+                        </span>
+                        <% if (r.deliveryOpen && r.deliveryMinutes) { %><span class="rd-rinfo__sub"><%= r.deliveryMinutes %></span><% } %>
+                    </span>
+                </li>
+                <li class="rd-rinfo__row">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+                    <span class="rd-rinfo__text">
+                        <span class="rd-rinfo__label">Pickup
+                            <span class="rd-rinfo__badge <%= r.pickupOpen ? 'is-open' : 'is-closed' %>"><%= r.pickupOpen ? 'Open' : 'Closed' %></span>
+                        </span>
+                        <% if (r.pickupOpen && r.pickupMinutes) { %><span class="rd-rinfo__sub"><%= r.pickupMinutes %></span><% } %>
+                    </span>
+                </li>
+                <% if (r.preOrder) { %>
+                <li class="rd-rinfo__row">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                    <span class="rd-rinfo__text">
+                        <span class="rd-rinfo__label">Pre-order
+                            <span class="rd-rinfo__badge is-open">Available</span>
+                        </span>
+                        <span class="rd-rinfo__sub">Schedule for a later time</span>
+                    </span>
+                </li>
+                <% } %>
+
                 <% if (r.phone) { %>
                 <li class="rd-rinfo__row">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
@@ -301,6 +392,85 @@
                 </li>
             </ul>
         </div>
+
+        <%# Review & earn cashback — upload a screenshot of an external
+            (Google/Facebook) review → customer_review (pending POS approval).
+            Distinct from the post-order star reviews below. %>
+        <div class="rd-card rd-revcash">
+            <h3 class="rd-card__subtitle">🎁 Review us &amp; earn cashback</h3>
+            <p class="rd-revcash__sub">Reviewed us on Google or Facebook? Upload a screenshot to earn cashback once the restaurant verifies it.</p>
+            <form class="rd-revcash__form" method="post" action="/review-cashback" enctype="multipart/form-data">
+                <input type="hidden" name="company_id" value="<%= r.id %>">
+                <input type="hidden" name="redirect" value="/?restaurant=<%= encodeURIComponent(r.slug || r.id) %>">
+                <input type="file" name="photo" accept="image/*" class="rd-revcash__file" required>
+                <textarea name="notes" class="rd-revcash__notes" rows="2" maxlength="1000" placeholder="Add a note (optional)"></textarea>
+                <button type="submit" class="rd-revcash__btn">Submit for cashback</button>
+            </form>
+        </div>
+
+        <%# Customer reviews — published post-order ratings (stars + text +
+            optional food photo), from /api/v1/marketplace/reviews. %>
+        <% if (__rv && __rv.count) { %>
+        <%# Compact rail card — top reviews preview + "View all" opens the modal. %>
+        <div class="rd-card rd-reviews">
+            <h3 class="rd-card__subtitle">
+                Ratings &amp; reviews
+                <% if (__rv.average) { %><span class="rd-reviews__avg">&#9733; <%= __rv.average %></span> <span class="rd-reviews__count">(<%= __rv.count %>)</span><% } %>
+            </h3>
+            <ul class="rd-reviews__list rd-reviews__list--preview">
+                <% (__rv.reviews || []).slice(0, 5).forEach(function (rev) { %>
+                <li class="rd-review">
+                    <div class="rd-review__head">
+                        <span class="rd-review__name"><%= rev.customerName %></span>
+                        <span class="rd-review__stars" aria-label="<%= rev.rating %> out of 5">
+                            <% for (var k = 1; k <= 5; k++) { %><span class="<%= rev.rating >= k ? 'is-on' : '' %>">&#9733;</span><% } %>
+                        </span>
+                    </div>
+                    <% if (rev.review) { %><p class="rd-review__text"><%= rev.review %></p><% } %>
+                    <% if (rev.photo) { %><img class="rd-review__photo" src="<%= rev.photo %>" alt="Review photo" loading="lazy"><% } %>
+                </li>
+                <% }); %>
+            </ul>
+            <button type="button" class="rd-reviews__viewall" data-action="open-reviews">View all <%= __rv.count %> reviews</button>
+        </div>
+        <% } %>
     </aside>
+
+    <%# ── Ratings & reviews modal — full sort / star-filter / load-more
+        experience. Opened by the rail's "View all" OR the hero rating (the
+        primary entry on phones, near the top). Lives OUTSIDE the rail so
+        hiding the rail card on phones doesn't hide it. JS: reviews-list.js. -%>
+    <% if (__rv && __rv.count) { %>
+    <div class="reviews-modal" data-reviews-modal data-company-id="<%= r.id %>" hidden aria-hidden="true">
+        <div class="reviews-modal__backdrop" data-action="close-reviews"></div>
+        <div class="reviews-modal__panel" role="dialog" aria-modal="true" aria-labelledby="reviews-modal-title">
+            <header class="reviews-modal__head">
+                <h2 class="reviews-modal__title" id="reviews-modal-title">Ratings &amp; reviews
+                    <% if (__rv.average) { %><span class="rd-reviews__avg">&#9733; <%= __rv.average %></span> <span class="rd-reviews__count">(<%= __rv.count %>)</span><% } %>
+                </h2>
+                <button type="button" class="reviews-modal__close" data-action="close-reviews" aria-label="Close">&times;</button>
+            </header>
+            <div class="reviews-modal__controls">
+                <div class="rd-reviews__sort" role="tablist" aria-label="Sort reviews" data-rv-sort>
+                    <button type="button" class="rd-reviews__sort-btn is-active" data-sort="recent">All</button>
+                    <button type="button" class="rd-reviews__sort-btn" data-sort="best">Best first</button>
+                    <button type="button" class="rd-reviews__sort-btn" data-sort="worst">Critical</button>
+                </div>
+                <div class="rd-reviews__filter" aria-label="Filter by stars" data-rv-stars>
+                    <button type="button" class="rd-reviews__chip is-active" data-star="">All</button>
+                    <% [5, 4, 3, 2, 1].forEach(function (s) { %>
+                    <button type="button" class="rd-reviews__chip" data-star="<%= s %>"><%= s %>&#9733; <span class="rd-reviews__chip-n">(<%= (__rv.breakdown && __rv.breakdown[s]) || 0 %>)</span></button>
+                    <% }); %>
+                </div>
+            </div>
+            <div class="reviews-modal__body">
+                <div class="rd-reviews__loader" data-rv-loader hidden><span class="rv-spinner" aria-hidden="true"></span> Loading reviews…</div>
+                <ul class="rd-reviews__list" data-rv-list></ul>
+                <p class="rd-reviews__empty" data-rv-empty hidden>No reviews with this rating yet.</p>
+                <button type="button" class="rd-reviews__more" data-rv-more hidden>Load more reviews</button>
+            </div>
+        </div>
+    </div>
+    <% } %>
 </div>
 <% } %>

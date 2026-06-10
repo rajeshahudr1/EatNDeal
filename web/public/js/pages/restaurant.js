@@ -94,16 +94,13 @@
     }
 
     /**
-     * bindActions — +Add (cart stub) + Report a problem.
+     * bindActions — "Report a problem" stub. The +Add button is wired up
+     * globally in /js/ui/cart.js (data-action="rd-add") so every page
+     * with a quick-add card shares the same cart flow + branch-conflict
+     * dialog + count animation.
      */
     function bindActions() {
         document.addEventListener('click', function (ev) {
-            var add = ev.target.closest && ev.target.closest('[data-action="rd-add"]');
-            if (add) {
-                ev.preventDefault();
-                toast('success', (add.getAttribute('data-name') || 'Item') + ' — cart coming soon.');
-                return;
-            }
             var rep = ev.target.closest && ev.target.closest('[data-action="rd-report"]');
             if (rep) {
                 ev.preventDefault();
@@ -125,10 +122,21 @@
             if (ev.target.closest && ev.target.closest('[data-action]')) { return; }
             var card = ev.target.closest && ev.target.closest('.rd-product[data-slug]');
             if (!card) { return; }
-            var slug = card.getAttribute('data-slug');
-            var rd   = document.querySelector('[data-restaurant]');
+            var slug  = card.getAttribute('data-slug');
+            var pid   = card.getAttribute('data-id');
+            var rd    = document.querySelector('[data-restaurant]');
             var rslug = rd ? rd.getAttribute('data-rslug') : '';
-            // Clean URL: /?rest=<restaurant>&item=<product> (no id).
+            // In-app navigation opens the product modal instead of a
+            // full page navigation — keeps the customer's restaurant
+            // scroll position + matches the PWA pattern. Fallback to
+            // the standalone page route when the modal module isn't
+            // loaded (e.g. an old service-worker shell).
+            var pm = window.EatNDealUi && window.EatNDealUi.productModal;
+            if (pm && typeof pm.open === 'function' && (pid || (slug && rslug))) {
+                ev.preventDefault();
+                pm.open({ rest: rslug, item: slug, id: pid });
+                return;
+            }
             if (slug && rslug) { window.location.href = '/?rest=' + encodeURIComponent(rslug) + '&item=' + encodeURIComponent(slug); }
         });
     }

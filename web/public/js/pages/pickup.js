@@ -218,7 +218,7 @@
               '<span class="pickup-popup__body">' +
                 '<span class="pickup-popup__row">' +
                   '<span class="pickup-popup__name">' + escHtml(d.name) + '</span>' +
-                  '<span class="pickup-popup__rating">' + STAR + escHtml(d.rating) + '</span>' +
+                  (d.rating ? ('<span class="pickup-popup__rating">' + STAR + escHtml(d.rating) + '</span>') : '') +
                 '</span>' +
                 (meta.length ? '<span class="pickup-popup__meta">' + meta.join(' · ') + '</span>' : '') +
               '</span>' +

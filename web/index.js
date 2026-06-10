@@ -44,10 +44,15 @@ const compression = require('compression');
 const ejsLocals   = require('ejs-locals');
 const chalk       = require('chalk');
 
-const { fetchBrand }       = require('./Helpers/apiClient');
+const { fetchBrand, callApi } = require('./Helpers/apiClient');
 const SiteController       = require('./Controllers/SiteController');
 const LocationController   = require('./Controllers/LocationController');
 const AddressController     = require('./Controllers/AddressController');
+const FavouriteController   = require('./Controllers/FavouriteController');
+const CartController        = require('./Controllers/CartController');
+const OrderController       = require('./Controllers/OrderController');
+const PaymentController     = require('./Controllers/PaymentController');
+const MerchantController    = require('./Controllers/MerchantController');
 const AuthController       = require('./Controllers/AuthController');
 const StaticPageController = require('./Controllers/StaticPageController');
 
@@ -95,11 +100,17 @@ if (IS_DEV) {
                 'object-src':      ["'none'"],
                 'form-action':     ["'self'"],
                 'frame-ancestors': ["'none'"],
-                'script-src':      ["'self'"],
+                // Stripe.js v3 is served from js.stripe.com. We allow
+                // exactly that origin and Stripe's hosted-fields iframe
+                // domain (hooks.stripe.com) so card input renders.
+                'script-src':      ["'self'", 'https://js.stripe.com'],
                 'style-src':       ["'self'"],
                 'img-src':         ["'self'", 'data:'],
                 'font-src':        ["'self'"],
-                'connect-src':     ["'self'", process.env.API_URL || 'http://localhost:4501'],
+                // Card confirmation hits the Stripe API directly from
+                // the browser; allow it on the connect-src list.
+                'connect-src':     ["'self'", process.env.API_URL || 'http://localhost:4501', 'https://api.stripe.com'],
+                'frame-src':       ["'self'", 'https://js.stripe.com', 'https://hooks.stripe.com'],
                 'worker-src':      ["'self'"],
                 'manifest-src':    ["'self'"],
             },
@@ -173,6 +184,14 @@ app.use('/avatars', express.static(AVATAR_DIR, { maxAge: ENV === 'production' ? 
 const RESTO_IMG_DIR = path.join(__dirname, 'runtime', 'restaurant-images');
 try { fs.mkdirSync(RESTO_IMG_DIR, { recursive: true }); } catch (e) { /* ignore */ }
 app.use('/restaurant-images', express.static(RESTO_IMG_DIR, { maxAge: ENV === 'production' ? '7d' : 0, fallthrough: true }));
+
+// ── Internal docs (the data-map slide deck etc.) ───────────────────
+// Plain static HTML/MD served from project-root/docs. Not linked from
+// the public site; reachable directly at /docs/<file>. The deck has
+// inline CSS + JS so a strict CSP elsewhere doesn't apply here — the
+// static middleware just streams the file as-is.
+const DOCS_DIR = path.join(__dirname, '..', 'docs');
+app.use('/docs', express.static(DOCS_DIR, { maxAge: 0, fallthrough: true }));
 const avatarUpload = multer({
     storage: multer.diskStorage({
         destination: (req, file, cb) => cb(null, AVATAR_DIR),
@@ -187,6 +206,27 @@ const avatarUpload = multer({
 });
 // Exposed so the route wiring below can use it.
 app.locals.avatarUpload = avatarUpload;
+
+// ── Review photo uploads ───────────────────────────────────────
+// Optional food photo on a post-order review. Stored on the web disk
+// (web/runtime/review-images, gitignored) + served from the web origin so
+// the strict img-src 'self' CSP allows it; the api stores only the relative
+// path in review_rating.review_photo. Mirrors the avatar flow.
+const REVIEW_IMG_DIR = path.join(__dirname, 'runtime', 'review-images');
+try { fs.mkdirSync(REVIEW_IMG_DIR, { recursive: true }); } catch (e) { /* ignore */ }
+app.use('/review-images', express.static(REVIEW_IMG_DIR, { maxAge: ENV === 'production' ? '7d' : 0, fallthrough: true }));
+const reviewUpload = multer({
+    storage: multer.diskStorage({
+        destination: (req, file, cb) => cb(null, REVIEW_IMG_DIR),
+        filename: (req, file, cb) => {
+            const uid = (req.session && req.session.user && req.session.user.id) || 'anon';
+            const ext = ({ 'image/png': '.png', 'image/jpeg': '.jpg', 'image/webp': '.webp', 'image/gif': '.gif' })[file.mimetype] || '.img';
+            cb(null, 'rv-' + uid + '-' + Date.now() + ext);
+        },
+    }),
+    limits: { fileSize: 4 * 1024 * 1024 },   // 4 MB
+    fileFilter: (req, file, cb) => cb(null, /^image\/(png|jpe?g|webp|gif)$/.test(file.mimetype)),
+});
 
 // ── Session ────────────────────────────────────────────────────
 // Server-side session (the cookie carries only the session id). The
@@ -317,6 +357,60 @@ async function ensureBrand(req, res, next) {
 
 app.use(ensureBrand);
 
+// ── Header cart-count primer ────────────────────────────────────
+// Keeps `req.session.cartCount` populated so the header badge survives
+// page navigations. Strategy:
+//
+//   • Cart writes (add / update-qty / remove / clear / set-mode /
+//     set-address / set-schedule / apply-coupon / remove-coupon) and
+//     /cart, /cart/data all snapshot the post-write totalQty back into
+//     req.session.cartCount themselves (see web/Controllers/Cart
+//     Controller.syncSessionCount). That covers most flow naturally.
+//
+//   • This middleware handles the LAZY path: a signed-in customer who
+//     navigates around without ever hitting a cart endpoint (e.g. just
+//     opened the home page on a fresh session). We hit the cheap
+//     /api/v1/customer/cart/count endpoint once and cache the result.
+//
+//   • Sign-out clears the count via destroy(); fresh logins start
+//     undefined → the next page render triggers a single fetch.
+//
+// Guarded with:
+//   • Only HTML page requests (anything Accept'ing text/html or with no
+//     Accept set — XHRs, fonts, JSON polls skip the work).
+//   • Only when the user is signed in.
+//   • Never on /api/* / /js/* / /css/* / static asset paths.
+//   • Cached for the whole session once set — write paths refresh.
+app.use(async (req, res, next) => {
+    try {
+        const user = req.session && req.session.user;
+        if (!user) { return next(); }
+        if (req.session.cartCount != null) { return next(); }
+        // Cheap path: skip non-HTML calls.
+        if (req.method !== 'GET') { return next(); }
+        const accept = String(req.headers.accept || '');
+        if (accept && accept.indexOf('text/html') === -1 && accept.indexOf('*/*') === -1) {
+            return next();
+        }
+        // Skip API + static paths.
+        if (/^\/(api|js|css|images?|fonts?|favicon|yii-uploads|sw\.js|service-worker)/i.test(req.path)) {
+            return next();
+        }
+        const apiRes = await callApi(req, 'GET',
+            '/api/v1/customer/cart/count?customer_id=' + encodeURIComponent(user.id));
+        const body = apiRes && apiRes.body;
+        if (body && body.status === 200 && body.data && typeof body.data.count === 'number') {
+            req.session.cartCount = body.data.count;
+        } else {
+            req.session.cartCount = 0;
+        }
+    } catch (_) {
+        // Network blip — don't crash the page over a badge value.
+        if (req.session) { req.session.cartCount = req.session.cartCount || 0; }
+    }
+    next();
+});
+
 // ── Per-request locals (other than brand) ──────────────────────
 // Make a few commonly-used values available inside every EJS template
 // without each controller having to pass them in explicitly.
@@ -327,11 +421,33 @@ app.use((req, res, next) => {
     res.locals.user_location    = (req.session && req.session.userLocation) || null;
     res.locals.page_title       = '';
     res.locals.active_nav       = '';
+    // Cart count — primed by the middleware above; 0 when not signed in.
+    res.locals.cart_count       = (req.session && req.session.cartCount) || 0;
     // Promo strip ("50% OFF first order — WELCOME50") is shown on every
     // page by default. Auth controllers (and any future focused-flow
     // pages — checkout, OTP, etc.) opt out by passing
     // `show_promo_strip: false` to res.render.
     res.locals.show_promo_strip = true;
+    // Search box visibility. The header search input + the mobile
+    // search/filter row only make sense on browse surfaces — the home
+    // feed, the "all restaurants / cuisines" grids, search results and
+    // a single restaurant's menu. Everywhere else (cart, account,
+    // orders, merchant, offers, product detail, static pages) there is
+    // nothing to search, so it is hidden. Default OFF here; the few
+    // renders that should show it opt IN by passing `show_search: true`
+    // (see SiteController.index). Always-defined so the header + layout
+    // can read it directly with no typeof guard.
+    res.locals.show_search = false;
+    // Delivery / Pickup mode toggle in the header — only relevant while
+    // browsing the marketplace (home / restaurant / product). Default OFF;
+    // SiteController.index opts in. Hidden on cart / account / orders /
+    // merchant / offers / static / signin.
+    res.locals.show_mode_toggle = false;
+    // Stripe publishable key — exposed to the cart so the checkout
+    // flow can mount Elements without a round trip just to discover
+    // whether card payments are enabled. Empty string when the env
+    // var isn't set; the UI then hides the Card option.
+    res.locals.stripe_publishable_key = process.env.STRIPE_PUBLISHABLE_KEY || '';
     next();
 });
 
@@ -373,8 +489,35 @@ app.use((req, res, next) => {
 // will be added as separate routes when those flows are built (Phase 1).
 app.get('/', SiteController.index);
 
+// JSON product detail — drives the fullscreen product modal that replaces
+// the standalone product page. Always returns the same shape the
+// /marketplace/product API returns (product / groups / related). The
+// standalone /?rest=X&item=Y URL still works as a deep-link fallback.
+app.get('/product/json', async (req, res) => {
+    try {
+        const qs = new URLSearchParams();
+        if (req.query.item) { qs.set('item', String(req.query.item)); }
+        if (req.query.rest) { qs.set('rest', String(req.query.rest)); }
+        if (req.query.id)   { qs.set('id',   String(req.query.id)); }
+        const loc = (req.session && req.session.userLocation) || {};
+        if (loc.lat != null && loc.lat !== '') { qs.set('lat', String(loc.lat)); }
+        if (loc.lng != null && loc.lng !== '') { qs.set('lng', String(loc.lng)); }
+        const r = await callApi(req, 'GET', '/api/v1/marketplace/product?' + qs.toString());
+        if (!r || !r.body) {
+            return res.status(200).json({ status: 502, show: true, msg: 'Could not load the item.' });
+        }
+        return res.status(200).json(r.body);
+    } catch (err) {
+        return res.status(200).json({ status: 500, show: true, msg: 'Could not load the item.' });
+    }
+});
+
 // Offers page — all restaurants' active offers, grouped per restaurant.
 app.get('/offers', SiteController.offersPage);
+
+// Restaurant reviews panel data (sort / star filter / load-more) — JSON
+// proxy used by /js/ui/reviews-list.js.
+app.get('/restaurant-reviews', SiteController.restaurantReviews);
 
 // ── Location (works WITHOUT login — stored on the web session) ──
 // Picked locations live on req.session.userLocation. Every page render
@@ -391,6 +534,68 @@ app.get ('/location',       LocationController.get);
 app.get ('/addresses',       AddressController.list);
 app.post('/address/save',    AddressController.save);
 app.post('/address/delete',  AddressController.remove);
+
+// Saved payment methods (Stripe Customer + payment_methods)
+const PaymentMethodController = require('./Controllers/PaymentMethodController');
+app.get ('/payment-methods',          PaymentMethodController.list);
+app.post('/payment-method/setup',     PaymentMethodController.setupIntent);
+app.post('/payment-method/delete',    PaymentMethodController.remove);
+
+// ── Favourite restaurants (signed-in customers; proxied to the api) ──
+// Heart icon on cards / detail + Favourites tab on the account page.
+// customer_id is injected from the session inside the controller.
+app.get ('/favourites',         FavouriteController.list);
+app.post('/favourite/toggle',   FavouriteController.toggle);
+
+// ── Cart (signed-in marketplace customers only) ─────────────────────
+// Phase 2A.3 — read paths only. /cart renders the page; /cart/data is
+// the JSON proxy for client-side refresh.
+app.get ('/cart',              CartController.page);
+app.get ('/cart/data',         CartController.data);
+app.get ('/cart/count',        CartController.count);
+app.get ('/cart/promotions',   CartController.promotions);
+app.post('/cart/add',          CartController.add);
+app.post('/cart/update-qty',   CartController.updateQty);
+app.post('/cart/remove-item',  CartController.removeItem);
+app.post('/cart/clear',        CartController.clear);
+app.post('/cart/set-mode',     CartController.setMode);
+app.post('/cart/set-address',  CartController.setAddress);
+app.post('/cart/set-schedule', CartController.setSchedule);
+app.post('/cart/set-instructions', CartController.setInstructions);
+app.post('/cart/apply-coupon', CartController.applyCoupon);
+app.post('/cart/remove-coupon',CartController.removeCoupon);
+app.post('/cart/apply-voucher', CartController.applyVoucher);
+app.post('/cart/remove-voucher',CartController.removeVoucher);
+app.post('/cart/apply-loyalty', CartController.applyLoyalty);
+app.post('/cart/remove-loyalty',CartController.removeLoyalty);
+app.post('/cart/set-charity',  CartController.setCharity);
+
+// ── Orders (signed-in marketplace customers only) ───────────────────
+// Phase-2D: /place writes the order; /:id/confirm renders the stub page.
+// Phase-2E will add /orders (list) + /order/:id (full detail).
+app.post('/order/place',           OrderController.place);
+app.post('/order/:id/reorder',     OrderController.reorder);
+app.post('/order/:id/report-issue', OrderController.reportIssue);
+app.get ('/order/:id/issue-response', OrderController.issueResponse);
+app.get ('/order/:id/receipt',     OrderController.receipt);
+app.get ('/orders',                OrderController.ordersPage);
+app.get ('/order/:id/confirm',     OrderController.confirmation);
+app.get ('/orders/data',           OrderController.list);
+app.get ('/order/:id/status',      OrderController.status);
+app.get ('/order/:id',             OrderController.detailPage);
+
+// ── Payments (Stripe-backed) ────────────────────────────────────────
+// Returns a PaymentIntent client_secret + publishable key the browser
+// uses to confirm via Stripe.js.
+app.post('/payment/intent',        PaymentController.intent);
+
+// ── Merchant dashboard (staff-allowlist gated) ──────────────────────
+// Page renders the dashboard server-side; data + advance go through
+// the api with customer_id injected from the session.
+app.get ('/merchant',                MerchantController.dashboardPage);
+app.get ('/merchant/orders/data',    MerchantController.ordersData);
+app.post('/merchant/order/advance',  MerchantController.advance);
+app.get ('/merchant/order/:id',      MerchantController.detailPage);
 
 // ── Auth (single mobile-OTP entry) ──────────────────────────────
 // Both /signin and /signup point at the same page — the api decides
@@ -428,6 +633,32 @@ app.post('/account/avatar', (req, res) => {
             return res.status(200).json({ status: 400, show: true, msg });
         }
         return AuthController.uploadAvatar(req, res);
+    });
+});
+
+// Post-order review submit (multipart — rating + text + optional food photo).
+// multer stores the photo on the web disk; the controller forwards the
+// rating/text/path to the api. Wrapper turns multer errors into JSON.
+app.post('/order/:id/review', (req, res) => {
+    reviewUpload.single('photo')(req, res, (err) => {
+        if (err) {
+            const msg = err.code === 'LIMIT_FILE_SIZE'
+                ? 'Photo must be under 4 MB.'
+                : 'Could not upload that photo. Please try a PNG or JPG.';
+            return res.status(200).json({ status: 400, show: true, msg });
+        }
+        return OrderController.submitReview(req, res);
+    });
+});
+
+// Cashback review — upload a screenshot of an external (Google/FB) review.
+app.post('/review-cashback', (req, res) => {
+    reviewUpload.single('photo')(req, res, (err) => {
+        if (err) {
+            if (req.flash) { req.flash('error', 'Could not upload that screenshot. Use a PNG/JPG under 4 MB.'); }
+            return res.redirect(req.get('referer') || '/');
+        }
+        return OrderController.submitCashbackReview(req, res);
     });
 });
 

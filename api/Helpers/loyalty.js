@@ -233,6 +233,102 @@ async function cardsFor(customerId) {
     });
 }
 
+// Friendly labels for the customer_rewards.entity_type values.
+const REWARD_TYPE_LABELS = {
+    cash_king:           'Cashback',
+    cashback:            'Cashback',
+    product_cashback:    'Product cashback',
+    collection_cashback: 'Collection cashback',
+    referral:            'Referral bonus',
+    event_cashback:      'Bonus',
+    special_offer:       'Special offer',
+    smart_campaign:      'Campaign reward',
+    product_streak:      'Streak reward',
+};
+// Lifecycle status of one reward row (mirrors the legacy expired_from logic).
+function rewardStatus(r) {
+    const ef = Number(r.expired_from) || 0;
+    if (ef === 2) { return 'reversed'; }
+    if (Number(r.is_expired) === 1 && (ef === 1 || ef === 4)) { return 'expired'; }
+    if (ef === 3 || (Number(r.used_amount) > 0 && Number(r.used_amount) >= Number(r.amount))) { return 'redeemed'; }
+    return 'earned';
+}
+
+/**
+ * historyFor
+ *
+ * What:  A customer's reward transaction history (the customer_rewards ledger)
+ *        — one row per earn event with its used amount, status and expiry.
+ *        Optionally scoped to ONE restaurant. Plus the wallet TOTALS (earned /
+ *        available / used / expired) for the same scope. Newest first.
+ * Type:  READ.
+ *
+ * Inputs: customerId, { companyId?, filter? (''|earned|redeemed|expired|reversed),
+ *                       limit (1..100), offset }
+ * Output: { totals: { available, earned, used, expired },
+ *           transactions: [{ id, date, companyId, restaurant, entity_type,
+ *                            type_label, earned, used, status, expiry_date }],
+ *           total_count }
+ */
+async function historyFor(customerId, opts) {
+    const o = opts || {};
+    const companyId = Number(o.companyId) || 0;
+    const filter = String(o.filter || '').trim().toLowerCase();
+    const limit = Math.min(100, Math.max(1, Number(o.limit) || 50));
+    const offset = Math.max(0, Number(o.offset) || 0);
+    if (!customerId || !(await isReady())) { return { totals: { available: 0, earned: 0, used: 0, expired: 0 }, transactions: [], total_count: 0 }; }
+
+    // Wallet totals for the scope (unaffected by the status filter / paging).
+    let tq = db(REWARDS).where('customer_id', customerId);
+    if (companyId) { tq = tq.where('company_id', companyId); }
+    const t = await tq.select(
+        db.raw('COALESCE(SUM(amount), 0) as earned'),
+        db.raw('COALESCE(SUM(COALESCE(used_amount,0)), 0) as used'),
+        db.raw('COALESCE(SUM(CASE WHEN is_expired = 1 THEN amount - COALESCE(used_amount,0) ELSE 0 END), 0) as expired'),
+        db.raw('COALESCE(SUM(CASE WHEN is_expired = 0 AND is_redeemable = 1 AND (expiry_date IS NULL OR expiry_date >= NOW()) THEN amount - COALESCE(used_amount,0) ELSE 0 END), 0) as available'),
+    ).first();
+    const totals = {
+        available: round2(t && t.available),
+        earned:    round2(t && t.earned),
+        used:      round2(t && t.used),
+        expired:   round2(t && t.expired),
+    };
+
+    // Filtered, paginated history rows.
+    const base = () => {
+        let q = db(REWARDS + ' as cr').leftJoin('company as c', 'c.id', 'cr.company_id').where('cr.customer_id', customerId);
+        if (companyId) { q = q.where('cr.company_id', companyId); }
+        if (filter === 'earned')   { q = q.where('cr.is_expired', 0).where('cr.expired_from', 0); }
+        else if (filter === 'redeemed') { q = q.where('cr.expired_from', 3); }
+        else if (filter === 'expired')  { q = q.where('cr.is_expired', 1).whereIn('cr.expired_from', [1, 4]); }
+        else if (filter === 'reversed') { q = q.where('cr.expired_from', 2); }
+        return q;
+    };
+    const cnt = await base().count('cr.id as n').first();
+    const rows = await base()
+        .select('cr.id', 'cr.company_id', 'c.business_name', 'cr.entity_type', 'cr.amount',
+                'cr.used_amount', 'cr.is_expired', 'cr.expired_from', 'cr.is_redeemable',
+                'cr.expiry_date', 'cr.created_at')
+        .orderBy('cr.id', 'desc').limit(limit).offset(offset);
+
+    const transactions = rows.map((r) => {
+        const name = String(r.business_name || '').trim() || 'Restaurant';
+        return {
+            id:          Number(r.id),
+            date:        r.created_at,
+            companyId:   String(r.company_id),
+            restaurant:  name,
+            entity_type: r.entity_type || '',
+            type_label:  REWARD_TYPE_LABELS[r.entity_type] || 'Cashback',
+            earned:      round2(r.amount),
+            used:        round2(r.used_amount),
+            status:      rewardStatus(r),
+            expiry_date: r.expiry_date || null,
+        };
+    });
+    return { totals, transactions, total_count: Number(cnt && cnt.n) || 0 };
+}
+
 /**
  * maxRedeemable
  *
@@ -1170,7 +1266,7 @@ module.exports = {
     earnForOrder, earnOrderStreak, earnStampCashback, earnProductCashback, earnSpecialOffer,
     earnReferral, earnEventCashback, earnSmartCampaign, earnCollectionCashback,
     bogoForProduct, payableQtyFor, bogoMapFor,
-    balanceFor, cardsFor, maxRedeemable, consumeForRedeem, reverseForOrder, streakProgressFor,
+    balanceFor, cardsFor, historyFor, maxRedeemable, consumeForRedeem, reverseForOrder, streakProgressFor,
     // Shared reward-write (commission skim + expiry + ledger + audit row).
     // Exposed so the admin Review-Claims approval can grant a review reward
     // through the SAME path the earn rules use — keeping the ledger consistent.

@@ -1,0 +1,113 @@
+<%#
+  views/wallet/index.ejs
+
+  Loyalty Wallet — a MULTI-restaurant wallet (vs the legacy single one):
+    • wallet totals (available / earned / redeemed / expired)
+    • a card per restaurant the customer has earned at (click → filter history)
+    • a filterable, paginated transaction history (the customer_rewards ledger)
+  `wallet` = { cards[], totals{}, transactions[], total_count, enabled }.
+  Used: Controllers/WalletController.walletPage.
+-%>
+<%
+    var w   = wallet || { cards: [], totals: {}, transactions: [], total_count: 0 };
+    var tt  = w.totals || {};
+    var sym = (brand && brand.currencySymbol) ? brand.currencySymbol : '£';
+    function money(n) { return Number(n || 0).toFixed(2); }
+    function fmtDate(d) {
+        if (!d) { return ''; }
+        var dt = new Date(d); if (isNaN(dt.getTime())) { return ''; }
+        return dt.getDate() + ' ' + ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][dt.getMonth()] + ' ' + dt.getFullYear();
+    }
+    var STATUS = { earned: ['✓', 'Earned'], redeemed: ['↗', 'Redeemed'], expired: ['⏰', 'Expired'], reversed: ['✕', 'Reversed'] };
+    function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]; }); }
+    // One history row (kept in sync with the markup built in pages/wallet.js).
+    function txRow(tx) {
+        var st = STATUS[tx.status] || STATUS.earned;
+        var amt = '';
+        if (Number(tx.earned) > 0) { amt += '<span class="wh-amt wh-amt--earn">+' + sym + money(tx.earned) + '</span>'; }
+        if (Number(tx.used) > 0)   { amt += '<span class="wh-amt wh-amt--used">−' + sym + money(tx.used) + '</span>'; }
+        return '<div class="wh-row wh-row--' + tx.status + '">'
+            + '<span class="wh-row__ic wh-row__ic--' + tx.status + '" aria-hidden="true">' + st[0] + '</span>'
+            + '<div class="wh-row__main"><span class="wh-row__title">' + esc(tx.restaurant) + '</span>'
+            + '<span class="wh-row__meta">' + esc(tx.type_label || 'Cashback') + ' · ' + fmtDate(tx.date)
+            + (tx.expiry_date && tx.status === 'earned' ? ' · valid till ' + fmtDate(tx.expiry_date) : '') + '</span></div>'
+            + '<div class="wh-row__amt">' + amt + '<span class="wh-badge wh-badge--' + tx.status + '">' + st[1] + '</span></div>'
+            + '</div>';
+    }
+    // Preserve the OTHER active filter when building a tab/card link.
+    var companyQS = wallet_company ? ('&company=' + encodeURIComponent(wallet_company)) : '';
+    var filterQS  = wallet_filter ? ('&filter=' + encodeURIComponent(wallet_filter)) : '';
+    var FILTERS = [['', 'All'], ['earned', 'Earned'], ['redeemed', 'Redeemed'], ['expired', 'Expired']];
+%>
+<main class="wallet">
+
+    <header class="wallet__head">
+        <h1 class="wallet__title">My <span>Loyalty Wallet</span></h1>
+        <p class="wallet__sub">Cashback you’ve earned across your favourite restaurants</p>
+    </header>
+
+    <%# Wallet totals %>
+    <section class="wallet__totals">
+        <div class="wt-card wt-card--balance">
+            <span class="wt-card__lbl">Available Balance</span>
+            <span class="wt-card__val"><%= sym %><%= money(tt.available) %></span>
+            <span class="wt-card__sub">Ready to use on orders</span>
+        </div>
+        <div class="wt-card">
+            <span class="wt-card__lbl">Total Earned</span>
+            <span class="wt-card__val"><%= sym %><%= money(tt.earned) %></span>
+        </div>
+        <div class="wt-card">
+            <span class="wt-card__lbl">Total Redeemed</span>
+            <span class="wt-card__val"><%= sym %><%= money(tt.used) %></span>
+        </div>
+        <div class="wt-card">
+            <span class="wt-card__lbl">Total Expired</span>
+            <span class="wt-card__val"><%= sym %><%= money(tt.expired) %></span>
+        </div>
+    </section>
+
+    <%# Per-restaurant wallet cards (the "multi card") %>
+    <% if (w.cards && w.cards.length) { %>
+    <section class="wallet__cards">
+        <div class="wallet__cards-head">
+            <h2>Your restaurant wallets</h2>
+            <% if (wallet_company) { %><a class="wallet__clear" href="/wallet<%= wallet_filter ? '?filter=' + wallet_filter : '' %>">← All restaurants</a><% } %>
+        </div>
+        <div class="wallet-cardgrid">
+            <% w.cards.forEach(function (c) { var on = String(wallet_company) === String(c.companyId); %>
+            <a class="rwcard<%= on ? ' is-on' : '' %>" href="/wallet?company=<%= encodeURIComponent(c.companyId) %><%= filterQS %>" style="--tint: <%= c.tint %>">
+                <span class="rwcard__badge"><%= c.initial %></span>
+                <span class="rwcard__name"><%= c.name %></span>
+                <span class="rwcard__bal"><%= sym %><%= money(c.balance) %></span>
+                <span class="rwcard__foot">Earned <%= sym %><%= money(c.earned) %> · Used <%= sym %><%= money(c.used) %></span>
+            </a>
+            <% }); %>
+        </div>
+    </section>
+    <% } %>
+
+    <%# Transaction history %>
+    <section class="wallet__history">
+        <div class="wh-head">
+            <h2>History<% if (wallet_company && w.cards && w.cards.length) { var cc = w.cards.find(function (c) { return String(c.companyId) === String(wallet_company); }); if (cc) { %> · <span class="wh-scope"><%= cc.name %></span><% } } %></h2>
+            <div class="wh-tabs" role="tablist">
+                <% FILTERS.forEach(function (f) { %>
+                <a class="wh-tab<%= String(wallet_filter || '') === f[0] ? ' is-on' : '' %>" href="/wallet?filter=<%= f[0] %><%= companyQS %>"><%= f[1] %></a>
+                <% }); %>
+            </div>
+        </div>
+
+        <% if (w.transactions && w.transactions.length) { %>
+        <div class="wh-list" data-wh-list data-offset="<%= w.transactions.length %>" data-total="<%= w.total_count %>" data-filter="<%= wallet_filter || '' %>" data-company="<%= wallet_company || '' %>" data-sym="<%= sym %>">
+            <% w.transactions.forEach(function (tx) { %><%- txRow(tx) %><% }); %>
+        </div>
+        <% if (w.transactions.length < w.total_count) { %>
+        <div class="wh-more"><button type="button" class="wh-more__btn" data-wh-more>Load more</button></div>
+        <% } %>
+        <% } else { %>
+        <div class="wh-empty"><span class="wh-empty__ic" aria-hidden="true">💰</span><p>No transactions yet — order from a restaurant to start earning cashback.</p></div>
+        <% } %>
+    </section>
+
+</main>

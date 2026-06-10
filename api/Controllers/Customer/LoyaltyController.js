@@ -68,4 +68,36 @@ async function balance(req, res) {
     }
 }
 
-module.exports = { wallet, balance };
+/**
+ * history — GET /customer/loyalty/history
+ *
+ * The full reward wallet for the customer: the per-restaurant cards, the
+ * combined totals, and the paginated transaction history (earn / redeem /
+ * expired rows). Optionally scoped to one restaurant via company_id, and
+ * filtered by status (earned|redeemed|expired|reversed).
+ * Type: READ.
+ */
+async function history(req, res) {
+    try {
+        const { customer_id, company_id, filter, limit, offset } = req.query;
+        const guard = await customers.loadMarketplaceCustomer(customer_id);
+        if (guard.error) { return H.errorResponse(res, guard.error.msg, guard.error.status); }
+
+        const cards = await loyalty.cardsFor(customer_id);
+        const h = await loyalty.historyFor(customer_id, {
+            companyId: company_id, filter, limit, offset,
+        });
+        return H.successResponse(res, {
+            cards,
+            totals: h.totals,
+            transactions: h.transactions,
+            total_count: h.total_count,
+            enabled: await loyalty.isReady(),
+        });
+    } catch (err) {
+        H.log.error('loyalty.history', err && err.message);
+        return H.errorResponse(res, MSG.server.oops, 500);
+    }
+}
+
+module.exports = { wallet, balance, history };

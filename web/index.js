@@ -54,6 +54,7 @@ const OrderController       = require('./Controllers/OrderController');
 const PaymentController     = require('./Controllers/PaymentController');
 const MerchantController    = require('./Controllers/MerchantController');
 const AuthController       = require('./Controllers/AuthController');
+const WalletController      = require('./Controllers/WalletController');
 const StaticPageController = require('./Controllers/StaticPageController');
 
 const app    = express();
@@ -620,6 +621,10 @@ app.post('/signin/verify',       AuthController.verifyOtp);
 app.post('/signin/save-profile', AuthController.saveProfile);
 app.get ('/account',             AuthController.accountPage);
 app.post('/account',             AuthController.updateProfile);
+
+// Loyalty Wallet — multi-restaurant cards + transaction history.
+app.get ('/wallet',              WalletController.walletPage);
+app.get ('/wallet/json',         WalletController.walletJson);
 // Profile photo upload (multipart). multer stores the file on the web
 // disk; the controller forwards the relative path to the api to persist.
 // The wrapper turns multer errors (too big / wrong type) into a friendly

@@ -980,10 +980,15 @@
         var origLabel = btn.querySelector('span:not(.cart-summary__cta-total)') || btn;
         var orig = origLabel.textContent;
         origLabel.textContent = 'Placing...';
+        // Prominent full-screen loader while the order is placed — kept up
+        // through the redirect to the confirmation page on success.
+        if (window.EatNDealUi && window.EatNDealUi.showLoader) { window.EatNDealUi.showLoader(); }
+        var navigating = false;
         postCart('/order/place', body)
             .then(function (env) {
                 if (!env) { toast('error', 'Could not reach the server.'); return; }
                 if (env.status === 401) {
+                    navigating = true;
                     window.location.href = '/signin?next=' + encodeURIComponent('/cart');
                     return;
                 }
@@ -993,10 +998,13 @@
                 }
                 bumpCartBadge(null);
                 var oid = (env.data && env.data.order && env.data.order.id) || '';
+                navigating = true;
                 window.location.href = '/order/' + encodeURIComponent(oid) + '/confirm';
             })
             .catch(function () { toast('error', 'Could not place the order.'); })
             .then(function () {
+                if (navigating) { return; }   // success → keep the loader through the page change
+                if (window.EatNDealUi && window.EatNDealUi.hideLoader) { window.EatNDealUi.hideLoader(); }
                 origLabel.textContent = orig;
                 btn.disabled = false;
                 checkoutInFlight = false;

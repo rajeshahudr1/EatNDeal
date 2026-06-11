@@ -184,6 +184,19 @@ async function place(req, res) {
             await Loyalty.earnCollectionCashback({ ...base, serveType: v.cart.serve_type });
         }
 
+        // 5d. Order confirmation email — customer + restaurant (env-driven, see
+        // Helpers/mailer). FIRE-AND-FORGET: a live SMTP send takes seconds, so
+        // we must NOT await it — that would block the place-order response and
+        // make "Pay" feel slow. The order is already committed; the email runs
+        // in the background and can never affect the response or the order.
+        try {
+            const Mailer = require('../../Helpers/mailer');
+            Mailer.sendOrderConfirmation({
+                order, customer, items, cart: v.cart, companyId: v.cart.company_id, branch,
+                paymentOption: b.payment_option,
+            }).catch((e) => H.log.warn('order.email', e && e.message));
+        } catch (e) { H.log.warn('order.email', e && e.message); }
+
         // 6. Build a slim response — UI redirects to /order/<id>.
         const eta = OrderTime.formatRange(
             v.cart.serve_type === 2

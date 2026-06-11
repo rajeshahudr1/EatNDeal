@@ -76,6 +76,12 @@ async function get(req, res) {
             await Cart.ensureDefaultDeliveryAddress(open.id, customerId, branch);
         }
 
+        // Auto-reprice any line whose price drifted (admin re-priced the
+        // product mid-session) — so a plain REFRESH of the cart / checkout page
+        // clears the place-order "price changed — refresh your cart" block.
+        // recomputeTotals below folds the new line prices into the totals.
+        const repriced = await Cart.repriceCart(open.id);
+
         // Defensive recompute — if a price / fee config changed since the
         // last write, the stored grandtotal would be stale. One UPDATE.
         await Cart.recomputeTotals(open.id);
@@ -122,9 +128,16 @@ async function get(req, res) {
             charityTiers, cardServiceCharge, rewardBalance, rewardMax, availableSlots,
         });
 
+        // Surface any auto-reprice as a non-blocking notice so the customer
+        // sees the total moved to the latest price (no dead-end block).
+        const warnings = (v.warnings || []).slice();
+        (repriced.changed || []).forEach((c) => {
+            warnings.push({ code: 'price_updated', msg: c.msg, field: 'items.' + c.id });
+        });
+
         return H.successResponse(res, {
             cart:     view,
-            warnings: v.warnings,
+            warnings,
         });
     } catch (err) {
         H.log.error('cart.get', err && err.message);

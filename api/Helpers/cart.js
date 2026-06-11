@@ -388,6 +388,62 @@ async function recomputeTotals(cartId) {
 // Helper — 2 dp rounding, NaN-safe.
 function round2(n) { return F.round2(n); }
 
+/**
+ * repriceCart
+ *
+ * What:  Re-prices any cart line whose stored unit price has DRIFTED from the
+ *        current marketplace price (an admin re-priced the product after it was
+ *        added). Sets the line to the SAME value the place-order drift check
+ *        uses (M.pickPrice), so a plain REFRESH of the cart / checkout page
+ *        clears the "Price for X changed — please refresh your cart" block
+ *        automatically instead of leaving the customer stuck. Only touches
+ *        lines that genuinely differ (matches the drift condition exactly), so
+ *        it is a no-op when nothing changed.
+ * Why:   Customer asked for "refresh → cart auto-updates to the new price"
+ *        (Uber/Zomato behaviour) rather than a dead-end block.
+ * Type:  WRITE (updates cart_details; the CALLER runs recomputeTotals after,
+ *        which folds the new line prices into the cart totals).
+ * Output: { changed: [{ id, name, from, to, msg }] } — for a UI notice.
+ */
+async function repriceCart(cartId) {
+    if (!cartId) { return { changed: [] }; }
+    const items = await loadLineItems(cartId);
+    if (!items.length) { return { changed: [] }; }
+    const ids = Array.from(new Set(items.map((i) => i.product_id).filter(Boolean)));
+    if (!ids.length) { return { changed: [] }; }
+
+    const prods = await db('products')
+        .whereIn('id', ids)
+        .select('id', 'name', 'marketplace_price', 'online_platform_price', 'price_after_tax');
+    const byId = new Map(prods.map((p) => [String(p.id), p]));
+
+    const changed = [];
+    for (const it of items) {
+        const p = byId.get(String(it.product_id));
+        if (!p) { continue; }                              // missing product — cartValidate handles removal
+        const current = round2(M.pickPrice(p));
+        const stored  = round2(it.product_net_price);
+        // Only when BOTH sides have a real price and they truly differ — the
+        // same condition the place-order drift check uses, so re-pricing here
+        // guarantees that check then passes.
+        if (current > 0 && stored > 0 && Math.abs(current - stored) > 0.005) {
+            await db('cart_details').where({ id: it.id }).update({
+                product_price:     current,
+                product_net_price: current,
+            });
+            const name = it.product_name || p.name || 'Item';
+            changed.push({
+                id:   String(it.id),
+                name,
+                from: stored,
+                to:   current,
+                msg:  'Price for "' + name + '" updated to ' + F.CURRENCY_SYMBOL + current.toFixed(2) + '.',
+            });
+        }
+    }
+    return { changed };
+}
+
 // Helper — pre_order_time (timestamptz) → "HH:MM" display string.
 // Returns null when not a pre-order or the timestamp is unparseable.
 function formatScheduledTime(preOrderTime, isPreOrder) {
@@ -1093,6 +1149,7 @@ module.exports = {
     loadLineItems,
     lineSubtotal,
     recomputeTotals,
+    repriceCart,
     addItem,
     closeCart,
     loadOwnedLineItem,

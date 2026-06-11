@@ -9,7 +9,7 @@
   Used: Controllers/LoyaltyController.cashbackRules (shell layout).
 -%>
 <%
-    var sym = (brand && brand.currencySymbol) ? brand.currencySymbol : '£';
+    var sym = fmt.currencySymbol(brand);
     var TIERS = [['', 'All tiers'], ['bronze', '🥉 Bronze'], ['silver', '🥈 Silver'], ['gold', '🏅 Gold']];
     var APPLY = { 1: 'Whole cart', 2: 'Category', 3: 'Product' };
     function tierLabel(t) { var f = TIERS.find(function (x) { return x[0] === (t || ''); }); return f ? f[1] : 'All tiers'; }

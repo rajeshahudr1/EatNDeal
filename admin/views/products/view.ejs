@@ -10,7 +10,7 @@
   Used: Controllers/ProductsController.view.
 -%>
 <%
-    var sym = (brand && brand.currencySymbol) ? brand.currencySymbol : '£';
+    var sym = fmt.currencySymbol(brand);
     var p = product || {};
     var m = meta || {};
     function nameOf(list, id) { var f = (list || []).find(function (x) { return x.id === Number(id); }); return f ? (f.name || f.label) : ''; }

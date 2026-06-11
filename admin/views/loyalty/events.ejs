@@ -12,7 +12,7 @@
   Used: Controllers/LoyaltyController.events (shell layout).
 -%>
 <%
-    var sym = (brand && brand.currencySymbol) ? brand.currencySymbol : '£';
+    var sym = fmt.currencySymbol(brand);
     var DEFS = [
         [1, '🎉 Sign-up bonus',        'Credited when a new customer registers'],
         [2, '📝 Profile completion',   'Credited when they finish their profile'],

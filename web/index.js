@@ -55,6 +55,7 @@ const PaymentController     = require('./Controllers/PaymentController');
 const MerchantController    = require('./Controllers/MerchantController');
 const AuthController       = require('./Controllers/AuthController');
 const WalletController      = require('./Controllers/WalletController');
+const EarnController        = require('./Controllers/EarnController');
 const StaticPageController = require('./Controllers/StaticPageController');
 
 const app    = express();
@@ -318,6 +319,11 @@ app.use((req, res, next) => {
 // browser cache without users needing a hard refresh. In production swap
 // this for a git SHA or build hash.
 app.locals.ASSET_VERSION = String(Date.now());
+
+// Shared server-side render helpers (money / esc / date / initial) available
+// in EVERY EJS view as `fmt.*` — one home for display formatting. Browser twin
+// is /js/common/format.js (window.EatNDealFormat). See Helpers/viewHelpers.js.
+app.locals.fmt = require('./Helpers/viewHelpers');
 
 // ── Cached brand ───────────────────────────────────────────────
 // On boot we fetch GET /api/v1/brand once and cache it in-process. Every
@@ -625,6 +631,9 @@ app.post('/account',             AuthController.updateProfile);
 // Loyalty Wallet — multi-restaurant cards + transaction history.
 app.get ('/wallet',              WalletController.walletPage);
 app.get ('/wallet/json',         WalletController.walletJson);
+// Earn Cashback — review/share a restaurant to earn its cashback (picker +
+// per-restaurant types). Submitting posts to POST /review-cashback below.
+app.get ('/earn',                EarnController.earnPage);
 // Profile photo upload (multipart). multer stores the file on the web
 // disk; the controller forwards the relative path to the api to persist.
 // The wrapper turns multer errors (too big / wrong type) into a friendly

@@ -9,13 +9,9 @@
   Used: Controllers/LoyaltyController.segments (shell layout).
 -%>
 <%
-    var sym = (brand && brand.currencySymbol) ? brand.currencySymbol : '£';
-    function money(n) { return sym + Number(n || 0).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
-    var TIER_META = {
-        bronze: ['🥉 Bronze', '#cd7f32'],
-        silver: ['🥈 Silver', '#b9b9b9'],
-        gold:   ['🏅 Gold',   '#e7b400'],
-    };
+    var sym = fmt.currencySymbol(brand);
+    var money = function (n) { return fmt.money(n, brand); };
+    var TIER_META = C.TIER_META;
 %>
 <div class="ly">
 

@@ -22,6 +22,8 @@
  *   2026-06-09 — initial.
  */
 
+const H = require('./helper');
+
 /**
  * resolveCompanyScope
  *
@@ -66,4 +68,23 @@ function needsCompany(scope) {
     return scope.companyId == null;
 }
 
-module.exports = { resolveCompanyScope, needsCompany };
+/**
+ * requireCompany
+ *
+ * What:  Single-company guard. Resolves the scope; when a super admin hasn't
+ *        picked a company yet, sends the canonical 422 { code:'no_company' }
+ *        error and returns null. Otherwise returns the resolved scope. The one
+ *        home for the "select a company first" rejection so the wording +
+ *        status can't drift per controller.
+ *        Use: const scope = requireCompany(req, res); if (!scope) { return null; }
+ */
+function requireCompany(req, res) {
+    const scope = resolveCompanyScope(req);
+    if (scope.companyId == null) {
+        H.errorResponse(res, 'Select a company first.', 422, { code: 'no_company' });
+        return null;
+    }
+    return scope;
+}
+
+module.exports = { resolveCompanyScope, needsCompany, requireCompany };

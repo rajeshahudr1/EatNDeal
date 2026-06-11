@@ -15,7 +15,7 @@
 (function () {
     'use strict';
 
-    function byId(id) { return id ? document.getElementById(id) : null; }
+    var byId = window.AdminUi.byId;
     function showForm(f) { if (f) { f.hidden = false; f.scrollIntoView({ behavior: 'smooth', block: 'center' }); } }
 
     // BOGO apply-on switch: show the product OR the category multi-select to

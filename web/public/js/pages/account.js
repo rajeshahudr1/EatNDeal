@@ -491,11 +491,7 @@
         }
     }
 
-    function toast(type, msg) {
-        if (window.EatNDealUi && window.EatNDealUi.showToast) {
-            window.EatNDealUi.showToast(type, msg);
-        }
-    }
+    var toast = (window.EatNDealDom && window.EatNDealDom.showToastSafe) || function (type, msg) { if (window.EatNDealUi && window.EatNDealUi.showToast) { window.EatNDealUi.showToast(type, msg); } };
 
     function saveInlineAddress() {
         var form = getForm();
@@ -918,7 +914,7 @@
             if (ui && ui.hideLoader) { ui.hideLoader(); }
         }
     }
-    function toastA(type, msg) { if (window.EatNDealUi && window.EatNDealUi.showToast) { window.EatNDealUi.showToast(type, msg); } }
+    var toastA = (window.EatNDealDom && window.EatNDealDom.showToastSafe) || function (type, msg) { if (window.EatNDealUi && window.EatNDealUi.showToast) { window.EatNDealUi.showToast(type, msg); } };
     // Swap the initial for the uploaded image in the profile circle + the
     // header avatars (so it updates without a reload). Cache-bust the URL.
     function setAvatarImage(url) {

@@ -5,9 +5,9 @@
  */
 
 const Joi = require('joi');
+const C = require('./common');
 
-const idRule = Joi.alternatives()
-    .try(Joi.number().integer().positive(), Joi.string().pattern(/^[0-9]+$/))
+const idRule = C.idRule
     .messages({ 'alternatives.match': 'Id is not valid.' });
 
 const walletSchema = Joi.object({
@@ -19,6 +19,11 @@ const balanceSchema = Joi.object({
     company_id:  idRule.required().messages({ 'any.required': 'Restaurant id is required.' }),
 });
 
+const reviewTypesSchema = Joi.object({
+    customer_id: idRule.required().messages({ 'any.required': 'Customer id is required.' }),
+    company_id:  idRule.optional().allow('', null),                  // omit → restaurant picker
+});
+
 const historySchema = Joi.object({
     customer_id: idRule.required().messages({ 'any.required': 'Customer id is required.' }),
     company_id:  idRule.optional().allow('', null),                  // scope to one restaurant
@@ -27,4 +32,4 @@ const historySchema = Joi.object({
     offset:      Joi.number().integer().min(0).optional(),
 });
 
-module.exports = { walletSchema, balanceSchema, historySchema };
+module.exports = { walletSchema, balanceSchema, historySchema, reviewTypesSchema };

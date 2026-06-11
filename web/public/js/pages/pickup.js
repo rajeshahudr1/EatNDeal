@@ -34,13 +34,13 @@
     var ZOOM_MIN = 0.4, ZOOM_MAX = 8, ZOOM_STEP = 1.4, ZOOM_STEP_WHEEL = 1.15;
 
     function q(sel, ctx) { return (ctx || document).querySelector(sel); }
-    function qa(sel, ctx) { return Array.prototype.slice.call((ctx || document).querySelectorAll(sel)); }
+    var qa = (window.EatNDealDom && window.EatNDealDom.queryAll) || function (sel, ctx) { return Array.prototype.slice.call((ctx || document).querySelectorAll(sel)); };
 
-    function escHtml(s) {
+    var escHtml = (window.EatNDealFormat && window.EatNDealFormat.esc) || function (s) {
         return String(s == null ? '' : s).replace(/[&<>"']/g, function (ch) {
             return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch];
         });
-    }
+    };
 
     var STAR = '<svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>';
     // Map-pin glyph for the distance markers (km from the user).

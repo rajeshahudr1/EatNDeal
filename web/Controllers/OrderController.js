@@ -274,7 +274,9 @@ async function submitCashbackReview(req, res) {
     const back = String((req.body && req.body.redirect) || req.get('referer') || '/');
     if (!user) { return res.redirect('/signin?next=' + encodeURIComponent(back)); }
 
-    const photoPath = req.file ? '/review-images/' + req.file.filename : '';
+    // Most types upload a screenshot; the Live Video type sends a video URL
+    // instead (stored as-is in review_photo, like the legacy flow).
+    const photoPath = req.file ? '/review-images/' + req.file.filename : String((req.body && req.body.video_url) || '').trim();
     const payload = {
         customer_id: user.id,
         company_id:  String((req.body && req.body.company_id) || '').replace(/[^0-9]/g, ''),

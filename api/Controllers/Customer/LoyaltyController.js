@@ -100,4 +100,31 @@ async function history(req, res) {
     }
 }
 
-module.exports = { wallet, balance, history };
+/**
+ * reviewTypes — GET /customer/loyalty/review-types
+ *
+ * Drives the customer "earn cashback by reviewing" page. With ?company_id, the
+ * review / share types that restaurant offers (CMS instructions + example
+ * screenshot + reward + the customer's claim status). Without it, the list of
+ * restaurants currently offering review cashback (the picker).
+ * Type: READ.
+ */
+async function reviewTypes(req, res) {
+    try {
+        const { customer_id, company_id } = req.query;
+        const guard = await customers.loadMarketplaceCustomer(customer_id);
+        if (guard.error) { return H.errorResponse(res, guard.error.msg, guard.error.status); }
+
+        if (company_id) {
+            const data = await loyalty.reviewTypesFor(company_id, customer_id);
+            return H.successResponse(res, data);
+        }
+        const restaurants = await loyalty.reviewRestaurants();
+        return H.successResponse(res, { restaurants });
+    } catch (err) {
+        H.log.error('loyalty.reviewTypes', err && err.message);
+        return H.errorResponse(res, MSG.server.oops, 500);
+    }
+}
+
+module.exports = { wallet, balance, history, reviewTypes };

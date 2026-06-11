@@ -21,7 +21,7 @@
 <% var r = selected_restaurant; %>
 <% var cats = (typeof menu_categories !== 'undefined' && menu_categories) ? menu_categories : []; %>
 <% var secs = (typeof menu_sections   !== 'undefined' && menu_sections)   ? menu_sections   : []; %>
-<% var sym  = brand.currencySymbol; %>
+<% var sym  = fmt.currencySymbol(brand); %>
 <% var __rv = (typeof restaurant_reviews !== 'undefined' && restaurant_reviews) ? restaurant_reviews : null; %>
 <div class="rd" data-restaurant data-rslug="<%= r.slug %>">
 
@@ -326,7 +326,11 @@
         </div>
 
         <div class="rd-card rd-rinfo">
-            <h3 class="rd-card__subtitle">Restaurant info</h3>
+            <h3 class="rd-card__subtitle">Restaurant info
+                <button type="button" class="rd-rinfo__more" data-action="rd-open-info" aria-label="Restaurant details and opening hours" title="Details &amp; opening hours">
+                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                </button>
+            </h3>
             <ul class="rd-rinfo__list">
                 <li class="rd-rinfo__row">
                     <span class="rd-rinfo__dot <%= r.isOpen ? 'is-open' : 'is-closed' %>"></span>
@@ -406,6 +410,7 @@
                 <textarea name="notes" class="rd-revcash__notes" rows="2" maxlength="1000" placeholder="Add a note (optional)"></textarea>
                 <button type="submit" class="rd-revcash__btn">Submit for cashback</button>
             </form>
+            <a class="rd-revcash__more" href="/earn?company=<%= encodeURIComponent(r.id) %>">See all ways to earn cashback →</a>
         </div>
 
         <%# Customer reviews — published post-order ratings (stars + text +
@@ -472,5 +477,54 @@
         </div>
     </div>
     <% } %>
+
+    <%# ── Restaurant info + opening-hours popup (info icon in the card) ──
+        Mobile: bottom sheet · desktop: centred card. JS: pages/restaurant.js. -%>
+    <div class="rd-infomodal" data-rd-infomodal hidden aria-hidden="true">
+        <div class="rd-infomodal__backdrop" data-action="rd-close-info"></div>
+        <div class="rd-infomodal__sheet" role="dialog" aria-modal="true" aria-labelledby="rd-infomodal-title">
+            <header class="rd-infomodal__head">
+                <h2 class="rd-infomodal__title" id="rd-infomodal-title">Restaurant info</h2>
+                <button type="button" class="rd-infomodal__close" data-action="rd-close-info" aria-label="Close">&times;</button>
+            </header>
+            <div class="rd-infomodal__body">
+                <section class="rd-infomodal__sec">
+                    <h3 class="rd-infomodal__h">Info</h3>
+                    <p class="rd-infomodal__name"><%= r.name %></p>
+                    <% if (r.phone) { %><a class="rd-infomodal__line rd-infomodal__link" href="tel:<%= r.phone %>"><%= r.phone %></a><% } %>
+                    <% if (r.address) { %><p class="rd-infomodal__line"><%= r.address %></p><% } %>
+                </section>
+
+                <% if (r.address || (r.lat != null && r.lng != null)) { %>
+                <% var __maps = (r.lat != null && r.lng != null) ? ('https://www.google.com/maps/search/?api=1&query=' + r.lat + ',' + r.lng) : ('https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(r.address || r.name)); %>
+                <section class="rd-infomodal__sec">
+                    <h3 class="rd-infomodal__h">Location</h3>
+                    <% if (r.address) { %><p class="rd-infomodal__line"><%= r.address %></p><% } %>
+                    <a class="rd-infomodal__maps" href="<%= __maps %>" target="_blank" rel="noopener noreferrer">Open in Maps
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                    </a>
+                </section>
+                <% } %>
+
+                <% if (r.weekHours && r.weekHours.length) { %>
+                <section class="rd-infomodal__sec">
+                    <h3 class="rd-infomodal__h">Opening hours</h3>
+                    <table class="rd-hours">
+                        <thead><tr><th scope="col">Day</th><th scope="col">Pickup</th><th scope="col">Delivery</th></tr></thead>
+                        <tbody>
+                            <% r.weekHours.forEach(function (d) { %>
+                            <tr class="rd-hours__row<%= d.isToday ? ' is-today' : '' %>">
+                                <th scope="row" class="rd-hours__day"><%= d.short %><% if (d.isToday) { %> <span class="rd-hours__badge">Today</span><% } %></th>
+                                <td><%= d.pickup || 'Closed' %></td>
+                                <td><%= d.delivery || 'Closed' %></td>
+                            </tr>
+                            <% }); %>
+                        </tbody>
+                    </table>
+                </section>
+                <% } %>
+            </div>
+        </div>
+    </div>
 </div>
 <% } %>

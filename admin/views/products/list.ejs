@@ -12,8 +12,8 @@
   Used: Controllers/ProductsController.list.
 -%>
 <%
-    var sym = (brand && brand.currencySymbol) ? brand.currencySymbol : '£';
-    var STATUSES = [[1, 'Available'], [0, 'Unavailable'], [4, 'Unavailable Today'], [5, 'Unavailable Until'], [3, 'Sold Out']];
+    var sym = fmt.currencySymbol(brand);
+    var STATUSES = C.PRODUCT_STATUSES;
     var SORTS = [['newest', 'Newest'], ['name_asc', 'Name A–Z'], ['name_desc', 'Name Z–A'], ['price_asc', 'Price low→high'], ['price_desc', 'Price high→low']];
     var SIZES = [['all', 'All'], ['10', '10'], ['25', '25'], ['50', '50'], ['100', '100'], ['500', '500'], ['1000', '1000']];
     function statusSel(id, cur) {

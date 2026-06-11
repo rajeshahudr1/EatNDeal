@@ -1,0 +1,142 @@
+<%#
+  views/earn/index.ejs
+
+  Earn Cashback — review or share a restaurant to earn its cashback.
+    • No company  → restaurant picker (restaurants offering review cashback)
+    • ?company=ID → that restaurant's review/share types, each with the admin
+      CMS instructions (sanitised HTML) + example screenshot + reward + the
+      customer's claim status; a "Submit" button opens a modal that posts the
+      proof (screenshot, or a video URL for the Live Video type) to
+      POST /review-cashback → lands in the POS "Cashback Review" queue.
+  `earn` = { company{id,name,slug}|null, masterOn, types[], restaurants[] }.
+  Used: Controllers/EarnController.earnPage.
+-%>
+<%
+    var e   = earn || { company: null, types: [], restaurants: [] };
+    var sym = fmt.currencySymbol(brand);
+    var money = fmt.money;
+    var esc = fmt.esc;
+    function rewardText(t) { return (t.value_type === '%') ? (money(t.reward) + '%') : (sym + money(t.reward)); }
+    // The claim-status pill (empty status = not submitted yet).
+    var STATUS = { pending: ['⏳', 'Pending approval'], approved: ['✓', 'Approved'], rejected: ['✕', 'Not approved'] };
+    var diningQS = earn_dining ? ('&DiningMode=' + encodeURIComponent(earn_dining)) : '';
+%>
+<main class="earn">
+
+    <header class="earn__head">
+        <h1 class="earn__title">Earn <span>Cashback</span></h1>
+        <p class="earn__sub">Review or share a restaurant and earn cashback once they verify it.</p>
+    </header>
+
+    <% if (earn_company && e.company) { %>
+        <%# ── Per-restaurant review/share types ─────────────────────────── %>
+        <div class="earn__bar">
+            <a class="earn__back" href="/earn<%= earn_dining ? '?DiningMode=' + encodeURIComponent(earn_dining) : '' %>">← All restaurants</a>
+            <span class="earn__resto"><span class="earn__resto-badge"><%= esc(String(e.company.name || 'R').charAt(0).toUpperCase()) %></span><%= esc(e.company.name) %></span>
+        </div>
+
+        <% if (!e.types || !e.types.length) { %>
+        <div class="earn-empty"><span class="earn-empty__ic" aria-hidden="true">🎁</span><p>This restaurant isn’t offering review cashback right now. Check back soon!</p></div>
+        <% } else { %>
+        <div class="earn-grid">
+            <% e.types.forEach(function (t) { var st = STATUS[t.status]; %>
+            <article class="ecard" data-type="<%= t.id %>" data-slug="<%= esc(t.slug) %>" data-video="<%= t.video ? '1' : '0' %>" data-name="<%= esc(t.title || t.name) %>" data-reward="<%= esc(rewardText(t)) %>">
+                <header class="ecard__head">
+                    <span class="ecard__icon" aria-hidden="true"><%= t.icon %></span>
+                    <span class="ecard__name"><%= esc(t.title || t.name) %></span>
+                    <span class="ecard__reward"><%= rewardText(t) %></span>
+                </header>
+
+                <% if (t.screenshot_url) { %>
+                <div class="ecard__shot">
+                    <img src="<%= t.screenshot_url %>" alt="Example for <%= esc(t.name) %>" loading="lazy" data-earn-zoom>
+                    <span class="ecard__shot-tag">Example</span>
+                </div>
+                <% } %>
+
+                <% if (t.description) { %><div class="ecard__desc"><%- t.description %></div><% } %>
+
+                <footer class="ecard__foot">
+                    <% if (st) { %>
+                    <span class="ecard__status is-<%= t.status %>"><span aria-hidden="true"><%= st[0] %></span> <%= st[1] %><% if (t.status === 'rejected' && t.reject_reason) { %> · <%= esc(t.reject_reason) %><% } %></span>
+                    <% } %>
+                    <% if (t.status === 'approved') { %>
+                    <button type="button" class="ecard__btn is-done" disabled>Submitted</button>
+                    <% } else { %>
+                    <button type="button" class="ecard__btn" data-earn-start>
+                        <%= t.status === 'rejected' ? 'Resubmit' : ('Submit ' + (t.video ? 'video' : 'screenshot')) %>
+                    </button>
+                    <% } %>
+                </footer>
+            </article>
+            <% }); %>
+        </div>
+
+        <%# Submit modal — one instance, reused for whichever type was clicked
+            (a custom popup per CODING-CONVENTIONS rule #7; no browser dialogs). %>
+        <div class="earn-modal" data-earn-modal hidden>
+            <div class="earn-modal__backdrop" data-earn-close></div>
+            <form class="earn-modal__panel" method="post" action="/review-cashback" enctype="multipart/form-data" data-earn-form>
+                <input type="hidden" name="company_id" value="<%= e.company.id %>">
+                <input type="hidden" name="review_type" value="" data-earn-typeinput>
+                <input type="hidden" name="redirect" value="/earn?company=<%= encodeURIComponent(e.company.id) %><%= diningQS %>">
+                <header class="earn-modal__head">
+                    <h3 class="earn-modal__title" data-earn-title>Submit</h3>
+                    <button type="button" class="earn-modal__x" data-earn-close aria-label="Close">✕</button>
+                </header>
+                <div class="earn-modal__body">
+                    <p class="earn-modal__reward" data-earn-reward></p>
+
+                    <div class="earn-field" data-earn-photofield>
+                        <label class="earn-field__lbl">Upload your screenshot</label>
+                        <label class="earn-file">
+                            <input type="file" name="photo" accept="image/png,image/jpeg,image/webp" class="earn-file__input" data-earn-file>
+                            <span class="earn-file__face" data-earn-filename>Choose an image (PNG / JPG, max 4 MB)</span>
+                        </label>
+                    </div>
+
+                    <div class="earn-field" data-earn-videofield hidden>
+                        <label class="earn-field__lbl">Paste your video link</label>
+                        <input type="url" name="video_url" class="earn-input" placeholder="https://…" data-earn-video>
+                    </div>
+
+                    <div class="earn-field">
+                        <label class="earn-field__lbl">Note <span class="earn-field__opt">(optional)</span></label>
+                        <textarea name="notes" class="earn-input earn-input--area" rows="2" maxlength="1000" placeholder="Anything the restaurant should know…"></textarea>
+                    </div>
+                </div>
+                <footer class="earn-modal__foot">
+                    <button type="button" class="btn btn--ghost" data-earn-close>Cancel</button>
+                    <button type="submit" class="btn btn--primary" data-earn-submit>Submit for cashback</button>
+                </footer>
+            </form>
+        </div>
+        <% } %>
+
+    <% } else { %>
+        <%# ── Restaurant picker ─────────────────────────────────────────── %>
+        <% if (!e.restaurants || !e.restaurants.length) { %>
+        <div class="earn-empty"><span class="earn-empty__ic" aria-hidden="true">🎁</span><p>No restaurants are offering review cashback right now. Check back soon!</p></div>
+        <% } else { %>
+        <div class="earn-restos">
+            <% e.restaurants.forEach(function (r) { %>
+            <a class="eresto" href="/earn?company=<%= encodeURIComponent(r.companyId) %><%= diningQS %>">
+                <span class="eresto__badge"><%= esc(String(r.name || 'R').charAt(0).toUpperCase()) %></span>
+                <span class="eresto__main">
+                    <span class="eresto__name"><%= esc(r.name) %></span>
+                    <span class="eresto__meta"><%= r.typeCount %> way<%= Number(r.typeCount) === 1 ? '' : 's' %> to earn</span>
+                </span>
+                <span class="eresto__reward">Up to <%= sym %><%= money(r.maxReward) %></span>
+            </a>
+            <% }); %>
+        </div>
+        <% } %>
+    <% } %>
+
+</main>
+
+<%# Lightbox for the example screenshots (reuses the simple zoom pattern). %>
+<div class="earn-zoom" data-earn-zoombox hidden>
+    <button type="button" class="earn-zoom__close" data-earn-zoomclose aria-label="Close">✕</button>
+    <img src="" alt="" data-earn-zoomimg>
+</div>

@@ -19,9 +19,12 @@
  *   2026-06-09 — initial; dashboard. (Other screens added incrementally.)
  */
 
+const F = require('../../Helpers/format');
+const C = require('../../Helpers/constants');
+
 const H  = require('../../Helpers/helper');
 const { db } = require('../../config/db');
-const { resolveCompanyScope } = require('../../Helpers/adminScope');
+const { resolveCompanyScope, requireCompany } = require('../../Helpers/adminScope');
 const LA = require('../../Helpers/loyaltyAdmin');
 const Loyalty = require('../../Helpers/loyalty');
 
@@ -31,20 +34,8 @@ function scoped(q, companyId) {
     return companyId != null ? q.where('company_id', companyId) : q;
 }
 
-// Single-company screens need a concrete company. For a super admin who
-// hasn't picked one, reply 422 and signal the caller to stop. Returns the
-// resolved scope when OK, or null when it already sent the error response.
-function requireCompany(req, res) {
-    const scope = resolveCompanyScope(req);
-    if (scope.companyId == null) {
-        H.errorResponse(res, 'Select a company first.', 422, { code: 'no_company' });
-        return null;
-    }
-    return scope;
-}
-
 // Parse a money/number field safely to a fixed-2 string for DECIMAL columns.
-function money(n) { return (Math.round((Number(n) || 0) * 100) / 100).toFixed(2); }
+function money(n) { return F.formatMoney(n); }
 
 /**
  * dashboard
@@ -1522,16 +1513,7 @@ async function bogofToggle(req, res) {
 // an example screenshot shown to customers on the review submission page.
 // Keyed uniquely by (company_id, review_type_slug). Upsert-only (no delete);
 // timestamps are INTEGER unix seconds (this table differs from the others).
-const REVIEW_CMS_TYPES = [
-    { slug: 'google-review', name: 'Google Review' },
-    { slug: 'website-review', name: 'Website Review' },
-    { slug: 'transfer-loyalty-review', name: 'Transfer Your Loyalty To Us' },
-    { slug: 'facebook-review', name: 'Facebook Share' },
-    { slug: 'tiktok-review', name: 'TikTok Share' },
-    { slug: 'instagram-review', name: 'Instagram Share' },
-    { slug: 'live-video-review', name: 'Live Video' },
-    { slug: 'whatsapp-review', name: 'Whatsapp Share' },
-];
+const REVIEW_CMS_TYPES = C.REVIEW_TYPES.map(function (t) { return { slug: t.slug, name: t.name }; });
 
 function nowUnix() { return Math.floor(Date.now() / 1000); }
 
@@ -1601,7 +1583,7 @@ async function cmsPagesGet(req, res) {
         const rows = await db(LA.T.cmsPages).where('company_id', cid)
             .select('review_type_slug', 'title', 'description', 'screenshot');
         const bySlug = {}; rows.forEach((r) => { bySlug[r.review_type_slug] = r; });
-        const upBase = (process.env.YII_UPLOADS_URL || '/yii-uploads').replace(/\/$/, '');
+        const upBase = H.getUploadsBaseUrl();
         const pages = REVIEW_CMS_TYPES.map((t) => {
             const r = bySlug[t.slug];
             const shot = r ? (r.screenshot || '') : '';

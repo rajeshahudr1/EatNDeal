@@ -9,7 +9,7 @@
   Used: Controllers/LoyaltyController.specialOffer (shell layout).
 -%>
 <%
-    var sym = (brand && brand.currencySymbol) ? brand.currencySymbol : '£';
+    var sym = fmt.currencySymbol(brand);
     var today = new Date().toISOString().slice(0, 10);
     function vt(o) { return o.value_type === '£' ? (sym + Number(o.cashback).toFixed(2)) : (Number(o.cashback) + '%'); }
 %>

@@ -11,7 +11,7 @@
   Used: Controllers/LoyaltyController.referralStreak (shell layout).
 -%>
 <%
-    var sym = (brand && brand.currencySymbol) ? brand.currencySymbol : '£';
+    var sym = fmt.currencySymbol(brand);
     function vt(r) { return r.value_type === '£' ? (sym + Number(r.cashback).toFixed(2)) : (r.cashback + '%'); }
     var TYPE = { 1: 'Streak', 2: 'Milestone' };
     var DUR  = { 1: 'weekly', 2: 'monthly' };

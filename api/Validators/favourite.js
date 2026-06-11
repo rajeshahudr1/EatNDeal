@@ -17,18 +17,17 @@
  */
 
 const Joi = require('joi');
+const C = require('./common');
 
 // Identity key shared by every endpoint (bigint id, sent as number or string).
-const customerIdRule = Joi.alternatives()
-    .try(Joi.number().integer().positive(), Joi.string().pattern(/^[0-9]+$/))
+const customerIdRule = C.idRule
     .required()
     .messages({
         'any.required':       'Please sign in to use favourites.',
         'alternatives.match': 'Customer id is not valid.',
     });
 
-const companyIdRule = Joi.alternatives()
-    .try(Joi.number().integer().positive(), Joi.string().pattern(/^[0-9]+$/))
+const companyIdRule = C.idRule
     .required()
     .messages({
         'any.required':       'Restaurant is required.',
@@ -39,8 +38,7 @@ const companyIdRule = Joi.alternatives()
 // some cards (My Favourites rail, account tab) re-render without
 // knowing the original branch id; the controller falls back to the
 // existing row's branch when missing.
-const branchIdRule = Joi.alternatives()
-    .try(Joi.number().integer().positive(), Joi.string().pattern(/^[0-9]+$/))
+const branchIdRule = C.idRule
     .allow('', null)
     .messages({ 'alternatives.match': 'Branch id is not valid.' });
 

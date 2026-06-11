@@ -41,7 +41,7 @@
     var lastFocused = null;
 
     function $(sel, ctx) { return (ctx || document).querySelector(sel); }
-    function $$(sel, ctx) { return Array.prototype.slice.call((ctx || document).querySelectorAll(sel)); }
+    var $$ = (window.EatNDealDom && window.EatNDealDom.queryAll) || function (sel, ctx) { return Array.prototype.slice.call((ctx || document).querySelectorAll(sel)); };
 
     function popupRoot(name) {
         return document.querySelector('[data-ckt-popup="' + name + '"]');

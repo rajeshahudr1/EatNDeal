@@ -14,9 +14,9 @@
  */
 
 const Joi = require('joi');
+const C = require('./common');
 
-const idRule = Joi.alternatives()
-    .try(Joi.number().integer().positive(), Joi.string().pattern(/^[0-9]+$/))
+const idRule = C.idRule
     .messages({ 'alternatives.match': 'Id is not valid.' });
 
 // ── POST /customer/review ─────────────────────────────────────────

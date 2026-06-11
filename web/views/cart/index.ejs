@@ -38,7 +38,7 @@
          cart_payment_methods and cart_restaurant locals from
          CartController.page().
 -%>
-<% var sym = brand.currencySymbol; %>
+<% var sym = fmt.currencySymbol(brand); %>
 <% var addrList = (typeof cart_addresses !== 'undefined' && cart_addresses) ? cart_addresses : []; %>
 <% var payList  = (typeof cart_payment_methods !== 'undefined' && cart_payment_methods) ? cart_payment_methods : []; %>
 <% var rest     = (typeof cart_restaurant !== 'undefined' && cart_restaurant) ? cart_restaurant : null; %>

@@ -13,7 +13,7 @@
 (function () {
     'use strict';
 
-    var EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    var EMAIL_RE = window.AdminUi.EMAIL_PATTERN;
 
     function $(sel, ctx) { return (ctx || document).querySelector(sel); }
 

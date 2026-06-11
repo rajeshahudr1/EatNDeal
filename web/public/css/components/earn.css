@@ -1,0 +1,209 @@
+/*
+ * components/earn.css
+ *
+ * Earn Cashback page (/earn): restaurant picker, the per-restaurant review/
+ * share type cards (icon + reward + example screenshot + admin instructions +
+ * claim status + submit), the submit modal, and the example-screenshot
+ * lightbox. Colours/spacing come from base.css :root tokens (single source).
+ * Desktop/mobile tweaks live in desktop.css / mobile.css per convention.
+ */
+
+.earn {
+    max-width: 920px;
+    margin: 0 auto;
+    padding: var(--space-6) var(--space-4) var(--space-16);
+}
+
+/* ── Header ──────────────────────────────────────────────────────── */
+.earn__head { text-align: center; margin-bottom: var(--space-8); }
+.earn__title { font-size: 1.9rem; font-weight: 800; letter-spacing: -0.02em; margin: 0; }
+.earn__title span { color: var(--color-primary); }
+.earn__sub { color: var(--color-text-muted); margin: var(--space-2) 0 0; }
+
+/* ── Restaurant bar (per-restaurant view) ───────────────────────── */
+.earn__bar {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: var(--space-3); margin-bottom: var(--space-6);
+}
+.earn__back { color: var(--color-text-muted); font-weight: 600; font-size: 0.92rem; }
+.earn__back:hover { color: var(--color-primary); }
+.earn__resto { display: inline-flex; align-items: center; gap: var(--space-2); font-weight: 700; }
+.earn__resto-badge {
+    width: 30px; height: 30px; border-radius: var(--radius-pill);
+    display: grid; place-items: center; font-size: 0.9rem; color: #fff;
+    background: var(--color-primary);
+}
+
+/* ── Restaurant picker ───────────────────────────────────────────── */
+.earn-restos { display: grid; gap: var(--space-3); }
+.eresto {
+    display: flex; align-items: center; gap: var(--space-4);
+    padding: var(--space-4) var(--space-5);
+    background: var(--color-bg); border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg); box-shadow: var(--shadow-1);
+    transition: box-shadow 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
+}
+.eresto:hover { box-shadow: var(--shadow-2); border-color: var(--color-text-soft); transform: translateY(-1px); }
+.eresto__badge {
+    flex: 0 0 auto; width: 46px; height: 46px; border-radius: var(--radius-pill);
+    display: grid; place-items: center; font-size: 1.2rem; font-weight: 800; color: #fff;
+    background: linear-gradient(135deg, var(--color-primary), var(--color-primary-dark));
+}
+.eresto__main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.eresto__name { font-weight: 700; color: var(--color-text); }
+.eresto__meta { font-size: 0.85rem; color: var(--color-text-muted); }
+.eresto__reward {
+    flex: 0 0 auto; font-weight: 700; font-size: 0.9rem; color: var(--color-success);
+    background: #E9F8F0; border-radius: var(--radius-pill); padding: 4px 12px;
+}
+
+/* ── Type cards ──────────────────────────────────────────────────── */
+.earn-grid {
+    display: grid; gap: var(--space-5);
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+}
+.ecard {
+    display: flex; flex-direction: column;
+    background: var(--color-bg); border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg); box-shadow: var(--shadow-1);
+    overflow: hidden;
+}
+.ecard__head {
+    display: flex; align-items: center; gap: var(--space-3);
+    padding: var(--space-4) var(--space-5);
+    border-bottom: 1px solid var(--color-border-soft);
+}
+.ecard__icon { font-size: 1.4rem; line-height: 1; }
+.ecard__name { flex: 1 1 auto; min-width: 0; font-weight: 700; }
+.ecard__reward {
+    flex: 0 0 auto; font-weight: 800; font-size: 0.95rem; color: #fff;
+    background: var(--color-primary); border-radius: var(--radius-pill);
+    padding: 3px 12px;
+}
+.ecard__shot { position: relative; background: var(--color-bg-alt); }
+.ecard__shot img {
+    display: block; width: 100%; max-height: 220px; object-fit: contain;
+    cursor: zoom-in;
+}
+.ecard__shot-tag {
+    position: absolute; top: var(--space-2); left: var(--space-2);
+    font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
+    color: var(--color-text-muted); background: rgba(255, 255, 255, 0.92);
+    border-radius: var(--radius-sm); padding: 2px 7px;
+}
+.ecard__desc {
+    padding: var(--space-4) var(--space-5);
+    color: var(--color-text-muted); font-size: 0.92rem; line-height: 1.5;
+}
+.ecard__desc p { margin: 0 0 var(--space-2); }
+.ecard__desc p:last-child { margin-bottom: 0; }
+.ecard__desc ul, .ecard__desc ol { margin: 0 0 var(--space-2); padding-left: 1.2em; }
+.ecard__desc a { color: var(--color-primary-dark); font-weight: 600; }
+.ecard__desc img { max-width: 100%; height: auto; border-radius: var(--radius-sm); }
+
+.ecard__foot {
+    margin-top: auto;
+    display: flex; flex-direction: column; gap: var(--space-3);
+    padding: var(--space-4) var(--space-5);
+    border-top: 1px solid var(--color-border-soft);
+}
+.ecard__status {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 0.85rem; font-weight: 600; align-self: flex-start;
+    border-radius: var(--radius-pill); padding: 4px 12px;
+}
+.ecard__status.is-pending  { color: #9A6A00; background: #FFF4DA; }
+.ecard__status.is-approved { color: var(--color-success); background: #E9F8F0; }
+.ecard__status.is-rejected { color: var(--color-primary-dark); background: var(--color-primary-soft); }
+.ecard__btn {
+    appearance: none; cursor: pointer; width: 100%;
+    font-family: inherit; font-weight: 700; font-size: 0.95rem;
+    color: #fff; background: var(--color-primary);
+    border: 0; border-radius: var(--radius-md); padding: 11px 16px;
+    transition: background-color 0.16s ease;
+}
+.ecard__btn:hover { background: var(--color-primary-dark); }
+.ecard__btn.is-done { background: var(--color-bg-alt); color: var(--color-text-soft); cursor: default; }
+
+/* ── Empty state ─────────────────────────────────────────────────── */
+.earn-empty {
+    text-align: center; padding: var(--space-12) var(--space-4);
+    color: var(--color-text-muted);
+}
+.earn-empty__ic { font-size: 2.6rem; display: block; margin-bottom: var(--space-3); }
+
+/* ── Submit modal ────────────────────────────────────────────────── */
+.earn-modal {
+    position: fixed; inset: 0; z-index: 1200;
+    display: flex; align-items: center; justify-content: center;
+    padding: var(--space-4);
+}
+.earn-modal[hidden] { display: none; }
+.earn-modal__backdrop { position: absolute; inset: 0; background: rgba(20, 20, 20, 0.5); }
+.earn-modal__panel {
+    position: relative; z-index: 1; width: 100%; max-width: 440px;
+    background: var(--color-bg); border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-3); overflow: hidden;
+    display: flex; flex-direction: column; max-height: 90vh;
+}
+.earn-modal__head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: var(--space-4) var(--space-5); border-bottom: 1px solid var(--color-border-soft);
+}
+.earn-modal__title { font-size: 1.1rem; font-weight: 700; margin: 0; }
+.earn-modal__x {
+    appearance: none; border: 0; background: transparent; cursor: pointer;
+    font-size: 1.1rem; color: var(--color-text-muted); line-height: 1; padding: 4px;
+}
+.earn-modal__x:hover { color: var(--color-text); }
+.earn-modal__body { padding: var(--space-5); overflow-y: auto; }
+.earn-modal__reward { margin: 0 0 var(--space-4); color: var(--color-success); font-weight: 600; font-size: 0.9rem; }
+.earn-modal__foot {
+    display: flex; justify-content: flex-end; gap: var(--space-3);
+    padding: var(--space-4) var(--space-5); border-top: 1px solid var(--color-border-soft);
+}
+
+.earn-field { margin-bottom: var(--space-4); }
+.earn-field:last-child { margin-bottom: 0; }
+.earn-field__lbl { display: block; font-weight: 600; font-size: 0.9rem; margin-bottom: var(--space-2); }
+.earn-field__opt { color: var(--color-text-soft); font-weight: 400; }
+.earn-field__err { margin: var(--space-2) 0 0; color: var(--color-primary-dark); font-size: 0.85rem; }
+.earn-field.has-err .earn-input,
+.earn-field.has-err .earn-file { border-color: var(--color-primary); }
+
+.earn-input {
+    width: 100%; font-family: inherit; font-size: 0.95rem; color: var(--color-text);
+    background: var(--color-bg); border: 1px solid var(--color-border);
+    border-radius: var(--radius-md); padding: 10px 12px;
+}
+.earn-input:focus { outline: none; border-color: var(--color-primary); box-shadow: 0 0 0 3px var(--color-primary-soft); }
+.earn-input--area { resize: vertical; min-height: 56px; }
+
+.earn-file { display: block; cursor: pointer; }
+.earn-file__input { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; }
+.earn-file__face {
+    display: flex; align-items: center; justify-content: center; text-align: center;
+    min-height: 88px; padding: var(--space-4);
+    color: var(--color-text-muted); font-size: 0.9rem;
+    background: var(--color-bg-soft); border: 1.5px dashed var(--color-border);
+    border-radius: var(--radius-md);
+}
+.earn-file:hover .earn-file__face { border-color: var(--color-primary); color: var(--color-text); }
+
+body.earn-modal-open { overflow: hidden; }
+
+/* ── Example-screenshot lightbox ─────────────────────────────────── */
+.earn-zoom {
+    position: fixed; inset: 0; z-index: 1300;
+    display: flex; align-items: center; justify-content: center;
+    padding: var(--space-6); background: rgba(20, 20, 20, 0.82);
+}
+.earn-zoom[hidden] { display: none; }
+.earn-zoom img { max-width: 100%; max-height: 86vh; border-radius: var(--radius-md); box-shadow: var(--shadow-3); }
+.earn-zoom__close {
+    position: absolute; top: var(--space-4); right: var(--space-4);
+    appearance: none; border: 0; cursor: pointer;
+    width: 40px; height: 40px; border-radius: var(--radius-pill);
+    background: rgba(255, 255, 255, 0.15); color: #fff; font-size: 1.1rem;
+}
+.earn-zoom__close:hover { background: rgba(255, 255, 255, 0.28); }

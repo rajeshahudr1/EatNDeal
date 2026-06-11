@@ -14,12 +14,8 @@
 
 const { callApi } = require('../Helpers/apiClient');
 
-function flashFromApi(req, apiRes, fallback) {
-    const body = apiRes && apiRes.body;
-    if (body && body.status === 200) { if (req.flash) { req.flash('success', body.msg || 'Saved.'); } return true; }
-    if (req.flash) { req.flash('error', (body && body.msg) || fallback || 'Something went wrong.'); }
-    return false;
-}
+const CC = require('../Helpers/controllerCommon');
+const flashFromApi = CC.flashFromApi;
 
 // GET /marketplace-categories — the list page.
 async function list(req, res) {

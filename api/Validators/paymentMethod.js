@@ -13,9 +13,9 @@
  */
 
 const Joi = require('joi');
+const C = require('./common');
 
-const customerIdRule = Joi.alternatives()
-    .try(Joi.number().integer().positive(), Joi.string().pattern(/^[0-9]+$/))
+const customerIdRule = C.idRule
     .required()
     .messages({
         'any.required':       'Customer id is required.',

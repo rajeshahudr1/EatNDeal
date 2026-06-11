@@ -16,18 +16,10 @@
 
 const { callApi } = require('../Helpers/apiClient');
 
-function activeCompanyId(res) {
-    const ctx = res.locals.company_ctx || {};
-    return ctx.selectedCompanyId != null ? ctx.selectedCompanyId : null;
-}
-function companyQS(res) {
-    const id = activeCompanyId(res);
-    return id != null ? ('?company_id=' + encodeURIComponent(id)) : '';
-}
-function needsCompanyPick(res) {
-    const ctx = res.locals.company_ctx || {};
-    return ctx.isSuper && activeCompanyId(res) == null;
-}
+const CC = require('../Helpers/controllerCommon');
+const activeCompanyId = CC.activeCompanyId;
+const companyQS = CC.companyQS;
+const needsCompanyPick = CC.needsCompanyPick;
 
 // GET /products — render the list page.
 async function list(req, res) {

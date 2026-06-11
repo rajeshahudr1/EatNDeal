@@ -36,12 +36,8 @@
     var lastIds   = new Set();
 
     function q(sel, ctx) { return (ctx || document).querySelector(sel); }
-    function qa(sel, ctx) { return Array.prototype.slice.call((ctx || document).querySelectorAll(sel)); }
-    function toast(type, msg) {
-        if (window.EatNDealUi && window.EatNDealUi.showToast) {
-            window.EatNDealUi.showToast(type, msg);
-        }
-    }
+    var qa = (window.EatNDealDom && window.EatNDealDom.queryAll) || function (sel, ctx) { return Array.prototype.slice.call((ctx || document).querySelectorAll(sel)); };
+    var toast = (window.EatNDealDom && window.EatNDealDom.showToastSafe) || function (type, msg) { if (window.EatNDealUi && window.EatNDealUi.showToast) { window.EatNDealUi.showToast(type, msg); } };
 
     // Custom confirm — replaces native window.confirm.
     function confirmDialog(opts) {

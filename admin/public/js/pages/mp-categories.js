@@ -14,35 +14,20 @@
     'use strict';
 
     /* ---- small helpers ------------------------------------------------ */
-    function toast(type, msg) { if (window.AdminUi && window.AdminUi.showToast) { window.AdminUi.showToast(type, msg); } }
-    function ok(res) { return res && res.status === 200; }
-    function post(url, body) {
-        return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify(body) })
-            .then(function (r) { return r.json().catch(function () { return { status: 0, msg: 'Bad response.' }; }); })
-            .catch(function () { return { status: 0, msg: 'Could not reach the server.' }; });
-    }
-    function getJson(url) {
-        return fetch(url, { headers: { Accept: 'application/json' } })
-            .then(function (r) { return r.json().catch(function () { return { status: 0, msg: 'Bad response.' }; }); })
-            .catch(function () { return { status: 0, msg: 'Could not reach the server.' }; });
-    }
-    function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]; }); }
-    function debounce(fn, ms) { var t; return function () { var a = arguments, c = this; clearTimeout(t); t = setTimeout(function () { fn.apply(c, a); }, ms); }; }
+    var toast = window.AdminUi.showToastSafe;
+    var ok = window.AdminApi.isSuccess;
+    var post = window.AdminApi.post;
+    var getJson = window.AdminApi.getJson;
+    var esc = window.AdminUi.escapeHtml;
+    var debounce = window.AdminUi.debounce;
 
     var pendingDelete = null;
 
     /* ---- selection / action bar --------------------------------------- */
-    function selectedIds() { return Array.prototype.map.call(document.querySelectorAll('.pr-check:checked'), function (c) { return Number(c.value); }); }
-    function refreshBar() {
-        var ids = selectedIds();
-        var bar = document.querySelector('[data-actionbar]');
-        if (bar) { bar.hidden = ids.length === 0; var c = bar.querySelector('[data-sel-count]'); if (c) { c.textContent = ids.length; } }
-        var all = document.querySelector('[data-action="pr-checkall"]');
-        var boxes = document.querySelectorAll('.pr-check');
-        if (all) { all.checked = boxes.length > 0 && ids.length === boxes.length; }
-    }
-    function showModal(n) { var m = document.querySelector('[data-modal="' + n + '"]'); if (m) { m.hidden = false; document.body.classList.add('pr-modal-open'); } }
-    function hideModals() { var ms = document.querySelectorAll('[data-modal]'); for (var i = 0; i < ms.length; i++) { ms[i].hidden = true; } document.body.classList.remove('pr-modal-open'); }
+    var selectedIds = window.AdminUi.getSelectedIds;
+    var refreshBar = window.AdminUi.refreshActionBar;
+    var showModal = window.AdminUi.showModal;
+    var hideModals = window.AdminUi.hideModals;
     function setDeleteMsg(m) { var el = document.querySelector('[data-delete-msg]'); if (el) { el.textContent = m; } }
 
     function applyStatus(ids, status, selects) {

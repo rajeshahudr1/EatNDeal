@@ -266,6 +266,21 @@ const log = {
     error: (tag, msg, meta) => _emit('error', tag, msg, meta),
 };
 
+/**
+ * getUploadsBaseUrl
+ * What:   The base URL the Yii2 uploads tree is published under, trailing
+ *         slash stripped. One place to resolve the YII_UPLOADS_URL env knob —
+ *         move the whole uploads tree (CDN / other host) by changing the env
+ *         var, with every image-URL builder following automatically.
+ * Type:   READ (pure but for the env read).
+ * Output: string (defaults to '/yii-uploads').
+ * Used:   marketplace.yiiImageUrl, loyalty.cmsShotUrl, the admin Store/Product/
+ *         Category/Loyalty image-URL builders.
+ */
+function getUploadsBaseUrl() {
+    return (process.env.YII_UPLOADS_URL || '/yii-uploads').replace(/\/$/, '');
+}
+
 module.exports = {
     successResponse,
     errorResponse,
@@ -274,5 +289,6 @@ module.exports = {
     randomToken,
     slugify,
     nullsToEmpty,
+    getUploadsBaseUrl,
     log,
 };

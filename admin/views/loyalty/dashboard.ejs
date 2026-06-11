@@ -10,8 +10,8 @@
 -%>
 <%
     var cc  = (typeof company_ctx !== 'undefined' && company_ctx) ? company_ctx : { selectedCompany: null, isSuper: false, selectedCompanyId: null };
-    var sym = (brand && brand.currencySymbol) ? brand.currencySymbol : '£';
-    function money(n) { return sym + Number(n || 0).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+    var sym = fmt.currencySymbol(brand);
+    var money = function (n) { return fmt.money(n, brand); };
     var scopeLabel = cc.selectedCompany ? cc.selectedCompany.business_name : (cc.isSuper ? 'All companies' : 'Your company');
     var TILES = [
         ['/loyalty/cashback-rules', '💷', 'Cashback Rules', 'Order-value cashback + wallet settings'],

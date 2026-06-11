@@ -34,6 +34,8 @@
  *   2026-05-25 — initial.
  */
 
+const F = require('./format');
+
 const BASE    = String(process.env.POSTCODES_IO_BASE_URL  || 'https://api.postcodes.io').replace(/\/$/, '');
 const TIMEOUT = Math.max(1000, parseInt(process.env.POSTCODES_IO_TIMEOUT_MS, 10) || 6000);
 
@@ -87,12 +89,7 @@ async function httpGetJson(url) {
  * Type:  READ (pure function).
  */
 function htmlEscape(str) {
-    return String(str)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
+    return F.escapeHtml(str);
 }
 
 /**

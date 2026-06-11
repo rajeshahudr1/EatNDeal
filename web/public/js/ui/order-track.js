@@ -36,7 +36,7 @@
 
     // ── Helpers ─────────────────────────────────────────────────────
     function q(sel) { return document.querySelector(sel); }
-    function qa(sel) { return Array.prototype.slice.call(document.querySelectorAll(sel)); }
+    var qa = (window.EatNDealDom && window.EatNDealDom.queryAll) || function (sel) { return Array.prototype.slice.call(document.querySelectorAll(sel)); };
 
     function readInitialEta() {
         var el = q('[data-order-eta]');

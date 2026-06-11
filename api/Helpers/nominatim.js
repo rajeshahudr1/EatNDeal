@@ -39,6 +39,8 @@
  *   2026-05-25 — initial.
  */
 
+const F = require('./format');
+
 const BASE        = String(process.env.NOMINATIM_BASE_URL    || 'https://nominatim.openstreetmap.org').replace(/\/$/, '');
 const TIMEOUT     = Math.max(1000, parseInt(process.env.NOMINATIM_TIMEOUT_MS, 10) || 8000);
 const USER_AGENT  = String(process.env.NOMINATIM_USER_AGENT  || 'EatNDeal-API/0.1 (https://eatndeal.local; bookings@eatsndeals.co.uk)');
@@ -98,12 +100,7 @@ async function httpGetJson(url) {
  * Type:  READ (pure function).
  */
 function htmlEscape(str) {
-    return String(str)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
+    return F.escapeHtml(str);
 }
 
 /**

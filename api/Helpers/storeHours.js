@@ -402,6 +402,127 @@ async function slotsForBranch(branch, serveType, opts) {
     return buildSlots(branch, shifts, holiday, serveType, opts);
 }
 
+// ── Multi-day pre-order schedule (Uber-style date chips) ─────────────
+const WEEKDAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];   // getDay()
+const MONTH_SHORT   = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/**
+ * buildSlotsForDate — 15-min slots for ONE calendar date + service, using
+ * that date's shifts/holiday. Same-calendar-day only (no overnight roll-over,
+ * so each Uber chip shows times that belong to its own date). For today the
+ * floor is now+lead; future dates start at the window open. Honours the
+ * branch closure flags relative to the target date. Returns [{value,label}].
+ */
+function buildSlotsForDate(branch, shifts, holiday, serveType, targetDate, isToday, leadMin) {
+    const lead = Number.isFinite(leadMin) ? leadMin : SLOT_LEAD;
+    const svcId = Number(serveType) === SERVICE.TAKEAWAY ? SERVICE.TAKEAWAY : SERVICE.DELIVERY;
+    if (optionClosed(branch, svcId === SERVICE.DELIVERY ? 'delivery' : 'pickup')) { return []; }
+    if (Number(branch.closed) === 1) { return []; }                              // permanently closed
+    if (holiday && Number(holiday.is_special_hour) !== 1) { return []; }         // whole-day holiday
+
+    const tYmd = ymd(targetDate);
+    let startFloor = isToday ? (nowMinutes() + lead) : 0;
+
+    // closed_until / closed_for relative to THIS date.
+    let reopenMs = null;
+    if (Number(branch.closed_until) === 1 && branch.closed_reopen_date) {
+        reopenMs = reopenTimestamp(branch.closed_reopen_date, branch.clossed_repoen_time);
+    } else if (Number(branch.closed_for) === 1 && branch.closed_for_time) {
+        const t = Date.parse(branch.closed_for_time); reopenMs = Number.isFinite(t) ? t : null;
+    }
+    if (reopenMs && reopenMs > Date.now()) {
+        const r = new Date(reopenMs);
+        const rYmd = ymd(r);
+        if (rYmd > tYmd) { return []; }                                          // reopens after this date
+        if (rYmd === tYmd) { startFloor = Math.max(startFloor, r.getHours() * 60 + r.getMinutes()); }
+    }
+
+    // Holiday "special hours" replaces the day's window.
+    let eff = shifts;
+    if (holiday && Number(holiday.is_special_hour) === 1) {
+        eff = [{ service_type_id: svcId, is_open: 1, open_time: holiday.from_time, close_time: holiday.to_time }];
+    }
+
+    const list = eff.filter(s => Number(s.service_type_id) === svcId && Number(s.is_open) === 1);
+    const out = [];
+    const seen = new Set();
+    for (const s of list) {
+        let o = clockMin(s.open_time), c = clockMin(s.close_time);
+        if (o == null || c == null) { continue; }
+        if (c <= o) { c = 1440; }                              // overnight → cap at end of this calendar day
+        let t = Math.max(o, Math.ceil(startFloor / SLOT_STEP) * SLOT_STEP);
+        for (; t < c; t += SLOT_STEP) {                        // < close (no slot AT close)
+            if (seen.has(t)) { continue; }
+            seen.add(t);
+            out.push({ sort: t, value: tYmd + 'T' + pad2(Math.floor(t / 60)) + ':' + pad2(t % 60), label: fmt12(t) });
+        }
+    }
+    out.sort((a, b) => a.sort - b.sort);
+    return out.map(s => ({ value: s.value, label: s.label }));
+}
+
+async function loadShiftsAllDays(companyId, branchId) {
+    try {
+        return await db('store_business_hours as h')
+            .innerJoin('store_business_hour_shifts as s', 's.business_hour_id', 'h.id')
+            .where({ 'h.company_id': companyId, 'h.branch_id': branchId })
+            .whereIn('s.service_type_id', [SERVICE.TAKEAWAY, SERVICE.DELIVERY])
+            .select('h.day_of_week', 's.service_type_id', 's.is_open', 's.open_time', 's.close_time');
+    } catch (e) { return []; }
+}
+async function loadHolidaysRange(companyId, branchId, fromYmd, toYmd) {
+    try {
+        return await db('store_holiday_details')
+            .where({ company_id: companyId, branch_id: branchId, status: 1 })
+            .andWhere('from_date', '<=', toYmd)
+            .andWhere('to_date', '>=', fromYmd)
+            .select('from_date', 'to_date', 'is_special_hour', 'from_time', 'to_time', 'reason');
+    } catch (e) { return []; }
+}
+
+/**
+ * scheduleDaysForBranch — the next `days` (default 7) calendar days for the
+ * Uber-style pre-order picker. Each entry is one date with its own 15-min
+ * slots from that day's store_business_hours. Days with no usable shift have
+ * `slots: []` (the chip renders disabled). serveType: 2 pickup / 3 delivery.
+ * Returns [{ date, isToday, top, sub, slots:[{value,label}] }].
+ */
+async function scheduleDaysForBranch(branch, serveType, opts) {
+    if (!branch) { return []; }
+    const companyId = branch.company_id;
+    const branchId  = branch.branch_id || branch.id;
+    if (!companyId || !branchId) { return []; }
+    const days = (opts && Number.isFinite(opts.days)) ? opts.days : 7;
+    const lead = (opts && Number.isFinite(opts.leadMin)) ? opts.leadMin : SLOT_LEAD;
+
+    const first = new Date(); first.setHours(0, 0, 0, 0);
+    const last  = new Date(first); last.setDate(last.getDate() + days - 1);
+
+    const [allShifts, holidays] = await Promise.all([
+        loadShiftsAllDays(companyId, branchId),
+        loadHolidaysRange(companyId, branchId, ymd(first), ymd(last)),
+    ]);
+    const shiftsByDow = {};
+    allShifts.forEach((s) => { const k = Number(s.day_of_week); (shiftsByDow[k] = shiftsByDow[k] || []).push(s); });
+
+    const out = [];
+    for (let i = 0; i < days; i++) {
+        const d = new Date(first); d.setDate(d.getDate() + i);
+        const dow = d.getDay() === 0 ? 7 : d.getDay();
+        const dYmd = ymd(d);
+        const holiday = holidays.find(h => String(h.from_date).slice(0, 10) <= dYmd && String(h.to_date).slice(0, 10) >= dYmd) || null;
+        const slots = buildSlotsForDate(branch, shiftsByDow[dow] || [], holiday, serveType, d, i === 0, lead);
+        out.push({
+            date:    dYmd,
+            isToday: i === 0,
+            top:     i === 0 ? 'Today' : (i === 1 ? 'Tomorrow' : WEEKDAY_SHORT[d.getDay()]),
+            sub:     d.getDate() + ' ' + MONTH_SHORT[d.getMonth()],
+            slots,
+        });
+    }
+    return out;
+}
+
 /**
  * isSchedulable — is a chosen pre-order value ('YYYY-MM-DDTHH:MM' or Date)
  * one of today's valid slots for this branch + mode? Used to reject
@@ -417,12 +538,66 @@ async function isSchedulable(branch, serveType, when) {
     return slots.some(s => s.value === target);
 }
 
+// ── Weekly opening-hours table (Restaurant Info popup) ───────────────
+const WEEKDAY_ISO_SHORT = { 1: 'Mon', 2: 'Tue', 3: 'Wed', 4: 'Thu', 5: 'Fri', 6: 'Sat', 7: 'Sun' };
+const WEEKDAY_ISO_FULL  = { 1: 'Monday', 2: 'Tuesday', 3: 'Wednesday', 4: 'Thursday', 5: 'Friday', 6: 'Saturday', 7: 'Sunday' };
+
+// One service's window label for a day's shifts ("9:00 AM – 11:00 PM"),
+// earliest open–latest close among its open shifts; null when closed.
+function serviceWindowLabel(shifts, serviceId) {
+    let minOpen = null, maxClose = null;
+    for (const s of shifts) {
+        if (Number(s.service_type_id) !== serviceId || Number(s.is_open) !== 1) { continue; }
+        const o = clockMin(s.open_time), c = clockMin(s.close_time);
+        if (o == null || c == null) { continue; }
+        const cc = c <= o ? c + 1440 : c;                  // overnight rolls past midnight
+        if (minOpen == null || o < minOpen) { minOpen = o; }
+        if (maxClose == null || cc > maxClose) { maxClose = cc; }
+    }
+    if (minOpen == null) { return null; }
+    return fmt12(minOpen) + ' – ' + fmt12(maxClose);
+}
+
+/**
+ * weekHoursForBranch — the full Mon→Sun opening-hours table for the
+ * Restaurant Info popup. One row per ISO weekday with the pickup + delivery
+ * windows (or null when closed that day) and which row is today.
+ * Returns [] when the branch has no store_business_hours configured.
+ */
+async function weekHoursForBranch(branch) {
+    if (!branch) { return []; }
+    const companyId = branch.company_id;
+    const branchId  = branch.branch_id || branch.id;
+    if (!companyId || !branchId) { return []; }
+    const allShifts = await loadShiftsAllDays(companyId, branchId);
+    if (!allShifts.length) { return []; }
+    const byDow = {};
+    allShifts.forEach((s) => { const k = Number(s.day_of_week); (byDow[k] = byDow[k] || []).push(s); });
+    const todayDow = isoDow();
+    const out = [];
+    for (let dow = 1; dow <= 7; dow++) {
+        const sh = byDow[dow] || [];
+        out.push({
+            dow,
+            day:      WEEKDAY_ISO_FULL[dow],
+            short:    WEEKDAY_ISO_SHORT[dow],
+            isToday:  dow === todayDow,
+            pickup:   serviceWindowLabel(sh, SERVICE.TAKEAWAY),
+            delivery: serviceWindowLabel(sh, SERVICE.DELIVERY),
+        });
+    }
+    return out;
+}
+
 module.exports = {
     SERVICE,
     availabilityForBranch,
     availabilityForBranches,
     slotsForBranch,
+    scheduleDaysForBranch,
+    weekHoursForBranch,
     isSchedulable,
     compute,                 // exported for tests
     buildSlots,              // exported for tests
+    buildSlotsForDate,       // exported for tests
 };

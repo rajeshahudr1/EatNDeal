@@ -22,7 +22,7 @@
 <% var groups = (typeof product_groups !== 'undefined' && product_groups) ? product_groups : []; %>
 <% var related = (typeof product_related !== 'undefined' && product_related) ? product_related : []; %>
 <% var imgs = (p.images && p.images.length) ? p.images : (p.image ? [p.image] : []); %>
-<% var sym = brand.currencySymbol; %>
+<% var sym = fmt.currencySymbol(brand); %>
 <div class="pd" data-product
      data-product-id="<%= p.id %>"
      data-base-price="<%= (typeof p.basePrice === 'number' ? p.basePrice : 0) %>"

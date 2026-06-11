@@ -19,13 +19,14 @@
  */
 
 const { callApi } = require('../Helpers/apiClient');
+const CC = require('../Helpers/controllerCommon');
 
 /**
  * index — fetch + render the dashboard for the selected company (or all).
  */
 async function index(req, res) {
     const ctx = res.locals.company_ctx || {};
-    const qs = ctx.selectedCompanyId != null ? ('?company_id=' + encodeURIComponent(ctx.selectedCompanyId)) : '';
+    const qs = CC.companyQS(res);
 
     let ov = null;
     let sg = null;

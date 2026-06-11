@@ -30,6 +30,8 @@
  * same numbers (the legacy migration uses smallints 0/1/2 here).
  */
 
+const F = require('./format');
+
 const { db }        = require('../config/db');
 const M             = require('./marketplace');
 const OrderTime     = require('./orderTime');
@@ -384,11 +386,7 @@ async function recomputeTotals(cartId) {
 }
 
 // Helper — 2 dp rounding, NaN-safe.
-function round2(n) {
-    const v = Number(n);
-    if (!Number.isFinite(v)) { return 0; }
-    return Math.round(v * 100) / 100;
-}
+function round2(n) { return F.round2(n); }
 
 // Helper — pre_order_time (timestamptz) → "HH:MM" display string.
 // Returns null when not a pre-order or the timestamp is unparseable.

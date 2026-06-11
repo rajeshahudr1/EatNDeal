@@ -45,7 +45,7 @@ function imageUrl(file) {
     const f = str(file).trim();
     if (!f) { return ''; }
     if (/^https?:\/\//i.test(f) || f.startsWith('/')) { return f; }
-    const base = (process.env.YII_UPLOADS_URL || '/yii-uploads').replace(/\/$/, '');
+    const base = H.getUploadsBaseUrl();
     return base + '/marketplace/category/' + f;
 }
 

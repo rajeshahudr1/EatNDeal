@@ -9,7 +9,7 @@
   Used: Controllers/LoyaltyController.tierConfig (shell layout).
 -%>
 <%
-    var sym = (brand && brand.currencySymbol) ? brand.currencySymbol : '£';
+    var sym = fmt.currencySymbol(brand);
     var TIERS = [
         ['bronze', '🥉 Bronze', 'bronze'],
         ['silver', '🥈 Silver', 'silver'],

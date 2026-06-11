@@ -27,6 +27,9 @@
  *        api/Controllers/Marketplace/ProductsController.js
  */
 
+const F = require('./format');
+const H = require('./helper');
+
 /**
  * pickPrice
  *
@@ -106,25 +109,8 @@ function discountedPrice(row) {
  *        friendly (warm + soft) and to pop against the white card.
  * Type:  READ (pure).
  */
-const TINT_PALETTE = [
-    '#FFE0B2', // peach
-    '#FFCDD2', // soft red
-    '#FFAB91', // terracotta
-    '#C5E1A5', // lime
-    '#A5D6A7', // mint
-    '#FFE082', // mustard
-    '#EF9A9A', // rose
-    '#B0BEC5', // slate
-    '#F8BBD0', // pink
-    '#D1C4E9', // lavender
-];
 function tintFor(seed) {
-    const s = String(seed == null ? '' : seed);
-    let h = 0;
-    for (let i = 0; i < s.length; i++) {
-        h = (h * 31 + s.charCodeAt(i)) >>> 0;
-    }
-    return TINT_PALETTE[h % TINT_PALETTE.length];
+    return F.tintFor(seed);
 }
 
 /**
@@ -135,10 +121,7 @@ function tintFor(seed) {
  * Type:  READ (pure).
  */
 function initialFor(name) {
-    const s = String(name || '').trim();
-    if (!s) { return '?'; }
-    const ch = s.replace(/[^A-Za-z0-9]/g, '').charAt(0);
-    return (ch || '?').toUpperCase();
+    return F.initialFor(name);
 }
 
 /**
@@ -192,16 +175,7 @@ function cuisinesFor(company) {
  * Type:  READ (pure).
  */
 function slugify(str, fallbackId) {
-    const s = String(str || '')
-        .normalize('NFKD')
-        .replace(/[̀-ͯ]/g, '')
-        .toLowerCase()
-        .replace(/[^a-z0-9\s-]/g, '')
-        .trim()
-        .replace(/\s+/g, '-')
-        .replace(/-+/g, '-');
-    if (s) { return s; }
-    return fallbackId != null ? 'restaurant-' + fallbackId : 'restaurant';
+    return F.restaurantSlug(str, fallbackId);
 }
 
 /**
@@ -268,7 +242,7 @@ function yiiImageUrl(type, companyId, filename) {
 
     const sub = YII_FOLDERS[type];
     if (!sub || !companyId) { return null; }
-    const base = (process.env.YII_UPLOADS_URL || '/yii-uploads').replace(/\/$/, '');
+    const base = H.getUploadsBaseUrl();
     return base + '/' + companyId + '/' + sub + '/' + raw;
 }
 

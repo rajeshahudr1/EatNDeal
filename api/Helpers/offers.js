@@ -29,6 +29,8 @@
  *        the /marketplace/offers feed.
  */
 
+const F = require('./format');
+
 const { db } = require('../config/db');
 const M       = require('./marketplace');
 
@@ -313,13 +315,8 @@ async function offerSummaries(pairs) {
 // "Valid till D MMM YYYY" — dates are stored as local-midnight timestamps
 // (so they read as the previous day's 18:30 in UTC); nudge +12h so the
 // intended calendar date shows.
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 function fmtValidTill(val) {
-    if (!val) { return null; }
-    let d = (val instanceof Date) ? val : new Date(val);
-    if (isNaN(d.getTime())) { return null; }
-    d = new Date(d.getTime() + 12 * 60 * 60 * 1000);
-    return d.getUTCDate() + ' ' + MONTHS[d.getUTCMonth()] + ' ' + d.getUTCFullYear();
+    return F.formatValidTill(val);
 }
 function round(n) { return Math.round(Number(n) || 0); }
 

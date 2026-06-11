@@ -10,7 +10,7 @@
   Used: Controllers/LoyaltyController.challenges (shell layout).
 -%>
 <%
-    var sym = (brand && brand.currencySymbol) ? brand.currencySymbol : '£';
+    var sym = fmt.currencySymbol(brand);
     var DEFS = [
         ['top_spenders',   '💰 Top Spenders',   'Winners'],
         ['most_referrals', '👥 Most Referrals', 'Winners'],

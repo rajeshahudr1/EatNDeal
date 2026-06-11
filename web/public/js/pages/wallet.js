@@ -11,14 +11,12 @@
     'use strict';
 
     var STATUS = { earned: ['✓', 'Earned'], redeemed: ['↗', 'Redeemed'], expired: ['⏰', 'Expired'], reversed: ['✕', 'Reversed'] };
-    var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    function money(n) { return Number(n || 0).toFixed(2); }
-    function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]; }); }
-    function fmtDate(d) {
-        if (!d) { return ''; }
-        var dt = new Date(d); if (isNaN(dt.getTime())) { return ''; }
-        return dt.getDate() + ' ' + MONTHS[dt.getMonth()] + ' ' + dt.getFullYear();
-    }
+    // Shared formatting (window.EatNDealFormat / common/format.js). Defensive
+    // fallbacks keep the row builder working even if that file failed to load.
+    var EF = window.EatNDealFormat || {};
+    var money = EF.money || function (n) { return Number(n || 0).toFixed(2); };
+    var esc = EF.esc || function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]; }); };
+    var fmtDate = EF.fmtDate || function (d) { if (!d) { return ''; } var dt = new Date(d); if (isNaN(dt.getTime())) { return ''; } return dt.getDate() + ' ' + ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][dt.getMonth()] + ' ' + dt.getFullYear(); };
     function buildRow(tx, sym) {
         var st = STATUS[tx.status] || STATUS.earned;
         var amt = '';

@@ -12,7 +12,7 @@
 (function () {
     'use strict';
 
-    function toast(type, msg) { if (window.AdminUi && window.AdminUi.showToast) { window.AdminUi.showToast(type, msg); } }
+    var toast = window.AdminUi.showToastSafe;
     function ec(cmd, val) { try { return document.execCommand(cmd, false, val); } catch (e) { return false; } }
 
     /* ── One rich-text editor instance ───────────────────────────────── */

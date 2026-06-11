@@ -10,7 +10,7 @@
   Used: Controllers/LoyaltyController.reviewClaims (shell layout).
 -%>
 <%
-    var sym = (brand && brand.currencySymbol) ? brand.currencySymbol : '£';
+    var sym = fmt.currencySymbol(brand);
     var STATUSES = [['', 'All'], ['pending', 'Pending'], ['approved', 'Approved'], ['rejected', 'Rejected']];
     function money(n) { return sym + Number(n || 0).toFixed(2); }
 %>

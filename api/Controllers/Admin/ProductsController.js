@@ -21,24 +21,23 @@
  *   2026-06-09 — initial (list page).
  */
 
+const F = require('../../Helpers/format');
+
 const H = require('../../Helpers/helper');
 const { db } = require('../../config/db');
-const { resolveCompanyScope } = require('../../Helpers/adminScope');
+const { resolveCompanyScope, requireCompany } = require('../../Helpers/adminScope');
 
 const STATUS_DELETED = 2;
 const LIST_STATUSES = [0, 1, 3, 4, 5];
 
-function money(n) { return (Math.round((Number(n) || 0) * 100) / 100).toFixed(2); }
+function money(n) { return F.formatMoney(n); }
 function nowStr() { return new Date().toISOString().slice(0, 19).replace('T', ' '); }
 
 // Resolve {companyId, actorId} + the company's branch. 422 (returns null) if
 // a super admin hasn't picked a company.
 async function resolveScope(req, res) {
-    const scope = resolveCompanyScope(req);
-    if (scope.companyId == null) {
-        H.errorResponse(res, 'Select a company first.', 422, { code: 'no_company' });
-        return null;
-    }
+    const scope = requireCompany(req, res);
+    if (!scope) { return null; }
     const branch = await db('branch').where('company_id', scope.companyId).first();
     return { companyId: scope.companyId, actorId: scope.actorId, branch };
 }
@@ -141,7 +140,7 @@ async function list(req, res) {
         }
 
         const totalPages = isAll ? 1 : Math.max(1, Math.ceil(total / limit));
-        const upBase = (process.env.YII_UPLOADS_URL || '/yii-uploads').replace(/\/$/, '');
+        const upBase = H.getUploadsBaseUrl();
         const products = rows.map((p) => ({
             id: Number(p.id),
             name: p.name || '',
@@ -436,7 +435,7 @@ async function getProduct(req, res) {
                 options: opts.map((o) => ({ id: Number(o.id), name: o.option_name || '', price: money(o.price_tax_include) })),
             });
         }
-        const upBase = (process.env.YII_UPLOADS_URL || '/yii-uploads').replace(/\/$/, '');
+        const upBase = H.getUploadsBaseUrl();
         return H.successResponse(res, {
             product: {
                 id: Number(p.id),

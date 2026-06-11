@@ -741,7 +741,7 @@ router.post('/customer/review-cashback',
 
 // ── Loyalty (per-restaurant reward cards) ───────────────────────────
 const LoyaltyCtl = require('../Controllers/Customer/LoyaltyController');
-const { walletSchema: loyaltyWalletSchema, balanceSchema: loyaltyBalanceSchema, historySchema: loyaltyHistorySchema } = require('../Validators/loyalty');
+const { walletSchema: loyaltyWalletSchema, balanceSchema: loyaltyBalanceSchema, historySchema: loyaltyHistorySchema, reviewTypesSchema: loyaltyReviewTypesSchema } = require('../Validators/loyalty');
 
 router.get('/customer/loyalty/wallet',
     validateQuery(loyaltyWalletSchema),
@@ -754,6 +754,10 @@ router.get('/customer/loyalty/balance',
 router.get('/customer/loyalty/history',
     validateQuery(loyaltyHistorySchema),
     LoyaltyCtl.history);
+
+router.get('/customer/loyalty/review-types',
+    validateQuery(loyaltyReviewTypesSchema),
+    LoyaltyCtl.reviewTypes);
 
 // ── Customer payments (Stripe-backed) ───────────────────────────────
 // createIntent returns a Stripe PaymentIntent the browser confirms via

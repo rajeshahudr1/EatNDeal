@@ -15,24 +15,11 @@
 
 const { callApi } = require('../Helpers/apiClient');
 
-function activeCompanyId(res) {
-    const ctx = res.locals.company_ctx || {};
-    return ctx.selectedCompanyId != null ? ctx.selectedCompanyId : null;
-}
-function companyQS(res) {
-    const id = activeCompanyId(res);
-    return id != null ? ('?company_id=' + encodeURIComponent(id)) : '';
-}
-function needsCompanyPick(res) {
-    const ctx = res.locals.company_ctx || {};
-    return ctx.isSuper && activeCompanyId(res) == null;
-}
-function flashFromApi(req, apiRes, fallback) {
-    const body = apiRes && apiRes.body;
-    if (body && body.status === 200) { if (req.flash) { req.flash('success', body.msg || 'Saved.'); } return true; }
-    if (req.flash) { req.flash('error', (body && body.msg) || fallback || 'Something went wrong.'); }
-    return false;
-}
+const CC = require('../Helpers/controllerCommon');
+const activeCompanyId = CC.activeCompanyId;
+const companyQS = CC.companyQS;
+const needsCompanyPick = CC.needsCompanyPick;
+const flashFromApi = CC.flashFromApi;
 
 async function index(req, res) {
     let ss = null;

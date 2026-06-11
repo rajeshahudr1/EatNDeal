@@ -82,6 +82,11 @@
         toast helper, then any per-page script via extra_js. -%>
     <script defer src="/js/boot-reader.js?v=<%= ASSET_VERSION %>"></script>
     <script defer src="/js/ui/toast.js?v=<%= ASSET_VERSION %>"></script>
+    <%# Shared browser commons (window.AdminApi / window.AdminUi) — before any
+        per-page script. -%>
+    <script defer src="/js/common/api.js?v=<%= ASSET_VERSION %>"></script>
+    <script defer src="/js/common/dom.js?v=<%= ASSET_VERSION %>"></script>
+    <script defer src="/js/common/format.js?v=<%= ASSET_VERSION %>"></script>
     <script defer src="/js/app.js?v=<%= ASSET_VERSION %>"></script>
     <% if (typeof extra_js !== 'undefined' && extra_js) { %>
     <script defer src="<%= extra_js %>?v=<%= ASSET_VERSION %>"></script>

@@ -20,18 +20,17 @@
  */
 
 const Joi = require('joi');
+const C = require('./common');
 
 // Identity key shared by every endpoint (bigint id, sent as number or string).
-const customerIdRule = Joi.alternatives()
-    .try(Joi.number().integer().positive(), Joi.string().pattern(/^[0-9]+$/))
+const customerIdRule = C.idRule
     .required()
     .messages({
         'any.required':       'Customer id is required.',
         'alternatives.match': 'Customer id is not valid.',
     });
 
-const addressIdRule = Joi.alternatives()
-    .try(Joi.number().integer().positive(), Joi.string().pattern(/^[0-9]+$/))
+const addressIdRule = C.idRule
     .messages({ 'alternatives.match': 'Address id is not valid.' });
 
 // Latitude / longitude — optional, but bounded to real-world ranges.

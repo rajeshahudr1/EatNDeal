@@ -9,8 +9,8 @@
 (function () {
     'use strict';
 
-    function toast(type, msg) { if (window.AdminUi && window.AdminUi.showToast) { window.AdminUi.showToast(type, msg); } }
-    function slugify(s) { return String(s || '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, ''); }
+    var toast = window.AdminUi.showToastSafe;
+    var slugify = window.AdminUi.slugify;
 
     var slugTouched = false;
 

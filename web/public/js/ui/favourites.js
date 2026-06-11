@@ -19,11 +19,7 @@
 (function () {
     'use strict';
 
-    function toast(type, msg) {
-        if (window.EatNDealUi && window.EatNDealUi.showToast) {
-            window.EatNDealUi.showToast(type, msg);
-        }
-    }
+    var toast = (window.EatNDealDom && window.EatNDealDom.showToastSafe) || function (type, msg) { if (window.EatNDealUi && window.EatNDealUi.showToast) { window.EatNDealUi.showToast(type, msg); } };
 
     // Flip the visible state on the button. Pure DOM — the server is
     // the source of truth, so we wait for its reply before painting.

@@ -28,20 +28,24 @@
  *   2026-06-05 — initial (Phase 1: cash_king earn + wallet cards).
  */
 
+const F = require('./format');
+const C = require('./constants');
+const H = require('./helper');
+
 const { db } = require('../config/db');
 const crypto = require('node:crypto');
 const M      = require('./marketplace');
+const { sanitizeCmsHtml } = require('./cmsSanitize');
 
 const REWARDS     = 'customer_rewards';
 const CONFIG      = 'company_loyalty';
 const STREAK_RULE = 'loyalty_order_cashback_rule';
 const STREAK_PROG = 'loyalty_order_cashback_progress';
 
-function round2(n) { return Math.round((Number(n) || 0) * 100) / 100; }
+function round2(n) { return F.round2(n); }
 
-// A stable card tint per company (M.tintFor isn't exported).
-const TINTS = ['#FFE0B2', '#FFE082', '#C5E1A5', '#EF9A9A', '#A5D6A7', '#B0BEC5', '#FFAB91', '#FFCDD2', '#F8BBD0', '#D1C4E9'];
-function tintFor(id) { return TINTS[Math.abs(Number(id) || 0) % TINTS.length]; }
+// Stable card tint per company (delegates to the shared palette).
+function tintFor(id) { return F.tintFor(id); }
 
 // ── Table-exists guard (cached) ─────────────────────────────────────
 // Loyalty is opt-in legacy schema; degrade to "no loyalty" when the
@@ -329,6 +333,93 @@ async function historyFor(customerId, opts) {
     return { totals, transactions, total_count: Number(cnt && cnt.n) || 0 };
 }
 
+// ── Review / share cashback types (mirror the admin REVIEW_CMS_TYPES +
+//    REVIEW_REWARD_TYPES; menu:false types are hidden from the customer). ──
+const REVIEW_TYPES = C.REVIEW_TYPES;
+const REVIEW_STATUS_LBL = C.REVIEW_STATUSES.byCode;
+function cmsShotUrl(companyId, file) {
+    const f = String(file || '').trim();
+    if (!f) { return ''; }
+    if (/^https?:\/\//i.test(f) || f.charAt(0) === '/') { return f; }
+    const base = H.getUploadsBaseUrl();
+    return base + '/' + companyId + '/loyalty/' + f;
+}
+async function reviewMasterOn(companyId) {
+    if (!companyId) { return false; }
+    const r = await db('loyalty_rules').where({ company_id: companyId, rule_type: 'review' }).whereNull('deleted_at').first('status');
+    return !!(r && Number(r.status) === 1);
+}
+
+/**
+ * reviewTypesFor
+ *
+ * What:  The review / share cashback types a restaurant offers, each with its
+ *        admin CMS content (title + HTML instructions + example screenshot),
+ *        reward amount, and the customer's current claim status (pending /
+ *        approved / rejected). Only menu types WITH a configured reward (and
+ *        only when the restaurant's review-rewards master is ON). Type: READ.
+ */
+async function reviewTypesFor(companyId, customerId) {
+    const cid = Number(companyId) || 0;
+    if (!cid) { return { company: null, masterOn: false, types: [] }; }
+    const co = await db('company').where('id', cid).first('id', 'business_name', 'domain_name');
+    const masterOn = await reviewMasterOn(cid);
+    const rules = await db('loyalty_review_cashback_rule').where('company_id', cid).whereNull('deleted_at').andWhere('cashback', '>', 0).select('type', 'value_type', 'cashback');
+    const ruleBy = {}; rules.forEach((r) => { ruleBy[Number(r.type)] = { cashback: round2(r.cashback), value_type: r.value_type || '£' }; });
+    const cms = await db('loyalty_cms_pages').where('company_id', cid).select('review_type_slug', 'title', 'description', 'screenshot');
+    const cmsBy = {}; cms.forEach((c) => { cmsBy[c.review_type_slug] = c; });
+    const claimBy = {};
+    if (customerId) {
+        const claims = await db('customer_review').where({ company_id: cid, customer_id: customerId }).select('review_type', 'admin_status', 'reject_reason');
+        claims.forEach((c) => { claimBy[Number(c.review_type)] = c; });
+    }
+    const types = (masterOn ? REVIEW_TYPES.filter((t) => t.menu && ruleBy[t.id]) : []).map((t) => {
+        const rule = ruleBy[t.id];
+        const cmsRow = cmsBy[t.slug] || {};
+        const claim = claimBy[t.id];
+        return {
+            id: t.id, slug: t.slug, name: t.name, icon: t.icon, video: t.video,
+            reward: rule.cashback, value_type: rule.value_type,
+            title: cmsRow.title || t.name,
+            description: cmsRow.description ? sanitizeCmsHtml(cmsRow.description) : '',
+            screenshot_url: cmsShotUrl(cid, cmsRow.screenshot),
+            status: claim ? (REVIEW_STATUS_LBL[Number(claim.admin_status)] || 'pending') : '',
+            reject_reason: (claim && Number(claim.admin_status) === 2) ? (claim.reject_reason || '') : '',
+        };
+    });
+    const name = (co && co.business_name) || 'Restaurant';
+    return {
+        company: co ? { id: Number(co.id), name, slug: co.domain_name ? M.slugify(co.domain_name) : M.slugify(name, co.id) } : null,
+        masterOn, types,
+    };
+}
+
+/**
+ * reviewRestaurants — marketplace restaurants currently offering review
+ * cashback (review master ON + at least one rule with cashback > 0). Used by
+ * the /earn picker when no restaurant is chosen yet. Type: READ.
+ */
+async function reviewRestaurants() {
+    const rows = await db('loyalty_review_cashback_rule as r')
+        .join('company as c', 'c.id', 'r.company_id')
+        .whereNull('r.deleted_at').andWhere('r.cashback', '>', 0)
+        // Count only the customer-facing (menu) review types, so the picker's
+        // "up to £X / N ways" matches what the customer can actually claim.
+        .whereIn('r.type', C.REVIEW_TYPES.filter((t) => t.menu).map((t) => t.id))
+        .andWhere('c.is_marketplace', 1).andWhere('c.is_active', 1).whereNull('c.deleted_at')
+        .whereExists(function () {
+            this.select(db.raw('1')).from('loyalty_rules as lr')
+                .whereRaw('lr.company_id = r.company_id').andWhere('lr.rule_type', 'review').andWhere('lr.status', 1).whereNull('lr.deleted_at');
+        })
+        .groupBy('c.id', 'c.business_name', 'c.domain_name')
+        .select('c.id', 'c.business_name', 'c.domain_name', db.raw('MAX(r.cashback) as max_reward'), db.raw('COUNT(DISTINCT r.type) as type_count'))
+        .orderBy('c.business_name', 'asc').limit(100);
+    return rows.map((r) => {
+        const name = r.business_name || 'Restaurant';
+        return { companyId: String(r.id), name, slug: r.domain_name ? M.slugify(r.domain_name) : M.slugify(name, r.id), maxReward: round2(r.max_reward), typeCount: Number(r.type_count) || 0 };
+    });
+}
+
 /**
  * maxRedeemable
  *
@@ -496,12 +587,7 @@ async function reverseForOrder(orderId) {
 // ── Date helpers for the order-streak window logic (local Y-m-d, to
 //    mirror the legacy PHP date() comparisons exactly) ────────────────
 function fmtDate(d) {
-    if (!d) { return null; }
-    if (typeof d === 'string') { return d.slice(0, 10); }
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${y}-${m}-${day}`;
+    return F.formatDateIso(d);
 }
 function mondayThisWeek() {
     const n = new Date();
@@ -1266,7 +1352,7 @@ module.exports = {
     earnForOrder, earnOrderStreak, earnStampCashback, earnProductCashback, earnSpecialOffer,
     earnReferral, earnEventCashback, earnSmartCampaign, earnCollectionCashback,
     bogoForProduct, payableQtyFor, bogoMapFor,
-    balanceFor, cardsFor, historyFor, maxRedeemable, consumeForRedeem, reverseForOrder, streakProgressFor,
+    balanceFor, cardsFor, historyFor, reviewTypesFor, reviewRestaurants, maxRedeemable, consumeForRedeem, reverseForOrder, streakProgressFor,
     // Shared reward-write (commission skim + expiry + ledger + audit row).
     // Exposed so the admin Review-Claims approval can grant a review reward
     // through the SAME path the earn rules use — keeping the ledger consistent.

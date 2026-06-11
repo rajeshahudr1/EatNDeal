@@ -6,7 +6,7 @@
          the customer prints or saves as PDF from the browser. All amounts
          come from the same /api/v1/customer/order payload as the detail page.
 -%>
-<% var sym = brand.currencySymbol; %>
+<% var sym = fmt.currencySymbol(brand); %>
 <% var o = order; %>
 <link rel="stylesheet" href="/css/components/receipt.css?v=<%= ASSET_VERSION %>">
 

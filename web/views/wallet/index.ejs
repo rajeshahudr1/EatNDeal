@@ -11,15 +11,11 @@
 <%
     var w   = wallet || { cards: [], totals: {}, transactions: [], total_count: 0 };
     var tt  = w.totals || {};
-    var sym = (brand && brand.currencySymbol) ? brand.currencySymbol : '£';
-    function money(n) { return Number(n || 0).toFixed(2); }
-    function fmtDate(d) {
-        if (!d) { return ''; }
-        var dt = new Date(d); if (isNaN(dt.getTime())) { return ''; }
-        return dt.getDate() + ' ' + ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][dt.getMonth()] + ' ' + dt.getFullYear();
-    }
+    var sym = fmt.currencySymbol(brand);
+    var money = fmt.money;
+    var fmtDate = fmt.fmtDate;
     var STATUS = { earned: ['✓', 'Earned'], redeemed: ['↗', 'Redeemed'], expired: ['⏰', 'Expired'], reversed: ['✕', 'Reversed'] };
-    function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]; }); }
+    var esc = fmt.esc;
     // One history row (kept in sync with the markup built in pages/wallet.js).
     function txRow(tx) {
         var st = STATUS[tx.status] || STATUS.earned;

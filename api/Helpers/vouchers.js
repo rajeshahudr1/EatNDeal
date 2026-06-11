@@ -22,6 +22,8 @@
  * Used:  api/Controllers/Customer/CartController.applyVoucher
  */
 
+const F = require('./format');
+
 const { db } = require('../config/db');
 
 // customer_voucher.voucher_type
@@ -31,10 +33,7 @@ const VOUCHER_TYPE_FIXED   = 2;
 const IS_USED_ACTIVE = 0;
 const IS_USED_USED   = 1;
 
-function round2(n) {
-    const v = Number(n);
-    return Number.isFinite(v) ? Math.round(v * 100) / 100 : 0;
-}
+function round2(n) { return F.round2(n); }
 
 function fail(error, code) {
     return { ok: false, error, code: code || 'voucher.invalid' };

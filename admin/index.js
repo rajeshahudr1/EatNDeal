@@ -168,6 +168,11 @@ app.use(flash());
 // server start so a fresh deploy invalidates the browser cache.
 app.locals.ASSET_VERSION = String(Date.now());
 
+// Shared server-side render helpers + constants, available in EVERY admin EJS
+// view as fmt.* / C.* (one home for sym/money/num + status/tier maps).
+app.locals.fmt = require('./Helpers/viewFormat');
+app.locals.C = require('./Helpers/viewConstants');
+
 // ── Cached brand ───────────────────────────────────────────────
 // Fetch GET /api/v1/brand once at boot and refresh loosely so the admin
 // shell shows the live brand identity. Cached copy keeps rendering working

@@ -19,9 +19,7 @@
 
     var modal, form, starsWrap, ratingInput, photoInput, preview, submitBtn;
 
-    function toast(type, msg) {
-        if (window.EatNDealUi && window.EatNDealUi.showToast) { window.EatNDealUi.showToast(type, msg); }
-    }
+    var toast = (window.EatNDealDom && window.EatNDealDom.showToastSafe) || function (type, msg) { if (window.EatNDealUi && window.EatNDealUi.showToast) { window.EatNDealUi.showToast(type, msg); } };
 
     function cache() {
         modal       = document.querySelector('[data-review-modal]');

@@ -171,11 +171,11 @@
 
     // ── Render: search results list ───────────────────────────────
 
-    function escapeHtml(s) {
-        return String(s).replace(/[&<>"']/g, function (ch) {
+    var escapeHtml = (window.EatNDealFormat && window.EatNDealFormat.esc) || function (s) {
+        return String(s == null ? '' : s).replace(/[&<>"']/g, function (ch) {
             return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[ch];
         });
-    }
+    };
     function highlight(text, query) {
         var t = String(text || '');
         if (!query) { return escapeHtml(t); }

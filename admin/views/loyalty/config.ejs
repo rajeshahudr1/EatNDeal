@@ -12,7 +12,7 @@
   Used: Controllers/LoyaltyController.loyaltyConfig (shell layout).
 -%>
 <%
-    var sym = (brand && brand.currencySymbol) ? brand.currencySymbol : '£';
+    var sym = fmt.currencySymbol(brand);
     var co = d.company, cb = d.cashback, tc = d.tiers, rs = d.referral,
         ch = d.challenges, ev = d.events, rr = d.reviewRewards,
         pc = d.product, bg = d.bogof, so = d.special;

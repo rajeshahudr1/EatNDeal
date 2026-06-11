@@ -10,7 +10,7 @@
 -%>
 <%
     var b = ss ? ss.branch : {};
-    var sym = (brand && brand.currencySymbol) ? brand.currencySymbol : '£';
+    var sym = fmt.currencySymbol(brand);
     function on(v) { return Number(v) === 1; }
     // Toggle row: hidden carries the value; checkbox is the UI (synced by JS).
     function tog(name, val, label, sub) {

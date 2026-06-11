@@ -53,15 +53,11 @@
     var lastFocused = null;
 
     function $(sel, ctx) { return (ctx || document).querySelector(sel); }
-    function $$(sel, ctx) { return Array.prototype.slice.call((ctx || document).querySelectorAll(sel)); }
-    function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+    var $$ = (window.EatNDealDom && window.EatNDealDom.queryAll) || function (sel, ctx) { return Array.prototype.slice.call((ctx || document).querySelectorAll(sel)); };
+    var esc = (window.EatNDealFormat && window.EatNDealFormat.esc) || function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
         return { '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c];
-    }); }
-    function toast(type, msg) {
-        if (window.EatNDealUi && window.EatNDealUi.showToast) {
-            window.EatNDealUi.showToast(type, msg);
-        }
-    }
+    }); };
+    var toast = (window.EatNDealDom && window.EatNDealDom.showToastSafe) || function (type, msg) { if (window.EatNDealUi && window.EatNDealUi.showToast) { window.EatNDealUi.showToast(type, msg); } };
     function currencySymbol() {
         return (window.boot && window.boot.currencySymbol) || '£';
     }

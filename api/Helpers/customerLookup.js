@@ -33,6 +33,8 @@
  *   2026-05-26 — initial.
  */
 
+const F = require('./format');
+
 const { db } = require('../config/db');
 const MSG    = require('./messages');
 
@@ -49,7 +51,7 @@ const TABLE = 'customer';
  * Type:  READ (pure).
  */
 function normalisePhone(raw) {
-    return String(raw || '').replace(/[\s\-()]/g, '').replace(/^\+/, '');
+    return F.normalisePhone(raw);
 }
 
 /**

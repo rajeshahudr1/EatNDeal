@@ -17,33 +17,12 @@
 
 const { callApi } = require('../Helpers/apiClient');
 
-// ── Scope helpers ───────────────────────────────────────────────────
-
-function activeCompanyId(res) {
-    const ctx = res.locals.company_ctx || {};
-    return ctx.selectedCompanyId != null ? ctx.selectedCompanyId : null;
-}
-function companyQS(res) {
-    const id = activeCompanyId(res);
-    return id != null ? ('?company_id=' + encodeURIComponent(id)) : '';
-}
-// True when a super admin must pick a company before a single-company screen
-// can do anything.
-function needsCompanyPick(res) {
-    const ctx = res.locals.company_ctx || {};
-    return ctx.isSuper && activeCompanyId(res) == null;
-}
-
-// Flash a success/error toast from an api envelope.
-function flashFromApi(req, apiRes, fallback) {
-    const body = apiRes && apiRes.body;
-    if (body && body.status === 200) {
-        if (req.flash) { req.flash('success', body.msg || 'Saved.'); }
-        return true;
-    }
-    if (req.flash) { req.flash('error', (body && body.msg) || fallback || 'Something went wrong.'); }
-    return false;
-}
+// ── Scope helpers (shared — see Helpers/controllerCommon) ────────────
+const CC = require('../Helpers/controllerCommon');
+const activeCompanyId = CC.activeCompanyId;
+const companyQS = CC.companyQS;
+const needsCompanyPick = CC.needsCompanyPick;
+const flashFromApi = CC.flashFromApi;
 
 // ── Loyalty Dashboard (the Loyalty menu landing / hub) ──────────────
 
@@ -116,7 +95,7 @@ async function loyaltyConfig(req, res) {
 
 // Company-level loyalty on/off (super admin enables loyalty for a company).
 async function masterToggle(req, res) {
-    const status = (req.body && req.body.status) === '1' ? 1 : 2;
+    const status = CC.parseToggleStatus(req);
     let apiRes;
     try { apiRes = await callApi(req, 'POST', '/api/v1/admin/loyalty/master-toggle', { company_id: activeCompanyId(res), status }); }
     catch (e) { apiRes = null; }
@@ -205,7 +184,7 @@ async function cashbackDelete(req, res) {
  * cashbackToggle — POST /loyalty/cashback-rules/toggle  (master on/off)
  */
 async function cashbackToggle(req, res) {
-    const status = (req.body && req.body.status) === '1' ? 1 : 2;
+    const status = CC.parseToggleStatus(req);
     const body = { company_id: activeCompanyId(res), status };
     let apiRes;
     try { apiRes = await callApi(req, 'POST', '/api/v1/admin/loyalty/cashback/toggle', body); }
@@ -262,7 +241,7 @@ async function tierSave(req, res) {
 }
 
 async function tierToggle(req, res) {
-    const status = (req.body && req.body.status) === '1' ? 1 : 2;
+    const status = CC.parseToggleStatus(req);
     const body = { company_id: activeCompanyId(res), status };
     let apiRes;
     try { apiRes = await callApi(req, 'POST', '/api/v1/admin/loyalty/tiers/toggle', body); }
@@ -312,7 +291,7 @@ function proxyPost(path, redirectTo) {
 
 const referralSave   = proxyPost('/api/v1/admin/loyalty/referral', '/loyalty');
 const referralToggle = async function (req, res) {
-    const status = (req.body && req.body.status) === '1' ? 1 : 2;
+    const status = CC.parseToggleStatus(req);
     let apiRes;
     try { apiRes = await callApi(req, 'POST', '/api/v1/admin/loyalty/referral/toggle', { company_id: activeCompanyId(res), status }); }
     catch (e) { apiRes = null; }
@@ -321,7 +300,7 @@ const referralToggle = async function (req, res) {
 };
 const streakSave = proxyPost('/api/v1/admin/loyalty/streak', '/loyalty');
 const streakToggle = async function (req, res) {
-    const status = (req.body && req.body.status) === '1' ? 1 : 2;
+    const status = CC.parseToggleStatus(req);
     let apiRes;
     try { apiRes = await callApi(req, 'POST', '/api/v1/admin/loyalty/streak/toggle', { company_id: activeCompanyId(res), status }); }
     catch (e) { apiRes = null; }
@@ -365,7 +344,7 @@ async function challenges(req, res) {
 
 const challengesSave   = proxyPost('/api/v1/admin/loyalty/challenges', '/loyalty');
 const challengesToggle = async function (req, res) {
-    const status = (req.body && req.body.status) === '1' ? 1 : 2;
+    const status = CC.parseToggleStatus(req);
     let apiRes;
     try { apiRes = await callApi(req, 'POST', '/api/v1/admin/loyalty/challenges/toggle', { company_id: activeCompanyId(res), status }); }
     catch (e) { apiRes = null; }
@@ -401,7 +380,7 @@ async function events(req, res) {
 
 const eventsSave   = proxyPost('/api/v1/admin/loyalty/events', '/loyalty');
 const eventsToggle = async function (req, res) {
-    const status = (req.body && req.body.status) === '1' ? 1 : 2;
+    const status = CC.parseToggleStatus(req);
     let apiRes;
     try { apiRes = await callApi(req, 'POST', '/api/v1/admin/loyalty/events/toggle', { company_id: activeCompanyId(res), status }); }
     catch (e) { apiRes = null; }
@@ -522,7 +501,7 @@ async function specialOffer(req, res) {
 
 const specialOfferSave   = proxyPost('/api/v1/admin/loyalty/special-offer', '/loyalty');
 const specialOfferToggle = async function (req, res) {
-    const status = (req.body && req.body.status) === '1' ? 1 : 2;
+    const status = CC.parseToggleStatus(req);
     let apiRes;
     try { apiRes = await callApi(req, 'POST', '/api/v1/admin/loyalty/special-offer/toggle', { company_id: activeCompanyId(res), status }); }
     catch (e) { apiRes = null; }
@@ -566,7 +545,7 @@ async function reviewRewards(req, res) {
 
 const reviewRewardsSave   = proxyPost('/api/v1/admin/loyalty/review-rewards', '/loyalty');
 const reviewRewardsToggle = async function (req, res) {
-    const status = (req.body && req.body.status) === '1' ? 1 : 2;
+    const status = CC.parseToggleStatus(req);
     let apiRes;
     try { apiRes = await callApi(req, 'POST', '/api/v1/admin/loyalty/review-rewards/toggle', { company_id: activeCompanyId(res), status }); }
     catch (e) { apiRes = null; }
@@ -602,7 +581,7 @@ async function productCashback(req, res) {
 
 const productCashbackSave   = proxyPost('/api/v1/admin/loyalty/product-cashback', '/loyalty');
 const productCashbackToggle = async function (req, res) {
-    const status = (req.body && req.body.status) === '1' ? 1 : 2;
+    const status = CC.parseToggleStatus(req);
     let apiRes;
     try { apiRes = await callApi(req, 'POST', '/api/v1/admin/loyalty/product-cashback/toggle', { company_id: activeCompanyId(res), status }); }
     catch (e) { apiRes = null; }
@@ -646,7 +625,7 @@ async function bogof(req, res) {
 
 const bogofSave   = proxyPost('/api/v1/admin/loyalty/bogof', '/loyalty');
 const bogofToggle = async function (req, res) {
-    const status = (req.body && req.body.status) === '1' ? 1 : 2;
+    const status = CC.parseToggleStatus(req);
     let apiRes;
     try { apiRes = await callApi(req, 'POST', '/api/v1/admin/loyalty/bogof/toggle', { company_id: activeCompanyId(res), status }); }
     catch (e) { apiRes = null; }

@@ -472,11 +472,11 @@
      *        the card template strings below so a malicious restaurant
      *        / product name can't inject markup into the page.
      */
-    function escHtml(s) {
+    var escHtml = (window.EatNDealFormat && window.EatNDealFormat.esc) || function (s) {
         return String(s == null ? '' : s).replace(/[&<>"']/g, function (ch) {
             return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[ch];
         });
-    }
+    };
 
     /**
      * vegMarkerHtml

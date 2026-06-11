@@ -10,12 +10,12 @@
   Used: Controllers/ProductsController.form.
 -%>
 <%
-    var sym = (brand && brand.currencySymbol) ? brand.currencySymbol : '£';
+    var sym = fmt.currencySymbol(brand);
     var p = product || {};
     var isEdit = !!(product && product.id);
     var m = meta || { categories: [], tax: [], units: [], sections: [], allergens: [], modifiers: [] };
     var VEG = [[0, 'None'], [1, 'Veg'], [2, 'Non-veg']];
-    var STATUSES = [[1, 'Available'], [0, 'Unavailable'], [4, 'Unavailable Today'], [5, 'Unavailable Until'], [3, 'Sold Out']];
+    var STATUSES = C.PRODUCT_STATUSES;
     var DISCOUNTS = [[3, 'None'], [2, 'Percentage'], [1, 'Flat']];
     var DAYS = [[1, 'Mon'], [2, 'Tue'], [3, 'Wed'], [4, 'Thu'], [5, 'Fri'], [6, 'Sat'], [7, 'Sun']];
     var FLAGS = [

@@ -15,7 +15,7 @@
 (function () {
     'use strict';
 
-    var EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    var EMAIL_RE = window.AdminUi.EMAIL_PATTERN;
 
     function setError(field, msg) {
         var wrap = document.querySelector('[data-field="' + field + '"]');

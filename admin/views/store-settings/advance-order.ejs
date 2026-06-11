@@ -10,7 +10,7 @@
   Used: Controllers/StoreSettingsController.advanceIndex.
 -%>
 <%
-    var sym = (brand && brand.currencySymbol) ? brand.currencySymbol : '£';
+    var sym = fmt.currencySymbol(brand);
     var allRows = rows || [];
     function rowsFor(ot, st) { return allRows.filter(function (r) { return r.order_type === ot && r.service_type === st; }); }
 %>

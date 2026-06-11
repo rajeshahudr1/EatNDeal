@@ -21,9 +21,7 @@
     var submitBtn = modal.querySelector('[data-action="submit-issue"]');
     var pollTimer = null;
 
-    function toast(type, msg) {
-        if (window.EatNDealUi && window.EatNDealUi.showToast) { window.EatNDealUi.showToast(type, msg); }
-    }
+    var toast = (window.EatNDealDom && window.EatNDealDom.showToastSafe) || function (type, msg) { if (window.EatNDealUi && window.EatNDealUi.showToast) { window.EatNDealUi.showToast(type, msg); } };
     function open()  { modal.hidden = false; modal.setAttribute('aria-hidden', 'false'); if (textEl) { textEl.focus(); } }
     function close() { modal.hidden = true;  modal.setAttribute('aria-hidden', 'true'); }
     function showErr(msg) { if (errEl) { errEl.textContent = msg; errEl.hidden = false; } }

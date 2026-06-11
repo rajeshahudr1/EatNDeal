@@ -613,6 +613,8 @@ async function detail(req, res) {
         // Real open/closed + hours from store_business_hours (per service) +
         // the close-flag precedence — replaces the stale start_time/end_time.
         const avail = await StoreHours.availabilityForBranch(row);
+        // Full Mon→Sun opening-hours table for the Restaurant Info popup.
+        const weekHours = await StoreHours.weekHoursForBranch(row);
 
         const restaurant = {
             id:              String(row.company_id),
@@ -646,6 +648,8 @@ async function detail(req, res) {
             phone:           row.contact_number || null,
             website:         row.website || row.website_domain || null,
             hours:           avail && avail.hours ? avail.hours : ((open && close) ? (open + ' – ' + close) : null),
+            weekHours,       // [{dow,day,short,isToday,pickup,delivery}] for the info popup
+
             lat:             row.branch_lat != null && row.branch_lat !== '' ? Number(row.branch_lat) : null,
             lng:             row.branch_lng != null && row.branch_lng !== '' ? Number(row.branch_lng) : null,
             image:           M.yiiImageUrl('banner', row.company_id, row.banner_image) || null,

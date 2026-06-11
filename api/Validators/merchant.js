@@ -15,9 +15,9 @@
  */
 
 const Joi = require('joi');
+const C = require('./common');
 
-const idRule = Joi.alternatives()
-    .try(Joi.number().integer().positive(), Joi.string().pattern(/^[0-9]+$/));
+const idRule = C.idRule;
 
 const customerIdRule = idRule.required().messages({
     'any.required':       'Please sign in to access the merchant dashboard.',

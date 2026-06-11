@@ -16,8 +16,8 @@
 (function () {
     'use strict';
 
-    function qa(sel, ctx) { return Array.prototype.slice.call((ctx || document).querySelectorAll(sel)); }
-    function toast(type, msg) { if (window.EatNDealUi && window.EatNDealUi.showToast) { window.EatNDealUi.showToast(type, msg); } }
+    var qa = (window.EatNDealDom && window.EatNDealDom.queryAll) || function (sel, ctx) { return Array.prototype.slice.call((ctx || document).querySelectorAll(sel)); };
+    var toast = (window.EatNDealDom && window.EatNDealDom.showToastSafe) || function (type, msg) { if (window.EatNDealUi && window.EatNDealUi.showToast) { window.EatNDealUi.showToast(type, msg); } };
 
     function applyTints(scope) {
         qa('[data-tint]', scope || document).forEach(function (el) {
@@ -99,13 +99,34 @@
      * with a quick-add card shares the same cart flow + branch-conflict
      * dialog + count animation.
      */
+    function setInfoModal(show) {
+        var m = document.querySelector('[data-rd-infomodal]');
+        if (!m) { return; }
+        m.hidden = !show;
+        m.setAttribute('aria-hidden', show ? 'false' : 'true');
+        document.body.classList.toggle('rd-infomodal-open', show);
+    }
     function bindActions() {
         document.addEventListener('click', function (ev) {
             var rep = ev.target.closest && ev.target.closest('[data-action="rd-report"]');
             if (rep) {
                 ev.preventDefault();
                 toast('info', 'Thanks — reporting is coming soon.');
+                return;
             }
+            if (ev.target.closest && ev.target.closest('[data-action="rd-open-info"]')) {
+                ev.preventDefault();
+                setInfoModal(true);
+                return;
+            }
+            if (ev.target.closest && ev.target.closest('[data-action="rd-close-info"]')) {
+                ev.preventDefault();
+                setInfoModal(false);
+            }
+        });
+        // Esc closes the info popup.
+        document.addEventListener('keydown', function (ev) {
+            if (ev.key === 'Escape') { setInfoModal(false); }
         });
     }
 

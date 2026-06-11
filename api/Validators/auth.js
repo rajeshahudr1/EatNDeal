@@ -19,6 +19,7 @@
  */
 
 const Joi = require('joi');
+const C = require('./common');
 
 // ── country + phone shapes (shared) ────────────────────────────────
 // Country code: 1–4 digits, no '+', no spaces. Matches the dial codes in
@@ -111,8 +112,7 @@ const saveProfileSchema = Joi.object({
 // (social-signup users adding their mobile, etc.). country_code +
 // contact_no are optional and must travel together if present.
 const updateProfileSchema = Joi.object({
-    customer_id: Joi.alternatives()
-        .try(Joi.number().integer().positive(), Joi.string().pattern(/^[0-9]+$/))
+    customer_id: C.idRule
         .required()
         .messages({
             'any.required':       'Customer id is required.',
@@ -211,8 +211,7 @@ const socialSigninSchema = Joi.object({
 // Persist the profile-photo path (the web stores the file; we save the
 // relative URL). image is a short server-relative path or '' to clear.
 const updateAvatarSchema = Joi.object({
-    customer_id: Joi.alternatives()
-        .try(Joi.number().integer().positive(), Joi.string().pattern(/^[0-9]+$/))
+    customer_id: C.idRule
         .required()
         .messages({ 'any.required': 'Customer id is required.', 'alternatives.match': 'Customer id is not valid.' }),
     image: Joi.string()
@@ -226,8 +225,7 @@ const updateAvatarSchema = Joi.object({
 // Re-fetch the current customer by id (web /account re-hydration). Also
 // reused as the query schema for GET /auth/about (same single param).
 const meSchema = Joi.object({
-    customer_id: Joi.alternatives()
-        .try(Joi.number().integer().positive(), Joi.string().pattern(/^[0-9]+$/))
+    customer_id: C.idRule
         .required()
         .messages({
             'any.required':       'Customer id is required.',
@@ -249,8 +247,7 @@ const multiRule = function (allowed) {
     return Joi.array().items(Joi.string().valid(...allowed)).single().allow(null);
 };
 const updateAboutSchema = Joi.object({
-    customer_id: Joi.alternatives()
-        .try(Joi.number().integer().positive(), Joi.string().pattern(/^[0-9]+$/))
+    customer_id: C.idRule
         .required()
         .messages({
             'any.required':       'Customer id is required.',

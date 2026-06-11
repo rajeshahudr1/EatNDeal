@@ -22,22 +22,21 @@
  *   2026-06-09 — initial; getSettings + saveSettings.
  */
 
+const F = require('../../Helpers/format');
+
 const H = require('../../Helpers/helper');
 const { db } = require('../../config/db');
-const { resolveCompanyScope } = require('../../Helpers/adminScope');
+const { resolveCompanyScope, requireCompany } = require('../../Helpers/adminScope');
 
 function nowStr() { return new Date().toISOString().slice(0, 19).replace('T', ' '); }
-function money(n) { return (Math.round((Number(n) || 0) * 100) / 100).toFixed(2); }
+function money(n) { return F.formatMoney(n); }
 function int01(v) { return (v === '1' || v === 1 || v === true || v === 'true') ? 1 : 0; }
 
 // Resolve the single branch for the scoped company (422 when a super admin
 // hasn't picked one). Returns { branch, scope } or null (response already sent).
 async function resolveBranch(req, res) {
-    const scope = resolveCompanyScope(req);
-    if (scope.companyId == null) {
-        H.errorResponse(res, 'Select a company first.', 422, { code: 'no_company' });
-        return null;
-    }
+    const scope = requireCompany(req, res);
+    if (!scope) { return null; }
     let q = db('branch').where('company_id', scope.companyId);
     if (req.query.branch_id || (req.body && req.body.branch_id)) {
         q = q.andWhere('id', Number(req.query.branch_id || req.body.branch_id));
@@ -81,7 +80,7 @@ async function getSettings(req, res) {
 
         // Build a served URL for a stored image (Yii uploads tree:
         // <companyId>/<subfolder>/<file>). Pass-through full URLs / abs paths.
-        const upBase = (process.env.YII_UPLOADS_URL || '/yii-uploads').replace(/\/$/, '');
+        const upBase = H.getUploadsBaseUrl();
         const webBase = String(process.env.WEB_URL || '').replace(/\/$/, '');
         const imgUrl = (sub, file) => {
             const f = String(file || '').trim();

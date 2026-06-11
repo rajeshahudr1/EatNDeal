@@ -12,7 +12,7 @@
   Used: Controllers/LoyaltyController.reviewRewards (shell layout).
 -%>
 <%
-    var sym = (brand && brand.currencySymbol) ? brand.currencySymbol : '£';
+    var sym = fmt.currencySymbol(brand);
 %>
 <div class="ly">
 

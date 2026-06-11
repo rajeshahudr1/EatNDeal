@@ -26,6 +26,8 @@
  *   2026-05-25 — initial port from the Yii2 implementation.
  */
 
+const F = require('./format');
+
 const API_KEY = String(process.env.IDEAL_POSTCODES_API_KEY  || '').trim();
 const BASE    = String(process.env.IDEAL_POSTCODES_BASE_URL || 'https://api.ideal-postcodes.co.uk/v1').replace(/\/$/, '');
 const TIMEOUT = Math.max(1000, parseInt(process.env.IDEAL_POSTCODES_TIMEOUT_MS, 10) || 8000);
@@ -143,12 +145,7 @@ function highlightQuery(text, query) {
  * Type:  READ (pure function).
  */
 function htmlEscape(str) {
-    return String(str)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
+    return F.escapeHtml(str);
 }
 
 // ───────────────────────────────────────────────────────────────────

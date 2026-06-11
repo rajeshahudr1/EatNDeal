@@ -9,7 +9,7 @@
 (function () {
     'use strict';
 
-    function toast(type, msg) { if (window.AdminUi && window.AdminUi.showToast) { window.AdminUi.showToast(type, msg); } }
+    var toast = window.AdminUi.showToastSafe;
 
     document.addEventListener('change', function (e) {
         var t = e.target;

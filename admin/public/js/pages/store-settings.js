@@ -25,9 +25,7 @@
         for (var i = 0; i < blocks.length; i++) { blocks[i].hidden = String(value) !== '2'; }
     }
 
-    function toast(type, msg) {
-        if (window.AdminUi && window.AdminUi.showToast) { window.AdminUi.showToast(type, msg); }
-    }
+    var toast = window.AdminUi.showToastSafe;
 
     // Custom file picker: validate (type + size), show the chosen filename and
     // a live preview. Mirrors the server-side multer rules so the user gets an

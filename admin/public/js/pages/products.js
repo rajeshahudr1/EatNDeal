@@ -11,17 +11,10 @@
 (function () {
     'use strict';
 
-    function toast(type, msg) { if (window.AdminUi && window.AdminUi.showToast) { window.AdminUi.showToast(type, msg); } }
-    function ok(res) { return res && res.status === 200; }
-    function post(url, body) {
-        return fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-            body: JSON.stringify(body),
-        }).then(function (r) { return r.json().catch(function () { return { status: 0, msg: 'Bad response.' }; }); })
-          .catch(function () { return { status: 0, msg: 'Could not reach the server.' }; });
-    }
-    function money(n) { return (Math.round((Number(n) || 0) * 100) / 100).toFixed(2); }
+    var toast = window.AdminUi.showToastSafe;
+    var ok = window.AdminApi.isSuccess;
+    var post = window.AdminApi.post;
+    var money = window.AdminUi.money;
 
     // Searchable category dropdown — filter the option list by the query.
     function filterCatdd(dd, q) {
@@ -40,20 +33,11 @@
     var pendingStatus = null;   // { ids:[], selects:[] }  awaiting the until-modal
     var pendingDelete = null;   // { ids:[] }              awaiting the delete-modal
 
-    function selectedIds() {
-        return Array.prototype.map.call(document.querySelectorAll('.pr-check:checked'), function (c) { return Number(c.value); });
-    }
-    function refreshBar() {
-        var ids = selectedIds();
-        var bar = document.querySelector('[data-actionbar]');
-        if (bar) { bar.hidden = ids.length === 0; var c = bar.querySelector('[data-sel-count]'); if (c) { c.textContent = ids.length; } }
-        var all = document.querySelector('[data-action="pr-checkall"]');
-        var boxes = document.querySelectorAll('.pr-check');
-        if (all) { all.checked = boxes.length > 0 && ids.length === boxes.length; }
-    }
+    var selectedIds = window.AdminUi.getSelectedIds;
+    var refreshBar = window.AdminUi.refreshActionBar;
 
-    function showModal(name) { var m = document.querySelector('[data-modal="' + name + '"]'); if (m) { m.hidden = false; document.body.classList.add('pr-modal-open'); } }
-    function hideModals() { var ms = document.querySelectorAll('[data-modal]'); for (var i = 0; i < ms.length; i++) { ms[i].hidden = true; } document.body.classList.remove('pr-modal-open'); }
+    var showModal = window.AdminUi.showModal;
+    var hideModals = window.AdminUi.hideModals;
 
     function revertSelects(selects) { (selects || []).forEach(function (s) { var p = s.getAttribute('data-prev'); if (p != null) { s.value = p; } }); }
 

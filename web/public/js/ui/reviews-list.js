@@ -18,11 +18,11 @@
     var modal, listEl, moreBtn, emptyEl, sortWrap, starsWrap, loaderEl;
     var companyId, sort = 'recent', star = '', offset = 0, busy = false, loaded = false;
 
-    function esc(s) {
-        return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
-            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+    var esc = (window.EatNDealFormat && window.EatNDealFormat.esc) || function (s) {
+        return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
         });
-    }
+    };
 
     function reviewHtml(rev) {
         var starsHtml = '';

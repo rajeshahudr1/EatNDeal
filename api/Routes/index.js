@@ -577,6 +577,14 @@ router.get ('/admin/featured-products/products',  authenticate, requireRole('adm
 const AdminFeedSectionsCtl = require('../Controllers/Admin/FeedSectionsController');
 router.get ('/admin/feed-sections',         authenticate, requireRole('admin'), AdminFeedSectionsCtl.list);
 router.post('/admin/feed-sections/reorder', authenticate, requireRole('admin'), AdminFeedSectionsCtl.reorder);
+
+// ── Admin: COMMUNITY groups (Facebook-style; super-admin manages groups) ──
+const AdminCommunityCtl = require('../Controllers/Admin/CommunityController');
+router.get ('/admin/community',        authenticate, requireRole('admin'), AdminCommunityCtl.list);
+router.get ('/admin/community/get',    authenticate, requireRole('admin'), AdminCommunityCtl.getGroup);
+router.post('/admin/community/save',   authenticate, requireRole('admin'), AdminCommunityCtl.save);
+router.post('/admin/community/delete', authenticate, requireRole('admin'), AdminCommunityCtl.remove);
+router.post('/admin/community/status', authenticate, requireRole('admin'), AdminCommunityCtl.statusToggle);
 router.post('/admin/products/price',         authenticate, requireRole('admin'), AdminProductsCtl.updatePrice);
 router.post('/admin/products/bulk-price',    authenticate, requireRole('admin'), AdminProductsCtl.bulkPrice);
 router.post('/admin/products/marketplace',   authenticate, requireRole('admin'), AdminProductsCtl.marketplaceToggle);
@@ -623,6 +631,18 @@ router.get('/customer/favourites',
 router.post('/customer/favourite/toggle',
     validate(favouriteToggleSchema),
     FavouriteCtl.toggle);
+
+// ── Customer COMMUNITY (Facebook-style groups) ─────────────────────
+// Reads (groups / feed / comments) are GUEST-OK — signed-out can browse.
+// Writes (post / like / comment) need customer_id, which the web proxy
+// only injects for a signed-in customer, so guests can't write.
+const CommunityCtl = require('../Controllers/Customer/CommunityController');
+router.get ('/customer/community/groups',   CommunityCtl.groups);
+router.get ('/customer/community/feed',      CommunityCtl.feed);
+router.get ('/customer/community/comments',  CommunityCtl.comments);
+router.post('/customer/community/post',      CommunityCtl.createPost);
+router.post('/customer/community/like',      CommunityCtl.toggleLike);
+router.post('/customer/community/comment',   CommunityCtl.addComment);
 
 // ── Customer cart (signed-in marketplace customers only) ───────────
 // Phase 2A.3 — read-only. Write endpoints (add / update / remove /

@@ -24,7 +24,7 @@
         <ul class="home-rail home-rail--product" role="list" data-rail>
             <% row.products.forEach(function (p) { %>
             <li>
-                <button type="button" class="hp-card" data-action="open-product" data-rest="<%= row.restaurantSlug %>" data-item="<%= p.id %>">
+                <button type="button" class="hp-card" data-action="open-product" data-rest="<%= row.restaurantSlug %>" data-id="<%= p.id %>">
                     <span class="hp-card__media">
                         <% if (p.image) { %><img src="<%= p.image %>" alt="" loading="lazy"><% } else { %><span class="hp-card__ph" aria-hidden="true">🍽️</span><% } %>
                         <% if (p.veg) { %><span class="hp-card__veg" title="Vegetarian" aria-label="Vegetarian"></span><% } %>

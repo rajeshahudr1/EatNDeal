@@ -412,6 +412,11 @@ body.pr-modal-open, body.filters-open { overflow: hidden; }
 .feat-badge--live { background: #dcfce7; color: #15803d; }
 .feat-badge--off { background: #f1f5f9; color: #64748b; }
 
+/* Community group type badge (Users vs Restaurants). */
+.cm-tag { display: inline-block; font-size: 0.66rem; font-weight: 700; padding: 1px 7px; border-radius: 999px; margin-left: 6px; vertical-align: middle; text-transform: uppercase; letter-spacing: .02em; }
+.cm-tag--user { background: #dbeafe; color: #1d4ed8; }
+.cm-tag--restaurant { background: #fef3c7; color: #b45309; }
+
 /* Feed Order page — section icon + show/hide toggle. */
 .fo-ic { font-size: 1.3rem; }
 .fo-toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 0.85rem; cursor: pointer; color: var(--color-text-muted); }

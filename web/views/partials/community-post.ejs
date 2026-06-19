@@ -1,0 +1,67 @@
+<%#
+  views/partials/community-post.ejs
+
+  One COMMUNITY post card (Facebook-style). Rendered server-side for the first
+  page; /js/pages/community.js builds an IDENTICAL card for load-more + newly
+  created posts, so keep the structure + class names in sync with buildPost()
+  there.
+
+  Inputs:
+   • post     — { id, body, image_url, likes, comments, liked, created_at,
+                  author:{ name, type, initial, tint } }
+   • can_post — boolean; signed-in users get the like/comment/inline composer,
+                guests get a read-only "sign in to join" hint.
+-%>
+<article class="cpost" data-post-id="<%= post.id %>" data-liked="<%= post.liked ? '1' : '0' %>">
+
+    <header class="cpost__head">
+        <span class="cavatar cavatar--t<%= post.author.tint %>" aria-hidden="true"><%= post.author.initial %></span>
+        <span class="cpost__meta">
+            <span class="cpost__author"><%= post.author.name %><% if (post.author.type === 'admin') { %><span class="cpost__tag">Restaurant</span><% } %></span>
+            <time class="cpost__time" data-time="<%= post.created_at %>"><%= post.created_at %></time>
+        </span>
+    </header>
+
+    <% if (post.body) { %><p class="cpost__body"><%= post.body %></p><% } %>
+
+    <% if (post.image_url) { %>
+        <div class="cpost__media"><img src="<%= post.image_url %>" alt="" loading="lazy"></div>
+    <% } %>
+
+    <%# Counts line — hidden when both are zero (matches Facebook). %>
+    <div class="cpost__stats"<%= (post.likes || post.comments) ? '' : ' hidden' %>>
+        <span class="cpost__stat" data-likes-line><span data-likes-n><%= post.likes %></span> like<%= Number(post.likes) === 1 ? '' : 's' %></span>
+        <span class="cpost__stat" data-comments-line><span data-comments-n><%= post.comments %></span> comment<%= Number(post.comments) === 1 ? '' : 's' %></span>
+    </div>
+
+    <div class="cpost__actions">
+        <button type="button" class="cact <%= post.liked ? 'is-on' : '' %>" data-action="like" aria-pressed="<%= post.liked ? 'true' : 'false' %>">
+            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1.1L12 21l7.8-7.5 1-1.1a5.5 5.5 0 0 0 0-7.8z"/></svg>
+            <span>Like</span>
+        </button>
+        <button type="button" class="cact" data-action="comments">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 8.4 8.4 0 0 1-4-1L3 20l1.1-4A8.4 8.4 0 0 1 12 3a8.4 8.4 0 0 1 9 8.5z"/></svg>
+            <span>Comment</span>
+        </button>
+        <button type="button" class="cact" data-action="share">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.6" y1="13.5" x2="15.4" y2="17.5"/><line x1="15.4" y1="6.5" x2="8.6" y2="10.5"/></svg>
+            <span>Share</span>
+        </button>
+    </div>
+
+    <%# Comments drawer — loaded on first open via /community/comments. %>
+    <div class="cpost__comments" data-comments-wrap hidden>
+        <div class="cpost__commentlist" data-comments-list></div>
+        <% if (can_post) { %>
+            <form class="ccompose ccompose--comment" data-comment-form>
+                <input type="text" class="ccompose__input" name="body" placeholder="Write a comment…" maxlength="2000" autocomplete="off" required>
+                <button type="submit" class="ccompose__send" aria-label="Send comment">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                </button>
+            </form>
+        <% } else { %>
+            <p class="cpost__signin"><a href="/signin">Sign in</a> to comment.</p>
+        <% } %>
+    </div>
+
+</article>

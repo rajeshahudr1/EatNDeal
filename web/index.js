@@ -56,6 +56,7 @@ const MerchantController    = require('./Controllers/MerchantController');
 const AuthController       = require('./Controllers/AuthController');
 const WalletController      = require('./Controllers/WalletController');
 const EarnController        = require('./Controllers/EarnController');
+const CommunityController   = require('./Controllers/CommunityController');
 const StaticPageController = require('./Controllers/StaticPageController');
 
 const app    = express();
@@ -224,6 +225,28 @@ const reviewUpload = multer({
             const uid = (req.session && req.session.user && req.session.user.id) || 'anon';
             const ext = ({ 'image/png': '.png', 'image/jpeg': '.jpg', 'image/webp': '.webp', 'image/gif': '.gif' })[file.mimetype] || '.img';
             cb(null, 'rv-' + uid + '-' + Date.now() + ext);
+        },
+    }),
+    limits: { fileSize: 4 * 1024 * 1024 },   // 4 MB
+    fileFilter: (req, file, cb) => cb(null, /^image\/(png|jpe?g|webp|gif)$/.test(file.mimetype)),
+});
+
+// ── Community post photos ──────────────────────────────────────
+// Optional photo on a community post. Stored on the web disk
+// (web/runtime/community-images, gitignored) + served from the web origin so
+// the strict img-src 'self' CSP allows it; the api stores only the relative
+// path "/community-images/<file>" on mp_community_post.image. Mirrors the
+// avatar / review-photo flow.
+const COMMUNITY_IMG_DIR = path.join(__dirname, 'runtime', 'community-images');
+try { fs.mkdirSync(COMMUNITY_IMG_DIR, { recursive: true }); } catch (e) { /* ignore */ }
+app.use('/community-images', express.static(COMMUNITY_IMG_DIR, { maxAge: ENV === 'production' ? '7d' : 0, fallthrough: true }));
+const communityUpload = multer({
+    storage: multer.diskStorage({
+        destination: (req, file, cb) => cb(null, COMMUNITY_IMG_DIR),
+        filename: (req, file, cb) => {
+            const uid = (req.session && req.session.user && req.session.user.id) || 'anon';
+            const ext = ({ 'image/png': '.png', 'image/jpeg': '.jpg', 'image/webp': '.webp', 'image/gif': '.gif' })[file.mimetype] || '.img';
+            cb(null, 'cm-' + uid + '-' + Date.now() + ext);
         },
     }),
     limits: { fileSize: 4 * 1024 * 1024 },   // 4 MB
@@ -634,6 +657,30 @@ app.get ('/wallet/json',         WalletController.walletJson);
 // Earn Cashback — review/share a restaurant to earn its cashback (picker +
 // per-restaurant types). Submitting posts to POST /review-cashback below.
 app.get ('/earn',                EarnController.earnPage);
+
+// ── Community (Facebook-style groups; reads work for guests) ────
+// Group browsing + feed are open to everyone; posting / liking /
+// commenting require a session (the controller injects customer_id and
+// returns a 401 envelope for guests → the JS bounces to /signin).
+app.get ('/community',            CommunityController.groupsPage);
+app.get ('/community/feed',       CommunityController.feedData);
+app.get ('/community/comments',   CommunityController.commentsData);
+app.get ('/community/g/:id',      CommunityController.groupPage);
+app.post('/community/like',       CommunityController.like);
+app.post('/community/comment',    CommunityController.comment);
+// Create a post — optional photo (multipart). multer stores it on the web
+// disk; the wrapper turns size/type errors into a friendly JSON envelope.
+app.post('/community/post', (req, res) => {
+    communityUpload.single('image')(req, res, (err) => {
+        if (err) {
+            const msg = err.code === 'LIMIT_FILE_SIZE'
+                ? 'Photo must be under 4 MB.'
+                : 'Could not upload that photo. Please try a PNG or JPG.';
+            return res.status(200).json({ status: 400, show: true, msg });
+        }
+        return CommunityController.createPost(req, res);
+    });
+});
 // Profile photo upload (multipart). multer stores the file on the web
 // disk; the controller forwards the relative path to the api to persist.
 // The wrapper turns multer errors (too big / wrong type) into a friendly

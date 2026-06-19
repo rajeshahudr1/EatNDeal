@@ -1,0 +1,125 @@
+<%#
+  views/community/list.ejs
+
+  COMMUNITY groups (Facebook-style) — search, type filter, inline status, delete,
+  Add / Edit. Reuses the products list (.pr-*) styling. `pd` =
+  { groups[], total, page, limit, total_pages, type } or null.
+
+  Used: Controllers/CommunityController.list.
+-%>
+<%
+    var STATUSES = [[1, 'Active'], [0, 'Inactive']];
+    var TYPE_F = [['', 'All types'], ['user', 'Users'], ['restaurant', 'Restaurants']];
+    var SIZES = [['10', '10'], ['25', '25'], ['50', '50'], ['100', '100']];
+    function statusSel(id, cur) {
+        var h = '<select class="pr-status cm-status" data-id="' + id + '">';
+        STATUSES.forEach(function (s) { h += '<option value="' + s[0] + '"' + (Number(cur) === s[0] ? ' selected' : '') + '>' + s[1] + '</option>'; });
+        return h + '</select>';
+    }
+    function pageUrl(n) {
+        var qp = [];
+        if (search_q) { qp.push('q=' + encodeURIComponent(search_q)); }
+        if (cur_type) { qp.push('type=' + encodeURIComponent(cur_type)); }
+        qp.push('limit=' + cur_limit); qp.push('page=' + n);
+        return '/community?' + qp.join('&');
+    }
+    var page = pd ? Number(pd.page) : 1;
+    var totalPages = pd ? Number(pd.total_pages) : 1;
+%>
+<div class="pr" data-cm-root>
+
+    <div class="ly__head">
+        <div>
+            <h2 class="ly__title">👥 Community</h2>
+            <p class="ly__sub">Facebook-style groups for customers &amp; restaurants</p>
+        </div>
+        <% if (pd) { %>
+        <div class="pr-head-act">
+            <a href="/community/new" class="ly-btn ly-btn--primary ly-btn--sm">➕ New group</a>
+        </div>
+        <% } %>
+    </div>
+
+    <% if (load_error) { %>
+        <div class="ly-empty"><span class="ly-empty__ic" aria-hidden="true">🏢</span><p class="ly-empty__msg"><%= load_error %></p></div>
+    <% } else if (pd) { %>
+
+        <div class="pr-toolbar">
+            <form method="get" action="/community" class="pr-filter">
+                <div class="pr-search">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                    <input type="text" name="q" value="<%= search_q %>" placeholder="Search groups…" autocomplete="off">
+                    <% if (search_q) { %><a href="/community" class="pr-search__clear" aria-label="Clear">✕</a><% } %>
+                </div>
+                <div class="pr-filters">
+                    <select name="type" class="pr-filter-sel" data-filter-submit aria-label="Type">
+                        <% TYPE_F.forEach(function (s) { %><option value="<%= s[0] %>" <%= cur_type === s[0] ? 'selected' : '' %>><%= s[1] %></option><% }); %>
+                    </select>
+                    <select name="limit" class="pr-filter-sel" data-filter-submit aria-label="Per page">
+                        <% SIZES.forEach(function (s) { %><option value="<%= s[0] %>" <%= cur_limit === s[0] ? 'selected' : '' %>>Show <%= s[1] %></option><% }); %>
+                    </select>
+                    <button type="submit" class="ly-btn ly-btn--ghost ly-btn--sm">Apply</button>
+                </div>
+            </form>
+        </div>
+
+        <% if (!pd.groups.length) { %>
+            <div class="ly-empty"><span class="ly-empty__ic" aria-hidden="true">👥</span><p class="ly-empty__msg"><%= search_q ? 'No groups match your search.' : 'No groups yet. Create your first community group.' %></p></div>
+        <% } else { %>
+        <div class="pr-list" data-list>
+            <% pd.groups.forEach(function (g) { %>
+            <div class="pr-item" data-id="<%= g.id %>" data-name="<%= g.name %>">
+                <div class="pr-item__main">
+                    <span class="pr-item__img col-cover">
+                        <% if (g.image_url) { %><img src="<%= g.image_url %>" alt="">
+                        <% } else { %><span class="pr-item__noimg">👥</span><% } %>
+                    </span>
+                    <span class="pr-item__name">
+                        <%= g.name %>
+                        <span class="cm-tag cm-tag--<%= g.type %>"><%= g.type === 'restaurant' ? 'Restaurants' : 'Users' %></span>
+                        <span class="col-sub">
+                            <% if (g.description) { %><span class="col-sub__line"><%= g.description %></span><% } %>
+                            <span class="col-sub__meta"><%= g.posts %> post<%= g.posts === 1 ? '' : 's' %></span>
+                        </span>
+                    </span>
+                </div>
+                <div class="pr-item__controls">
+                    <span class="pr-statuswrap"><%- statusSel(g.id, g.status) %></span>
+                    <span class="pr-item__act">
+                        <a href="/community/edit/<%= g.id %>" class="ly-iconbtn" title="Edit">✎</a>
+                        <button type="button" class="ly-iconbtn ly-iconbtn--danger" data-action="cm-delete" data-id="<%= g.id %>" data-name="<%= g.name %>" title="Delete">🗑</button>
+                    </span>
+                </div>
+            </div>
+            <% }); %>
+        </div>
+
+        <% if (totalPages > 1 || pd.total) { %>
+        <div class="pr-pager">
+            <span class="pr-pager__info"><%= pd.total %> group<%= pd.total === 1 ? '' : 's' %><% if (totalPages > 1) { %> · page <%= page %> of <%= totalPages %><% } %></span>
+            <% if (totalPages > 1) { %>
+            <div class="pr-pager__nav">
+                <% if (page > 1) { %><a class="pr-pager__btn" href="<%= pageUrl(page - 1) %>">‹ Prev</a><% } else { %><span class="pr-pager__btn is-disabled">‹ Prev</span><% } %>
+                <% for (var n = Math.max(1, page - 2); n <= Math.min(totalPages, page + 2); n++) { %><a class="pr-pager__btn <%= n === page ? 'is-active' : '' %>" href="<%= pageUrl(n) %>"><%= n %></a><% } %>
+                <% if (page < totalPages) { %><a class="pr-pager__btn" href="<%= pageUrl(page + 1) %>">Next ›</a><% } else { %><span class="pr-pager__btn is-disabled">Next ›</span><% } %>
+            </div>
+            <% } %>
+        </div>
+        <% } %>
+        <% } %>
+
+    <% } %>
+</div>
+
+<%# Delete confirm modal. %>
+<div class="pr-modal" data-modal="delete" hidden>
+    <div class="pr-modal__panel pr-modal__panel--sm">
+        <div class="pr-modal__icon">⚠️</div>
+        <h3 class="pr-modal__title">Delete group?</h3>
+        <p class="pr-modal__msg" data-delete-msg>This also deletes its posts, comments and likes. This cannot be undone.</p>
+        <div class="pr-modal__foot pr-modal__foot--center">
+            <button type="button" class="ly-btn ly-btn--ghost" data-action="cm-modal-cancel">No, cancel</button>
+            <button type="button" class="ly-btn ly-btn--danger" data-action="cm-delete-confirm">Yes, delete</button>
+        </div>
+    </div>
+</div>

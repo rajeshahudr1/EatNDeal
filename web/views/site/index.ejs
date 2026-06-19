@@ -138,7 +138,7 @@
                 <% if (featured && featured.length > 0) { %>
                 <section aria-labelledby="resto-rail-title">
                     <div class="hv2-head">
-                        <h2 id="resto-rail-title" class="hv2-head__title"><%= (typeof cuisine_no_match !== 'undefined' && cuisine_no_match) ? 'More restaurants near you' : 'Top restaurants near you' %></h2>
+                        <h2 id="resto-rail-title" class="hv2-head__title"><% if (typeof cuisine_no_match !== 'undefined' && cuisine_no_match) { %>More restaurants near you<% } else if (typeof selected_cuisine_label !== 'undefined' && selected_cuisine_label) { %><%= selected_cuisine_label %> restaurants near you<% } else { %>Top restaurants near you<% } %></h2>
                         <a href="/?view=restaurants" class="hv2-head__link" data-action="view-all">View all</a>
                     </div>
                     <ul class="resto-rail" role="list" data-load-target>

@@ -57,6 +57,7 @@ const CollectionsController  = require('./Controllers/CollectionsController');
 const FeaturedController     = require('./Controllers/FeaturedController');
 const FeaturedProductsController = require('./Controllers/FeaturedProductsController');
 const FeedSectionsController      = require('./Controllers/FeedSectionsController');
+const CommunityController         = require('./Controllers/CommunityController');
 
 const app    = express();
 const ENV    = process.env.APP_ENV || 'development';
@@ -586,6 +587,49 @@ app.get ('/featured-products/products',       requireAdmin, companyContext, Feat
 // Feed Order (one master ordering of the 4 home-feed sections — super admin).
 app.get ('/feed-sections',         requireAdmin, companyContext, FeedSectionsController.page);
 app.post('/feed-sections/reorder', requireAdmin, companyContext, FeedSectionsController.reorder);
+
+// ── Community group cover uploads (GLOBAL — uploads/marketplace/community_group/) ──
+// Shared yii-uploads tree so BOTH web + admin serve the cover via /yii-uploads.
+let mpCommUpload = null;
+try {
+    const multer = require('multer');
+    mpCommUpload = multer({
+        storage: multer.diskStorage({
+            destination: (req, file, cb) => {
+                if (!process.env.YII_UPLOADS_PATH) { return cb(new Error('upload_unavailable')); }
+                const dir = path.join(process.env.YII_UPLOADS_PATH, 'marketplace', 'community_group');
+                try { fs.mkdirSync(dir, { recursive: true }); } catch (e) { /* ignore */ }
+                cb(null, dir);
+            },
+            filename: (req, file, cb) => {
+                const ext = ({ 'image/png': '.png', 'image/jpeg': '.jpg', 'image/webp': '.webp', 'image/gif': '.gif' })[file.mimetype] || '.img';
+                cb(null, 'mpcomm_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8) + ext);
+            },
+        }),
+        limits: { fileSize: 3 * 1024 * 1024 },
+        fileFilter: (req, file, cb) => cb(null, /^image\/(png|jpe?g|webp|gif)$/.test(file.mimetype)),
+    });
+} catch (e) { /* multer not installed; uploads disabled */ }
+
+// Cover image is OPTIONAL — a missing multer / uploads path must not block save.
+function mpCommImgMw(req, res, next) {
+    if (!mpCommUpload || !process.env.YII_UPLOADS_PATH) { return next(); }
+    mpCommUpload.single('image')(req, res, (err) => {
+        if (err && err.code === 'LIMIT_FILE_SIZE') {
+            if (req.flash) { req.flash('error', 'Cover image must be under 3 MB.'); }
+            return res.redirect((req.body && req.body.id) ? ('/community/edit/' + req.body.id) : '/community/new');
+        }
+        return next();
+    });
+}
+
+// Community (Facebook-style groups — super admin manages groups).
+app.get ('/community',          requireAdmin, companyContext, CommunityController.list);
+app.get ('/community/new',      requireAdmin, companyContext, CommunityController.form);
+app.get ('/community/edit/:id', requireAdmin, companyContext, CommunityController.form);
+app.post('/community/save',     requireAdmin, companyContext, mpCommImgMw, CommunityController.save);
+app.post('/community/delete',   requireAdmin, companyContext, CommunityController.remove);
+app.post('/community/status',   requireAdmin, companyContext, CommunityController.statusToggle);
 
 // Store Settings — branch config (port of legacy admin/pos/store-settings).
 app.get ('/store-settings',                requireAdmin, companyContext, StoreSettingsController.index);

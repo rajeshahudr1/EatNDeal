@@ -742,6 +742,15 @@ async function index(req, res, next) {
         }
     }
 
+    // Display label for the selected category — the real category name when we
+    // can match the picked searchName, else a capitalised form. Drives the
+    // "<Category> near you" heading so a category click reads as a category view.
+    let selectedCuisineLabel = null;
+    if (cuisine) {
+        const match = (finalCuisines || []).find(c => !c.isSub && String(c.searchName || c.name || '').toLowerCase() === cuisine.toLowerCase());
+        selectedCuisineLabel = (match && match.name) || (cuisine.charAt(0).toUpperCase() + cuisine.slice(1));
+    }
+
     res.render('site/index', {
         page_title:    null,                  // null → use brand.name as the title
         _layoutFile:   '../_layout',          // ejs-locals layout path (relative to this view)
@@ -763,6 +772,7 @@ async function index(req, res, next) {
         user_location:    userLocation,
         cuisines:         finalCuisines,
         selected_cuisine: cuisine || null,
+        selected_cuisine_label: selectedCuisineLabel,
         // True when the picked cuisine had no restaurants and we fell
         // back to nearby ones (the view shows a note).
         cuisine_no_match: cuisineNoMatch,

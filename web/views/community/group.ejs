@@ -1,0 +1,79 @@
+<%#
+  views/community/group.ejs
+
+  One COMMUNITY group's feed — Facebook-style. A cover header, a post composer
+  (signed-in only; text + one photo), then the stream of posts. Load-more +
+  every interaction is wired by /js/pages/community.js. Guests can read every
+  post but the composer is replaced by a sign-in prompt, and like/comment/share
+  bounce to sign-in.
+
+  Inputs: group, posts[], has_more, next_offset, can_post, user_session.
+-%>
+<section class="cwrap" data-community-group="<%= group.id %>" data-can-post="<%= can_post ? '1' : '0' %>"
+    data-me-name="<%= user_session ? [user_session.firstname, user_session.lastname].filter(Boolean).join(' ') : '' %>"
+    data-me-initial="<%= (user_session && user_session.firstname) ? user_session.firstname.charAt(0).toUpperCase() : 'Y' %>"
+    data-me-tint="<%= (user_session && user_session.id) ? (Number(user_session.id) % 7) : 0 %>">
+
+    <%# ── Cover header ─────────────────────────────────────────── %>
+    <header class="cgroup-head <%= group.image_url ? 'has-cover' : '' %>">
+        <% if (group.image_url) { %><img class="cgroup-head__cover" src="<%= group.image_url %>" alt=""><% } %>
+        <div class="cgroup-head__bar">
+            <a href="/community" class="cgroup-head__back" aria-label="Back to community">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+            </a>
+            <div class="cgroup-head__titles">
+                <h1 class="cgroup-head__name"><%= group.name %></h1>
+                <% if (group.description) { %><p class="cgroup-head__sub"><%= group.description %></p><% } %>
+            </div>
+        </div>
+    </header>
+
+    <div class="cfeed">
+
+        <%# ── Composer (signed-in) / sign-in prompt (guest) ──────── %>
+        <% if (can_post) { %>
+            <form class="ccompose ccompose--post" data-post-form>
+                <div class="ccompose__top">
+                    <span class="cavatar cavatar--t<%= (user_session && user_session.id ? (Number(user_session.id) % 7) : 0) %>" aria-hidden="true"><%= (user_session && user_session.firstname ? user_session.firstname.charAt(0).toUpperCase() : '?') %></span>
+                    <textarea class="ccompose__text" name="body" rows="2" placeholder="Share something with the group…" maxlength="5000"></textarea>
+                </div>
+                <div class="ccompose__preview" data-photo-preview hidden>
+                    <img alt="" data-photo-img>
+                    <button type="button" class="ccompose__preview-x" data-action="remove-photo" aria-label="Remove photo">✕</button>
+                </div>
+                <div class="ccompose__bar">
+                    <label class="ccompose__photo">
+                        <input type="file" name="image" accept="image/png,image/jpeg,image/webp,image/gif" hidden data-photo-input>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.8"/><path d="M21 15l-5-5L5 21"/></svg>
+                        <span>Photo</span>
+                    </label>
+                    <button type="submit" class="btn btn--primary btn--sm ccompose__submit" data-post-submit>Post</button>
+                </div>
+            </form>
+        <% } else { %>
+            <div class="cfeed__signin">
+                <p>Join the conversation — <a href="/signin?next=<%= encodeURIComponent('/community/g/' + group.id) %>">sign in</a> to post, like and comment.</p>
+            </div>
+        <% } %>
+
+        <%# ── Posts ──────────────────────────────────────────────── %>
+        <div class="cfeed__list" data-feed-list>
+            <% posts.forEach(function (post) { %>
+                <%- include('../partials/community-post', { post: post, can_post: can_post }) %>
+            <% }); %>
+        </div>
+
+        <% if (!posts.length) { %>
+            <div class="cfeed__empty" data-feed-empty>
+                <span class="cfeed__empty-ic" aria-hidden="true">💬</span>
+                <p>No posts yet. <% if (can_post) { %>Be the first to share something!<% } else { %>Check back soon.<% } %></p>
+            </div>
+        <% } %>
+
+        <%# Load-more — JS swaps in the next page, then hides itself when dry. %>
+        <div class="cfeed__more" data-more-wrap<%= has_more ? '' : ' hidden' %>>
+            <button type="button" class="btn btn--ghost btn--lg" data-action="load-more" data-next-offset="<%= next_offset %>">Load more posts</button>
+        </div>
+
+    </div>
+</section>

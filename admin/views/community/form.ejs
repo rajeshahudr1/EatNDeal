@@ -1,0 +1,80 @@
+<%#
+  views/community/form.ejs
+
+  Add / edit a COMMUNITY group: name, description, type (user vs restaurant),
+  status, and an optional cover image. `group` = the row to edit (or null to
+  add).
+
+  Used: Controllers/CommunityController.form.
+-%>
+<%
+    var g = group || {};
+    var isEdit = !!(group && group.id);
+    var curType = g.type === 'restaurant' ? 'restaurant' : 'user';
+%>
+<div class="ly">
+
+    <div class="ly__head">
+        <div>
+            <h2 class="ly__title"><%= isEdit ? '✎ Edit group' : '➕ New group' %></h2>
+            <p class="ly__sub"><%= isEdit ? (g.name || 'Group') : 'A Facebook-style group on the marketplace' %></p>
+        </div>
+        <a href="/community" class="ly-btn ly-btn--ghost ly-btn--sm">← Back to list</a>
+    </div>
+
+    <% if (load_error) { %>
+        <div class="ly-empty"><span class="ly-empty__ic" aria-hidden="true">🏢</span><p class="ly-empty__msg"><%= load_error %></p></div>
+    <% } else { %>
+
+    <form method="post" action="/community/save" enctype="multipart/form-data" class="pr-form col-form" data-cm-form>
+        <% if (isEdit) { %><input type="hidden" name="id" value="<%= g.id %>"><% } %>
+
+        <section class="card ly-card">
+            <h3 class="card__title">Details</h3>
+            <div class="ly-grid">
+                <div class="ly-field">
+                    <label for="cm-name">Group name <span class="pr-req">*</span></label>
+                    <input id="cm-name" type="text" name="name" maxlength="120" value="<%= g.name || '' %>" required data-cm-name>
+                </div>
+                <div class="ly-field">
+                    <label for="cm-type">Type <span class="ly-field__hint">(who sees it)</span></label>
+                    <select id="cm-type" name="type">
+                        <option value="user" <%= curType === 'user' ? 'selected' : '' %>>Users — shown to customers</option>
+                        <option value="restaurant" <%= curType === 'restaurant' ? 'selected' : '' %>>Restaurants — shown to admins + customers</option>
+                    </select>
+                </div>
+                <div class="ly-field ly-field--full">
+                    <label for="cm-desc">Description <span class="ly-field__hint">(optional)</span></label>
+                    <input id="cm-desc" type="text" name="description" maxlength="255" value="<%= g.description || '' %>" placeholder="What is this group about?">
+                </div>
+                <div class="ly-field">
+                    <label for="cm-status">Status</label>
+                    <select id="cm-status" name="status">
+                        <option value="1" <%= (!isEdit || Number(g.status) === 1) ? 'selected' : '' %>>Active</option>
+                        <option value="0" <%= (isEdit && Number(g.status) !== 1) ? 'selected' : '' %>>Inactive</option>
+                    </select>
+                </div>
+            </div>
+        </section>
+
+        <section class="card ly-card">
+            <h3 class="card__title">Cover image <span class="ly-field__hint">(optional)</span></h3>
+            <div class="pr-imgrow">
+                <div class="pr-imgprev" data-img-prev>
+                    <% if (isEdit && g.image_url) { %><img src="<%= g.image_url %>" alt="" data-img-thumb><% } else { %><span class="pr-imgprev__ph" data-img-ph>No image</span><% } %>
+                </div>
+                <div class="pr-imgupload">
+                    <input type="file" name="image" accept="image/png,image/jpeg,image/webp,image/gif" data-img-input>
+                    <p class="ly-hint">PNG / JPG / WEBP / GIF, up to 3 MB. <%= isEdit ? 'Leave empty to keep the current image.' : '' %></p>
+                </div>
+            </div>
+        </section>
+
+        <div class="ly-saveall">
+            <a href="/community" class="ly-btn ly-btn--ghost">Cancel</a>
+            <button type="submit" class="ly-btn ly-btn--primary ly-btn--lg"><%= isEdit ? 'Save changes' : 'Create group' %></button>
+        </div>
+    </form>
+
+    <% } %>
+</div>

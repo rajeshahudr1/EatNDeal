@@ -90,6 +90,7 @@ async function place(req, res) {
         // metadata match. Never trust the browser to declare success.
         let paymentIntentId = null;
         let paymentSucceeded = false;
+        let paymentDetail = null;
         if (Number(b.payment_option) === 2) {
             if (!Payments.isConfigured()) {
                 return H.errorResponse(res,
@@ -123,6 +124,14 @@ async function place(req, res) {
                 }
                 paymentIntentId  = intent.id;
                 paymentSucceeded = true;
+                // Capture the FULL payment detail (which method, card brand/
+                // last4, charge id, …) to store on the order. Best-effort —
+                // a detail-fetch hiccup must never block a paid order.
+                try {
+                    paymentDetail = await Payments.retrieveIntentDetail(intent.id);
+                } catch (detailErr) {
+                    H.log.warn('order.place.detail', detailErr && detailErr.message);
+                }
             } catch (stripeErr) {
                 H.log.error('order.place.stripe', stripeErr && stripeErr.message);
                 return H.errorResponse(res,
@@ -142,6 +151,7 @@ async function place(req, res) {
             paymentOption:  b.payment_option || 1,
             paymentIntentId,
             paymentSucceeded,
+            paymentDetail,
             customerNote:   b.customer_note || '',
         });
 
@@ -185,17 +195,20 @@ async function place(req, res) {
         }
 
         // 5d. Order confirmation email — customer + restaurant (env-driven, see
-        // Helpers/mailer). FIRE-AND-FORGET: a live SMTP send takes seconds, so
-        // we must NOT await it — that would block the place-order response and
-        // make "Pay" feel slow. The order is already committed; the email runs
-        // in the background and can never affect the response or the order.
-        try {
-            const Mailer = require('../../Helpers/mailer');
-            Mailer.sendOrderConfirmation({
-                order, customer, items, cart: v.cart, companyId: v.cart.company_id, branch,
-                paymentOption: b.payment_option,
-            }).catch((e) => H.log.warn('order.email', e && e.message));
-        } catch (e) { H.log.warn('order.email', e && e.message); }
+        // Helpers/mailer). TRUE BACKGROUND: deferred via setImmediate so it only
+        // STARTS after this place-order response has been flushed to the client.
+        // A live SMTP send takes seconds; running it on the request path made
+        // "Pay" feel slow. The order is already committed before this runs, so
+        // the email can never affect the response, the timing, or the order.
+        setImmediate(() => {
+            try {
+                const Mailer = require('../../Helpers/mailer');
+                Mailer.sendOrderConfirmation({
+                    order, customer, items, cart: v.cart, companyId: v.cart.company_id, branch,
+                    paymentOption: b.payment_option,
+                }).catch((e) => H.log.warn('order.email', e && e.message));
+            } catch (e) { H.log.warn('order.email', e && e.message); }
+        });
 
         // 6. Build a slim response — UI redirects to /order/<id>.
         const eta = OrderTime.formatRange(

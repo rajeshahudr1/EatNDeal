@@ -65,20 +65,36 @@ const CART_ACTIVE   = 0;       // is_deleted = 0
 // our rows, and ours automatically skip theirs.
 const MARKETPLACE_FLAG = 1;
 
+// Cart OWNER — either a signed-in customer (user_id = the customer id) or a
+// GUEST (user_id = 0, identified by the session localID), mirroring legacy
+// which stores guest carts with user_id=0 keyed by localID. Callers pass
+// EITHER a numeric/string customerId (back-compat: the signed-in path is
+// byte-identical to before) OR an object { guestId } for an anonymous cart.
+function isGuestOwner(owner) {
+    return !!(owner && typeof owner === 'object' && owner.guestId);
+}
+function ownerUserId(owner) {
+    return isGuestOwner(owner) ? 0 : owner;
+}
+
 /**
  * cartScope
  *
- * What:  Knex modifier — the canonical "this cart belongs to this customer
- *        AND is the active marketplace cart" predicate. Used by every
- *        read so a controller never accidentally loads a closed / deleted
- *        / POS cart.
+ * What:  Knex modifier — the canonical "this cart belongs to this owner
+ *        (customer OR guest) AND is the active marketplace cart" predicate.
+ *        Used by every read so a controller never accidentally loads a
+ *        closed / deleted / POS cart.
  * Type:  READ (query-builder modifier).
  */
-function cartScope(qb, customerId) {
+function cartScope(qb, owner) {
     qb.where('is_marketplace', MARKETPLACE_FLAG)
-      .andWhere('user_id', customerId)
       .andWhere('is_open', CART_OPEN)
       .andWhere('is_deleted', CART_ACTIVE);
+    if (isGuestOwner(owner)) {
+        qb.andWhere('user_id', 0).andWhere('localID', String(owner.guestId));
+    } else {
+        qb.andWhere('user_id', owner);
+    }
 }
 
 /**
@@ -97,27 +113,36 @@ function cartScope(qb, customerId) {
  *
  * Type:  WRITE (insert on first call, read after).
  *
- * Inputs:  { customerId, branchId, companyId, serveType?, localId? }
+ * Inputs:  { owner, branchId, companyId, serveType?, localId? }
+ *          owner = a numeric customerId (signed-in) OR { guestId } (guest).
+ *          For back-compat a bare `customerId` is still accepted.
  * Output:  the cart row.
  */
-async function getOrCreateCart({ customerId, branchId, companyId, serveType, localId }) {
+async function getOrCreateCart({ owner, customerId, branchId, companyId, serveType, localId }) {
+    const o = (owner != null) ? owner : customerId;       // back-compat
     const existing = await db('cart')
-        .modify(cartScope, customerId)
+        .modify(cartScope, o)
         .andWhere('branch_id', branchId)
         .first();
     if (existing) { return existing; }
 
+    const uid = ownerUserId(o);
+    // Guest carts are keyed by their session localID; signed-in carts get a
+    // generated marketplace localID (legacy convention).
+    const lid = isGuestOwner(o)
+        ? String(o.guestId)
+        : String(localId || ('MP_' + uid + '_' + Date.now()));
     const now = db.fn.now();
     const [created] = await db('cart')
         .insert({
-            user_id:        customerId,
+            user_id:        uid,
             branch_id:      branchId,
             company_id:     companyId,
             is_marketplace: MARKETPLACE_FLAG,
             is_open:        CART_OPEN,
             is_deleted:     CART_ACTIVE,
             serve_type:     Number(serveType) || 3,    // default: delivery
-            localID:        String(localId || ('MP_' + customerId + '_' + Date.now())),
+            localID:        lid,
             sub_total:      0,
             tax:            0,
             discount:       0,
@@ -132,7 +157,7 @@ async function getOrCreateCart({ customerId, branchId, companyId, serveType, loc
             discount_id:    0,
             voucher_id:     0,
             is_pre_order:   0,
-            created_by:     customerId,
+            created_by:     uid,
             created_at:     now,
         })
         .returning('*');
@@ -147,11 +172,11 @@ async function getOrCreateCart({ customerId, branchId, companyId, serveType, loc
  *        null when the row is missing / not theirs / closed.
  * Type:  READ.
  */
-async function loadActiveCart(cartId, customerId) {
-    if (!cartId || !customerId) { return null; }
+async function loadActiveCart(cartId, owner) {
+    if (!cartId || owner == null) { return null; }
     const row = await db('cart')
         .where('id', cartId)
-        .modify(cartScope, customerId)
+        .modify(cartScope, owner)
         .first();
     return row || null;
 }
@@ -165,13 +190,50 @@ async function loadActiveCart(cartId, customerId) {
  *        branch_id — the customer's existing cart (if any) just appears.
  * Type:  READ.
  */
-async function findOpenCart(customerId) {
-    if (!customerId) { return null; }
+async function findOpenCart(owner) {
+    if (owner == null) { return null; }
     const row = await db('cart')
-        .modify(cartScope, customerId)
+        .modify(cartScope, owner)
         .orderBy('id', 'desc')
         .first();
     return row || null;
+}
+
+/**
+ * claimGuestCart
+ *
+ * What:  Adopts a GUEST cart (user_id=0, keyed by localID=guestId) into a
+ *        just-signed-in customer's account by stamping user_id. Called by
+ *        the web layer right after login. The GUEST cart wins: any OTHER
+ *        open marketplace cart the customer already had is closed first, so
+ *        the customer ends up with exactly one open cart — the one they were
+ *        just building. Mirrors legacy actionCheckout (set user_id on login).
+ * Type:  WRITE.
+ *
+ * Output: { claimed: boolean, cartId? }
+ */
+async function claimGuestCart(guestId, customerId) {
+    if (!guestId || !customerId) { return { claimed: false }; }
+    const guestCart = await db('cart')
+        .modify(cartScope, { guestId: String(guestId) })
+        .orderBy('id', 'desc')
+        .first();
+    if (!guestCart) { return { claimed: false }; }
+
+    // Close any other open cart the customer already had (guest cart wins).
+    await db('cart')
+        .where('is_marketplace', MARKETPLACE_FLAG)
+        .andWhere('user_id', customerId)
+        .andWhere('is_open', CART_OPEN)
+        .andWhere('is_deleted', CART_ACTIVE)
+        .andWhereNot('id', guestCart.id)
+        .update({ is_open: 0 });
+
+    // Adopt the guest cart.
+    await db('cart')
+        .where('id', guestCart.id)
+        .update({ user_id: customerId, created_by: customerId });
+    return { claimed: true, cartId: guestCart.id };
 }
 
 /**
@@ -1145,6 +1207,7 @@ module.exports = {
     getOrCreateCart,
     loadActiveCart,
     findOpenCart,
+    claimGuestCart,
     loadCartById,
     loadLineItems,
     lineSubtotal,

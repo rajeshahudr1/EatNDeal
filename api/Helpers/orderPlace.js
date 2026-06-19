@@ -135,7 +135,7 @@ function deliveryEstimatedTime(branch, serveType) {
  *
  * Type:  WRITE (transactional).
  */
-async function placeOrder({ customer, cart, branch, items, paymentOption, customerNote, paymentIntentId, paymentSucceeded }) {
+async function placeOrder({ customer, cart, branch, items, paymentOption, customerNote, paymentIntentId, paymentSucceeded, paymentDetail }) {
     if (!customer || !cart || !branch) {
         throw Object.assign(new Error('place.bad_input'), { code: 'place.bad_input' });
     }
@@ -311,6 +311,12 @@ async function placeOrder({ customer, cart, branch, items, paymentOption, custom
         // payment_transaction_id stores the Stripe PaymentIntent id
         // when paymentOption = 2 (card).
         const paidNow = !!paymentSucceeded;
+        // Full Stripe payment detail (the Payment Element can charge card /
+        // Apple Pay / Google Pay / Link / …) — captured at place-time and
+        // stored on the EXISTING columns: sub_payment_method = the actual
+        // method, company_stripe_detail = the normalised detail JSON. No
+        // schema change; legacy POS just ignores these.
+        const subMethod = (paymentDetail && paymentDetail.subMethod) ? String(paymentDetail.subMethod).slice(0, 50) : null;
         await trx('orders_payments').insert({
             orders_id:              order.id,
             company_id:             cart.company_id,
@@ -321,6 +327,8 @@ async function placeOrder({ customer, cart, branch, items, paymentOption, custom
             payment_transaction_id: paymentIntentId || null,
             payment_type:           Number(paymentOption) === 2 ? 'Card' : 'Cash',
             payment_type_id:        Number(paymentOption) || 1,
+            sub_payment_method:     subMethod,
+            company_stripe_detail:  paymentDetail ? JSON.stringify(paymentDetail) : null,
             status:                 '1',
             created_by:             customer.id,
         });

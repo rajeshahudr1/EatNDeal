@@ -81,13 +81,14 @@ function pushWarn(out, code, msg, field) {
  *
  * Output: see top-of-file shape.
  */
-async function validate(cartId, customerId, ctx) {
+async function validate(cartId, owner, ctx) {
     ctx = ctx || {};
     const level = ctx.level || LEVEL.WRITE;
     const out = { ok: true, errors: [], warnings: [], cart: null, items: [] };
 
     // ── 1. Cart row itself ────────────────────────────────────────────
-    const cart = await Cart.loadActiveCart(cartId, customerId);
+    // owner = a numeric customerId (signed-in) OR { guestId } (guest cart).
+    const cart = await Cart.loadActiveCart(cartId, owner);
     if (!cart) {
         pushErr(out, 'cart.not_found', 'Your cart is no longer available. Please refresh and try again.');
         return out;

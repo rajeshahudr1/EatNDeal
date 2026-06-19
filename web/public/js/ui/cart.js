@@ -712,8 +712,10 @@
     // first picks the Card tab so a Cash-only checkout never touches
     // Stripe at all.
     var stripeApi = null;          // window.Stripe instance
-    var stripeElements = null;     // Stripe.elements() bag
-    var stripeCard = null;         // the mounted card element
+    var payElements = null;        // Stripe.elements() bag (Payment Element)
+    var payElement = null;         // the mounted Payment Element
+    var payElementPromise = null;  // in-flight init (create intent + mount)
+    var payIntentId = null;        // the pre-created PaymentIntent id (new card / wallet)
     var stripeMethod = 'cash';     // 'cash' | 'card'
 
     function getPayRoot() { return document.querySelector('[data-cart-pay]'); }
@@ -764,63 +766,61 @@
         return stripeApi;
     }
 
-    function ensureCardElement() {
-        if (stripeCard) { return stripeCard; }
+    // Lazily build the Stripe PAYMENT ELEMENT — the FULL Stripe screen
+    // (card + Apple Pay / Google Pay / Link + every method enabled on the
+    // account), not a bare card field. Intent-FIRST: we create the
+    // PaymentIntent up front so Elements mounts with its client secret;
+    // at place-time we just confirm it (no elements.submit(), so the
+    // mounted-but-hidden element confirms cleanly). Resolves with the
+    // element, or null when Stripe / the mount isn't ready. Idempotent —
+    // pass forceRecreate to rebuild after the "Save this card" choice
+    // changes (a fresh intent is needed for setup_future_usage).
+    function ensurePaymentElement(forceRecreate) {
+        if (payElementPromise && !forceRecreate) { return payElementPromise; }
+        if (forceRecreate) { teardownPaymentElement(); }
         var stripe = ensureStripe();
-        if (!stripe) { return null; }
-        var mount = document.querySelector('[data-stripe-mount]');
-        if (!mount) { return null; }
-        stripeElements = stripe.elements();
-        stripeCard = stripeElements.create('card', {
-            hidePostalCode: true,
-            style: {
-                base:    { fontSize: '15px', color: '#0f172a', '::placeholder': { color: '#94a3b8' } },
-                invalid: { color: '#e5252a' },
-            },
+        var mount  = document.querySelector('[data-stripe-mount]');
+        if (!stripe || !mount) { return Promise.resolve(null); }
+
+        var saveBox  = document.querySelector('[data-cart-save-card]');
+        var saveCard = !!(saveBox && saveBox.checked);
+        setError('');
+
+        payElementPromise = postCart('/payment/intent', { save_card: saveCard }).then(function (env) {
+            if (!env || env.status !== 200 || !env.data || !env.data.clientSecret) {
+                throw new Error((env && env.msg) || 'Could not start the payment.');
+            }
+            payIntentId = env.data.intentId;
+            payElements = stripe.elements({
+                clientSecret: env.data.clientSecret,
+                appearance: { theme: 'stripe', variables: { colorPrimary: '#e5252a', fontSizeBase: '15px', borderRadius: '10px' } },
+            });
+            payElement = payElements.create('payment', { layout: 'tabs' });
+            payElement.mount(mount);
+            payElement.on('change', function (event) { setError(event && event.error ? event.error.message : ''); });
+            payElement.on('focus', function () { var f = payFieldEl(); if (f) { f.classList.add('is-focus'); } });
+            payElement.on('blur',  function () { var f = payFieldEl(); if (f) { f.classList.remove('is-focus'); } });
+            return payElement;
+        }).catch(function (err) {
+            setError((err && err.message) || 'Could not start the payment.');
+            payElementPromise = null;   // let the next pick retry
+            return null;
         });
-        stripeCard.mount(mount);
-        stripeCard.on('change', function (event) {
-            setError(event.error ? event.error.message : '');
-        });
-        stripeCard.on('focus', function () {
-            var f = payFieldEl();
-            if (f) { f.classList.add('is-focus'); }
-        });
-        stripeCard.on('blur', function () {
-            var f = payFieldEl();
-            if (f) { f.classList.remove('is-focus'); }
-        });
-        return stripeCard;
+        return payElementPromise;
     }
 
-    // Saves the card currently typed into the Elements field by
-    // confirming a SetupIntent — the card is attached to the customer's
-    // Stripe Customer and becomes a reusable saved card. Resolves with
-    // the new payment_method id. Used by the payment popup's "Use this
-    // method" when "Add a new card" + "Save this card" are chosen.
-    function saveCardViaSetup() {
-        var stripe = ensureStripe();
-        var card   = ensureCardElement();
-        if (!stripe || !card) { return Promise.reject(new Error('Card form isn\'t ready. Please refresh.')); }
-        setError('');
-        return postCart('/payment-method/setup', {}).then(function (env) {
-            if (!env || env.status !== 200 || !env.data || !env.data.clientSecret) {
-                throw new Error((env && env.msg) || 'Could not start card setup.');
-            }
-            return stripe.confirmCardSetup(env.data.clientSecret, {
-                payment_method: { card: card },
-            });
-        }).then(function (result) {
-            if (result.error) {
-                setError(result.error.message || 'Card declined.');
-                throw result.error;
-            }
-            if (!result.setupIntent || result.setupIntent.status !== 'succeeded') {
-                throw new Error('Card could not be saved. Please try again.');
-            }
-            return result.setupIntent.payment_method;   // new pm_… id
-        });
+    // Tear down a mounted Payment Element so it can be rebuilt with a fresh
+    // intent (e.g. the "Save this card" choice changed, or a retry after a
+    // declined payment).
+    function teardownPaymentElement() {
+        try { if (payElement) { payElement.unmount(); } } catch (e) { /* ignore */ }
+        payElement = null; payElements = null; payElementPromise = null; payIntentId = null;
     }
+
+    // Back-compat shim: checkout-popups.js calls ensureCardElement() to
+    // mount the field when "Add a new card" is picked. It now builds the
+    // full Payment Element. Fire-and-forget (mounts when the intent is ready).
+    function ensureCardElement() { return ensurePaymentElement(false); }
 
     function onCartSetPay(ev, btn) {
         ev.preventDefault();
@@ -883,6 +883,15 @@
         ev.preventDefault();
         if (btn.disabled || checkoutInFlight) { return; }
 
+        // Guest cart → login is required at CHECKOUT (not at add-to-cart).
+        // Send them to sign in; on return to /cart their guest cart is
+        // adopted into their account and they can place the order.
+        var root = document.querySelector('[data-cart-root]');
+        if (root && root.getAttribute('data-cart-guest') === '1') {
+            window.location.href = '/signin?next=' + encodeURIComponent('/cart');
+            return;
+        }
+
         var mode = readPayMode();
         if (mode.kind === 'card-new')   { return doCardCheckout(btn, mode); }
         if (mode.kind === 'card-saved') { return doCardCheckout(btn, mode); }
@@ -900,13 +909,6 @@
             toast('error', 'Card payments aren\'t ready. Please refresh and try again.');
             return;
         }
-        // The Card Element is only required for the NEW-card path; for
-        // a saved card the payment_method id is enough.
-        var card = mode.kind === 'card-new' ? ensureCardElement() : null;
-        if (mode.kind === 'card-new' && !card) {
-            toast('error', 'Card form is not ready. Please refresh and try again.');
-            return;
-        }
         checkoutInFlight = true;
         btn.disabled = true;
         // The new CTA button is .ckt-cta (also .ckt-sticky-cta on mobile).
@@ -917,35 +919,48 @@
         origLabel.textContent = 'Preparing payment...';
         setError('');
 
-        // 1. Create PaymentIntent on the server (amount = fresh cart total).
-        // save_card consent only meaningful for a brand-new card.
-        var saveBox = document.querySelector('[data-cart-save-card]');
-        var saveCard = mode.kind === 'card-new' && !!(saveBox && saveBox.checked);
-        postCart('/payment/intent', { save_card: saveCard }).then(function (env) {
-            if (!env || env.status !== 200) {
-                throw new Error((env && env.msg) || 'Could not start the payment.');
-            }
-            var clientSecret = env.data && env.data.clientSecret;
-            var intentId     = env.data && env.data.intentId;
-            if (!clientSecret || !intentId) { throw new Error('Payment configuration error.'); }
-
-            // 2. Confirm the card payment in the browser (handles 3DS).
-            origLabel.textContent = 'Confirming card...';
-            var confirmArg = (mode.kind === 'card-saved')
-                ? { payment_method: mode.paymentMethodId }
-                : { payment_method: { card: card } };
-            return stripe.confirmCardPayment(clientSecret, confirmArg).then(function (result) {
-                if (result.error) {
-                    setError(result.error.message || 'Card declined.');
-                    throw result.error;
-                }
-                if (!result.paymentIntent || result.paymentIntent.status !== 'succeeded') {
-                    throw new Error('Payment did not complete. Please try again.');
-                }
-                return result.paymentIntent.id;
+        // Resolve a SUCCEEDED PaymentIntent id, two ways:
+        //   • saved card  → create a fresh intent for the current total and
+        //                   confirm it with the stored payment_method id.
+        //   • new / wallet → the Payment Element already created its intent
+        //                   up front; confirm it (card + Apple/Google Pay /
+        //                   Link / …). redirect:'if_required' keeps the
+        //                   common methods inline (no page navigation).
+        var paidIntentPromise;
+        if (mode.kind === 'card-saved') {
+            paidIntentPromise = postCart('/payment/intent', { save_card: false }).then(function (env) {
+                if (!env || env.status !== 200) { throw new Error((env && env.msg) || 'Could not start the payment.'); }
+                var clientSecret = env.data && env.data.clientSecret;
+                if (!clientSecret) { throw new Error('Payment configuration error.'); }
+                origLabel.textContent = 'Confirming card...';
+                return stripe.confirmCardPayment(clientSecret, { payment_method: mode.paymentMethodId }).then(function (result) {
+                    if (result.error) { setError(result.error.message || 'Card declined.'); throw result.error; }
+                    if (!result.paymentIntent || result.paymentIntent.status !== 'succeeded') {
+                        throw new Error('Payment did not complete. Please try again.');
+                    }
+                    return result.paymentIntent.id;
+                });
             });
-        }).then(function (paidIntentId) {
-            // 3. Place the order — server re-verifies the intent.
+        } else {
+            paidIntentPromise = ensurePaymentElement(false).then(function (el) {
+                if (!el || !payIntentId) { throw new Error('Payment form is not ready. Please refresh and try again.'); }
+                origLabel.textContent = 'Confirming payment...';
+                return stripe.confirmPayment({
+                    elements: payElements,
+                    confirmParams: { return_url: window.location.origin + '/cart' },
+                    redirect: 'if_required',
+                }).then(function (result) {
+                    if (result.error) { setError(result.error.message || 'Payment failed.'); throw result.error; }
+                    if (!result.paymentIntent || result.paymentIntent.status !== 'succeeded') {
+                        throw new Error('Payment did not complete. Please try again.');
+                    }
+                    return result.paymentIntent.id;
+                });
+            });
+        }
+
+        paidIntentPromise.then(function (paidIntentId) {
+            // Place the order — server re-verifies the intent server-side.
             origLabel.textContent = 'Placing order...';
             return postCart('/order/place', {
                 payment_option:    2,
@@ -965,6 +980,10 @@
             });
         }).catch(function (err) {
             toast('error', (err && err.message) || 'Payment failed.');
+            // The intent may have succeeded but order-place failed — the
+            // Stripe webhook recovers that. Rebuild the element so a retry
+            // starts from a clean, fresh intent.
+            teardownPaymentElement();
         }).then(function () {
             // Only release the guard on FAILURE — on success we've already
             // navigated to /order/:id/confirm and don't want a flash of an
@@ -1072,6 +1091,16 @@
         }
     });
 
+    // "Save this card for future orders" toggles setup_future_usage on the
+    // intent — which is set at intent-creation — so rebuild the Payment
+    // Element (fresh intent) when it changes, but only once it's mounted.
+    document.addEventListener('change', function (ev) {
+        var t = ev.target;
+        if (t && t.matches && t.matches('[data-cart-save-card]') && payElement) {
+            ensurePaymentElement(true);
+        }
+    });
+
     // Exposed for sibling UI modules that drive the cart from their own
     // flows (e.g. the product modal posts to /cart/add directly and
     // wants the same canonical badge bump + animation).
@@ -1079,12 +1108,9 @@
         bumpCartBadge:    bumpCartBadge,
         refreshCartBadge: refreshCartBadge,
         flyToCart:        flyToCart,
-        // Lets the checkout-popups module mount Stripe Elements on
-        // demand when the customer picks "Add a new card" in the
-        // payment sheet — we don't load Stripe.js until it's needed.
+        // Lets the checkout-popups module mount the Stripe Payment Element
+        // on demand when the customer picks "Pay another way" in the payment
+        // sheet — we don't load Stripe.js until it's needed.
         ensureCardElement: ensureCardElement,
-        // Saves the typed card via a SetupIntent; resolves with the new
-        // payment_method id (used by the payment popup's "Use this method").
-        saveCardViaSetup: saveCardViaSetup,
     };
 })();

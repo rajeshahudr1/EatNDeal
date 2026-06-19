@@ -196,6 +196,49 @@ async function retrieveIntent(intentId) {
 }
 
 /**
+ * retrieveIntentDetail
+ *
+ * What:  Reads a PaymentIntent with the latest charge + payment method
+ *        expanded, and normalises the bits worth persisting for an order:
+ *        the ACTUAL method used (card / apple_pay / google_pay / link / …),
+ *        card brand + last4 + expiry, the charge id and receipt URL. Used
+ *        at place-time so we can store full payment details on the order
+ *        (orders_payments.company_stripe_detail + sub_payment_method) —
+ *        the Payment Element can charge any enabled method, so we capture
+ *        which one it actually was.
+ * Type:  READ.
+ */
+async function retrieveIntentDetail(intentId) {
+    const id = encodeURIComponent(intentId);
+    const intent = await get('/payment_intents/' + id + '?expand[]=latest_charge&expand[]=payment_method');
+    const charge = (intent && intent.latest_charge) || null;
+    const pmd    = (charge && charge.payment_method_details) || {};
+    const pm     = (intent && intent.payment_method) || null;
+    const type   = pmd.type || (pm && pm.type) || '';
+    const card   = pmd.card || (pm && pm.card) || {};
+    const wallet = (card && card.wallet) || null;
+    // sub-method = the wallet (Apple/Google Pay) when present, else the raw
+    // method type (card / link / …).
+    const sub = (wallet && wallet.type) ? wallet.type : type;
+    return {
+        intentId:  (intent && intent.id) || intentId,
+        chargeId:  (charge && charge.id) || '',
+        methodType: type,
+        subMethod:  sub,
+        brand:      card.brand || '',
+        last4:      card.last4 || '',
+        expMonth:   card.exp_month || null,
+        expYear:    card.exp_year || null,
+        network:    card.network || '',
+        wallet:     (wallet && wallet.type) || '',
+        amount:     (Number(intent && intent.amount) || 0) / 100,
+        currency:   (intent && intent.currency) || '',
+        status:     (intent && intent.status) || '',
+        receiptUrl: (charge && charge.receipt_url) || '',
+    };
+}
+
+/**
  * createCustomer / createSetupIntent / listPaymentMethods / detachPaymentMethod
  *
  * What:  Saved-card plumbing. Each marketplace customer has one Stripe
@@ -338,6 +381,7 @@ module.exports = {
     publishableKey,
     createIntent,
     retrieveIntent,
+    retrieveIntentDetail,
     createCustomer,
     createSetupIntent,
     listPaymentMethods,

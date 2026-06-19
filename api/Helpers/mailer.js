@@ -36,8 +36,6 @@
  *   2026-06-11 — initial; port of webordering order email, fully env-driven.
  */
 
-const path = require('path');
-const fs = require('fs');
 const { db } = require('../config/db');
 const H = require('./helper');
 const F = require('./format');
@@ -65,6 +63,14 @@ function smtpConfig() {
         port,
         secure: port === 465 || enc === 'ssl',
         auth: (user || pass) ? { user, pass } : undefined,
+        // Pool + keep the connection warm. The first order would otherwise pay
+        // the full SMTP handshake (TLS + AUTH) on send; pooling reuses one open
+        // connection across orders so a send is fast and never reconnects. This
+        // (with the setImmediate defer in OrderController.place) keeps email
+        // fully off the place-order response path.
+        pool: true,
+        maxConnections: 3,
+        maxMessages: 100,
     };
 }
 
@@ -103,10 +109,40 @@ async function sendMail({ to, subject, html, text, replyTo, attachments }) {
 function esc(s) { return F.escapeHtml(s); }
 function money(n) { return F.CURRENCY_SYMBOL + (Math.round((Number(n) || 0) * 100) / 100).toFixed(2); }
 
-// Restaurant contact (recipient + signature) — DYNAMIC from the DB.
+// Absolute public URL for a restaurant's own logo (branch.business_image).
+// Emails land in external inboxes, so the src MUST be absolute — we build it
+// off WEB_URL (the origin that serves the Yii uploads tree under /yii-uploads).
+// VERIFIED: business_image files live in the "<companyId>/branch" folder on
+// disk (NOT "branch_logos" — that 404s); see StoreSettingsController note.
+function restaurantLogoUrl(companyId, businessImage) {
+    const file = String(businessImage || '').trim();
+    if (!file) { return ''; }
+    if (/^https?:\/\//i.test(file)) { return file; }   // already a full URL
+    const web = String(process.env.WEB_URL || '').replace(/\/$/, '');
+    const up  = String(process.env.YII_UPLOADS_URL || '/yii-uploads').replace(/\/$/, '');
+    if (!web || !companyId) { return ''; }
+    return web + up + '/' + companyId + '/branch/' + file.split('/').map(encodeURIComponent).join('/');
+}
+
+// One-line restaurant address from the branch row (best-effort).
+function restaurantAddress(branch) {
+    const parts = [];
+    if (branch) {
+        ['address_1', 'address_2', 'city', 'state', 'postcode'].forEach((k) => {
+            const v = String(branch[k] == null ? '' : branch[k]).trim();
+            if (v) { parts.push(v); }
+        });
+    }
+    return parts.join(', ');
+}
+
+// Restaurant identity (recipient + branding for the email) — DYNAMIC from the
+// DB. Returns the restaurant's OWN name / email / logo / address so every email
+// is branded as the ordering restaurant, NOT as the EatNDeal marketplace.
 async function restaurantContact(companyId, branch) {
     let email = (branch && branch.email) ? String(branch.email).trim() : '';
     let name  = (branch && (branch.business_name || branch.name)) ? String(branch.business_name || branch.name).trim() : '';
+    let image = (branch && branch.business_image) ? String(branch.business_image).trim() : '';
     try {
         const s = await db('setting').where('company_id', companyId).first('email', 'business_name', 'trading_name');
         if (s) {
@@ -114,38 +150,42 @@ async function restaurantContact(companyId, branch) {
             if (!name && (s.business_name || s.trading_name)) { name = String(s.business_name || s.trading_name).trim(); }
         }
     } catch (e) { /* best-effort */ }
-    return { email, name: name || 'the restaurant' };
+    name = name || 'the restaurant';
+    return {
+        email,
+        name,
+        logoUrl:   restaurantLogoUrl(companyId, image),
+        address:   restaurantAddress(branch),
+        copyright: '© ' + name + '. All rights reserved.',
+    };
 }
 
 const RED = '#E5252A';
 
-// CID-embedded brand logo (so it shows in real inboxes — like the legacy
-// $message->embed; relative / localhost URLs never load in an inbox).
-const LOGO_PATH = path.join(__dirname, '..', 'public', 'brand', 'logo.png');
-function logoAttachment() {
-    try { if (fs.existsSync(LOGO_PATH)) { return { filename: 'logo.png', path: LOGO_PATH, cid: 'brandlogo' }; } } catch (e) { /* ignore */ }
-    return null;
-}
-
-// Shared branded shell — logo header + body + footer. `hasLogo` switches the
-// <img cid> on only when the logo is actually attached (else a text wordmark).
-function wrapEmail(bodyHtml, hasLogo) {
-    const site = brand.websiteUrl || '';
-    const head = hasLogo
-        ? '<img src="cid:brandlogo" alt="' + esc(brand.name) + '" height="42" style="display:block;margin:0 auto;border:0;">'
-        : '<div style="font-size:22px;font-weight:800;color:' + RED + ';">' + esc(brand.name) + '</div>';
+// Shared branded shell — logo header + body + footer. Branding is per-restaurant
+// (`b` = { name, logoUrl, email, address, copyright }): the header shows the
+// restaurant's OWN logo (absolute <img>) when it has one, else its name as a
+// wordmark — never the EatNDeal logo. The footer carries the restaurant's
+// name · email · address. A small "Ordered via <brand>" credit line stays at
+// the very bottom so the marketplace origin is still clear.
+function wrapEmail(bodyHtml, b) {
+    b = b || {};
+    const name = b.name || brand.name;
+    const head = b.logoUrl
+        ? '<img src="' + b.logoUrl + '" alt="' + esc(name) + '" height="46" style="display:block;margin:0 auto;border:0;max-height:54px;">'
+        : '<div style="font-size:22px;font-weight:800;color:' + RED + ';">' + esc(name) + '</div>';
+    const footerLines = [];
+    footerLines.push(esc(name) + (b.email ? ' &middot; ' + esc(b.email) : ''));
+    if (b.address) { footerLines.push(esc(b.address)); }
+    footerLines.push(esc(b.copyright || ('© ' + name)));
     return ''
         + '<div style="background:#f4f4f5;padding:24px 12px;font-family:Arial,Helvetica,sans-serif;">'
         +   '<table align="center" cellpadding="0" cellspacing="0" width="560" style="max-width:560px;width:100%;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,0.06);">'
-        +     '<tr><td style="padding:22px 24px;text-align:center;border-bottom:3px solid ' + RED + ';">' + head
-        +       (brand.tagline ? '<div style="color:#9a9a9a;font-size:12px;margin-top:6px;">' + esc(brand.tagline) + '</div>' : '')
-        +     '</td></tr>'
+        +     '<tr><td style="padding:22px 24px;text-align:center;border-bottom:3px solid ' + RED + ';">' + head + '</td></tr>'
         +     '<tr><td style="padding:24px;">' + bodyHtml + '</td></tr>'
         +     '<tr><td style="padding:16px 24px;background:#fafafa;border-top:1px solid #eee;text-align:center;color:#9a9a9a;font-size:12px;line-height:1.7;">'
-        +       esc(brand.name)
-        +       (site ? ' &middot; <a href="' + site + '" style="color:#9a9a9a;text-decoration:none;">' + esc(site.replace(/^https?:\/\//, '')) + '</a>' : '')
-        +       (brand.supportEmail ? ' &middot; ' + esc(brand.supportEmail) : '')
-        +       '<br>' + esc(brand.copyright || '')
+        +       footerLines.join('<br>')
+        +       '<br><span style="color:#bdbdbd;">Ordered via ' + esc(brand.name) + '</span>'
         +     '</td></tr>'
         +   '</table>'
         + '</div>';
@@ -240,7 +280,8 @@ function infoBox(inner, bg, border) {
 // CUSTOMER email — a thank-you + the FULL order summary (everything the
 // checkout showed: type, payment, schedule, items, every charge, discount,
 // reward, total).
-function buildCustomerHtml({ order, customer, items, cart, restaurantName, paymentLbl, hasLogo }) {
+function buildCustomerHtml({ order, customer, items, cart, restBrand, paymentLbl }) {
+    const restaurantName = (restBrand && restBrand.name) || 'the restaurant';
     const first = esc((customer && (customer.firstname || customer.first_name)) || 'there');
     const serve = Number(order && order.serve_type) || Number(cart && cart.serve_type) || 0;
     const addr  = (serve === 3) ? esc(((order && order.delivery_address) || (cart && cart.delivery_address)) || '') : '';
@@ -252,12 +293,12 @@ function buildCustomerHtml({ order, customer, items, cart, restaurantName, payme
         + itemsTable(items)
         + breakdownTable(order, cart)
         + '<p style="margin:18px 0 0;color:#6b6b6b;">We&rsquo;ll let you know as soon as <strong>' + esc(restaurantName) + '</strong> starts preparing it.</p>';
-    return wrapEmail(body, hasLogo);
+    return wrapEmail(body, restBrand);
 }
 
 // RESTAURANT / admin email — NEW-ORDER alert + the CUSTOMER's details + the
 // FULL order summary (same breakdown the customer sees).
-function buildRestaurantHtml({ order, customer, items, cart, paymentLbl, hasLogo }) {
+function buildRestaurantHtml({ order, customer, items, cart, restBrand, paymentLbl }) {
     const num    = esc((order && (order.order_number || order.id)) || '');
     const cName  = esc((((customer && (customer.firstname || customer.first_name)) || '') + ' ' + ((customer && (customer.lastname || customer.last_name)) || '')).trim() || 'Customer');
     const cPhone = esc((customer && customer.contact_no) || '');
@@ -271,7 +312,7 @@ function buildRestaurantHtml({ order, customer, items, cart, paymentLbl, hasLogo
         + metaTable(order, cart, paymentLbl)
         + itemsTable(items)
         + breakdownTable(order, cart);
-    return wrapEmail(body, hasLogo);
+    return wrapEmail(body, restBrand);
 }
 
 /**
@@ -286,22 +327,22 @@ function buildRestaurantHtml({ order, customer, items, cart, paymentLbl, hasLogo
  */
 async function sendOrderConfirmation({ order, customer, items, cart, companyId, branch, paymentOption }) {
     if (!order) { return {}; }
-    const rest = await restaurantContact(companyId, branch);
-    const logo = logoAttachment();
-    const hasLogo = !!logo;
-    const attachments = logo ? [logo] : [];
+    // restBrand = the ORDERING restaurant's own identity (name / logo / email /
+    // address). Every email below is branded with THIS, not the EatNDeal
+    // marketplace. The logo is an absolute <img> in the header (no attachment).
+    const restBrand = await restaurantContact(companyId, branch);
     const num = (order.order_number || order.id) || '';
     const paymentLbl = paymentLabel(paymentOption, order);
 
     const out = {};
     const custEmail = (customer && customer.email) ? String(customer.email).trim() : '';
     if (custEmail) {
-        const html = buildCustomerHtml({ order, customer, items, cart, restaurantName: rest.name, paymentLbl, hasLogo });
-        out.customer = await sendMail({ to: custEmail, subject: brand.name + ' — order #' + num + ' confirmed', html, attachments, replyTo: rest.email });
+        const html = buildCustomerHtml({ order, customer, items, cart, restBrand, paymentLbl });
+        out.customer = await sendMail({ to: custEmail, subject: restBrand.name + ' — order #' + num + ' confirmed', html, replyTo: restBrand.email });
     }
-    if (rest.email) {
-        const html = buildRestaurantHtml({ order, customer, items, cart, paymentLbl, hasLogo });
-        out.restaurant = await sendMail({ to: rest.email, subject: 'New order #' + num + ' — ' + rest.name, html, attachments });
+    if (restBrand.email) {
+        const html = buildRestaurantHtml({ order, customer, items, cart, restBrand, paymentLbl });
+        out.restaurant = await sendMail({ to: restBrand.email, subject: 'New order #' + num + ' — ' + restBrand.name, html });
     }
     return out;
 }

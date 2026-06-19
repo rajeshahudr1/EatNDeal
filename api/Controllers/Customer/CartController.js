@@ -38,6 +38,33 @@ const StoreHours = require('../../Helpers/storeHours');
 const { db }    = require('../../config/db');
 
 /**
+ * resolveOwner
+ *
+ * What:  Resolves the cart OWNER from a request (body or query). A cart
+ *        belongs to EITHER a signed-in customer (customer_id) or a GUEST
+ *        (guest_id — a session token the web layer mints for visitors who
+ *        haven't signed in yet). Guests can BUILD a cart (add / qty / remove
+ *        / clear / set-mode / read); login is only required at CHECKOUT.
+ *
+ *        Returns { isGuest, customerId?, guestId?, scope } where `scope` is
+ *        what Helpers/cart.js expects: the numeric customerId for a customer,
+ *        or { guestId } for a guest. null when neither id is present (the
+ *        caller then returns 401).
+ * Type:  READ (pure).
+ */
+function resolveOwner(src) {
+    const cid = src && src.customer_id;
+    if (cid != null && String(cid).trim() !== '' && String(cid) !== '0') {
+        return { isGuest: false, customerId: cid, scope: cid };
+    }
+    const gid = src && src.guest_id;
+    if (gid && String(gid).trim() !== '') {
+        return { isGuest: true, guestId: String(gid), scope: { guestId: String(gid) } };
+    }
+    return null;
+}
+
+/**
  * get
  *
  * What:  Returns the customer's open marketplace cart (any branch),
@@ -55,14 +82,18 @@ const { db }    = require('../../config/db');
  */
 async function get(req, res) {
     try {
-        const customerId = req.query.customer_id;
+        const owner = resolveOwner(req.query);
+        if (!owner) { return H.errorResponse(res, 'Please sign in to use the cart.', 401); }
 
-        // Identity + state guard (deleted / disabled / banned → 4xx).
-        const { error } = await customers.loadMarketplaceCustomer(customerId);
-        if (error) { return H.errorResponse(res, error.msg, error.status); }
+        // Identity + state guard (deleted / disabled / banned → 4xx) — for
+        // signed-in customers only; a guest has no customer row to guard.
+        if (!owner.isGuest) {
+            const { error } = await customers.loadMarketplaceCustomer(owner.customerId);
+            if (error) { return H.errorResponse(res, error.msg, error.status); }
+        }
 
         // No active cart yet → empty envelope (not an error).
-        const open = await Cart.findOpenCart(customerId);
+        const open = await Cart.findOpenCart(owner.scope);
         if (!open) {
             return H.successResponse(res, { cart: null, items: [], warnings: [] });
         }
@@ -70,10 +101,11 @@ async function get(req, res) {
         // Auto-apply the customer's default address when delivery mode
         // is active and nothing is attached yet — keeps the picker UI
         // honest (the tile already shows "Default", so the cart row must
-        // actually carry that address before Place Order).
+        // actually carry that address before Place Order). Customers only —
+        // a guest has no saved address book.
         const branch = await M.loadActiveBranch(open.branch_id);
-        if (branch) {
-            await Cart.ensureDefaultDeliveryAddress(open.id, customerId, branch);
+        if (branch && !owner.isGuest) {
+            await Cart.ensureDefaultDeliveryAddress(open.id, owner.customerId, branch);
         }
 
         // Auto-reprice any line whose price drifted (admin re-priced the
@@ -88,7 +120,7 @@ async function get(req, res) {
 
         // Validate at READ level. Cheap-path: skips per-item availability checks
         // (those fire on every WRITE).
-        const v = await CartCheck.validate(open.id, customerId, { level: CartCheck.LEVEL.READ });
+        const v = await CartCheck.validate(open.id, owner.scope, { level: CartCheck.LEVEL.READ });
         if (!v.ok) {
             // Cart got into an unrecoverable state (e.g. branch deleted).
             return H.errorResponse(res, v.errors[0].msg, 409, { errors: v.errors });
@@ -108,13 +140,15 @@ async function get(req, res) {
         // any loyalty hiccup just hides the redeem option.
         let rewardBalance = 0;
         let rewardMax = 0;
-        try {
-            const Loyalty = require('../../Helpers/loyalty');
-            rewardBalance = await Loyalty.balanceFor(customerId, open.company_id);
-            rewardMax     = await Loyalty.maxRedeemable({
-                customerId, companyId: open.company_id, subTotal: Number(v.cart.sub_total) || 0,
-            });
-        } catch (e) { rewardBalance = 0; rewardMax = 0; }
+        if (!owner.isGuest) {
+            try {
+                const Loyalty = require('../../Helpers/loyalty');
+                rewardBalance = await Loyalty.balanceFor(owner.customerId, open.company_id);
+                rewardMax     = await Loyalty.maxRedeemable({
+                    customerId: owner.customerId, companyId: open.company_id, subTotal: Number(v.cart.sub_total) || 0,
+                });
+            } catch (e) { rewardBalance = 0; rewardMax = 0; }
+        }
 
         // Pre-order slots — valid 15-min times today for this restaurant +
         // the cart's mode (store_business_hours), to populate the schedule
@@ -178,11 +212,16 @@ async function get(req, res) {
 async function add(req, res) {
     try {
         const b = req.body;
-        const customerId = b.customer_id;
+        const owner = resolveOwner(b);
+        if (!owner) { return H.errorResponse(res, 'Please sign in to use the cart.', 401); }
 
-        // 1. Customer identity guard.
-        const { error } = await customers.loadMarketplaceCustomer(customerId);
-        if (error) { return H.errorResponse(res, error.msg, error.status); }
+        // 1. Customer identity guard — signed-in only. A guest builds a cart
+        // (user_id=0, keyed by their session token) and only signs in at
+        // checkout, where the guest cart is adopted (Cart.claimGuestCart).
+        if (!owner.isGuest) {
+            const { error } = await customers.loadMarketplaceCustomer(owner.customerId);
+            if (error) { return H.errorResponse(res, error.msg, error.status); }
+        }
 
         // 2. Product snapshot — eligibility + availability in one round
         // trip. Joined to company so we can apply the marketplace scope
@@ -268,7 +307,7 @@ async function add(req, res) {
 
         // 5. Branch-conflict. The customer can have at most ONE open
         // marketplace cart at a time. Two different restaurants ⇒ ask.
-        const existing = await Cart.findOpenCart(customerId);
+        const existing = await Cart.findOpenCart(owner.scope);
         if (existing && Number(existing.branch_id) !== Number(branch.id)) {
             if (!b.replace_cart) {
                 // Standardised envelope: H.errorResponse nests under
@@ -288,9 +327,9 @@ async function add(req, res) {
             await Cart.closeCart(existing.id);
         }
 
-        // 6. Get-or-create cart for THIS branch.
+        // 6. Get-or-create cart for THIS branch (customer OR guest owner).
         const cart = await Cart.getOrCreateCart({
-            customerId,
+            owner:     owner.scope,
             branchId:  branch.id,
             companyId: product.company_id,
         });
@@ -298,8 +337,11 @@ async function add(req, res) {
         // 6b. First add into a fresh cart sets serve_type=3 (delivery)
         // — auto-attach the customer's default address now so the cart
         // page shows the address card filled in instead of "Pick a
-        // delivery address" the moment the customer hits the cart.
-        await Cart.ensureDefaultDeliveryAddress(cart.id, customerId, branch);
+        // delivery address" the moment the customer hits the cart. Customers
+        // only — a guest has no saved address book (set at checkout login).
+        if (!owner.isGuest) {
+            await Cart.ensureDefaultDeliveryAddress(cart.id, owner.customerId, branch);
+        }
 
         // 7. Insert line + modifier sub-rows. Unit price is server-side,
         // with the product's own discount applied (legacy webordering
@@ -326,7 +368,7 @@ async function add(req, res) {
 
         // 8. Full WRITE-level revalidate (defensive — catches anything
         // that drifted between the snapshot reads above and the insert).
-        const v = await CartCheck.validate(cart.id, customerId, { level: CartCheck.LEVEL.WRITE });
+        const v = await CartCheck.validate(cart.id, owner.scope, { level: CartCheck.LEVEL.WRITE });
         if (!v.ok) {
             return H.errorResponse(res, v.errors[0].msg, 422, { errors: v.errors });
         }
@@ -358,8 +400,8 @@ async function add(req, res) {
  *        wrap-up so the response shape is identical.
  * Type:  WRITE (recomputeTotals only).
  */
-async function respondWithCart(res, cartId, customerId, successMsg) {
-    const v = await CartCheck.validate(cartId, customerId, { level: CartCheck.LEVEL.WRITE });
+async function respondWithCart(res, cartId, owner, successMsg) {
+    const v = await CartCheck.validate(cartId, owner, { level: CartCheck.LEVEL.WRITE });
     if (!v.ok) {
         return H.errorResponse(res, v.errors[0].msg, 422, { errors: v.errors });
     }
@@ -394,13 +436,16 @@ async function respondWithCart(res, cartId, customerId, successMsg) {
 async function updateQty(req, res) {
     try {
         const b = req.body;
-        const customerId = b.customer_id;
-        const newQty     = Number(b.qty);
+        const owner = resolveOwner(b);
+        if (!owner) { return H.errorResponse(res, 'Please sign in to use the cart.', 401); }
+        const newQty = Number(b.qty);
 
-        const { error } = await customers.loadMarketplaceCustomer(customerId);
-        if (error) { return H.errorResponse(res, error.msg, error.status); }
+        if (!owner.isGuest) {
+            const { error } = await customers.loadMarketplaceCustomer(owner.customerId);
+            if (error) { return H.errorResponse(res, error.msg, error.status); }
+        }
 
-        const open = await Cart.findOpenCart(customerId);
+        const open = await Cart.findOpenCart(owner.scope);
         if (!open) { return H.errorResponse(res, 'Your cart is no longer available.', 404); }
 
         const line = await Cart.loadOwnedLineItem(open.id, b.item_id);
@@ -422,7 +467,7 @@ async function updateQty(req, res) {
         }
 
         await Cart.updateLineQty(line.id, newQty);
-        return respondWithCart(res, open.id, customerId, 'Quantity updated.');
+        return respondWithCart(res, open.id, owner.scope, 'Quantity updated.');
     } catch (err) {
         H.log.error('cart.updateQty', err && err.message);
         return H.errorResponse(res, MSG.server.oops, 500);
@@ -442,19 +487,22 @@ async function updateQty(req, res) {
 async function removeItem(req, res) {
     try {
         const b = req.body;
-        const customerId = b.customer_id;
+        const owner = resolveOwner(b);
+        if (!owner) { return H.errorResponse(res, 'Please sign in to use the cart.', 401); }
 
-        const { error } = await customers.loadMarketplaceCustomer(customerId);
-        if (error) { return H.errorResponse(res, error.msg, error.status); }
+        if (!owner.isGuest) {
+            const { error } = await customers.loadMarketplaceCustomer(owner.customerId);
+            if (error) { return H.errorResponse(res, error.msg, error.status); }
+        }
 
-        const open = await Cart.findOpenCart(customerId);
+        const open = await Cart.findOpenCart(owner.scope);
         if (!open) { return H.errorResponse(res, 'Your cart is no longer available.', 404); }
 
         const line = await Cart.loadOwnedLineItem(open.id, b.item_id);
         if (!line) { return H.errorResponse(res, 'That item is not in your cart.', 404); }
 
         await Cart.removeLineItem(line.id);
-        return respondWithCart(res, open.id, customerId, 'Item removed.');
+        return respondWithCart(res, open.id, owner.scope, 'Item removed.');
     } catch (err) {
         H.log.error('cart.removeItem', err && err.message);
         return H.errorResponse(res, MSG.server.oops, 500);
@@ -474,12 +522,15 @@ async function removeItem(req, res) {
  */
 async function clear(req, res) {
     try {
-        const customerId = req.body.customer_id;
+        const owner = resolveOwner(req.body);
+        if (!owner) { return H.errorResponse(res, 'Please sign in to use the cart.', 401); }
 
-        const { error } = await customers.loadMarketplaceCustomer(customerId);
-        if (error) { return H.errorResponse(res, error.msg, error.status); }
+        if (!owner.isGuest) {
+            const { error } = await customers.loadMarketplaceCustomer(owner.customerId);
+            if (error) { return H.errorResponse(res, error.msg, error.status); }
+        }
 
-        const open = await Cart.findOpenCart(customerId);
+        const open = await Cart.findOpenCart(owner.scope);
         if (open) { await Cart.closeCart(open.id); }
 
         return H.successResponse(res, { cart: null, warnings: [] }, 'Cart cleared.');
@@ -505,12 +556,15 @@ async function clear(req, res) {
 async function setMode(req, res) {
     try {
         const b = req.body;
-        const customerId = b.customer_id;
+        const owner = resolveOwner(b);
+        if (!owner) { return H.errorResponse(res, 'Please sign in to use the cart.', 401); }
 
-        const { error } = await customers.loadMarketplaceCustomer(customerId);
-        if (error) { return H.errorResponse(res, error.msg, error.status); }
+        if (!owner.isGuest) {
+            const { error } = await customers.loadMarketplaceCustomer(owner.customerId);
+            if (error) { return H.errorResponse(res, error.msg, error.status); }
+        }
 
-        const open = await Cart.findOpenCart(customerId);
+        const open = await Cart.findOpenCart(owner.scope);
         if (!open) { return H.errorResponse(res, 'Your cart is no longer available.', 404); }
 
         // Branch must still be live so we can resolve a delivery zone /
@@ -521,11 +575,11 @@ async function setMode(req, res) {
         await Cart.setMode(open.id, b.serve_type, branch);
 
         // Switching to Delivery — re-attach the default saved address if
-        // none is set yet, so the cart row carries what the picker shows.
-        if (Number(b.serve_type) === 3) {
-            await Cart.ensureDefaultDeliveryAddress(open.id, customerId, branch);
+        // none is set yet (customers only — a guest has no address book).
+        if (Number(b.serve_type) === 3 && !owner.isGuest) {
+            await Cart.ensureDefaultDeliveryAddress(open.id, owner.customerId, branch);
         }
-        return respondWithCart(res, open.id, customerId,
+        return respondWithCart(res, open.id, owner.scope,
             b.serve_type === 2 ? 'Switched to Pickup.' : 'Switched to Delivery.');
     } catch (err) {
         H.log.error('cart.setMode', err && err.message);
@@ -934,15 +988,47 @@ async function setCharity(req, res) {
  */
 async function count(req, res) {
     try {
-        const customerId = req.query.customer_id;
-        const { error } = await customers.loadMarketplaceCustomer(customerId);
-        if (error) { return H.errorResponse(res, error.msg, error.status); }
+        const owner = resolveOwner(req.query);
+        // No owner at all → empty badge (not an error) so the header still
+        // renders for a brand-new visitor with no session token yet.
+        if (!owner) { return H.successResponse(res, { count: 0 }); }
+        if (!owner.isGuest) {
+            const { error } = await customers.loadMarketplaceCustomer(owner.customerId);
+            if (error) { return H.errorResponse(res, error.msg, error.status); }
+        }
 
-        const open = await Cart.findOpenCart(customerId);
+        const open = await Cart.findOpenCart(owner.scope);
         const n = open ? (Number(open.total_qty) || 0) : 0;
         return H.successResponse(res, { count: n });
     } catch (err) {
         H.log.error('cart.count', err && err.message);
+        return H.errorResponse(res, MSG.server.oops, 500);
+    }
+}
+
+/**
+ * claim
+ *
+ * What:  Adopts a GUEST cart into a just-signed-in customer's account
+ *        (set user_id). Called by the web layer immediately after login so
+ *        the cart the visitor built as a guest becomes theirs. Idempotent
+ *        + best-effort — "no guest cart" is a success (nothing to adopt).
+ * Type:  WRITE.
+ *
+ * Body:   customer_id (required), guest_id (required)
+ * Output: 200 envelope, data = { claimed: boolean, cartId? }
+ */
+async function claim(req, res) {
+    try {
+        const customerId = req.body.customer_id;
+        const guestId    = req.body.guest_id;
+        const { error } = await customers.loadMarketplaceCustomer(customerId);
+        if (error) { return H.errorResponse(res, error.msg, error.status); }
+
+        const result = await Cart.claimGuestCart(String(guestId), customerId);
+        return H.successResponse(res, result, result.claimed ? 'Cart claimed.' : 'No guest cart.');
+    } catch (err) {
+        H.log.error('cart.claim', err && err.message);
         return H.errorResponse(res, MSG.server.oops, 500);
     }
 }
@@ -987,4 +1073,4 @@ async function promotions(req, res) {
     }
 }
 
-module.exports = { get, count, promotions, add, updateQty, removeItem, clear, setMode, setAddress, setSchedule, setInstructions, applyCoupon, removeCoupon, applyVoucher, removeVoucher, applyLoyalty, removeLoyalty, setCharity };
+module.exports = { get, count, claim, promotions, add, updateQty, removeItem, clear, setMode, setAddress, setSchedule, setInstructions, applyCoupon, removeCoupon, applyVoucher, removeVoucher, applyLoyalty, removeLoyalty, setCharity };

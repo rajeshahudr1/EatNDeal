@@ -44,7 +44,7 @@
 <% var rest     = (typeof cart_restaurant !== 'undefined' && cart_restaurant) ? cart_restaurant : null; %>
 <% var promoList = (typeof cart_promotions !== 'undefined' && cart_promotions) ? cart_promotions : []; %>
 
-<section class="cart-page" data-cart-root>
+<section class="cart-page" data-cart-root data-cart-guest="<%= (typeof cart_is_guest !== 'undefined' && cart_is_guest) ? '1' : '0' %>">
 
     <% if (!cart || !cart.items.length) { %>
         <%# ── Empty state ───────────────────────────────────────────── %>

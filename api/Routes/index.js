@@ -592,6 +592,7 @@ router.post('/customer/favourite/toggle',
 const CartCtl = require('../Controllers/Customer/CartController');
 const {
     cartGetSchema,
+    cartClaimSchema,
     cartAddSchema,
     cartUpdateQtySchema,
     cartRemoveItemSchema,
@@ -636,6 +637,10 @@ router.post('/customer/cart/remove-item',
 router.post('/customer/cart/clear',
     validate(cartClearSchema),
     CartCtl.clear);
+
+router.post('/customer/cart/claim',
+    validate(cartClaimSchema),
+    CartCtl.claim);
 
 router.post('/customer/cart/set-mode',
     validate(cartSetModeSchema),

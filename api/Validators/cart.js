@@ -24,11 +24,25 @@ const customerIdRule = idRule.required().messages({
     'alternatives.match': 'Customer id is not valid.',
 });
 
+// Guest cart owner — a session token the web layer mints for visitors who
+// aren't signed in. On the cart-BUILD endpoints (add / qty / remove / clear /
+// set-mode / read) the cart may belong to EITHER a customer OR a guest, so
+// customer_id becomes optional and guest_id is accepted; the controller
+// (resolveOwner) still requires at least one. Mirrors legacy, which stores
+// guest carts with user_id=0 keyed by localID. The CHECKOUT-stage endpoints
+// (address / coupons / vouchers / loyalty / charity / place) stay
+// login-required — their schemas keep customerIdRule.
+const guestIdRule = Joi.string().trim().max(64).pattern(/^[A-Za-z0-9_]+$/).messages({
+    'string.pattern.base': 'Guest id is not valid.',
+});
+const ownerCustomerIdRule = idRule.optional();
+
 // ── GET /customer/cart ─────────────────────────────────────────────
 // Read the customer's open marketplace cart (any branch). No filtering
 // other than identity — the helper resolves the cart itself.
 const cartGetSchema = Joi.object({
-    customer_id: customerIdRule,
+    customer_id: ownerCustomerIdRule,
+    guest_id:    guestIdRule,
 });
 
 // ── POST /customer/cart/add ────────────────────────────────────────
@@ -37,7 +51,8 @@ const cartGetSchema = Joi.object({
 // product server-side; the client never sends them (prevents a forged
 // "add this product to a different restaurant's cart" attack).
 const cartAddSchema = Joi.object({
-    customer_id: customerIdRule,
+    customer_id: ownerCustomerIdRule,
+    guest_id:    guestIdRule,
     product_id:  idRule.required().messages({
         'any.required': 'A product is required.',
     }),
@@ -62,7 +77,8 @@ const cartAddSchema = Joi.object({
 // Set a line item's quantity to a specific value. qty=0 is rejected
 // (clients should call /remove-item to delete a line instead).
 const cartUpdateQtySchema = Joi.object({
-    customer_id: customerIdRule,
+    customer_id: ownerCustomerIdRule,
+    guest_id:    guestIdRule,
     item_id:     idRule.required().messages({
         'any.required': 'Cart item is required.',
     }),
@@ -77,7 +93,8 @@ const cartUpdateQtySchema = Joi.object({
 // ── POST /customer/cart/remove-item ────────────────────────────────
 // Soft-delete one line item.
 const cartRemoveItemSchema = Joi.object({
-    customer_id: customerIdRule,
+    customer_id: ownerCustomerIdRule,
+    guest_id:    guestIdRule,
     item_id:     idRule.required().messages({
         'any.required': 'Cart item is required.',
     }),
@@ -87,7 +104,8 @@ const cartRemoveItemSchema = Joi.object({
 // Close the customer's open cart (`is_open=0`). Identity is the only
 // input — the open cart is resolved server-side.
 const cartClearSchema = Joi.object({
-    customer_id: customerIdRule,
+    customer_id: ownerCustomerIdRule,
+    guest_id:    guestIdRule,
 });
 
 // ── POST /customer/cart/set-mode ───────────────────────────────────
@@ -95,7 +113,8 @@ const cartClearSchema = Joi.object({
 // delivery fee server-side (pickup zeros it; delivery re-matches the
 // saved postcode zone).
 const cartSetModeSchema = Joi.object({
-    customer_id: customerIdRule,
+    customer_id: ownerCustomerIdRule,
+    guest_id:    guestIdRule,
     serve_type:  Joi.number().integer().valid(2, 3).required()
         .messages({
             'any.only':     'Mode must be Delivery or Pickup.',
@@ -212,8 +231,18 @@ const cartSetCharitySchema = Joi.object({
         }),
 });
 
+// ── POST /customer/cart/claim ──────────────────────────────────────
+// Adopt a guest cart (user_id=0, keyed by localID=guest_id) into a
+// just-signed-in customer's account. Called by the web layer right after
+// login. Both ids required.
+const cartClaimSchema = Joi.object({
+    customer_id: customerIdRule,
+    guest_id:    guestIdRule.required().messages({ 'any.required': 'Guest id is required.' }),
+});
+
 module.exports = {
     cartGetSchema,
+    cartClaimSchema,
     cartAddSchema,
     cartUpdateQtySchema,
     cartRemoveItemSchema,

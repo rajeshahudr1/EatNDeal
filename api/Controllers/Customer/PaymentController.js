@@ -256,6 +256,14 @@ async function handleIntentSucceeded(intent) {
         return;
     }
 
+    // Full payment detail for the order record (best-effort).
+    let paymentDetail = null;
+    try {
+        paymentDetail = await Payments.retrieveIntentDetail(intent.id);
+    } catch (detailErr) {
+        H.log.warn('payment.webhook.detail', detailErr && detailErr.message);
+    }
+
     // ── Place ───────────────────────────────────────────────────────
     try {
         const order = await OrderPlace.placeOrder({
@@ -266,6 +274,7 @@ async function handleIntentSucceeded(intent) {
             paymentOption:    2,
             paymentIntentId:  intent.id,
             paymentSucceeded: true,
+            paymentDetail,
             customerNote:     cart.remark || '',
         });
         H.log.info('payment.webhook.order_placed', {

@@ -153,18 +153,12 @@
         var row = $('[data-cart-pay]');
         if (!row || pendingPayMode == null) { close(); return; }
 
-        // ── New card path ──────────────────────────────────────────
-        // When "Save this card" is ticked we SAVE it right now (SetupIntent
-        // confirm) so it joins the saved-cards list + is selectable next
-        // time — that's what the customer expects after "Use this method".
-        // When NOT ticked, it stays a one-shot card charged at checkout.
+        // ── New card / other method path ───────────────────────────
+        // The card or wallet is collected in the Stripe Payment Element and
+        // charged at "Place order". Saving for future use is handled by the
+        // intent's setup_future_usage when "Save this card" is ticked — so
+        // there's no separate SetupIntent step here; just commit + close.
         if (pendingPayMode === 'new-card') {
-            var saveBox = document.querySelector('[data-cart-save-card]');
-            var wantSave = !!(saveBox && saveBox.checked);
-            if (wantSave && window.EatNDealCart && typeof window.EatNDealCart.saveCardViaSetup === 'function') {
-                return saveNewCard(row);
-            }
-            // One-shot — commit the mode + close (charged at checkout).
             commitPayRow(row, 'new-card');
             close();
             return;
@@ -208,29 +202,6 @@
             if (subEl)   { subEl.textContent   = 'Choose a card'; }
         }
         paintCartPayTiles(mode);
-    }
-
-    // Save the typed card now (SetupIntent), then reload so it appears
-    // in the list + is pre-selected (the new pm id is stashed in
-    // sessionStorage and picked up on the next render).
-    function saveNewCard(row) {
-        var applyBtn = $('[data-action="ckt-apply-pay"]');
-        var sheet = popupRoot('payment') && popupRoot('payment').querySelector('.ckt-popup__sheet');
-        if (applyBtn) { applyBtn.disabled = true; applyBtn.textContent = 'Saving card…'; }
-        if (sheet) { sheet.classList.add('is-busy'); }
-
-        window.EatNDealCart.saveCardViaSetup().then(function (pmId) {
-            try {
-                sessionStorage.setItem('ckt.newCard', JSON.stringify({ pmId: pmId, ts: Date.now() }));
-            } catch (e) { /* ignore */ }
-            window.location.reload();
-        }).catch(function (err) {
-            if (applyBtn) { applyBtn.disabled = false; applyBtn.textContent = 'Use this method'; }
-            if (sheet) { sheet.classList.remove('is-busy'); }
-            if (window.EatNDealUi && window.EatNDealUi.showToast) {
-                window.EatNDealUi.showToast('error', (err && err.message) || 'Could not save the card.');
-            }
-        });
     }
 
     // ── Promo list / detail sub-views ──────────────────────────────
@@ -413,42 +384,9 @@
         if (ev.key === 'Escape' && openName) { close(); }
     });
 
-    // ── Post-save: select the just-saved card + confirm ─────────────
-    // After saveNewCard reloads, the new card is now in the server-
-    // rendered list. Select it on the payment row + toast a success.
-    function consumeSavedCard() {
-        var raw = null;
-        try { raw = sessionStorage.getItem('ckt.newCard'); } catch (e) { return; }
-        if (!raw) { return; }
-        try { sessionStorage.removeItem('ckt.newCard'); } catch (e) { /* ignore */ }
-        var data;
-        try { data = JSON.parse(raw); } catch (e) { return; }
-        if (!data || !data.pmId) { return; }
-        if (Date.now() - (Number(data.ts) || 0) > 15000) { return; }   // stale guard
-
-        var mode = 'card:' + data.pmId;
-        var row = $('[data-cart-pay]');
-        // The card WAS saved (the SetupIntent succeeded). But only mark
-        // it as the chosen method when its tile actually rendered — if
-        // Stripe's list hasn't surfaced it yet, we must NOT imply it's
-        // selected, or the customer could check out on the wrong method.
-        var tile = document.querySelector('[data-pay-mode="' + mode + '"]');
-        var toast = window.EatNDealUi && window.EatNDealUi.showToast;
-        if (row && tile) {
-            pendingPayMode = mode;
-            commitPayRow(row, mode);
-            if (toast) { toast('success', 'Card saved and selected for this order.'); }
-        } else if (toast) {
-            // Saved, but not yet selectable — be honest, don't claim it's
-            // the active method.
-            toast('info', 'Card saved. Open Payment to select it.');
-        }
-    }
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', consumeSavedCard);
-    } else {
-        consumeSavedCard();
-    }
+    // A newly-entered card is saved at PAYMENT time (the intent's
+    // setup_future_usage) and surfaces in the saved-cards list on the next
+    // visit — there's no SetupIntent pre-save / reload step to reconcile here.
 
     // Expose for any other module that needs to drive it programmatically.
     window.EatNDealUi = window.EatNDealUi || {};

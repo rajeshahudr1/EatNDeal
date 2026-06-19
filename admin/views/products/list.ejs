@@ -113,7 +113,7 @@
             </div>
         </div>
 
-        <p class="pr-note"><b>NOTE:</b> <span class="pr-dot pr-dot--green"></span> Normal &nbsp; <span class="pr-dot pr-dot--red"></span> Online &nbsp; <span class="pr-dot pr-dot--blue"></span> Marketplace</p>
+        <p class="pr-note"><b>NOTE:</b> <span class="pr-dot pr-dot--green"></span> Normal &nbsp; <span class="pr-dot pr-dot--red"></span> Third Party &nbsp; <span class="pr-dot pr-dot--blue"></span> Marketplace</p>
 
         <% if (!pd.products.length) { %>
             <div class="ly-empty"><span class="ly-empty__ic" aria-hidden="true">🍽️</span><p class="ly-empty__msg"><%= search_q ? 'No items match your search.' : 'No products yet.' %></p></div>
@@ -129,7 +129,7 @@
                 </div>
                 <div class="pr-item__controls">
                     <span class="pr-price pr-price--normal"><span class="pr-price__box"><span class="pr-price__cur"><%= sym %></span><input class="pr-priceinput" inputmode="decimal" data-type="normal" data-id="<%= p.id %>" data-original="<%= p.price_before_tax %>" value="<%= p.price_before_tax %>"></span><span class="pr-price__lbl">Normal</span></span>
-                    <span class="pr-price pr-price--online"><span class="pr-price__box"><span class="pr-price__cur"><%= sym %></span><input class="pr-priceinput" inputmode="decimal" data-type="online" data-id="<%= p.id %>" data-original="<%= p.online_platform_price %>" value="<%= p.online_platform_price %>"></span><span class="pr-price__lbl">Online</span></span>
+                    <span class="pr-price pr-price--online"><span class="pr-price__box"><span class="pr-price__cur"><%= sym %></span><input class="pr-priceinput" inputmode="decimal" data-type="online" data-id="<%= p.id %>" data-original="<%= p.online_platform_price %>" value="<%= p.online_platform_price %>"></span><span class="pr-price__lbl">Third Party</span></span>
                     <span class="pr-price pr-price--market"><span class="pr-price__box"><span class="pr-price__cur"><%= sym %></span><input class="pr-priceinput" inputmode="decimal" data-type="marketplace" data-id="<%= p.id %>" data-original="<%= p.marketplace_price %>" value="<%= p.marketplace_price %>"></span><span class="pr-price__lbl">Marketplace</span></span>
                     <div class="pr-item__row2">
                         <span class="pr-statuswrap">
@@ -202,7 +202,7 @@
             <span>Which price</span>
             <select data-bulk-price-type>
                 <option value="normal">Normal price</option>
-                <option value="online">Online price</option>
+                <option value="online">Third Party price</option>
                 <option value="marketplace">Marketplace price</option>
             </select>
         </label>

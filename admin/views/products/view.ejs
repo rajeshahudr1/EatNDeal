@@ -82,7 +82,7 @@
         <section class="card ly-card pv-panel" data-panel="pricing" hidden>
             <div class="pv-rows">
                 <div class="pv-row"><span class="pv-k">Normal price</span><span class="pv-v"><strong><%= sym %><%= p.price_before_tax %></strong></span></div>
-                <div class="pv-row"><span class="pv-k">Online price</span><span class="pv-v"><strong><%= sym %><%= p.online_platform_price %></strong></span></div>
+                <div class="pv-row"><span class="pv-k">Third Party price</span><span class="pv-v"><strong><%= sym %><%= p.online_platform_price %></strong></span></div>
                 <div class="pv-row"><span class="pv-k">Marketplace price</span><span class="pv-v"><strong><%= sym %><%= p.marketplace_price || '0.00' %></strong></span></div>
                 <div class="pv-row"><span class="pv-k">VAT / Tax</span><span class="pv-v"><%= nameOf(m.tax, p.tax_id) || '—' %></span></div>
                 <div class="pv-row"><span class="pv-k">Unit type</span><span class="pv-v"><%= nameOf(m.units, p.unit_type_id) || '—' %></span></div>

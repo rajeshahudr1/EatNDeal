@@ -585,6 +585,13 @@ router.get ('/admin/community/get',    authenticate, requireRole('admin'), Admin
 router.post('/admin/community/save',   authenticate, requireRole('admin'), AdminCommunityCtl.save);
 router.post('/admin/community/delete', authenticate, requireRole('admin'), AdminCommunityCtl.remove);
 router.post('/admin/community/status', authenticate, requireRole('admin'), AdminCommunityCtl.statusToggle);
+// Phase 2 — admin participates in + moderates a group's feed.
+router.get ('/admin/community/feed',           authenticate, requireRole('admin'), AdminCommunityCtl.feed);
+router.get ('/admin/community/comments',       authenticate, requireRole('admin'), AdminCommunityCtl.comments);
+router.post('/admin/community/post',           authenticate, requireRole('admin'), AdminCommunityCtl.createPost);
+router.post('/admin/community/comment',        authenticate, requireRole('admin'), AdminCommunityCtl.addComment);
+router.post('/admin/community/post-delete',    authenticate, requireRole('admin'), AdminCommunityCtl.deletePost);
+router.post('/admin/community/comment-delete', authenticate, requireRole('admin'), AdminCommunityCtl.deleteComment);
 router.post('/admin/products/price',         authenticate, requireRole('admin'), AdminProductsCtl.updatePrice);
 router.post('/admin/products/bulk-price',    authenticate, requireRole('admin'), AdminProductsCtl.bulkPrice);
 router.post('/admin/products/marketplace',   authenticate, requireRole('admin'), AdminProductsCtl.marketplaceToggle);
@@ -643,6 +650,8 @@ router.get ('/customer/community/comments',  CommunityCtl.comments);
 router.post('/customer/community/post',      CommunityCtl.createPost);
 router.post('/customer/community/like',      CommunityCtl.toggleLike);
 router.post('/customer/community/comment',   CommunityCtl.addComment);
+router.post('/customer/community/post-delete',    CommunityCtl.deletePost);
+router.post('/customer/community/comment-delete', CommunityCtl.deleteComment);
 
 // ── Customer cart (signed-in marketplace customers only) ───────────
 // Phase 2A.3 — read-only. Write endpoints (add / update / remove /

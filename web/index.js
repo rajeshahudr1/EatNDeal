@@ -668,6 +668,8 @@ app.get ('/community/comments',   CommunityController.commentsData);
 app.get ('/community/g/:id',      CommunityController.groupPage);
 app.post('/community/like',       CommunityController.like);
 app.post('/community/comment',    CommunityController.comment);
+app.post('/community/post-delete',    CommunityController.deletePost);
+app.post('/community/comment-delete', CommunityController.deleteComment);
 // Create a post — optional photo (multipart). multer stores it on the web
 // disk; the wrapper turns size/type errors into a friendly JSON envelope.
 app.post('/community/post', (req, res) => {

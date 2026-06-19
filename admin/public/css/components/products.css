@@ -417,6 +417,44 @@ body.pr-modal-open, body.filters-open { overflow: hidden; }
 .cm-tag--user { background: #dbeafe; color: #1d4ed8; }
 .cm-tag--restaurant { background: #fef3c7; color: #b45309; }
 
+/* ── Community feed (admin posts + moderation) ─────────────────────── */
+.cavatar { flex: 0 0 auto; width: 38px; height: 38px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; color: #fff; font-size: .95rem; }
+.cavatar--sm { width: 28px; height: 28px; font-size: .78rem; }
+.cavatar--t0 { background: #E5252A; } .cavatar--t1 { background: #F4A100; } .cavatar--t2 { background: #14A35E; }
+.cavatar--t3 { background: #2E7CF6; } .cavatar--t4 { background: #8B5CF6; } .cavatar--t5 { background: #EC4899; } .cavatar--t6 { background: #0EA5A5; }
+
+.cf-compose { background: #fff; border: 1px solid var(--color-border, #e5e7eb); border-radius: 12px; padding: 12px; margin-bottom: 16px; }
+.cf-compose__text { width: 100%; border: none; resize: vertical; font: inherit; min-height: 46px; outline: none; }
+.cf-compose__bar { display: flex; justify-content: flex-end; border-top: 1px solid #f1f1f1; padding-top: 8px; margin-top: 6px; }
+.cf-compose--cmt { display: flex; gap: 8px; align-items: center; padding: 8px 0 0; margin: 0; border: none; }
+.cf-compose--cmt input { flex: 1; border: 1px solid #e5e7eb; border-radius: 999px; padding: 7px 13px; font: inherit; outline: none; }
+
+.cf-list { display: flex; flex-direction: column; gap: 14px; }
+.cf-post { background: #fff; border: 1px solid var(--color-border, #e5e7eb); border-radius: 12px; padding: 12px 14px; }
+.cf-post__head { display: flex; align-items: center; gap: 10px; }
+.cf-post__meta { display: flex; flex-direction: column; line-height: 1.2; flex: 1; }
+.cf-post__author { font-weight: 700; font-size: .9rem; display: inline-flex; align-items: center; gap: 6px; }
+.cf-post__time { font-size: .72rem; color: #9a9a9a; }
+.cf-post__body { margin: 10px 0 0; white-space: pre-wrap; word-break: break-word; font-size: .92rem; }
+.cf-post__media { margin: 10px -14px 0; }
+.cf-post__media img { width: 100%; max-height: 420px; object-fit: cover; display: block; }
+.cf-post__stats { font-size: .74rem; color: #9a9a9a; padding: 10px 0 6px; }
+.cf-post__actions { border-top: 1px solid #f1f1f1; padding-top: 6px; }
+.cf-act { border: none; background: transparent; cursor: pointer; font: inherit; font-weight: 600; color: #6b6b6b; padding: 6px 8px; border-radius: 6px; }
+.cf-act:hover { background: #f7f7f8; }
+.cf-del { border: none; background: transparent; cursor: pointer; font-size: .95rem; opacity: .6; padding: 4px 6px; border-radius: 6px; }
+.cf-del:hover { opacity: 1; background: #fee2e2; }
+.cf-del--sm { font-size: .8rem; }
+.cf-comments { border-top: 1px solid #f1f1f1; margin-top: 6px; padding-top: 10px; }
+.cf-commentlist { display: flex; flex-direction: column; gap: 10px; }
+.cf-comment { display: flex; gap: 8px; align-items: flex-start; }
+.cf-comment__bubble { background: #f7f7f8; border-radius: 12px; padding: 7px 11px; flex: 1; }
+.cf-comment__author { font-weight: 700; font-size: .78rem; margin-right: 6px; }
+.cf-comment__text { font-size: .84rem; white-space: pre-wrap; word-break: break-word; }
+.cf-comment__time { display: block; font-size: .66rem; color: #9a9a9a; margin-top: 2px; }
+.cf-loading { font-size: .8rem; color: #9a9a9a; padding: 4px 0; }
+.cf-more { text-align: center; margin-top: 16px; }
+
 /* Feed Order page — section icon + show/hide toggle. */
 .fo-ic { font-size: 1.3rem; }
 .fo-toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 0.85rem; cursor: pointer; color: var(--color-text-muted); }

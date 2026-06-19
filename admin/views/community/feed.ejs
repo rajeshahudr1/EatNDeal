@@ -1,0 +1,60 @@
+<%#
+  views/community/feed.ejs
+
+  A COMMUNITY group's feed inside the admin — the super-admin reads the
+  conversation, POSTS as the admin/restaurant, and MODERATES (delete any post
+  or comment). Posts/comments are loaded + mutated by /js/pages/community.js.
+
+  Inputs: group, posts[], has_more, next_offset, load_error.
+-%>
+<div class="ly" data-cm-feed="<%= group ? group.id : 0 %>">
+
+    <div class="ly__head">
+        <div>
+            <h2 class="ly__title">💬 <%= group ? group.name : 'Community feed' %></h2>
+            <p class="ly__sub"><%= group ? ((group.type === 'restaurant' ? 'Restaurants' : 'Users') + ' group · post & moderate') : 'Group feed' %></p>
+        </div>
+        <a href="/community" class="ly-btn ly-btn--ghost ly-btn--sm">← Back to groups</a>
+    </div>
+
+    <% if (load_error || !group) { %>
+        <div class="ly-empty"><span class="ly-empty__ic" aria-hidden="true">🏢</span><p class="ly-empty__msg"><%= load_error || 'Group not found.' %></p></div>
+    <% } else { %>
+
+    <%# Composer — admin posts as themselves (text). %>
+    <form class="cf-compose" data-cf-post-form>
+        <textarea class="cf-compose__text" name="body" rows="2" placeholder="Post an update to this group…" maxlength="5000"></textarea>
+        <div class="cf-compose__bar">
+            <button type="submit" class="ly-btn ly-btn--primary ly-btn--sm" data-cf-post-submit>Post</button>
+        </div>
+    </form>
+
+    <div class="cf-list" data-cf-list>
+        <% posts.forEach(function (post) { %>
+            <%- include('../partials/community-post', { post: post }) %>
+        <% }); %>
+    </div>
+
+    <% if (!posts.length) { %>
+        <div class="ly-empty" data-cf-empty><span class="ly-empty__ic" aria-hidden="true">💬</span><p class="ly-empty__msg">No posts yet.</p></div>
+    <% } %>
+
+    <div class="cf-more" data-cf-more-wrap<%= has_more ? '' : ' hidden' %>>
+        <button type="button" class="ly-btn ly-btn--ghost" data-action="cf-more" data-next-offset="<%= next_offset %>">Load more</button>
+    </div>
+
+    <% } %>
+</div>
+
+<%# Moderation delete confirm (post or comment). %>
+<div class="pr-modal" data-modal="cf-del" hidden>
+    <div class="pr-modal__panel pr-modal__panel--sm">
+        <div class="pr-modal__icon">⚠️</div>
+        <h3 class="pr-modal__title">Remove this?</h3>
+        <p class="pr-modal__msg">This permanently removes it from the group. This cannot be undone.</p>
+        <div class="pr-modal__foot pr-modal__foot--center">
+            <button type="button" class="ly-btn ly-btn--ghost" data-action="cf-del-cancel">No, cancel</button>
+            <button type="button" class="ly-btn ly-btn--danger" data-action="cf-del-confirm">Yes, remove</button>
+        </div>
+    </div>
+</div>

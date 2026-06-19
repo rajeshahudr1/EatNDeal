@@ -20,6 +20,11 @@
     if (!root) { return; }
     var GROUP_ID = root.getAttribute('data-community-group');
     var CAN_POST = root.getAttribute('data-can-post') === '1';
+    var MY_ID = root.getAttribute('data-me-id') || '0';
+    function confirmAsk(opts) {
+        if (window.EatNDealUi && window.EatNDealUi.confirmDialog) { return window.EatNDealUi.confirmDialog(opts); }
+        return Promise.resolve(true);
+    }
 
     var EF = window.EatNDealFormat || {};
     var esc = EF.esc || function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]; }); };
@@ -65,15 +70,19 @@
 
     // ── Builders (keep in sync with partials/community-post.ejs) ──────
     function buildComment(c) {
-        return '<div class="ccomment">'
+        var mine = c.author.type === 'customer' && String(c.author.id) === MY_ID;
+        var del = mine ? '<button type="button" class="ccomment__del" data-action="delete-comment" title="Delete" aria-label="Delete your comment">🗑</button>' : '';
+        return '<div class="ccomment" data-comment-id="' + c.id + '">'
             + '<span class="cavatar cavatar--sm cavatar--t' + (c.author.tint || 0) + '" aria-hidden="true">' + esc(c.author.initial) + '</span>'
             + '<div class="ccomment__bubble"><span class="ccomment__author">' + esc(c.author.name)
             + (c.author.type === 'admin' ? '<span class="cpost__tag">Restaurant</span>' : '')
             + '</span><span class="ccomment__text">' + esc(c.body) + '</span>'
-            + '<time class="ccomment__time" data-time="' + esc(c.created_at) + '">' + timeAgo(c.created_at) + '</time></div></div>';
+            + '<time class="ccomment__time" data-time="' + esc(c.created_at) + '">' + timeAgo(c.created_at) + '</time></div>' + del + '</div>';
     }
     function buildPost(p, canPost) {
         var liked = !!p.liked;
+        var mine = canPost && p.author.type === 'customer' && String(p.author.id) === MY_ID;
+        var delBtn = mine ? '<button type="button" class="cpost__del" data-action="delete-post" title="Delete" aria-label="Delete your post">🗑</button>' : '';
         var media = p.image_url ? '<div class="cpost__media"><img src="' + esc(p.image_url) + '" alt="" loading="lazy"></div>' : '';
         var bodyHtml = p.body ? '<p class="cpost__body">' + esc(p.body) + '</p>' : '';
         var statsHidden = (p.likes || p.comments) ? '' : ' hidden';
@@ -84,7 +93,7 @@
             + '<header class="cpost__head"><span class="cavatar cavatar--t' + (p.author.tint || 0) + '" aria-hidden="true">' + esc(p.author.initial) + '</span>'
             + '<span class="cpost__meta"><span class="cpost__author">' + esc(p.author.name)
             + (p.author.type === 'admin' ? '<span class="cpost__tag">Restaurant</span>' : '')
-            + '</span><time class="cpost__time" data-time="' + esc(p.created_at) + '">' + timeAgo(p.created_at) + '</time></span></header>'
+            + '</span><time class="cpost__time" data-time="' + esc(p.created_at) + '">' + timeAgo(p.created_at) + '</time></span>' + delBtn + '</header>'
             + bodyHtml + media
             + '<div class="cpost__stats"' + statsHidden + '><span class="cpost__stat" data-likes-line><span data-likes-n>' + (p.likes || 0) + '</span> like' + (Number(p.likes) === 1 ? '' : 's') + '</span>'
             + '<span class="cpost__stat" data-comments-line><span data-comments-n>' + (p.comments || 0) + '</span> comment' + (Number(p.comments) === 1 ? '' : 's') + '</span></div>'
@@ -198,6 +207,34 @@
 
         if (action === 'share' && card) {
             sharePost(card);
+            return;
+        }
+
+        if (action === 'delete-post' && card) {
+            confirmAsk({ title: 'Delete post?', message: 'This permanently removes your post.', okLabel: 'Delete', cancelLabel: 'Cancel' }).then(function (ok) {
+                if (!ok) { return; }
+                postJson('/community/post-delete', { post_id: card.getAttribute('data-post-id') }).then(function (env) {
+                    if (env.status === 401) { bounceToSignin(); return; }
+                    if (env.status !== 200) { toast('error', env.msg || 'Could not delete.'); return; }
+                    card.remove(); toast('success', 'Post deleted.');
+                });
+            });
+            return;
+        }
+
+        if (action === 'delete-comment') {
+            var cmt = act.closest('[data-comment-id]');
+            if (!cmt || !card) { return; }
+            confirmAsk({ title: 'Delete comment?', message: 'This permanently removes your comment.', okLabel: 'Delete', cancelLabel: 'Cancel' }).then(function (ok) {
+                if (!ok) { return; }
+                postJson('/community/comment-delete', { comment_id: cmt.getAttribute('data-comment-id') }).then(function (env) {
+                    if (env.status === 401) { bounceToSignin(); return; }
+                    if (env.status !== 200) { toast('error', env.msg || 'Could not delete.'); return; }
+                    cmt.remove();
+                    var n = card.querySelector('[data-comments-n]'); if (n && env.data) { n.textContent = env.data.comments; }
+                    toast('success', 'Comment deleted.');
+                });
+            });
             return;
         }
     });

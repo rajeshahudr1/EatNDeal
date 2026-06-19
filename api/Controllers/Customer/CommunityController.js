@@ -207,4 +207,46 @@ async function addComment(req, res) {
     }
 }
 
-module.exports = { groups, feed, createPost, toggleLike, comments, addComment };
+/** deletePost — POST /customer/community/post-delete { customer_id, post_id } — own only. */
+async function deletePost(req, res) {
+    try {
+        const cust = await requireCustomer(req, res, req.body.customer_id);
+        if (!cust) { return; }
+        const postId = Number(req.body.post_id) || 0;
+        const post = await db(P).where({ id: postId }).first('id', 'author_type', 'author_id');
+        if (!post) { return H.errorResponse(res, 'Post not found.', 404); }
+        if (!(post.author_type === 'customer' && Number(post.author_id) === cust.id)) {
+            return H.errorResponse(res, 'You can only delete your own post.', 403);
+        }
+        await db(L).where({ post_id: postId }).del();
+        await db(C).where({ post_id: postId }).del();
+        await db(P).where({ id: postId }).del();
+        return H.successResponse(res, { deleted: 1 }, 'Post deleted.');
+    } catch (err) {
+        H.log.error('community.deletePost', err && err.message);
+        return H.errorResponse(res, MSG.server.oops, 500);
+    }
+}
+
+/** deleteComment — POST /customer/community/comment-delete { customer_id, comment_id } — own only. */
+async function deleteComment(req, res) {
+    try {
+        const cust = await requireCustomer(req, res, req.body.customer_id);
+        if (!cust) { return; }
+        const commentId = Number(req.body.comment_id) || 0;
+        const c = await db(C).where({ id: commentId }).first('id', 'post_id', 'author_type', 'author_id');
+        if (!c) { return H.errorResponse(res, 'Comment not found.', 404); }
+        if (!(c.author_type === 'customer' && Number(c.author_id) === cust.id)) {
+            return H.errorResponse(res, 'You can only delete your own comment.', 403);
+        }
+        await db(C).where({ id: commentId }).del();
+        await db(P).where({ id: c.post_id }).where('comments_count', '>', 0).decrement('comments_count', 1);
+        const cntRow = await db(P).where({ id: c.post_id }).first('comments_count');
+        return H.successResponse(res, { deleted: 1, comments: Number(cntRow && cntRow.comments_count) || 0 }, 'Comment deleted.');
+    } catch (err) {
+        H.log.error('community.deleteComment', err && err.message);
+        return H.errorResponse(res, MSG.server.oops, 500);
+    }
+}
+
+module.exports = { groups, feed, createPost, toggleLike, comments, addComment, deletePost, deleteComment };

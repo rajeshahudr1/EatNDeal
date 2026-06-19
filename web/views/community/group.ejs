@@ -10,6 +10,7 @@
   Inputs: group, posts[], has_more, next_offset, can_post, user_session.
 -%>
 <section class="cwrap" data-community-group="<%= group.id %>" data-can-post="<%= can_post ? '1' : '0' %>"
+    data-me-id="<%= user_session ? user_session.id : 0 %>"
     data-me-name="<%= user_session ? [user_session.firstname, user_session.lastname].filter(Boolean).join(' ') : '' %>"
     data-me-initial="<%= (user_session && user_session.firstname) ? user_session.firstname.charAt(0).toUpperCase() : 'Y' %>"
     data-me-tint="<%= (user_session && user_session.id) ? (Number(user_session.id) % 7) : 0 %>">
@@ -59,7 +60,7 @@
         <%# ── Posts ──────────────────────────────────────────────── %>
         <div class="cfeed__list" data-feed-list>
             <% posts.forEach(function (post) { %>
-                <%- include('../partials/community-post', { post: post, can_post: can_post }) %>
+                <%- include('../partials/community-post', { post: post, can_post: can_post, my_id: (user_session ? user_session.id : 0) }) %>
             <% }); %>
         </div>
 

@@ -127,7 +127,11 @@
     box-shadow: var(--shadow-1);
 }
 .cpost__head { display: flex; align-items: center; gap: var(--space-3); }
-.cpost__meta { display: flex; flex-direction: column; line-height: 1.2; }
+.cpost__meta { display: flex; flex-direction: column; line-height: 1.2; flex: 1; }
+.cpost__del { flex: 0 0 auto; border: none; background: transparent; cursor: pointer; font-size: 1rem; opacity: .5; padding: 4px 6px; border-radius: var(--radius-sm); line-height: 1; }
+.cpost__del:hover { opacity: 1; background: var(--color-primary-soft); }
+.ccomment__del { flex: 0 0 auto; border: none; background: transparent; cursor: pointer; font-size: .8rem; opacity: .45; padding: 2px 5px; border-radius: var(--radius-sm); align-self: center; }
+.ccomment__del:hover { opacity: 1; background: var(--color-primary-soft); }
 .cpost__author { font-weight: 700; font-size: .92rem; color: var(--color-text); display: inline-flex; align-items: center; gap: var(--space-2); }
 .cpost__tag { background: var(--color-primary-soft); color: var(--color-primary); font-size: .62rem; font-weight: 700; padding: 1px 6px; border-radius: var(--radius-pill); letter-spacing: .03em; text-transform: uppercase; }
 .cpost__time { font-size: .74rem; color: var(--color-text-soft); }

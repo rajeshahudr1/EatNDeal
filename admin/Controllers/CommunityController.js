@@ -79,6 +79,33 @@ async function save(req, res) {
     return res.redirect((req.body && req.body.id) ? ('/community/edit/' + encodeURIComponent(req.body.id)) : '/community/new');
 }
 
+// GET /community/feed/:id — render a group's feed (admin posts + moderation).
+async function feedPage(req, res) {
+    const id = Number(req.params.id) || 0;
+    let group = null;
+    let posts = [];
+    let has_more = false;
+    let next_offset = 0;
+    let load_error = null;
+    try {
+        const r = await callApi(req, 'GET', '/api/v1/admin/community/feed?group_id=' + id + '&limit=15&offset=0');
+        if (r && r.body && r.body.status === 200 && r.body.data) {
+            group = r.body.data.group;
+            posts = r.body.data.posts || [];
+            has_more = !!r.body.data.has_more;
+            next_offset = (r.body.data.offset || 0) + posts.length;
+        } else { load_error = (r && r.body && r.body.msg) || 'Could not load the feed.'; }
+    } catch (e) { load_error = 'Could not reach the server.'; }
+
+    res.render('community/feed', {
+        page_title:  group ? (group.name + ' · Feed') : 'Community feed',
+        _layoutFile: '../_layout',
+        active_nav:  'community',
+        extra_js:    '/js/pages/community.js',
+        group, posts, has_more, next_offset, load_error,
+    });
+}
+
 // AJAX proxies (JSON in/out).
 function ajaxProxy(path) {
     return async function (req, res) {
@@ -89,7 +116,25 @@ function ajaxProxy(path) {
         return res.status(200).json(body);
     };
 }
-const remove       = ajaxProxy('/api/v1/admin/community/delete');
-const statusToggle = ajaxProxy('/api/v1/admin/community/status');
+function ajaxGetProxy(basePath, keys) {
+    return async function (req, res) {
+        const params = [];
+        keys.forEach((k) => { if (req.query[k] != null && req.query[k] !== '') { params.push(k + '=' + encodeURIComponent(String(req.query[k]))); } });
+        const url = basePath + (params.length ? ('?' + params.join('&')) : '');
+        let apiRes;
+        try { apiRes = await callApi(req, 'GET', url); }
+        catch (e) { apiRes = { body: { status: 0, msg: 'Could not reach the server.' } }; }
+        const body = (apiRes && apiRes.body) || { status: 0, msg: 'No response.' };
+        return res.status(200).json(body);
+    };
+}
+const remove        = ajaxProxy('/api/v1/admin/community/delete');
+const statusToggle  = ajaxProxy('/api/v1/admin/community/status');
+const feedData      = ajaxGetProxy('/api/v1/admin/community/feed', ['group_id', 'offset', 'limit']);
+const commentsData  = ajaxGetProxy('/api/v1/admin/community/comments', ['post_id']);
+const createPost    = ajaxProxy('/api/v1/admin/community/post');
+const addComment    = ajaxProxy('/api/v1/admin/community/comment');
+const deletePost    = ajaxProxy('/api/v1/admin/community/post-delete');
+const deleteComment = ajaxProxy('/api/v1/admin/community/comment-delete');
 
-module.exports = { list, form, save, remove, statusToggle };
+module.exports = { list, form, save, remove, statusToggle, feedPage, feedData, commentsData, createPost, addComment, deletePost, deleteComment };

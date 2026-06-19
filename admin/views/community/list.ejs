@@ -86,6 +86,7 @@
                 <div class="pr-item__controls">
                     <span class="pr-statuswrap"><%- statusSel(g.id, g.status) %></span>
                     <span class="pr-item__act">
+                        <a href="/community/feed/<%= g.id %>" class="ly-iconbtn" title="Open feed (post &amp; moderate)">💬</a>
                         <a href="/community/edit/<%= g.id %>" class="ly-iconbtn" title="Edit">✎</a>
                         <button type="button" class="ly-iconbtn ly-iconbtn--danger" data-action="cm-delete" data-id="<%= g.id %>" data-name="<%= g.name %>" title="Delete">🗑</button>
                     </span>

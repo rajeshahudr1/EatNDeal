@@ -1,0 +1,38 @@
+<%#
+  views/partials/community-post.ejs (admin)
+
+  One post inside the admin group feed — author, body, optional photo,
+  like/comment counts, a MODERATION delete button, and a comments drawer (each
+  comment deletable; admin can add a comment). /js/pages/community.js builds an
+  identical card for load-more + new posts, so keep the structure in sync.
+
+  Inputs: post = { id, body, image_url, likes, comments, created_at,
+                   author:{ name, type, initial, tint } }.
+-%>
+<article class="cf-post" data-post-id="<%= post.id %>">
+    <header class="cf-post__head">
+        <span class="cavatar cavatar--t<%= post.author.tint %>" aria-hidden="true"><%= post.author.initial %></span>
+        <span class="cf-post__meta">
+            <span class="cf-post__author"><%= post.author.name %><% if (post.author.type === 'admin') { %><span class="cm-tag cm-tag--restaurant">Admin</span><% } %></span>
+            <time class="cf-post__time" data-time="<%= post.created_at %>"><%= post.created_at %></time>
+        </span>
+        <button type="button" class="cf-del" data-action="cf-del-post" title="Delete post" aria-label="Delete post">🗑</button>
+    </header>
+
+    <% if (post.body) { %><p class="cf-post__body"><%= post.body %></p><% } %>
+    <% if (post.image_url) { %><div class="cf-post__media"><img src="<%= post.image_url %>" alt="" loading="lazy"></div><% } %>
+
+    <div class="cf-post__stats"><span data-likes-n><%= post.likes %></span> like<%= Number(post.likes) === 1 ? '' : 's' %> · <span data-comments-n><%= post.comments %></span> comment<%= Number(post.comments) === 1 ? '' : 's' %></div>
+
+    <div class="cf-post__actions">
+        <button type="button" class="cf-act" data-action="cf-comments">💬 Comments</button>
+    </div>
+
+    <div class="cf-comments" data-comments-wrap hidden>
+        <div class="cf-commentlist" data-comments-list></div>
+        <form class="cf-compose cf-compose--cmt" data-cf-comment-form>
+            <input type="text" name="body" placeholder="Write a comment…" maxlength="2000" autocomplete="off" required>
+            <button type="submit" class="ly-btn ly-btn--ghost ly-btn--sm">Send</button>
+        </form>
+    </div>
+</article>

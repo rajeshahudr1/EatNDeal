@@ -129,4 +129,20 @@ async function comment(req, res) {
     return relay(res, apiRes);
 }
 
-module.exports = { groupsPage, groupPage, feedData, commentsData, createPost, like, comment };
+// POST /community/post-delete — delete own post (sign-in required).
+async function deletePost(req, res) {
+    const user = requireUser(req, res, 'Please sign in.');
+    if (!user) { return; }
+    const apiRes = await callApi(req, 'POST', '/api/v1/customer/community/post-delete', { customer_id: user.id, post_id: req.body.post_id });
+    return relay(res, apiRes);
+}
+
+// POST /community/comment-delete — delete own comment (sign-in required).
+async function deleteComment(req, res) {
+    const user = requireUser(req, res, 'Please sign in.');
+    if (!user) { return; }
+    const apiRes = await callApi(req, 'POST', '/api/v1/customer/community/comment-delete', { customer_id: user.id, comment_id: req.body.comment_id });
+    return relay(res, apiRes);
+}
+
+module.exports = { groupsPage, groupPage, feedData, commentsData, createPost, like, comment, deletePost, deleteComment };

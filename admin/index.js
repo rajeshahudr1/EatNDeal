@@ -630,6 +630,14 @@ app.get ('/community/edit/:id', requireAdmin, companyContext, CommunityControlle
 app.post('/community/save',     requireAdmin, companyContext, mpCommImgMw, CommunityController.save);
 app.post('/community/delete',   requireAdmin, companyContext, CommunityController.remove);
 app.post('/community/status',   requireAdmin, companyContext, CommunityController.statusToggle);
+// Phase 2 — a group's feed: admin posts + moderates (delete post/comment).
+app.get ('/community/feed/:id',       requireAdmin, companyContext, CommunityController.feedPage);
+app.get ('/community/feed',           requireAdmin, companyContext, CommunityController.feedData);
+app.get ('/community/comments',       requireAdmin, companyContext, CommunityController.commentsData);
+app.post('/community/post',           requireAdmin, companyContext, CommunityController.createPost);
+app.post('/community/comment',        requireAdmin, companyContext, CommunityController.addComment);
+app.post('/community/post-delete',    requireAdmin, companyContext, CommunityController.deletePost);
+app.post('/community/comment-delete', requireAdmin, companyContext, CommunityController.deleteComment);
 
 // Store Settings — branch config (port of legacy admin/pos/store-settings).
 app.get ('/store-settings',                requireAdmin, companyContext, StoreSettingsController.index);

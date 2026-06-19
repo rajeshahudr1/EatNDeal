@@ -12,6 +12,7 @@
    • can_post — boolean; signed-in users get the like/comment/inline composer,
                 guests get a read-only "sign in to join" hint.
 -%>
+<% var __mine = can_post && post.author.type === 'customer' && (typeof my_id !== 'undefined') && Number(post.author.id) === Number(my_id); %>
 <article class="cpost" data-post-id="<%= post.id %>" data-liked="<%= post.liked ? '1' : '0' %>">
 
     <header class="cpost__head">
@@ -20,6 +21,7 @@
             <span class="cpost__author"><%= post.author.name %><% if (post.author.type === 'admin') { %><span class="cpost__tag">Restaurant</span><% } %></span>
             <time class="cpost__time" data-time="<%= post.created_at %>"><%= post.created_at %></time>
         </span>
+        <% if (__mine) { %><button type="button" class="cpost__del" data-action="delete-post" title="Delete" aria-label="Delete your post">🗑</button><% } %>
     </header>
 
     <% if (post.body) { %><p class="cpost__body"><%= post.body %></p><% } %>

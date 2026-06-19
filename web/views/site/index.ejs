@@ -88,46 +88,85 @@
             <p class="feed-note">No restaurants serving “<%= selected_cuisine.charAt(0).toUpperCase() + selected_cuisine.slice(1) %>” near you yet — here’s what else is available.</p>
         <% } %>
 
-        <%# ── My Favourites ─────────────────────────────────────────
-            Shown ABOVE the main rail when the signed-in customer has
-            saved at least one restaurant. The same cards are stripped
-            from `featured` in the controller so they never duplicate. %>
-        <% var myFavs = (typeof my_favourites !== 'undefined' && my_favourites) ? my_favourites : []; %>
-        <% if (user_session && myFavs.length > 0) { %>
-        <section aria-labelledby="my-fav-rail-title">
-            <div class="hv2-head">
-                <h2 id="my-fav-rail-title" class="hv2-head__title">
-                    <svg class="hv2-head__title-icon" width="18" height="18" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
-                    My Favourites
-                </h2>
-                <a href="/account?tab=favourites" class="hv2-head__link" data-action="view-favourites">View all</a>
-            </div>
-            <ul class="resto-rail" role="list">
-                <% myFavs.forEach(function (r) { %>
-                    <%- include('../partials/restaurant-card', { r: r, forceFavourite: true }) %>
-                <% }); %>
-            </ul>
-        </section>
-        <% } %>
+        <%# ── HOME SECTIONS — rendered in the admin-configured Feed Order (all
+            6 sections, incl. My Favourites + Top restaurants). On a filtered /
+            cuisine view home_feed_order is absent → the DEFAULT order applies
+            (favourites → curated(empty) → restaurants), so the filtered page
+            looks unchanged. My Favourites cards are stripped from `featured`
+            in the controller so they never duplicate. %>
+        <%
+            var DEFAULT_FEED_ORDER = [
+                { key: 'favourites', status: 1 }, { key: 'featured', status: 1 }, { key: 'sponsored', status: 1 },
+                { key: 'collections', status: 1 }, { key: 'products', status: 1 }, { key: 'restaurants', status: 1 }
+            ];
+            var feedOrder = (typeof home_feed_order !== 'undefined' && home_feed_order && home_feed_order.length) ? home_feed_order : DEFAULT_FEED_ORDER;
+            var __feed = (typeof home_feed !== 'undefined' && home_feed) ? home_feed : [];
+            var rowsBySection = {};
+            __feed.forEach(function (row) { var k = row.section || row.type; (rowsBySection[k] = rowsBySection[k] || []).push(row); });
+            var myFavs = (typeof my_favourites !== 'undefined' && my_favourites) ? my_favourites : [];
+        %>
+        <% feedOrder.forEach(function (sec) { %>
+            <% if (Number(sec.status) === 0) { return; } %>
 
-        <% if (featured && featured.length > 0) { %>
-        <section aria-labelledby="resto-rail-title">
-            <div class="hv2-head">
-                <h2 id="resto-rail-title" class="hv2-head__title"><%= (typeof cuisine_no_match !== 'undefined' && cuisine_no_match) ? 'More restaurants near you' : 'Top restaurants near you' %></h2>
-                <a href="/?view=restaurants" class="hv2-head__link" data-action="view-all">View all</a>
-            </div>
-            <ul class="resto-rail" role="list" data-load-target>
-                <% featured.forEach(function (r) { %>
-                    <%- include('../partials/restaurant-card', { r: r, showOffer: true, metaIcons: true, showDelivery: true }) %>
+            <% if (sec.key === 'favourites') { %>
+                <% if (user_session && myFavs.length > 0) { %>
+                <section aria-labelledby="my-fav-rail-title">
+                    <div class="hv2-head">
+                        <h2 id="my-fav-rail-title" class="hv2-head__title">
+                            <svg class="hv2-head__title-icon" width="18" height="18" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+                            My Favourites
+                        </h2>
+                        <a href="/account?tab=favourites" class="hv2-head__link" data-action="view-favourites">View all</a>
+                    </div>
+                    <div class="rail-wrap home-rail-wrap" data-rail-wrap>
+                        <button type="button" class="rail-arrow rail-arrow--prev" data-rail-prev aria-label="Scroll left" hidden>
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+                        </button>
+                        <ul class="home-rail" role="list" data-rail>
+                            <% myFavs.forEach(function (r) { %>
+                                <%- include('../partials/restaurant-card', { r: r, forceFavourite: true }) %>
+                            <% }); %>
+                        </ul>
+                        <button type="button" class="rail-arrow rail-arrow--next" data-rail-next aria-label="Scroll right" hidden>
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+                        </button>
+                    </div>
+                </section>
+                <% } %>
+
+            <% } else if (sec.key === 'restaurants') { %>
+                <% if (featured && featured.length > 0) { %>
+                <section aria-labelledby="resto-rail-title">
+                    <div class="hv2-head">
+                        <h2 id="resto-rail-title" class="hv2-head__title"><%= (typeof cuisine_no_match !== 'undefined' && cuisine_no_match) ? 'More restaurants near you' : 'Top restaurants near you' %></h2>
+                        <a href="/?view=restaurants" class="hv2-head__link" data-action="view-all">View all</a>
+                    </div>
+                    <ul class="resto-rail" role="list" data-load-target>
+                        <% featured.forEach(function (r) { %>
+                            <%- include('../partials/restaurant-card', { r: r, showOffer: true, metaIcons: true, showDelivery: true }) %>
+                        <% }); %>
+                    </ul>
+                    <%# Home shows the top ~24; the rest live behind "View all". %>
+                    <% if (typeof featured_more !== 'undefined' && featured_more) { %>
+                        <div class="section__loadmore">
+                            <a href="/?view=restaurants" class="btn btn--ghost btn--lg" data-action="view-all">View all restaurants</a>
+                        </div>
+                    <% } %>
+                </section>
+                <% } %>
+
+            <% } else { %>
+                <%# Curated section: featured / sponsored / collections / products. %>
+                <% (rowsBySection[sec.key] || []).forEach(function (row) { %>
+                    <% if (row.type === 'product') { %>
+                        <%- include('../partials/home-product-row', { row: row }) %>
+                    <% } else { %>
+                        <%- include('../partials/home-row', { row: row }) %>
+                    <% } %>
                 <% }); %>
-            </ul>
-            <% if (typeof featured_more !== 'undefined' && featured_more) { %>
-                <div class="section__loadmore" data-load-more="featured" data-offset="<%= featured.length %>">
-                    <button type="button" class="btn btn--ghost btn--lg section__loadmore-btn">See more</button>
-                </div>
             <% } %>
-        </section>
-        <% } %>
+
+        <% }); %>
         </div><%# /[data-home-feed] %>
 
         <%# ── BEST OFFERS — real store-offer banners (fallback: static) ─ %>

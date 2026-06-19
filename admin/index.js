@@ -53,6 +53,10 @@ const LoyaltyController   = require('./Controllers/LoyaltyController');
 const StoreSettingsController = require('./Controllers/StoreSettingsController');
 const ProductsController  = require('./Controllers/ProductsController');
 const MpCategoriesController = require('./Controllers/MarketplaceCategoriesController');
+const CollectionsController  = require('./Controllers/CollectionsController');
+const FeaturedController     = require('./Controllers/FeaturedController');
+const FeaturedProductsController = require('./Controllers/FeaturedProductsController');
+const FeedSectionsController      = require('./Controllers/FeedSectionsController');
 
 const app    = express();
 const ENV    = process.env.APP_ENV || 'development';
@@ -510,6 +514,78 @@ app.get ('/marketplace-categories/companies', requireAdmin, companyContext, MpCa
 app.get ('/marketplace-categories/restaurants', requireAdmin, companyContext, MpCategoriesController.restaurants);
 app.post('/marketplace-categories/assign',    requireAdmin, companyContext, MpCategoriesController.assign);
 app.post('/marketplace-categories/reorder',   requireAdmin, companyContext, MpCategoriesController.reorder);
+
+// ── Collection cover-image uploads (GLOBAL — uploads/marketplace/collection/) ──
+let mpColUpload = null;
+try {
+    const multer = require('multer');
+    mpColUpload = multer({
+        storage: multer.diskStorage({
+            destination: (req, file, cb) => {
+                if (!process.env.YII_UPLOADS_PATH) { return cb(new Error('upload_unavailable')); }
+                const dir = path.join(process.env.YII_UPLOADS_PATH, 'marketplace', 'collection');
+                try { fs.mkdirSync(dir, { recursive: true }); } catch (e) { /* ignore */ }
+                cb(null, dir);
+            },
+            filename: (req, file, cb) => {
+                const ext = ({ 'image/png': '.png', 'image/jpeg': '.jpg', 'image/webp': '.webp', 'image/gif': '.gif', 'image/svg+xml': '.svg' })[file.mimetype] || '.img';
+                cb(null, 'mpcol_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8) + ext);
+            },
+        }),
+        limits: { fileSize: 3 * 1024 * 1024 },
+        fileFilter: (req, file, cb) => cb(null, /^image\/(png|jpe?g|webp|gif|svg\+xml)$/.test(file.mimetype)),
+    });
+} catch (e) { /* multer not installed; uploads disabled */ }
+
+// The collection cover image is OPTIONAL — unlike categories, a missing
+// multer / uploads path must NOT block the save (the form may carry no file).
+// So we parse the multipart body best-effort and continue regardless.
+function mpColImgMw(req, res, next) {
+    if (!mpColUpload || !process.env.YII_UPLOADS_PATH) { return next(); }
+    mpColUpload.single('image')(req, res, (err) => {
+        if (err && err.code === 'LIMIT_FILE_SIZE') {
+            if (req.flash) { req.flash('error', 'Cover image must be under 3 MB.'); }
+            return res.redirect((req.body && req.body.id) ? ('/collections/edit/' + req.body.id) : '/collections/new');
+        }
+        return next();
+    });
+}
+
+// Collections (curated home-feed rows — super admin).
+app.get ('/collections',             requireAdmin, companyContext, CollectionsController.list);
+app.get ('/collections/arrange',     requireAdmin, companyContext, CollectionsController.arrange);
+app.get ('/collections/new',         requireAdmin, companyContext, CollectionsController.form);
+app.get ('/collections/edit/:id',    requireAdmin, companyContext, CollectionsController.form);
+app.post('/collections/save',        requireAdmin, companyContext, mpColImgMw, CollectionsController.save);
+app.post('/collections/delete',      requireAdmin, companyContext, CollectionsController.remove);
+app.post('/collections/status',      requireAdmin, companyContext, CollectionsController.statusToggle);
+app.post('/collections/reorder',     requireAdmin, companyContext, CollectionsController.reorder);
+app.get ('/collections/companies',   requireAdmin, companyContext, CollectionsController.companies);
+
+// Featured / sponsored placements (super admin).
+app.get ('/featured',           requireAdmin, companyContext, FeaturedController.list);
+app.get ('/featured/new',       requireAdmin, companyContext, FeaturedController.form);
+app.get ('/featured/edit/:id',  requireAdmin, companyContext, FeaturedController.form);
+app.post('/featured/save',      requireAdmin, companyContext, FeaturedController.save);
+app.post('/featured/delete',    requireAdmin, companyContext, FeaturedController.remove);
+app.post('/featured/status',    requireAdmin, companyContext, FeaturedController.statusToggle);
+app.post('/featured/reorder',   requireAdmin, companyContext, FeaturedController.reorder);
+app.get ('/featured/companies', requireAdmin, companyContext, FeaturedController.companies);
+
+// Featured Products (admin-picked dishes → home product rows — super admin).
+app.get ('/featured-products',                requireAdmin, companyContext, FeaturedProductsController.list);
+app.get ('/featured-products/new',            requireAdmin, companyContext, FeaturedProductsController.form);
+app.get ('/featured-products/edit/:companyId', requireAdmin, companyContext, FeaturedProductsController.form);
+app.post('/featured-products/save',           requireAdmin, companyContext, FeaturedProductsController.save);
+app.post('/featured-products/delete',         requireAdmin, companyContext, FeaturedProductsController.remove);
+app.post('/featured-products/status',         requireAdmin, companyContext, FeaturedProductsController.statusToggle);
+app.post('/featured-products/reorder',        requireAdmin, companyContext, FeaturedProductsController.reorder);
+app.get ('/featured-products/companies',      requireAdmin, companyContext, FeaturedProductsController.companies);
+app.get ('/featured-products/products',       requireAdmin, companyContext, FeaturedProductsController.products);
+
+// Feed Order (one master ordering of the 4 home-feed sections — super admin).
+app.get ('/feed-sections',         requireAdmin, companyContext, FeedSectionsController.page);
+app.post('/feed-sections/reorder', requireAdmin, companyContext, FeedSectionsController.reorder);
 
 // Store Settings — branch config (port of legacy admin/pos/store-settings).
 app.get ('/store-settings',                requireAdmin, companyContext, StoreSettingsController.index);

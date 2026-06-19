@@ -361,3 +361,65 @@ body.pr-modal-open, body.filters-open { overflow: hidden; }
     /* Save-order bar spans the width above the bottom nav. */
     .mpc-reorderbar { left: 10px; right: 10px; transform: none; bottom: 74px; justify-content: space-between; }
 }
+
+/* ───────────────────────── Collections + Featured ─────────────────────────
+   Curated home-feed rows (collections) + paid placements (featured). Reuses
+   the .pr-* list + .ly-* form chrome; these are the bespoke bits (restaurant
+   picker autocomplete, ordered chips, status pills). */
+.ly-field--full { grid-column: 1 / -1; }
+
+/* Restaurant autocomplete (form picker + featured single-pick). */
+.col-ac { position: relative; display: flex; align-items: center; width: 100%; border: 1px solid var(--color-border); border-radius: 10px; background: #fff; padding: 0 10px; }
+.col-ac__ic { font-size: 0.9rem; opacity: .7; flex: 0 0 auto; }
+.col-ac__input { flex: 1 1 auto; min-width: 0; font: inherit; font-size: 0.88rem; border: none; outline: none; background: transparent; padding: 11px 6px; }
+.col-ac__clear { border: none; background: transparent; color: var(--color-text-muted); cursor: pointer; font-size: 0.85rem; padding: 2px 4px; }
+.col-ac__clear:hover { color: var(--color-danger, #e11d48); }
+.col-ac__panel { position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 40; background: #fff; border: 1px solid var(--color-border); border-radius: 12px; box-shadow: 0 10px 30px rgba(15, 23, 42, .12); max-height: 280px; overflow-y: auto; padding: 4px; }
+.col-ac__item { display: flex; flex-direction: column; gap: 1px; width: 100%; text-align: left; border: none; background: transparent; font: inherit; padding: 9px 10px; border-radius: 8px; cursor: pointer; color: var(--color-text); }
+.col-ac__item:hover { background: var(--color-primary-soft); }
+.col-ac__name { font-size: 0.9rem; font-weight: 600; }
+.col-ac__detail { font-size: 0.74rem; color: var(--color-text-muted); }
+
+/* Ordered, draggable picked restaurants. */
+.col-picklist { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+.col-pick { display: flex; align-items: center; gap: 10px; background: var(--color-bg-alt, #f8fafc); border: 1px solid var(--color-border); border-radius: 10px; padding: 8px 10px; }
+.col-pick.is-dragging { opacity: .5; }
+.col-pick__drag { cursor: grab; color: var(--color-text-muted); font-size: 1.15rem; line-height: 1; user-select: none; touch-action: none; }
+.col-pick__drag:active { cursor: grabbing; }
+.col-pick__body { display: flex; flex-direction: column; gap: 1px; flex: 1 1 auto; min-width: 0; }
+.col-pick__name { font-size: 0.9rem; font-weight: 600; }
+.col-pick__detail { font-size: 0.74rem; color: var(--color-text-muted); }
+.col-pick__x { border: none; background: transparent; color: var(--color-text-muted); cursor: pointer; font-size: 0.9rem; padding: 4px 6px; border-radius: 6px; }
+.col-pick__x:hover { color: var(--color-danger, #e11d48); background: var(--color-primary-soft); }
+.col-pick-empty { margin-top: 8px; }
+
+/* List sub-text (subtitle + meta) + cover thumbnail. */
+.col-sub { display: block; margin-top: 2px; }
+.col-sub__line { display: block; font-size: 0.78rem; color: var(--color-text-muted); }
+.col-sub__meta { display: block; font-size: 0.74rem; color: var(--color-text-muted); }
+.col-cover img { object-fit: cover; }
+
+/* Arrange page drag hint + save bar (reuses the reorderbar look). */
+.col-draghint { margin: 0 0 8px; font-size: 0.8rem; color: var(--color-text-muted); }
+.col-list--drag .pr-item { cursor: default; }
+.col-list--drag .pr-item.is-dragging { opacity: .5; }
+.col-reorderbar { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 60; display: flex; align-items: center; gap: 14px; background: var(--color-text, #0f172a); color: #fff; padding: 10px 14px; border-radius: 999px; box-shadow: 0 10px 28px rgba(15, 23, 42, .28); }
+.col-reorderbar__msg { font-size: 0.85rem; font-weight: 600; }
+.col-reorderbar__act { display: flex; gap: 8px; }
+
+/* Featured status pill. */
+.feat-badge { display: inline-block; font-size: 0.72rem; font-weight: 700; padding: 1px 7px; border-radius: 999px; }
+.feat-badge--live { background: #dcfce7; color: #15803d; }
+.feat-badge--off { background: #f1f5f9; color: #64748b; }
+
+/* Feed Order page — section icon + show/hide toggle. */
+.fo-ic { font-size: 1.3rem; }
+.fo-toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 0.85rem; cursor: pointer; color: var(--color-text-muted); }
+.fo-toggle input { cursor: pointer; }
+/* Fixed (non-reorderable) rows — My Favourites (top) + Top restaurants (bottom). */
+.fo-fixed { opacity: 0.7; background: var(--color-bg-alt, #f8fafc); }
+.fo-lock { font-size: 0.95rem; padding: 0 4px; cursor: not-allowed; color: var(--color-text-muted); }
+
+@media (max-width: 899px) {
+    .col-reorderbar { left: 10px; right: 10px; transform: none; bottom: 74px; justify-content: space-between; }
+}

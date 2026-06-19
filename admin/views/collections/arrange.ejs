@@ -1,0 +1,53 @@
+<%#
+  views/collections/arrange.ejs
+
+  Full-page drag-and-drop reorder of EVERY collection (loaded on one page so the
+  saved order is global). Posts the new order to /collections/reorder. `pd` =
+  { collections[] } (limit=all) or null.
+
+  Used: Controllers/CollectionsController.arrange.
+-%>
+<div class="pr" data-col-arrange>
+
+    <div class="ly__head">
+        <div>
+            <h2 class="ly__title">↕ Arrange rows</h2>
+            <p class="ly__sub">Drag to set the order rows appear on the home feed</p>
+        </div>
+        <a href="/collections" class="ly-btn ly-btn--ghost ly-btn--sm">← Back to list</a>
+    </div>
+
+    <% if (load_error) { %>
+        <div class="ly-empty"><span class="ly-empty__ic" aria-hidden="true">🏢</span><p class="ly-empty__msg"><%= load_error %></p></div>
+    <% } else if (!pd || !pd.collections.length) { %>
+        <div class="ly-empty"><span class="ly-empty__ic" aria-hidden="true">⭐</span><p class="ly-empty__msg">No collections to arrange yet.</p></div>
+    <% } else { %>
+
+    <p class="col-draghint">⠿ Drag rows to reorder, then save.</p>
+    <div class="pr-list col-list--drag" data-list data-draggable>
+        <% pd.collections.forEach(function (c) { %>
+        <div class="pr-item" data-id="<%= c.id %>" draggable="true">
+            <div class="pr-item__main">
+                <span class="col-pick__drag" data-drag-handle aria-hidden="true">⠿</span>
+                <span class="pr-item__img col-cover">
+                    <% if (c.image_url) { %><img src="<%= c.image_url %>" alt=""><% } else { %><span class="pr-item__noimg">⭐</span><% } %>
+                </span>
+                <span class="pr-item__name"><%= c.name %>
+                    <span class="col-sub"><span class="col-sub__meta"><%= c.restaurants %> restaurant<%= c.restaurants === 1 ? '' : 's' %></span></span>
+                </span>
+            </div>
+        </div>
+        <% }); %>
+    </div>
+
+    <% } %>
+</div>
+
+<%# Sticky save bar — appears after a drag. %>
+<div class="col-reorderbar" data-reorderbar hidden>
+    <span class="col-reorderbar__msg">Order changed.</span>
+    <div class="col-reorderbar__act">
+        <button type="button" class="ly-btn ly-btn--ghost ly-btn--sm" data-action="col-reorder-reset">Reset</button>
+        <button type="button" class="ly-btn ly-btn--primary ly-btn--sm" data-action="col-reorder-save">Save order</button>
+    </div>
+</div>

@@ -1,0 +1,109 @@
+<%#
+  views/collections/form.ejs
+
+  Add / edit a marketplace collection (a curated home-feed row): title,
+  subtitle, slug (auto from title), status, row order, an optional cover image,
+  and the hand-picked restaurants WITH order (drag to reorder). `collection` =
+  the row to edit (or null to add); `assigned` = its restaurants in position
+  order (edit only).
+
+  Used: Controllers/CollectionsController.form.
+-%>
+<%
+    var p = collection || {};
+    var isEdit = !!(collection && collection.id);
+    var rows = assigned || [];
+%>
+<div class="ly">
+
+    <div class="ly__head">
+        <div>
+            <h2 class="ly__title"><%= isEdit ? '✎ Edit Collection' : '➕ New Collection' %></h2>
+            <p class="ly__sub"><%= isEdit ? (p.name || 'Collection') : 'A curated row on the marketplace home feed' %></p>
+        </div>
+        <a href="/collections" class="ly-btn ly-btn--ghost ly-btn--sm">← Back to list</a>
+    </div>
+
+    <% if (load_error) { %>
+        <div class="ly-empty"><span class="ly-empty__ic" aria-hidden="true">🏢</span><p class="ly-empty__msg"><%= load_error %></p></div>
+    <% } else { %>
+
+    <form method="post" action="/collections/save" enctype="multipart/form-data" class="pr-form col-form" data-col-form>
+        <% if (isEdit) { %><input type="hidden" name="id" value="<%= p.id %>"><% } %>
+        <%# Sentinel: tells the api the picker was submitted (so an emptied list clears the row). %>
+        <input type="hidden" name="company_ids_submitted" value="1">
+
+        <section class="card ly-card">
+            <h3 class="card__title">Details</h3>
+            <div class="ly-grid">
+                <div class="ly-field">
+                    <label for="col-name">Title <span class="pr-req">*</span></label>
+                    <input id="col-name" type="text" name="name" maxlength="120" value="<%= p.name || '' %>" required data-col-name>
+                </div>
+                <div class="ly-field">
+                    <label for="col-sub">Subtitle <span class="ly-field__hint">(optional, under the title)</span></label>
+                    <input id="col-sub" type="text" name="subtitle" maxlength="180" value="<%= p.subtitle || '' %>" placeholder="e.g. Loved by people around you">
+                </div>
+                <div class="ly-field">
+                    <label for="col-slug">Slug <span class="ly-field__hint">(auto from title)</span></label>
+                    <input id="col-slug" type="text" name="slug" maxlength="140" value="<%= p.slug || '' %>" placeholder="e.g. popular-near-you" data-col-slug>
+                </div>
+                <div class="ly-field">
+                    <label for="col-status">Status</label>
+                    <select id="col-status" name="status">
+                        <option value="1" <%= (!isEdit || Number(p.status) === 1) ? 'selected' : '' %>>Active</option>
+                        <option value="0" <%= (isEdit && Number(p.status) !== 1) ? 'selected' : '' %>>Inactive</option>
+                    </select>
+                </div>
+                <div class="ly-field">
+                    <label for="col-sort">Row order <span class="ly-field__hint">(lower = higher up)</span></label>
+                    <input id="col-sort" type="number" name="sort_order" min="0" step="1" value="<%= isEdit ? (p.sort_order || 0) : (typeof next_sort !== 'undefined' ? next_sort : 1) %>" data-col-sort>
+                </div>
+            </div>
+        </section>
+
+        <section class="card ly-card">
+            <h3 class="card__title">Cover image <span class="ly-field__hint">(optional)</span></h3>
+            <div class="pr-imgrow">
+                <div class="pr-imgprev" data-img-prev>
+                    <% if (isEdit && p.image_url) { %><img src="<%= p.image_url %>" alt="" data-img-thumb><% } else { %><span class="pr-imgprev__ph" data-img-ph>No image</span><% } %>
+                </div>
+                <div class="pr-imgupload">
+                    <input type="file" name="image" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" data-img-input>
+                    <p class="ly-hint">PNG / JPG / WEBP / GIF / SVG, up to 3 MB. <%= isEdit ? 'Leave empty to keep the current image.' : '' %></p>
+                </div>
+            </div>
+        </section>
+
+        <section class="card ly-card">
+            <h3 class="card__title">Restaurants in this row <span class="ly-field__hint">(drag ⠿ to set the order)</span></h3>
+            <div class="col-ac" data-col-ac>
+                <span class="col-ac__ic" aria-hidden="true">🔍</span>
+                <input type="text" class="col-ac__input" placeholder="Search restaurants to add…" autocomplete="off" data-ac-input>
+                <div class="col-ac__panel" data-ac-panel hidden></div>
+            </div>
+
+            <div class="col-picklist" data-pick-list>
+                <% rows.forEach(function (r) { %>
+                <div class="col-pick" data-id="<%= r.id %>" draggable="true">
+                    <span class="col-pick__drag" data-drag-handle title="Drag to reorder" aria-hidden="true">⠿</span>
+                    <span class="col-pick__body">
+                        <span class="col-pick__name"><%= r.name %></span>
+                        <span class="col-pick__detail"><%= r.detail %></span>
+                    </span>
+                    <button type="button" class="col-pick__x" data-action="pick-remove" aria-label="Remove">✕</button>
+                    <input type="hidden" name="company_ids" value="<%= r.id %>">
+                </div>
+                <% }); %>
+            </div>
+            <p class="ly-hint col-pick-empty" data-pick-empty<%= rows.length ? ' hidden' : '' %>>No restaurants yet — search above to add.</p>
+        </section>
+
+        <div class="ly-saveall">
+            <a href="/collections" class="ly-btn ly-btn--ghost">Cancel</a>
+            <button type="submit" class="ly-btn ly-btn--primary ly-btn--lg"><%= isEdit ? 'Save changes' : 'Create collection' %></button>
+        </div>
+    </form>
+
+    <% } %>
+</div>

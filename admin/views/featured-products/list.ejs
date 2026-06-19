@@ -1,0 +1,96 @@
+<%#
+  views/featured-products/list.ejs
+
+  Featured products — one entry PER restaurant (the home feed shows a product
+  row headed by the restaurant name). Search, inline status, delete, Add / Edit.
+  `pd` = { entries[], total } or null.
+
+  Used: Controllers/FeaturedProductsController.list.
+-%>
+<%
+    var STATUSES = [[1, 'Active'], [0, 'Inactive']];
+    function statusSel(cid, cur) {
+        var h = '<select class="pr-status fp-status" data-id="' + cid + '">';
+        STATUSES.forEach(function (s) { h += '<option value="' + s[0] + '"' + (Number(cur) === s[0] ? ' selected' : '') + '>' + s[1] + '</option>'; });
+        return h + '</select>';
+    }
+%>
+<div class="pr" data-fp-root>
+
+    <div class="ly__head">
+        <div>
+            <h2 class="ly__title">🍔 Featured Products</h2>
+            <p class="ly__sub">Pick a restaurant + its dishes — they show as a product row on the home feed</p>
+        </div>
+        <% if (pd) { %>
+        <div class="pr-head-act">
+            <a href="/featured-products/new" class="ly-btn ly-btn--primary ly-btn--sm">➕ Add featured products</a>
+        </div>
+        <% } %>
+    </div>
+
+    <% if (load_error) { %>
+        <div class="ly-empty"><span class="ly-empty__ic" aria-hidden="true">🏢</span><p class="ly-empty__msg"><%= load_error %></p></div>
+    <% } else if (pd) { %>
+
+        <div class="pr-toolbar">
+            <form method="get" action="/featured-products" class="pr-filter">
+                <div class="pr-search">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                    <input type="text" name="q" value="<%= search_q %>" placeholder="Search restaurants…" autocomplete="off">
+                    <% if (search_q) { %><a href="/featured-products" class="pr-search__clear" aria-label="Clear">✕</a><% } %>
+                </div>
+            </form>
+        </div>
+
+        <% if (!pd.entries.length) { %>
+            <div class="ly-empty"><span class="ly-empty__ic" aria-hidden="true">🍔</span><p class="ly-empty__msg"><%= search_q ? 'No restaurants match your search.' : 'No featured products yet.' %></p></div>
+        <% } else { %>
+        <p class="col-draghint">⠿ Drag to reorder — the top restaurant's product row shows first on the home feed. Then "Save order".</p>
+        <div class="pr-list col-list--drag" data-list data-draggable>
+            <% pd.entries.forEach(function (e) { %>
+            <div class="pr-item" data-id="<%= e.company_id %>" draggable="true">
+                <div class="pr-item__main">
+                    <span class="col-pick__drag" data-drag-handle aria-hidden="true">⠿</span>
+                    <span class="pr-item__img"><span class="pr-item__noimg">🍔</span></span>
+                    <span class="pr-item__name">
+                        <%= e.company_name %>
+                        <span class="col-sub"><span class="col-sub__meta"><%= e.products %> product<%= e.products === 1 ? '' : 's' %> featured</span></span>
+                    </span>
+                </div>
+                <div class="pr-item__controls">
+                    <span class="pr-statuswrap"><%- statusSel(e.company_id, e.status) %></span>
+                    <span class="pr-item__act">
+                        <a href="/featured-products/edit/<%= e.company_id %>" class="ly-iconbtn" title="Edit">✎</a>
+                        <button type="button" class="ly-iconbtn ly-iconbtn--danger" data-action="fp-delete" data-id="<%= e.company_id %>" title="Remove">🗑</button>
+                    </span>
+                </div>
+            </div>
+            <% }); %>
+        </div>
+        <% } %>
+
+    <% } %>
+</div>
+
+<%# Sticky save bar — appears after a drag. %>
+<div class="col-reorderbar" data-reorderbar hidden>
+    <span class="col-reorderbar__msg">Order changed.</span>
+    <div class="col-reorderbar__act">
+        <button type="button" class="ly-btn ly-btn--ghost ly-btn--sm" data-action="fp-reorder-reset">Reset</button>
+        <button type="button" class="ly-btn ly-btn--primary ly-btn--sm" data-action="fp-reorder-save">Save order</button>
+    </div>
+</div>
+
+<%# Delete confirm modal. %>
+<div class="pr-modal" data-modal="delete" hidden>
+    <div class="pr-modal__panel pr-modal__panel--sm">
+        <div class="pr-modal__icon">⚠️</div>
+        <h3 class="pr-modal__title">Remove featured products?</h3>
+        <p class="pr-modal__msg">This restaurant's product row will no longer show on the home feed.</p>
+        <div class="pr-modal__foot pr-modal__foot--center">
+            <button type="button" class="ly-btn ly-btn--ghost" data-action="fp-modal-cancel">No, cancel</button>
+            <button type="button" class="ly-btn ly-btn--danger" data-action="fp-delete-confirm">Yes, remove</button>
+        </div>
+    </div>
+</div>

@@ -1,0 +1,142 @@
+<%#
+  views/featured/list.ejs
+
+  Featured / sponsored placements — search, status filter, pagination, inline
+  status, delete, Add / Edit. Each placement boosts one restaurant into the
+  "Featured" row of the marketplace home feed for a time window.
+  `pd` = { placements[], total, page, limit, total_pages } or null.
+
+  Used: Controllers/FeaturedController.list.
+-%>
+<%
+    var STATUSES = [[1, 'Active'], [0, 'Inactive']];
+    var SIZES = [['all', 'All'], ['10', '10'], ['25', '25'], ['50', '50'], ['100', '100']];
+    var STATUS_F = [['', 'All status'], ['active', 'Active'], ['inactive', 'Inactive']];
+    function statusSel(id, cur) {
+        var h = '<select class="pr-status feat-status" data-id="' + id + '">';
+        STATUSES.forEach(function (s) { h += '<option value="' + s[0] + '"' + (Number(cur) === s[0] ? ' selected' : '') + '>' + s[1] + '</option>'; });
+        return h + '</select>';
+    }
+    function fmtDate(s) {
+        if (!s) { return '—'; }
+        var d = new Date(s);
+        if (isNaN(d.getTime())) { return String(s); }
+        return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' });
+    }
+    function pageUrl(n) {
+        var qp = [];
+        if (search_q) { qp.push('q=' + encodeURIComponent(search_q)); }
+        if (cur_status) { qp.push('status=' + encodeURIComponent(cur_status)); }
+        qp.push('limit=' + cur_limit); qp.push('page=' + n);
+        return '/featured?' + qp.join('&');
+    }
+    var page = pd ? Number(pd.page) : 1;
+    var totalPages = pd ? Number(pd.total_pages) : 1;
+%>
+<div class="pr" data-feat-root>
+
+    <div class="ly__head">
+        <div>
+            <h2 class="ly__title">📌 Featured / Sponsored</h2>
+            <p class="ly__sub">Paid placements shown in the "Featured" row at the top of the home feed</p>
+        </div>
+        <% if (pd) { %>
+        <div class="pr-head-act">
+            <a href="/featured/new" class="ly-btn ly-btn--primary ly-btn--sm">➕ Add featured</a>
+        </div>
+        <% } %>
+    </div>
+
+    <% if (load_error) { %>
+        <div class="ly-empty"><span class="ly-empty__ic" aria-hidden="true">🏢</span><p class="ly-empty__msg"><%= load_error %></p></div>
+    <% } else if (pd) { %>
+
+        <div class="pr-toolbar">
+            <form method="get" action="/featured" class="pr-filter">
+                <div class="pr-search">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                    <input type="text" name="q" value="<%= search_q %>" placeholder="Search restaurants…" autocomplete="off">
+                    <% if (search_q) { %><a href="/featured" class="pr-search__clear" aria-label="Clear">✕</a><% } %>
+                </div>
+                <div class="pr-filters">
+                    <select name="status" class="pr-filter-sel" aria-label="Status">
+                        <% STATUS_F.forEach(function (s) { %><option value="<%= s[0] %>" <%= cur_status === s[0] ? 'selected' : '' %>><%= s[1] %></option><% }); %>
+                    </select>
+                    <select name="limit" class="pr-filter-sel" aria-label="Per page">
+                        <% SIZES.forEach(function (s) { %><option value="<%= s[0] %>" <%= cur_limit === s[0] ? 'selected' : '' %>>Show <%= s[1] %></option><% }); %>
+                    </select>
+                    <button type="submit" class="ly-btn ly-btn--ghost ly-btn--sm">Apply</button>
+                </div>
+            </form>
+        </div>
+
+        <% if (!pd.placements.length) { %>
+            <div class="ly-empty"><span class="ly-empty__ic" aria-hidden="true">📌</span><p class="ly-empty__msg"><%= search_q ? 'No placements match your search.' : 'No featured placements yet.' %></p></div>
+        <% } else { %>
+        <p class="col-draghint">⠿ Drag to reorder — the top one shows first in its row (Featured / Sponsored). Then "Save order".</p>
+        <div class="pr-list col-list--drag" data-list data-draggable>
+            <% pd.placements.forEach(function (f) { %>
+            <div class="pr-item" data-id="<%= f.id %>" draggable="true">
+                <div class="pr-item__main">
+                    <span class="col-pick__drag" data-drag-handle aria-hidden="true">⠿</span>
+                    <span class="pr-item__img"><span class="pr-item__noimg">📌</span></span>
+                    <span class="pr-item__name">
+                        <%= f.company_name %>
+                        <span class="col-sub">
+                            <span class="col-sub__meta">
+                                <span class="feat-badge feat-badge--<%= f.live ? 'live' : 'off' %>"><%= f.live ? '🟢 Live' : (Number(f.status) === 1 ? '⏳ Scheduled/Expired' : '⚪ Off') %></span>
+                                · priority <%= f.priority %> · <%= fmtDate(f.starts_at) %> → <%= f.ends_at ? fmtDate(f.ends_at) : 'open' %>
+                                <% if (f.amount_paid != null) { %> · £<%= Number(f.amount_paid).toFixed(2) %><% } %>
+                            </span>
+                        </span>
+                    </span>
+                </div>
+                <div class="pr-item__controls">
+                    <span class="pr-statuswrap"><%- statusSel(f.id, f.status) %></span>
+                    <span class="pr-item__act">
+                        <a href="/featured/edit/<%= f.id %>" class="ly-iconbtn" title="Edit">✎</a>
+                        <button type="button" class="ly-iconbtn ly-iconbtn--danger" data-action="feat-delete" data-id="<%= f.id %>" title="Delete">🗑</button>
+                    </span>
+                </div>
+            </div>
+            <% }); %>
+        </div>
+
+        <% if (totalPages > 1 || pd.total) { %>
+        <div class="pr-pager">
+            <span class="pr-pager__info"><%= pd.total %> placement<%= pd.total === 1 ? '' : 's' %><% if (totalPages > 1) { %> · page <%= page %> of <%= totalPages %><% } %></span>
+            <% if (totalPages > 1) { %>
+            <div class="pr-pager__nav">
+                <% if (page > 1) { %><a class="pr-pager__btn" href="<%= pageUrl(page - 1) %>">‹ Prev</a><% } %>
+                <% for (var n = Math.max(1, page - 2); n <= Math.min(totalPages, page + 2); n++) { %><a class="pr-pager__btn <%= n === page ? 'is-active' : '' %>" href="<%= pageUrl(n) %>"><%= n %></a><% } %>
+                <% if (page < totalPages) { %><a class="pr-pager__btn" href="<%= pageUrl(page + 1) %>">Next ›</a><% } %>
+            </div>
+            <% } %>
+        </div>
+        <% } %>
+        <% } %>
+
+    <% } %>
+</div>
+
+<%# Sticky save bar — appears after a drag. %>
+<div class="col-reorderbar" data-reorderbar hidden>
+    <span class="col-reorderbar__msg">Order changed.</span>
+    <div class="col-reorderbar__act">
+        <button type="button" class="ly-btn ly-btn--ghost ly-btn--sm" data-action="feat-reorder-reset">Reset</button>
+        <button type="button" class="ly-btn ly-btn--primary ly-btn--sm" data-action="feat-reorder-save">Save order</button>
+    </div>
+</div>
+
+<%# Delete confirm modal. %>
+<div class="pr-modal" data-modal="delete" hidden>
+    <div class="pr-modal__panel pr-modal__panel--sm">
+        <div class="pr-modal__icon">⚠️</div>
+        <h3 class="pr-modal__title">Remove placement?</h3>
+        <p class="pr-modal__msg" data-delete-msg>This restaurant will no longer be featured.</p>
+        <div class="pr-modal__foot pr-modal__foot--center">
+            <button type="button" class="ly-btn ly-btn--ghost" data-action="feat-modal-cancel">No, cancel</button>
+            <button type="button" class="ly-btn ly-btn--danger" data-action="feat-delete-confirm">Yes, remove</button>
+        </div>
+    </div>
+</div>

@@ -89,10 +89,15 @@ async function fetchMarketplace(req, lat, lng, cuisine, filters, postcode) {
         callApi(req, 'GET', '/api/v1/marketplace/categories'),
         callApi(req, 'GET', '/api/v1/marketplace/offers?limit=8'),
     ];
-    if (cuisine) {
-        calls.push(callApi(req, 'GET', '/api/v1/marketplace/categories?parent=' + encodeURIComponent(cuisine)));
-    }
-    const [rRes, pRes, cRes, oRes, sRes] = await Promise.all(calls);
+    // Sub-categories only when a cuisine is selected; the curated home FEED
+    // (Featured + collection rows) only on the PLAIN home (no cuisine filter —
+    // the shelves are a homepage surface, not a filtered result).
+    const subIdx  = cuisine ? (calls.push(callApi(req, 'GET', '/api/v1/marketplace/categories?parent=' + encodeURIComponent(cuisine))) - 1) : -1;
+    const feedIdx = !cuisine ? (calls.push(callApi(req, 'GET', '/api/v1/marketplace/home-feed?' + baseQs().toString())) - 1) : -1;
+    const results = await Promise.all(calls);
+    const rRes = results[0], pRes = results[1], cRes = results[2], oRes = results[3];
+    const sRes = subIdx  >= 0 ? results[subIdx]  : null;
+    const feedRes = feedIdx >= 0 ? results[feedIdx] : null;
 
     const featured      = (rRes.body && rRes.body.status === 200 && rRes.body.data && rRes.body.data.restaurants) || null;
     const forYou        = (pRes.body && pRes.body.status === 200 && pRes.body.data && pRes.body.data.products)    || null;
@@ -109,6 +114,12 @@ async function fetchMarketplace(req, lat, lng, cuisine, filters, postcode) {
     // sidebar renders its badge numbers from these.
     const facets = (rRes.body && rRes.body.status === 200 && rRes.body.data && rRes.body.data.facets) || null;
     const homeOffers = (oRes && oRes.body && oRes.body.status === 200 && oRes.body.data && oRes.body.data.offers) || [];
+    // Curated home feed — ordered rows (Featured + collections). Empty when
+    // nothing is configured / on a filtered view, so the page is unchanged.
+    const homeFeed = (feedRes && feedRes.body && feedRes.body.status === 200 && feedRes.body.data && feedRes.body.data.rows) || [];
+    // The admin-configured order of ALL 6 home sections (incl. My Favourites +
+    // Top restaurants, which the web renders) — drives the section layout.
+    const homeFeedOrder = (feedRes && feedRes.body && feedRes.body.status === 200 && feedRes.body.data && feedRes.body.data.order) || null;
     return {
         featured,
         for_you:        forYou,
@@ -118,6 +129,8 @@ async function fetchMarketplace(req, lat, lng, cuisine, filters, postcode) {
         for_you_more:   forYouMore,
         facets,
         home_offers:    homeOffers,
+        home_feed:      homeFeed,
+        home_feed_order: homeFeedOrder,
     };
 }
 
@@ -295,6 +308,8 @@ async function index(req, res, next) {
     let forYouMore         = false;
     let liveFacets         = null;   // dynamic filter counts for the sidebar
     let liveHomeOffers     = [];     // home "Best offers" rail (real banners)
+    let liveHomeFeed       = [];     // curated rows (Featured + collections)
+    let liveHomeFeedOrder  = null;   // admin section order (all 6 sections)
     let cuisineNoMatch     = false;  // cuisine filter returned 0 → showing fallback restaurants
     let myFavourites       = [];     // signed-in customer's saved restaurants (default home only)
     if (userLocation) {
@@ -427,6 +442,8 @@ async function index(req, res, next) {
                 forYouMore        = !!out.for_you_more;
                 liveFacets        = out.facets || null;
                 liveHomeOffers    = out.home_offers || [];
+                liveHomeFeed      = out.home_feed || [];
+                liveHomeFeedOrder = out.home_feed_order || null;
 
                 // Empty cuisine → don't show a blank feed. Fall back to
                 // nearby restaurants (with a note) so the user still has
@@ -674,8 +691,22 @@ async function index(req, res, next) {
     // generic-cuisine fallback (Pizza / Burger / …) so the "What's on
     // your mind?" pill row never goes blank. The empty case is too
     // common during onboarding to leave the row empty.
-    const finalFeatured = liveFeatured != null ? liveFeatured : featured;
+    let   finalFeatured = liveFeatured != null ? liveFeatured : featured;
     const finalForYou   = liveForYou   != null ? liveForYou   : forYou;
+
+    // #2 De-dup the main "Top restaurants near you" grid: drop any restaurant
+    // already shown ABOVE it — in the curated feed rows (Featured + collections)
+    // or My Favourites — so the same card never appears twice on the home.
+    {
+        const shownIds = new Set();
+        (myFavourites || []).forEach((r) => { if (r && r.id != null) { shownIds.add(String(r.id)); } });
+        (liveHomeFeed || []).forEach((row) => {
+            ((row && row.restaurants) || []).forEach((r) => { if (r && r.id != null) { shownIds.add(String(r.id)); } });
+        });
+        if (Array.isArray(finalFeatured) && shownIds.size) {
+            finalFeatured = finalFeatured.filter((r) => !(r && r.id != null && shownIds.has(String(r.id))));
+        }
+    }
     let   finalCuisines = (liveCategories && liveCategories.length)
         ? liveCategories
         : cuisines;
@@ -741,6 +772,8 @@ async function index(req, res, next) {
         featured:         finalFeatured,
         my_favourites:    myFavourites,
         home_offers:      liveHomeOffers,
+        home_feed:        liveHomeFeed,
+        home_feed_order:  liveHomeFeedOrder,
         for_you:          finalForYou,
         // has_more flags from the api → drive both the "View all"
         // header link and the "See more" load-more block at the

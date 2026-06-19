@@ -212,6 +212,51 @@
 .hv2-head__link  { color: var(--color-primary); font-weight: 600; font-size: 0.9rem; white-space: nowrap; }
 .hv2-head__link:hover { text-decoration: underline; }
 
+/* Curated home-feed rows (partials/home-row.ejs): the optional subtitle under
+   a collection title, and the star on the paid "Featured" row. */
+.home-row__sub { font-size: 0.85rem; color: var(--color-text-muted); font-weight: 500; margin-left: 2px; }
+.home-row__star { color: var(--color-primary); }
+.home-row--featured .hv2-head__title { color: var(--color-primary); }
+
+/* home-rail — a SINGLE horizontal-scrolling carousel (Uber-Eats shelf). Unlike
+   .resto-rail (a wrapping grid), this stays ONE line and slides sideways when
+   there are many cards — same on desktop AND mobile (never a second row). */
+.home-rail {
+    display: flex; flex-wrap: nowrap; gap: var(--space-4);
+    margin: 0; padding: 0; list-style: none;
+    overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch;
+    scroll-snap-type: x proximity;
+    /* No visible scrollbar — navigation is via the arrows (desktop) / swipe
+       (mobile). Scroll still works; the bar is just hidden. */
+    scrollbar-width: none; -ms-overflow-style: none;
+}
+.home-rail::-webkit-scrollbar { display: none; height: 0; width: 0; }
+.home-rail > li { flex: 0 0 auto; width: 250px; max-width: 82%; scroll-snap-align: start; }
+@media (max-width: 767px) {
+    /* Card peeks the next one so it's clearly swipeable. */
+    .home-rail > li { width: 76%; }
+}
+
+/* Featured-PRODUCT cards (partials/home-product-row.ejs) — smaller than the
+   restaurant cards; tap opens the product modal. */
+.home-rail--product > li { width: 168px; max-width: 60%; }
+@media (max-width: 767px) { .home-rail--product > li { width: 44%; } }
+.hp-card {
+    display: flex; flex-direction: column; width: 100%; text-align: left;
+    background: #fff; border: 1px solid var(--color-border-soft); border-radius: var(--radius-lg);
+    overflow: hidden; cursor: pointer; padding: 0; font: inherit; color: inherit;
+    transition: box-shadow .15s ease, transform .15s ease;
+}
+.hp-card:hover { box-shadow: 0 6px 18px rgba(15, 23, 42, .1); transform: translateY(-2px); }
+.hp-card__media { position: relative; width: 100%; aspect-ratio: 1 / 1; background: var(--color-bg-alt, #f1f5f9); display: flex; align-items: center; justify-content: center; }
+.hp-card__media img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.hp-card__ph { font-size: 1.8rem; opacity: .5; }
+.hp-card__veg { position: absolute; top: 6px; left: 6px; width: 12px; height: 12px; border: 2px solid #15803d; border-radius: 3px; background: #fff; }
+.hp-card__veg::after { content: ''; position: absolute; top: 2px; left: 2px; width: 4px; height: 4px; border-radius: 50%; background: #15803d; }
+.hp-card__body { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px 10px; }
+.hp-card__name { font-size: 0.85rem; font-weight: 600; color: var(--color-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hp-card__price { font-size: 0.85rem; font-weight: 700; color: var(--color-primary); }
+
 /* Small round arrow nav buttons (top-right of rails). Decorative on
  * touch; functional scroll nudge on desktop via home.js (optional). */
 .hv2-nav { display: inline-flex; gap: var(--space-2); }

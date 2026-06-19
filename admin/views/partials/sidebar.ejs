@@ -28,6 +28,29 @@
         <a class="admin-nav__item <%= nav === 'mp-categories' ? 'is-active' : '' %>" href="/marketplace-categories">
             <span class="admin-nav__ic" aria-hidden="true">🗂️</span><span>Marketplace Categories</span>
         </a>
+        <%# Home Feed group — all marketplace home-feed merchandising in ONE
+            menu (collections, featured restaurants, featured products …).
+            Open when any child is active. %>
+        <details class="admin-nav__group" <%= ['collections', 'featured', 'featured-products', 'feed-order'].includes(nav) ? 'open' : '' %>>
+            <summary class="admin-nav__item admin-nav__sum">
+                <span class="admin-nav__ic" aria-hidden="true">🏬</span><span>Home Feed</span>
+                <span class="admin-nav__chev" aria-hidden="true">▸</span>
+            </summary>
+            <div class="admin-nav__sub">
+                <a class="admin-nav__item admin-nav__subitem <%= nav === 'feed-order' ? 'is-active' : '' %>" href="/feed-sections">
+                    <span class="admin-nav__ic" aria-hidden="true">🔢</span><span>Feed Order</span>
+                </a>
+                <a class="admin-nav__item admin-nav__subitem <%= nav === 'collections' ? 'is-active' : '' %>" href="/collections">
+                    <span class="admin-nav__ic" aria-hidden="true">⭐</span><span>Collections</span>
+                </a>
+                <a class="admin-nav__item admin-nav__subitem <%= nav === 'featured' ? 'is-active' : '' %>" href="/featured">
+                    <span class="admin-nav__ic" aria-hidden="true">📌</span><span>Featured</span>
+                </a>
+                <a class="admin-nav__item admin-nav__subitem <%= nav === 'featured-products' ? 'is-active' : '' %>" href="/featured-products">
+                    <span class="admin-nav__ic" aria-hidden="true">🍔</span><span>Featured Products</span>
+                </a>
+            </div>
+        </details>
         <% } %>
 
         <%# Settings group (legacy "Settings" submenu). Open when a child is active. %>

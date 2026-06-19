@@ -1,0 +1,52 @@
+<%#
+  views/feed-sections/arrange.ejs
+
+  The ONE master ordering of the home-feed sections — drag the 4 sections into
+  the order they appear on the customer home, and toggle each on/off. Saves to
+  /feed-sections/reorder. `pd` = { sections:[{key,label,icon,hint,status}] }.
+
+  Used: Controllers/FeedSectionsController.page.
+-%>
+<div class="pr" data-feedorder>
+
+    <div class="ly__head">
+        <div>
+            <h2 class="ly__title">🔢 Feed Order</h2>
+            <p class="ly__sub">One place to set what shows first on the marketplace home feed</p>
+        </div>
+    </div>
+
+    <% if (load_error) { %>
+        <div class="ly-empty"><span class="ly-empty__ic" aria-hidden="true">🏢</span><p class="ly-empty__msg"><%= load_error %></p></div>
+    <% } else if (pd && pd.sections && pd.sections.length) { %>
+
+        <p class="col-draghint">⠿ Drag ANY section to reorder · toggle to show / hide. Order top→bottom = top→down on the home page.</p>
+
+        <div class="pr-list col-list--drag" data-list data-draggable>
+            <% pd.sections.forEach(function (s) { %>
+            <div class="pr-item" data-key="<%= s.key %>" draggable="true">
+                <div class="pr-item__main">
+                    <span class="col-pick__drag" data-drag-handle aria-hidden="true">⠿</span>
+                    <span class="pr-item__img"><span class="fo-ic" aria-hidden="true"><%= s.icon %></span></span>
+                    <span class="pr-item__name"><%= s.label %>
+                        <span class="col-sub"><span class="col-sub__meta"><%= s.hint %></span></span>
+                    </span>
+                </div>
+                <div class="pr-item__controls">
+                    <label class="fo-toggle">
+                        <input type="checkbox" class="fo-enable" data-key="<%= s.key %>" <%= Number(s.status) === 1 ? 'checked' : '' %>>
+                        <span>Show</span>
+                    </label>
+                </div>
+            </div>
+            <% }); %>
+        </div>
+
+        <div class="ly-saveall">
+            <button type="button" class="ly-btn ly-btn--primary ly-btn--lg" data-action="fo-save">Save order</button>
+        </div>
+
+    <% } else { %>
+        <div class="ly-empty"><span class="ly-empty__ic" aria-hidden="true">🔢</span><p class="ly-empty__msg">No feed sections to arrange.</p></div>
+    <% } %>
+</div>

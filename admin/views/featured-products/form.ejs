@@ -1,0 +1,81 @@
+<%#
+  views/featured-products/form.ejs
+
+  Add / edit featured products for ONE restaurant: pick the restaurant (new
+  only — fixed on edit), then search + add its products and drag to order. Posts
+  company_id + ordered product_ids[]. `company` = { id, name } (edit) or null;
+  `products` = the already-featured products in order (edit).
+
+  Used: Controllers/FeaturedProductsController.form.
+-%>
+<%
+    var isEdit = !!(company && company.id);
+    var rows = products || [];
+%>
+<div class="ly">
+
+    <div class="ly__head">
+        <div>
+            <h2 class="ly__title"><%= isEdit ? '✎ Edit Featured Products' : '➕ Add Featured Products' %></h2>
+            <p class="ly__sub"><%= isEdit ? (company.name || 'Restaurant') : 'Pick a restaurant, then its dishes' %></p>
+        </div>
+        <a href="/featured-products" class="ly-btn ly-btn--ghost ly-btn--sm">← Back to list</a>
+    </div>
+
+    <% if (load_error) { %>
+        <div class="ly-empty"><span class="ly-empty__ic" aria-hidden="true">🏢</span><p class="ly-empty__msg"><%= load_error %></p></div>
+    <% } else { %>
+
+    <form method="post" action="/featured-products/save" class="pr-form fp-form" data-fp-form data-edit="<%= isEdit ? '1' : '0' %>">
+        <input type="hidden" name="company_id" value="<%= isEdit ? company.id : '' %>" data-fp-company>
+        <input type="hidden" name="products_submitted" value="1">
+
+        <section class="card ly-card">
+            <h3 class="card__title">Restaurant</h3>
+            <% if (isEdit) { %>
+                <p class="fp-resto-fixed">🏪 <strong><%= company.name %></strong> <span class="ly-field__hint"><%= company.detail || '' %></span></p>
+            <% } else { %>
+                <div class="ly-field">
+                    <label>Restaurant <span class="pr-req">*</span></label>
+                    <div class="col-ac" data-fp-restaurant-ac>
+                        <span class="col-ac__ic" aria-hidden="true">🔍</span>
+                        <input type="text" class="col-ac__input" placeholder="Search a restaurant…" autocomplete="off" data-ac-input>
+                        <div class="col-ac__panel" data-ac-panel hidden></div>
+                    </div>
+                    <p class="ly-hint" data-fp-resto-picked hidden></p>
+                </div>
+            <% } %>
+        </section>
+
+        <section class="card ly-card" data-fp-products-section<%= (!isEdit) ? ' hidden' : '' %>>
+            <h3 class="card__title">Products <span class="ly-field__hint">(drag ⠿ to set the order)</span></h3>
+            <div class="col-ac" data-fp-product-ac>
+                <span class="col-ac__ic" aria-hidden="true">🍽️</span>
+                <input type="text" class="col-ac__input" placeholder="Search this restaurant's products…" autocomplete="off" data-ac-input>
+                <div class="col-ac__panel" data-ac-panel hidden></div>
+            </div>
+
+            <div class="col-picklist" data-pick-list>
+                <% rows.forEach(function (p) { %>
+                <div class="col-pick" data-id="<%= p.id %>" draggable="true">
+                    <span class="col-pick__drag" data-drag-handle aria-hidden="true">⠿</span>
+                    <span class="col-pick__body">
+                        <span class="col-pick__name"><%= p.name %></span>
+                        <span class="col-pick__detail">£<%= Number(p.price || 0).toFixed(2) %></span>
+                    </span>
+                    <button type="button" class="col-pick__x" data-action="pick-remove" aria-label="Remove">✕</button>
+                    <input type="hidden" name="product_ids" value="<%= p.id %>">
+                </div>
+                <% }); %>
+            </div>
+            <p class="ly-hint col-pick-empty" data-pick-empty<%= rows.length ? ' hidden' : '' %>>No products yet — search above to add.</p>
+        </section>
+
+        <div class="ly-saveall">
+            <a href="/featured-products" class="ly-btn ly-btn--ghost">Cancel</a>
+            <button type="submit" class="ly-btn ly-btn--primary ly-btn--lg"><%= isEdit ? 'Save changes' : 'Create' %></button>
+        </div>
+    </form>
+
+    <% } %>
+</div>

@@ -539,6 +539,44 @@ router.get ('/admin/marketplace-categories/companies',   authenticate, requireRo
 router.get ('/admin/marketplace-categories/restaurants', authenticate, requireRole('admin'), AdminMpCatCtl.restaurants);
 router.post('/admin/marketplace-categories/assign',      authenticate, requireRole('admin'), AdminMpCatCtl.assign);
 router.post('/admin/marketplace-categories/reorder',     authenticate, requireRole('admin'), AdminMpCatCtl.reorder);
+
+// ── Admin: marketplace collections (curated home-feed rows) ─────────
+const AdminCollectionsCtl = require('../Controllers/Admin/CollectionsController');
+router.get ('/admin/collections',             authenticate, requireRole('admin'), AdminCollectionsCtl.list);
+router.get ('/admin/collections/get',         authenticate, requireRole('admin'), AdminCollectionsCtl.getCollection);
+router.post('/admin/collections/save',        authenticate, requireRole('admin'), AdminCollectionsCtl.save);
+router.post('/admin/collections/delete',      authenticate, requireRole('admin'), AdminCollectionsCtl.remove);
+router.post('/admin/collections/status',      authenticate, requireRole('admin'), AdminCollectionsCtl.statusToggle);
+router.get ('/admin/collections/companies',   authenticate, requireRole('admin'), AdminCollectionsCtl.companies);
+router.get ('/admin/collections/restaurants', authenticate, requireRole('admin'), AdminCollectionsCtl.restaurants);
+router.post('/admin/collections/assign',      authenticate, requireRole('admin'), AdminCollectionsCtl.assign);
+router.post('/admin/collections/reorder',     authenticate, requireRole('admin'), AdminCollectionsCtl.reorder);
+
+// ── Admin: featured / sponsored placements (paid home-feed boost) ───
+const AdminFeaturedCtl = require('../Controllers/Admin/FeaturedController');
+router.get ('/admin/featured',           authenticate, requireRole('admin'), AdminFeaturedCtl.list);
+router.get ('/admin/featured/get',       authenticate, requireRole('admin'), AdminFeaturedCtl.getPlacement);
+router.post('/admin/featured/save',      authenticate, requireRole('admin'), AdminFeaturedCtl.save);
+router.post('/admin/featured/delete',    authenticate, requireRole('admin'), AdminFeaturedCtl.remove);
+router.post('/admin/featured/status',    authenticate, requireRole('admin'), AdminFeaturedCtl.statusToggle);
+router.post('/admin/featured/reorder',   authenticate, requireRole('admin'), AdminFeaturedCtl.reorder);
+router.get ('/admin/featured/companies', authenticate, requireRole('admin'), AdminFeaturedCtl.companies);
+
+// ── Admin: featured PRODUCTS (admin-picked dishes → home product rows) ──
+const AdminFeaturedProductsCtl = require('../Controllers/Admin/FeaturedProductsController');
+router.get ('/admin/featured-products',           authenticate, requireRole('admin'), AdminFeaturedProductsCtl.list);
+router.get ('/admin/featured-products/get',       authenticate, requireRole('admin'), AdminFeaturedProductsCtl.getGroup);
+router.post('/admin/featured-products/save',      authenticate, requireRole('admin'), AdminFeaturedProductsCtl.save);
+router.post('/admin/featured-products/delete',    authenticate, requireRole('admin'), AdminFeaturedProductsCtl.remove);
+router.post('/admin/featured-products/status',    authenticate, requireRole('admin'), AdminFeaturedProductsCtl.statusToggle);
+router.post('/admin/featured-products/reorder',   authenticate, requireRole('admin'), AdminFeaturedProductsCtl.reorder);
+router.get ('/admin/featured-products/companies', authenticate, requireRole('admin'), AdminFeaturedProductsCtl.companies);
+router.get ('/admin/featured-products/products',  authenticate, requireRole('admin'), AdminFeaturedProductsCtl.products);
+
+// ── Admin: home-feed SECTION order (one master ordering of the 4 sections) ──
+const AdminFeedSectionsCtl = require('../Controllers/Admin/FeedSectionsController');
+router.get ('/admin/feed-sections',         authenticate, requireRole('admin'), AdminFeedSectionsCtl.list);
+router.post('/admin/feed-sections/reorder', authenticate, requireRole('admin'), AdminFeedSectionsCtl.reorder);
 router.post('/admin/products/price',         authenticate, requireRole('admin'), AdminProductsCtl.updatePrice);
 router.post('/admin/products/bulk-price',    authenticate, requireRole('admin'), AdminProductsCtl.bulkPrice);
 router.post('/admin/products/marketplace',   authenticate, requireRole('admin'), AdminProductsCtl.marketplaceToggle);
@@ -868,6 +906,12 @@ router.get('/marketplace/search',
 
 // Active store-offer banners across marketplace restaurants (home rail).
 router.get('/marketplace/offers', RestaurantsCtl.offers);
+
+// Curated home FEED — Featured row + collection rows (Uber-Eats-style shelves).
+const MarketplaceCollectionsCtl = require('../Controllers/Marketplace/CollectionsController');
+router.get('/marketplace/home-feed',
+    validateQuery(marketplaceListQuery),
+    MarketplaceCollectionsCtl.homeFeed);
 
 // Published reviews for one restaurant (+ average + count) — restaurant page.
 router.get('/marketplace/reviews',

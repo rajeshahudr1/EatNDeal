@@ -39,6 +39,25 @@ function author(row) {
     return { name: row.author_name || 'Member', type: row.author_type, id: Number(row.author_id) || 0, initial: initialOf(row.author_name), tint: tintFor(row.author_id) };
 }
 
+// Reply threads — the parent_id column is added by a later migration, so we
+// feature-detect it (cached) and keep replies working only once it exists.
+let _hasParent = null;
+async function hasParentCol() {
+    if (_hasParent !== null) { return _hasParent; }
+    try { const info = await db(C).columnInfo(); _hasParent = !!info.parent_id; }
+    catch (e) { _hasParent = false; }
+    return _hasParent;
+}
+// Resolve a reply target to a TOP-LEVEL comment id (one visual level of
+// nesting) and only when it belongs to the same post; null = top-level comment.
+async function resolveParent(rawParent, postId) {
+    const pid = Number(rawParent) || 0;
+    if (!pid) { return null; }
+    const parent = await db(C).where({ id: pid, post_id: postId, status: 1 }).first('id', 'parent_id');
+    if (!parent) { return null; }
+    return parent.parent_id ? Number(parent.parent_id) : Number(parent.id);
+}
+
 /** groups — GET /customer/community/groups?customer_id? — visible groups (guest-ok). */
 async function groups(req, res) {
     try {
@@ -170,10 +189,12 @@ async function comments(req, res) {
     try {
         const postId = Number(req.query.post_id) || 0;
         if (!postId) { return H.errorResponse(res, 'Post is required.', 422); }
-        const rows = await db(C).where({ post_id: postId, status: 1 }).orderBy('id', 'asc')
-            .select('id', 'author_type', 'author_id', 'author_name', 'body', 'created_at');
+        const hp = await hasParentCol();
+        const cols = ['id', 'author_type', 'author_id', 'author_name', 'body', 'created_at'];
+        if (hp) { cols.push('parent_id'); }
+        const rows = await db(C).where({ post_id: postId, status: 1 }).orderBy('id', 'asc').select(cols);
         return H.successResponse(res, {
-            comments: rows.map((r) => ({ id: Number(r.id), body: r.body || '', created_at: r.created_at, author: author(r) })),
+            comments: rows.map((r) => ({ id: Number(r.id), parent_id: hp ? (Number(r.parent_id) || null) : null, body: r.body || '', created_at: r.created_at, author: author(r) })),
         });
     } catch (err) {
         H.log.error('community.comments', err && err.message);
@@ -193,12 +214,15 @@ async function addComment(req, res) {
         if (!body) { return H.errorResponse(res, 'Write a comment.', 422); }
 
         const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
-        const ins = await db(C).insert({ post_id: postId, author_type: 'customer', author_id: cust.id, author_name: cust.name, body, status: 1, created_at: now }).returning('id');
+        const data = { post_id: postId, author_type: 'customer', author_id: cust.id, author_name: cust.name, body, status: 1, created_at: now };
+        let parentId = null;
+        if (await hasParentCol()) { parentId = await resolveParent(req.body.parent_id, postId); data.parent_id = parentId; }
+        const ins = await db(C).insert(data).returning('id');
         await db(P).where({ id: postId }).increment('comments_count', 1);
         const id = Array.isArray(ins) ? (ins[0].id || ins[0]) : ins;
         const cntRow = await db(P).where({ id: postId }).first('comments_count');
         return H.successResponse(res, {
-            comment: { id: Number(id), body, created_at: now, author: { name: cust.name, type: 'customer', id: cust.id, initial: initialOf(cust.name), tint: tintFor(cust.id) } },
+            comment: { id: Number(id), parent_id: parentId, body, created_at: now, author: { name: cust.name, type: 'customer', id: cust.id, initial: initialOf(cust.name), tint: tintFor(cust.id) } },
             comments: Number(cntRow && cntRow.comments_count) || 0,
         }, 'Commented.');
     } catch (err) {

@@ -163,6 +163,14 @@
 .ccomment__text { font-size: .86rem; color: var(--color-text); white-space: pre-wrap; word-break: break-word; }
 .ccomment__time { display: block; font-size: .68rem; color: var(--color-text-soft); margin-top: 2px; }
 
+/* Reply threads — one indented level under the top-level comment. */
+.ccomment-block { display: flex; flex-direction: column; gap: var(--space-2); }
+.ccomment-replies { margin-left: 38px; display: flex; flex-direction: column; gap: var(--space-2); }
+.ccomment-replies:empty { display: none; }
+.ccomment__reply { align-self: flex-start; margin-left: 38px; border: none; background: transparent; color: var(--color-text-muted); font-size: .76rem; font-weight: 700; cursor: pointer; padding: 0; }
+.ccomment__reply:hover { color: var(--color-primary); }
+.ccompose--reply { margin: 0 0 0 38px; }
+
 /* ── Empty / load-more ──────────────────────────────────────────── */
 .cfeed__empty { text-align: center; color: var(--color-text-muted); padding: var(--space-10) var(--space-4); }
 .cfeed__empty-ic { font-size: 2.6rem; display: block; margin-bottom: var(--space-2); }

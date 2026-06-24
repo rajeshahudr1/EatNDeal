@@ -77,6 +77,7 @@
 
     // ─────────────────────────── FEED ───────────────────────────
     var feedRoot = document.querySelector('[data-cm-feed]');
+    var IS_SUPER = feedRoot ? feedRoot.getAttribute('data-is-super') === '1' : false;
     if (feedRoot) { initFeed(feedRoot); }
 
     function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]; }); }
@@ -98,21 +99,40 @@
             var r = timeAgo(t.getAttribute('data-time')); if (r) { t.textContent = r; t.setAttribute('data-painted', '1'); }
         });
     }
-    function buildComment(c) {
-        return '<div class="cf-comment" data-comment-id="' + c.id + '">'
+    // One comment bubble — a top-level comment OR a reply. Super-admin sees a 🗑.
+    function buildBubble(c, isReply) {
+        var del = IS_SUPER ? '<button type="button" class="cf-del cf-del--sm" data-action="cf-del-comment" title="Delete comment">🗑</button>' : '';
+        return '<div class="cf-comment' + (isReply ? ' cf-comment--reply' : '') + '" data-comment-id="' + c.id + '">'
             + '<span class="cavatar cavatar--sm cavatar--t' + (c.author.tint || 0) + '" aria-hidden="true">' + esc(c.author.initial) + '</span>'
-            + '<div class="cf-comment__bubble"><span class="cf-comment__author">' + esc(c.author.name) + '</span><span class="cf-comment__text">' + esc(c.body) + '</span>'
-            + '<time class="cf-comment__time" data-time="' + esc(c.created_at) + '">' + timeAgo(c.created_at) + '</time></div>'
-            + '<button type="button" class="cf-del cf-del--sm" data-action="cf-del-comment" title="Delete comment">🗑</button></div>';
+            + '<div class="cf-comment__bubble"><span class="cf-comment__author">' + esc(c.author.name) + (c.author.type === 'admin' ? '<span class="cm-tag cm-tag--restaurant">Admin</span>' : '') + '</span><span class="cf-comment__text">' + esc(c.body) + '</span>'
+            + '<time class="cf-comment__time" data-time="' + esc(c.created_at) + '">' + timeAgo(c.created_at) + '</time></div>' + del + '</div>';
+    }
+    // A top-level comment + its replies + a Reply toggle/composer.
+    function buildBlock(c, repliesHtml) {
+        return '<div class="cf-comment-block" data-comment-block="' + c.id + '">'
+            + buildBubble(c, false)
+            + '<div class="cf-comment-replies" data-replies>' + (repliesHtml || '') + '</div>'
+            + '<button type="button" class="cf-comment__reply" data-action="cf-reply-toggle">Reply</button>'
+            + '<form class="cf-compose cf-compose--cmt cf-compose--reply" data-cf-reply-form hidden><input type="text" name="body" placeholder="Write a reply…" maxlength="2000" autocomplete="off" required><button type="submit" class="ly-btn ly-btn--ghost ly-btn--sm">Send</button></form>'
+            + '</div>';
+    }
+    function renderComments(comments) {
+        var byParent = {};
+        comments.forEach(function (c) { if (c.parent_id) { (byParent[c.parent_id] = byParent[c.parent_id] || []).push(c); } });
+        return comments.filter(function (c) { return !c.parent_id; }).map(function (c) {
+            var replies = (byParent[c.id] || []).map(function (r) { return buildBubble(r, true); }).join('');
+            return buildBlock(c, replies);
+        }).join('');
     }
     function buildPost(p) {
         var media = p.image_url ? '<div class="cf-post__media"><img src="' + esc(p.image_url) + '" alt="" loading="lazy"></div>' : '';
         var body = p.body ? '<p class="cf-post__body">' + esc(p.body) + '</p>' : '';
+        var del = IS_SUPER ? '<button type="button" class="cf-del" data-action="cf-del-post" title="Delete post">🗑</button>' : '';
         return '<article class="cf-post" data-post-id="' + p.id + '">'
             + '<header class="cf-post__head"><span class="cavatar cavatar--t' + (p.author.tint || 0) + '" aria-hidden="true">' + esc(p.author.initial) + '</span>'
             + '<span class="cf-post__meta"><span class="cf-post__author">' + esc(p.author.name) + (p.author.type === 'admin' ? '<span class="cm-tag cm-tag--restaurant">Admin</span>' : '') + '</span>'
             + '<time class="cf-post__time" data-time="' + esc(p.created_at) + '">' + timeAgo(p.created_at) + '</time></span>'
-            + '<button type="button" class="cf-del" data-action="cf-del-post" title="Delete post">🗑</button></header>'
+            + del + '</header>'
             + body + media
             + '<div class="cf-post__stats"><span data-likes-n>' + (p.likes || 0) + '</span> like' + (Number(p.likes) === 1 ? '' : 's') + ' · <span data-comments-n>' + (p.comments || 0) + '</span> comment' + (Number(p.comments) === 1 ? '' : 's') + '</div>'
             + '<div class="cf-post__actions"><button type="button" class="cf-act" data-action="cf-comments">💬 Comments</button></div>'
@@ -126,25 +146,46 @@
         var delKind = null;   // 'post' | 'comment'
         var delId = null;
 
-        // Compose a post.
+        // Compose a post (text + optional photo via FormData).
         var pform = root.querySelector('[data-cf-post-form]');
         if (pform) {
+            var photoInput = pform.querySelector('[data-photo-input]');
+            var preview = pform.querySelector('[data-photo-preview]');
+            var previewImg = pform.querySelector('[data-photo-img]');
+            if (photoInput) {
+                photoInput.addEventListener('change', function () {
+                    var f = photoInput.files && photoInput.files[0]; if (!f) { return; }
+                    if (f.size > 4 * 1024 * 1024) { toast('error', 'Photo must be under 4 MB.'); photoInput.value = ''; return; }
+                    previewImg.src = URL.createObjectURL(f); preview.hidden = false;
+                });
+            }
+            pform.addEventListener('click', function (e) {
+                if (e.target.closest('[data-action="cf-remove-photo"]')) { photoInput.value = ''; preview.hidden = true; previewImg.removeAttribute('src'); }
+            });
             pform.addEventListener('submit', function (e) {
                 e.preventDefault();
                 var ta = pform.querySelector('.cf-compose__text');
                 var body = (ta.value || '').trim();
-                if (!body) { toast('error', 'Write something to post.'); return; }
+                var hasPhoto = photoInput && photoInput.files && photoInput.files[0];
+                if (!body && !hasPhoto) { toast('error', 'Write something or add a photo.'); return; }
                 var btn = pform.querySelector('[data-cf-post-submit]'); btn.disabled = true;
-                A.post('/community/post', { group_id: GID, body: body }).then(function (res) {
-                    btn.disabled = false;
-                    if (!A.isSuccess(res)) { toast('error', res.msg || 'Could not post.'); return; }
-                    var d = res.data || {};
-                    var post = { id: d.id || 0, body: body, image_url: '', likes: 0, comments: 0, created_at: new Date().toISOString().slice(0, 19).replace('T', ' '), author: d.author || { name: 'Admin', type: 'admin', initial: 'A', tint: 0 } };
-                    var list = root.querySelector('[data-cf-list]');
-                    list.insertAdjacentHTML('afterbegin', buildPost(post));
-                    var empty = root.querySelector('[data-cf-empty]'); if (empty) { empty.remove(); }
-                    ta.value = ''; paintTimes(list); toast('success', 'Posted.');
-                });
+                var fd = new FormData();
+                fd.append('group_id', GID); fd.append('body', body);
+                if (hasPhoto) { fd.append('image', photoInput.files[0]); }
+                fetch('/community/post', { method: 'POST', credentials: 'same-origin', headers: { Accept: 'application/json' }, body: fd })
+                    .then(function (r) { return r.json().catch(function () { return { status: 0 }; }); })
+                    .then(function (res) {
+                        btn.disabled = false;
+                        if (!res || res.status !== 200) { toast('error', (res && res.msg) || 'Could not post.'); return; }
+                        var d = res.data || {};
+                        var post = { id: d.id || 0, body: body, image_url: d.image_url || '', likes: 0, comments: 0, created_at: new Date().toISOString().slice(0, 19).replace('T', ' '), author: d.author || { name: 'Admin', type: 'admin', initial: 'A', tint: 0 } };
+                        var list = root.querySelector('[data-cf-list]');
+                        list.insertAdjacentHTML('afterbegin', buildPost(post));
+                        var empty = root.querySelector('[data-cf-empty]'); if (empty) { empty.remove(); }
+                        ta.value = ''; if (photoInput) { photoInput.value = ''; } if (preview) { preview.hidden = true; }
+                        paintTimes(list); toast('success', 'Posted.');
+                    })
+                    .catch(function () { btn.disabled = false; toast('error', 'Could not post.'); });
             });
         }
 
@@ -158,6 +199,12 @@
                 var wrap = card.querySelector('[data-comments-wrap]');
                 wrap.hidden = !wrap.hidden;
                 if (!wrap.hidden && !wrap.getAttribute('data-loaded')) { loadComments(card, wrap); }
+                return;
+            }
+            if (action === 'cf-reply-toggle') {
+                var blk = act.closest('[data-comment-block]');
+                var rf = blk && blk.querySelector('[data-cf-reply-form]');
+                if (rf) { rf.hidden = !rf.hidden; if (!rf.hidden) { var ri = rf.querySelector('input'); if (ri) { ri.focus(); } } }
                 return;
             }
             if (action === 'cf-del-post' && card) { delKind = 'post'; delId = card.getAttribute('data-post-id'); U.showModal('cf-del'); return; }
@@ -202,20 +249,30 @@
             }
         });
 
-        // Add a comment (delegated submit).
+        // Add a comment OR a reply (delegated submit).
         root.addEventListener('submit', function (e) {
-            var form = e.target.closest('[data-cf-comment-form]'); if (!form) { return; }
+            var isReply = false;
+            var form = e.target.closest('[data-cf-comment-form]');
+            if (!form) { form = e.target.closest('[data-cf-reply-form]'); isReply = !!form; }
+            if (!form) { return; }
             e.preventDefault();
             var card = form.closest('.cf-post');
             var input = form.querySelector('input[name="body"]');
             var body = (input.value || '').trim(); if (!body) { return; }
-            A.post('/community/comment', { post_id: card.getAttribute('data-post-id'), body: body }).then(function (res) {
+            var block = isReply ? form.closest('[data-comment-block]') : null;
+            var payload = { post_id: card.getAttribute('data-post-id'), body: body };
+            if (isReply && block) { payload.parent_id = block.getAttribute('data-comment-block'); }
+            A.post('/community/comment', payload).then(function (res) {
                 if (!A.isSuccess(res)) { toast('error', res.msg || 'Could not comment.'); return; }
-                var listEl = card.querySelector('[data-comments-list]');
-                listEl.insertAdjacentHTML('beforeend', buildComment(res.data.comment));
+                if (isReply && block) {
+                    block.querySelector('[data-replies]').insertAdjacentHTML('beforeend', buildBubble(res.data.comment, true));
+                    form.hidden = true;
+                } else {
+                    card.querySelector('[data-comments-list]').insertAdjacentHTML('beforeend', buildBlock(res.data.comment, ''));
+                }
                 input.value = '';
                 var n = card.querySelector('[data-comments-n]'); if (n) { n.textContent = res.data.comments; }
-                paintTimes(listEl);
+                paintTimes(card);
             });
         });
 
@@ -224,7 +281,7 @@
             listEl.innerHTML = '<p class="cf-loading">Loading…</p>';
             A.getJson('/community/comments?post_id=' + encodeURIComponent(card.getAttribute('data-post-id'))).then(function (res) {
                 var cs = (res && res.data && res.data.comments) || [];
-                listEl.innerHTML = cs.length ? cs.map(buildComment).join('') : '<p class="cf-loading">No comments yet.</p>';
+                listEl.innerHTML = cs.length ? renderComments(cs) : '<p class="cf-loading">No comments yet.</p>';
                 wrap.setAttribute('data-loaded', '1'); paintTimes(listEl);
             });
         }

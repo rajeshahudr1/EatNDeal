@@ -69,15 +69,37 @@
     }
 
     // ── Builders (keep in sync with partials/community-post.ejs) ──────
-    function buildComment(c) {
+    var SEND_SVG = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>';
+    // One comment bubble (a top-level comment OR a reply). Own ones get a 🗑.
+    function buildBubble(c, isReply) {
         var mine = c.author.type === 'customer' && String(c.author.id) === MY_ID;
         var del = mine ? '<button type="button" class="ccomment__del" data-action="delete-comment" title="Delete" aria-label="Delete your comment">🗑</button>' : '';
-        return '<div class="ccomment" data-comment-id="' + c.id + '">'
+        return '<div class="ccomment' + (isReply ? ' ccomment--reply' : '') + '" data-comment-id="' + c.id + '">'
             + '<span class="cavatar cavatar--sm cavatar--t' + (c.author.tint || 0) + '" aria-hidden="true">' + esc(c.author.initial) + '</span>'
             + '<div class="ccomment__bubble"><span class="ccomment__author">' + esc(c.author.name)
             + (c.author.type === 'admin' ? '<span class="cpost__tag">Restaurant</span>' : '')
             + '</span><span class="ccomment__text">' + esc(c.body) + '</span>'
             + '<time class="ccomment__time" data-time="' + esc(c.created_at) + '">' + timeAgo(c.created_at) + '</time></div>' + del + '</div>';
+    }
+    // A top-level comment + its replies + (signed-in) a Reply toggle/composer.
+    function buildBlock(c, repliesHtml) {
+        var replyUi = CAN_POST
+            ? '<button type="button" class="ccomment__reply" data-action="reply-toggle">Reply</button>'
+              + '<form class="ccompose ccompose--reply" data-reply-form hidden><input type="text" class="ccompose__input" name="body" placeholder="Write a reply…" maxlength="2000" autocomplete="off" required><button type="submit" class="ccompose__send" aria-label="Send reply">' + SEND_SVG + '</button></form>'
+            : '';
+        return '<div class="ccomment-block" data-comment-block="' + c.id + '">'
+            + buildBubble(c, false)
+            + '<div class="ccomment-replies" data-replies>' + (repliesHtml || '') + '</div>'
+            + replyUi + '</div>';
+    }
+    // Group a flat comment list into top-level blocks with nested replies.
+    function renderComments(comments) {
+        var byParent = {};
+        comments.forEach(function (c) { if (c.parent_id) { (byParent[c.parent_id] = byParent[c.parent_id] || []).push(c); } });
+        return comments.filter(function (c) { return !c.parent_id; }).map(function (c) {
+            var replies = (byParent[c.id] || []).map(function (r) { return buildBubble(r, true); }).join('');
+            return buildBlock(c, replies);
+        }).join('');
     }
     function buildPost(p, canPost) {
         var liked = !!p.liked;
@@ -205,6 +227,14 @@
             return;
         }
 
+        if (action === 'reply-toggle') {
+            if (!CAN_POST) { bounceToSignin(); return; }
+            var blk = act.closest('[data-comment-block]');
+            var rf = blk && blk.querySelector('[data-reply-form]');
+            if (rf) { rf.hidden = !rf.hidden; if (!rf.hidden) { var ri = rf.querySelector('input'); if (ri) { ri.focus(); } } }
+            return;
+        }
+
         if (action === 'share' && card) {
             sharePost(card);
             return;
@@ -241,7 +271,9 @@
 
     // ── Add comment (delegated submit) ───────────────────────────────
     root.addEventListener('submit', function (e) {
+        var isReply = false;
         var form = e.target.closest && e.target.closest('[data-comment-form]');
+        if (!form) { form = e.target.closest && e.target.closest('[data-reply-form]'); isReply = !!form; }
         if (!form) { return; }
         e.preventDefault();
         if (!CAN_POST) { bounceToSignin(); return; }
@@ -249,18 +281,25 @@
         var input = form.querySelector('input[name="body"]');
         var body = (input.value || '').trim();
         if (!body) { return; }
+        var block = isReply ? form.closest('[data-comment-block]') : null;
+        var payload = { post_id: card.getAttribute('data-post-id'), body: body };
+        if (isReply && block) { payload.parent_id = block.getAttribute('data-comment-block'); }
         var send = form.querySelector('.ccompose__send'); if (send) { send.disabled = true; }
-        postJson('/community/comment', { post_id: card.getAttribute('data-post-id'), body: body }).then(function (env) {
+        postJson('/community/comment', payload).then(function (env) {
             if (send) { send.disabled = false; }
             if (env.status === 401) { bounceToSignin(); return; }
             if (env.status !== 200 || !env.data) { toast('error', env.msg || 'Could not comment.'); return; }
-            var listEl = card.querySelector('[data-comments-list]');
-            listEl.insertAdjacentHTML('beforeend', buildComment(env.data.comment));
+            if (isReply && block) {
+                block.querySelector('[data-replies]').insertAdjacentHTML('beforeend', buildBubble(env.data.comment, true));
+                form.hidden = true;
+            } else {
+                card.querySelector('[data-comments-list]').insertAdjacentHTML('beforeend', buildBlock(env.data.comment, ''));
+            }
             input.value = '';
             var n = card.querySelector('[data-comments-n]');
             if (n) { n.textContent = env.data.comments; n.parentNode.childNodes[1].textContent = ' comment' + (Number(env.data.comments) === 1 ? '' : 's'); }
             refreshStatsVisibility(card, card.querySelector('.cpost__stats'));
-            paintTimes(listEl);
+            paintTimes(card);
         }).catch(function () { if (send) { send.disabled = false; } toast('error', 'Could not comment.'); });
     });
 
@@ -278,7 +317,7 @@
             .then(function (r) { return r.json().catch(function () { return { status: 0 }; }); })
             .then(function (env) {
                 var cs = (env && env.data && env.data.comments) || [];
-                listEl.innerHTML = cs.length ? cs.map(buildComment).join('') : '<p class="cpost__loading">No comments yet.</p>';
+                listEl.innerHTML = cs.length ? renderComments(cs) : '<p class="cpost__loading">No comments yet.</p>';
                 wrap.setAttribute('data-loaded', '1');
                 paintTimes(listEl);
             })

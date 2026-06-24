@@ -132,7 +132,16 @@ const remove        = ajaxProxy('/api/v1/admin/community/delete');
 const statusToggle  = ajaxProxy('/api/v1/admin/community/status');
 const feedData      = ajaxGetProxy('/api/v1/admin/community/feed', ['group_id', 'offset', 'limit']);
 const commentsData  = ajaxGetProxy('/api/v1/admin/community/comments', ['post_id']);
-const createPost    = ajaxProxy('/api/v1/admin/community/post');
+// Post as the admin — optional photo arrives on req.file (multer); forward its
+// bare filename (the api resolves it to /yii-uploads/marketplace/community/…).
+async function createPost(req, res) {
+    const body = { group_id: req.body.group_id, body: req.body.body || '' };
+    if (req.file && req.file.filename) { body.image = req.file.filename; }
+    let apiRes;
+    try { apiRes = await callApi(req, 'POST', '/api/v1/admin/community/post', body); }
+    catch (e) { apiRes = { body: { status: 0, msg: 'Could not reach the server.' } }; }
+    return res.status(200).json((apiRes && apiRes.body) || { status: 0, msg: 'No response.' });
+}
 const addComment    = ajaxProxy('/api/v1/admin/community/comment');
 const deletePost    = ajaxProxy('/api/v1/admin/community/post-delete');
 const deleteComment = ajaxProxy('/api/v1/admin/community/comment-delete');

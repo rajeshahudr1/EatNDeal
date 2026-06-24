@@ -7,7 +7,7 @@
 
   Inputs: group, posts[], has_more, next_offset, load_error.
 -%>
-<div class="ly" data-cm-feed="<%= group ? group.id : 0 %>">
+<div class="ly" data-cm-feed="<%= group ? group.id : 0 %>" data-is-super="<%= (typeof company_ctx !== 'undefined' && company_ctx && company_ctx.isSuper) ? '1' : '0' %>">
 
     <div class="ly__head">
         <div>
@@ -24,7 +24,12 @@
     <%# Composer — admin posts as themselves (text). %>
     <form class="cf-compose" data-cf-post-form>
         <textarea class="cf-compose__text" name="body" rows="2" placeholder="Post an update to this group…" maxlength="5000"></textarea>
+        <div class="cf-compose__preview" data-photo-preview hidden>
+            <img alt="" data-photo-img>
+            <button type="button" class="cf-compose__preview-x" data-action="cf-remove-photo" aria-label="Remove photo">✕</button>
+        </div>
         <div class="cf-compose__bar">
+            <label class="cf-compose__photo"><input type="file" name="image" accept="image/png,image/jpeg,image/webp,image/gif" hidden data-photo-input>📷 Photo</label>
             <button type="submit" class="ly-btn ly-btn--primary ly-btn--sm" data-cf-post-submit>Post</button>
         </div>
     </form>

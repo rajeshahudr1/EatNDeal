@@ -39,6 +39,22 @@ function initialOf(name) { const s = str(name).trim(); return s ? s.charAt(0).to
 function tintFor(id) { return Math.abs(Number(id) || 0) % 7; }
 function authorOf(row) { return { name: row.author_name || 'Member', type: row.author_type, id: Number(row.author_id) || 0, initial: initialOf(row.author_name), tint: tintFor(row.author_id) }; }
 
+// Reply threads — parent_id is added by a later migration; feature-detect it.
+let _hasParent = null;
+async function hasParentCol() {
+    if (_hasParent !== null) { return _hasParent; }
+    try { const info = await db(C).columnInfo(); _hasParent = !!info.parent_id; }
+    catch (e) { _hasParent = false; }
+    return _hasParent;
+}
+async function resolveParent(rawParent, postId) {
+    const pid = Number(rawParent) || 0;
+    if (!pid) { return null; }
+    const parent = await db(C).where({ id: pid, post_id: postId, status: 1 }).first('id', 'parent_id');
+    if (!parent) { return null; }
+    return parent.parent_id ? Number(parent.parent_id) : Number(parent.id);
+}
+
 // Resolve the signed-in admin's display name (the JWT carries only sub/src).
 // company-src → the restaurant's business name; user-src → the staff name.
 async function adminIdentity(req) {
@@ -205,10 +221,11 @@ async function createPost(req, res) {
         const group = await db(G).where({ id: groupId, status: 1 }).first('id');
         if (!group) { return H.errorResponse(res, 'Group not found.', 404); }
         const body = str(req.body.body).trim().slice(0, 5000);
-        if (!body) { return H.errorResponse(res, 'Write something to post.', 422); }
-        const ins = await db(P).insert({ group_id: groupId, author_type: 'admin', author_id: me.id, author_name: me.name, body, image: null, likes_count: 0, comments_count: 0, status: 1, created_at: nowStr() }).returning('id');
+        const image = str(req.body.image).trim().slice(0, 255);
+        if (!body && !image) { return H.errorResponse(res, 'Write something or add a photo.', 422); }
+        const ins = await db(P).insert({ group_id: groupId, author_type: 'admin', author_id: me.id, author_name: me.name, body, image: image || null, likes_count: 0, comments_count: 0, status: 1, created_at: nowStr() }).returning('id');
         const id = Array.isArray(ins) ? (ins[0].id || ins[0]) : ins;
-        return H.successResponse(res, { id: Number(id), author: { name: me.name, type: 'admin', id: me.id, initial: initialOf(me.name), tint: tintFor(me.id) } }, 'Posted.');
+        return H.successResponse(res, { id: Number(id), image_url: postImageUrl(image), author: { name: me.name, type: 'admin', id: me.id, initial: initialOf(me.name), tint: tintFor(me.id) } }, 'Posted.');
     } catch (err) { console.error('[admin.community.createPost]', err && err.message); return H.errorResponse(res, 'Could not post.', 500); }
 }
 
@@ -217,8 +234,11 @@ async function comments(req, res) {
     try {
         const postId = Number(req.query.post_id) || 0;
         if (!postId) { return H.errorResponse(res, 'Post is required.', 422); }
-        const rows = await db(C).where({ post_id: postId, status: 1 }).orderBy('id', 'asc').select('id', 'author_type', 'author_id', 'author_name', 'body', 'created_at');
-        return H.successResponse(res, { comments: rows.map((r) => ({ id: Number(r.id), body: r.body || '', created_at: r.created_at, author: authorOf(r) })) });
+        const hp = await hasParentCol();
+        const cols = ['id', 'author_type', 'author_id', 'author_name', 'body', 'created_at'];
+        if (hp) { cols.push('parent_id'); }
+        const rows = await db(C).where({ post_id: postId, status: 1 }).orderBy('id', 'asc').select(cols);
+        return H.successResponse(res, { comments: rows.map((r) => ({ id: Number(r.id), parent_id: hp ? (Number(r.parent_id) || null) : null, body: r.body || '', created_at: r.created_at, author: authorOf(r) })) });
     } catch (err) { console.error('[admin.community.comments]', err && err.message); return H.errorResponse(res, 'Could not load comments.', 500); }
 }
 
@@ -231,11 +251,14 @@ async function addComment(req, res) {
         if (!post) { return H.errorResponse(res, 'Post not found.', 404); }
         const body = str(req.body.body).trim().slice(0, 2000);
         if (!body) { return H.errorResponse(res, 'Write a comment.', 422); }
-        const ins = await db(C).insert({ post_id: postId, author_type: 'admin', author_id: me.id, author_name: me.name, body, status: 1, created_at: nowStr() }).returning('id');
+        const data = { post_id: postId, author_type: 'admin', author_id: me.id, author_name: me.name, body, status: 1, created_at: nowStr() };
+        let parentId = null;
+        if (await hasParentCol()) { parentId = await resolveParent(req.body.parent_id, postId); data.parent_id = parentId; }
+        const ins = await db(C).insert(data).returning('id');
         await db(P).where({ id: postId }).increment('comments_count', 1);
         const id = Array.isArray(ins) ? (ins[0].id || ins[0]) : ins;
         const cntRow = await db(P).where({ id: postId }).first('comments_count');
-        return H.successResponse(res, { comment: { id: Number(id), body, created_at: nowStr(), author: { name: me.name, type: 'admin', id: me.id, initial: initialOf(me.name), tint: tintFor(me.id) } }, comments: Number(cntRow && cntRow.comments_count) || 0 }, 'Commented.');
+        return H.successResponse(res, { comment: { id: Number(id), parent_id: parentId, body, created_at: nowStr(), author: { name: me.name, type: 'admin', id: me.id, initial: initialOf(me.name), tint: tintFor(me.id) } }, comments: Number(cntRow && cntRow.comments_count) || 0 }, 'Commented.');
     } catch (err) { console.error('[admin.community.addComment]', err && err.message); return H.errorResponse(res, 'Could not comment.', 500); }
 }
 

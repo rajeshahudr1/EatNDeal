@@ -9,6 +9,7 @@
   Inputs: post = { id, body, image_url, likes, comments, created_at,
                    author:{ name, type, initial, tint } }.
 -%>
+<% var __isSuper = (typeof company_ctx !== 'undefined' && company_ctx && company_ctx.isSuper); %>
 <article class="cf-post" data-post-id="<%= post.id %>">
     <header class="cf-post__head">
         <span class="cavatar cavatar--t<%= post.author.tint %>" aria-hidden="true"><%= post.author.initial %></span>
@@ -16,7 +17,7 @@
             <span class="cf-post__author"><%= post.author.name %><% if (post.author.type === 'admin') { %><span class="cm-tag cm-tag--restaurant">Admin</span><% } %></span>
             <time class="cf-post__time" data-time="<%= post.created_at %>"><%= post.created_at %></time>
         </span>
-        <button type="button" class="cf-del" data-action="cf-del-post" title="Delete post" aria-label="Delete post">🗑</button>
+        <% if (__isSuper) { %><button type="button" class="cf-del" data-action="cf-del-post" title="Delete post" aria-label="Delete post">🗑</button><% } %>
     </header>
 
     <% if (post.body) { %><p class="cf-post__body"><%= post.body %></p><% } %>

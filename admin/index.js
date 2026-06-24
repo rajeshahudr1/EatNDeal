@@ -623,21 +623,59 @@ function mpCommImgMw(req, res, next) {
     });
 }
 
-// Community (Facebook-style groups — super admin manages groups).
-app.get ('/community',          requireAdmin, companyContext, CommunityController.list);
-app.get ('/community/new',      requireAdmin, companyContext, CommunityController.form);
-app.get ('/community/edit/:id', requireAdmin, companyContext, CommunityController.form);
-app.post('/community/save',     requireAdmin, companyContext, mpCommImgMw, CommunityController.save);
-app.post('/community/delete',   requireAdmin, companyContext, CommunityController.remove);
-app.post('/community/status',   requireAdmin, companyContext, CommunityController.statusToggle);
-// Phase 2 — a group's feed: admin posts + moderates (delete post/comment).
+// Community POST photos (GLOBAL — uploads/marketplace/community/, SHARED with
+// the web so an admin's photo shows on both feeds). Optional, like the cover.
+let mpCommPostUpload = null;
+try {
+    const multer = require('multer');
+    mpCommPostUpload = multer({
+        storage: multer.diskStorage({
+            destination: (req, file, cb) => {
+                if (!process.env.YII_UPLOADS_PATH) { return cb(new Error('upload_unavailable')); }
+                const dir = path.join(process.env.YII_UPLOADS_PATH, 'marketplace', 'community');
+                try { fs.mkdirSync(dir, { recursive: true }); } catch (e) { /* ignore */ }
+                cb(null, dir);
+            },
+            filename: (req, file, cb) => {
+                const ext = ({ 'image/png': '.png', 'image/jpeg': '.jpg', 'image/webp': '.webp', 'image/gif': '.gif' })[file.mimetype] || '.img';
+                cb(null, 'cmp_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8) + ext);
+            },
+        }),
+        limits: { fileSize: 4 * 1024 * 1024 },
+        fileFilter: (req, file, cb) => cb(null, /^image\/(png|jpe?g|webp|gif)$/.test(file.mimetype)),
+    });
+} catch (e) { /* multer not installed */ }
+function mpCommPostMw(req, res, next) {
+    if (!mpCommPostUpload || !process.env.YII_UPLOADS_PATH) { return next(); }
+    mpCommPostUpload.single('image')(req, res, (err) => {
+        if (err && err.code === 'LIMIT_FILE_SIZE') { return res.status(200).json({ status: 400, show: true, msg: 'Photo must be under 4 MB.' }); }
+        return next();
+    });
+}
+// Group management + moderation are super-admin only; company admins only join
+// the feeds. Runs after companyContext (reads res.locals.company_ctx).
+function requireSuper(req, res, next) {
+    if (res.locals.company_ctx && res.locals.company_ctx.isSuper) { return next(); }
+    if (req.method === 'GET') { return res.redirect('/community'); }
+    return res.status(200).json({ status: 403, show: true, msg: 'Only the super-admin can do that.' });
+}
+
+// ── Community ──────────────────────────────────────────────────────
+// List + a group's feed are open to ALL admins (company admins join to post /
+// comment / reply). Group management + moderation (delete) are super-admin.
+app.get ('/community',                requireAdmin, companyContext, CommunityController.list);
+app.get ('/community/new',            requireAdmin, companyContext, requireSuper, CommunityController.form);
+app.get ('/community/edit/:id',       requireAdmin, companyContext, requireSuper, CommunityController.form);
+app.post('/community/save',           requireAdmin, companyContext, requireSuper, mpCommImgMw, CommunityController.save);
+app.post('/community/delete',         requireAdmin, companyContext, requireSuper, CommunityController.remove);
+app.post('/community/status',         requireAdmin, companyContext, requireSuper, CommunityController.statusToggle);
 app.get ('/community/feed/:id',       requireAdmin, companyContext, CommunityController.feedPage);
 app.get ('/community/feed',           requireAdmin, companyContext, CommunityController.feedData);
 app.get ('/community/comments',       requireAdmin, companyContext, CommunityController.commentsData);
-app.post('/community/post',           requireAdmin, companyContext, CommunityController.createPost);
+app.post('/community/post',           requireAdmin, companyContext, mpCommPostMw, CommunityController.createPost);
 app.post('/community/comment',        requireAdmin, companyContext, CommunityController.addComment);
-app.post('/community/post-delete',    requireAdmin, companyContext, CommunityController.deletePost);
-app.post('/community/comment-delete', requireAdmin, companyContext, CommunityController.deleteComment);
+app.post('/community/post-delete',    requireAdmin, companyContext, requireSuper, CommunityController.deletePost);
+app.post('/community/comment-delete', requireAdmin, companyContext, requireSuper, CommunityController.deleteComment);
 
 // Store Settings — branch config (port of legacy admin/pos/store-settings).
 app.get ('/store-settings',                requireAdmin, companyContext, StoreSettingsController.index);

@@ -25,6 +25,8 @@
     }
     var page = pd ? Number(pd.page) : 1;
     var totalPages = pd ? Number(pd.total_pages) : 1;
+    // Super-admin manages groups; company admins only join the feeds.
+    var isSuper = (typeof company_ctx !== 'undefined' && company_ctx) ? !!company_ctx.isSuper : false;
 %>
 <div class="pr" data-cm-root>
 
@@ -33,7 +35,7 @@
             <h2 class="ly__title">👥 Community</h2>
             <p class="ly__sub">Facebook-style groups for customers &amp; restaurants</p>
         </div>
-        <% if (pd) { %>
+        <% if (pd && isSuper) { %>
         <div class="pr-head-act">
             <a href="/community/new" class="ly-btn ly-btn--primary ly-btn--sm">➕ New group</a>
         </div>
@@ -64,7 +66,7 @@
         </div>
 
         <% if (!pd.groups.length) { %>
-            <div class="ly-empty"><span class="ly-empty__ic" aria-hidden="true">👥</span><p class="ly-empty__msg"><%= search_q ? 'No groups match your search.' : 'No groups yet. Create your first community group.' %></p></div>
+            <div class="ly-empty"><span class="ly-empty__ic" aria-hidden="true">👥</span><p class="ly-empty__msg"><%= search_q ? 'No groups match your search.' : (isSuper ? 'No groups yet. Create your first community group.' : 'No groups yet.') %></p></div>
         <% } else { %>
         <div class="pr-list" data-list>
             <% pd.groups.forEach(function (g) { %>
@@ -84,11 +86,13 @@
                     </span>
                 </div>
                 <div class="pr-item__controls">
-                    <span class="pr-statuswrap"><%- statusSel(g.id, g.status) %></span>
+                    <% if (isSuper) { %><span class="pr-statuswrap"><%- statusSel(g.id, g.status) %></span><% } %>
                     <span class="pr-item__act">
-                        <a href="/community/feed/<%= g.id %>" class="ly-iconbtn" title="Open feed (post &amp; moderate)">💬</a>
+                        <a href="/community/feed/<%= g.id %>" class="ly-iconbtn" title="Open feed">💬</a>
+                        <% if (isSuper) { %>
                         <a href="/community/edit/<%= g.id %>" class="ly-iconbtn" title="Edit">✎</a>
                         <button type="button" class="ly-iconbtn ly-iconbtn--danger" data-action="cm-delete" data-id="<%= g.id %>" data-name="<%= g.name %>" title="Delete">🗑</button>
+                        <% } %>
                     </span>
                 </div>
             </div>

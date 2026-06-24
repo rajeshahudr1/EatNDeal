@@ -242,7 +242,17 @@ try { fs.mkdirSync(COMMUNITY_IMG_DIR, { recursive: true }); } catch (e) { /* ign
 app.use('/community-images', express.static(COMMUNITY_IMG_DIR, { maxAge: ENV === 'production' ? '7d' : 0, fallthrough: true }));
 const communityUpload = multer({
     storage: multer.diskStorage({
-        destination: (req, file, cb) => cb(null, COMMUNITY_IMG_DIR),
+        destination: (req, file, cb) => {
+            // Prefer the SHARED yii-uploads tree so the photo shows on BOTH the
+            // web feed AND the admin feed (both serve /yii-uploads). Fall back to
+            // the web-only runtime folder when the uploads path isn't configured.
+            if (process.env.YII_UPLOADS_PATH) {
+                const dir = path.join(process.env.YII_UPLOADS_PATH, 'marketplace', 'community');
+                try { fs.mkdirSync(dir, { recursive: true }); } catch (e) { /* ignore */ }
+                return cb(null, dir);
+            }
+            return cb(null, COMMUNITY_IMG_DIR);
+        },
         filename: (req, file, cb) => {
             const uid = (req.session && req.session.user && req.session.user.id) || 'anon';
             const ext = ({ 'image/png': '.png', 'image/jpeg': '.jpg', 'image/webp': '.webp', 'image/gif': '.gif' })[file.mimetype] || '.img';

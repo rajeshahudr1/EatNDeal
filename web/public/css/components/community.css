@@ -11,7 +11,7 @@
  */
 
 .cwrap {
-    max-width: 720px;
+    max-width: 1000px;
     margin: 0 auto;
     padding: var(--space-4) var(--space-4) var(--space-12);
 }
@@ -33,12 +33,29 @@
 /* ── Groups grid ────────────────────────────────────────────────── */
 .cgroups { display: grid; grid-template-columns: 1fr; gap: var(--space-4); }
 .cgroup-card {
-    display: flex; flex-direction: column;
+    position: relative;
     background: var(--color-bg); border: 1px solid var(--color-border);
-    border-radius: var(--radius-lg); overflow: hidden; text-decoration: none;
-    color: inherit; box-shadow: var(--shadow-1); transition: box-shadow .15s, transform .15s;
+    border-radius: var(--radius-lg); overflow: hidden;
+    box-shadow: var(--shadow-1); transition: box-shadow .15s, transform .15s, opacity .15s;
 }
 .cgroup-card:hover { box-shadow: var(--shadow-2); transform: translateY(-2px); }
+.cgroup-card__link { display: flex; flex-direction: column; text-decoration: none; color: inherit; height: 100%; }
+.cgroup-card__hide {
+    position: absolute; top: 8px; right: 8px; z-index: 2;
+    width: 30px; height: 30px; border: none; border-radius: 50%;
+    background: rgba(255, 255, 255, .92); color: var(--color-text);
+    display: inline-flex; align-items: center; justify-content: center;
+    cursor: pointer; box-shadow: var(--shadow-1); transition: background .12s, color .12s;
+}
+.cgroup-card__hide:hover { background: #fff; color: var(--color-primary); }
+.cgroup-card.is-removed { opacity: .7; }
+.cgroup-card.is-removed:hover { opacity: 1; }
+
+/* Removed groups section (client-side, personal). */
+.cremoved { margin-top: var(--space-8); }
+.cremoved__title { font-size: 1.1rem; font-weight: 800; margin: 0; color: var(--color-text); }
+.cremoved__sub { font-size: .82rem; color: var(--color-text-muted); margin: var(--space-1) 0 var(--space-4); }
+.cland-allhidden { text-align: center; color: var(--color-text-muted); font-size: .9rem; padding: var(--space-6) var(--space-4); }
 .cgroup-card__cover {
     position: relative; aspect-ratio: 16 / 7; background: var(--color-bg-alt);
     display: flex; align-items: center; justify-content: center;
@@ -58,15 +75,42 @@
 }
 .cgroup-card__meta { font-size: .78rem; color: var(--color-text-soft); margin: var(--space-2) 0 0; }
 
-/* ── Group feed header ──────────────────────────────────────────── */
-.cgroup-head { position: relative; border-radius: var(--radius-lg); overflow: hidden; margin-bottom: var(--space-4); background: var(--color-text); }
-.cgroup-head__cover { width: 100%; height: 150px; object-fit: cover; display: block; opacity: .9; }
-.cgroup-head.has-cover .cgroup-head__bar { position: absolute; inset: auto 0 0 0; background: linear-gradient(transparent, rgba(0,0,0,.7)); color: #fff; }
-.cgroup-head:not(.has-cover) { background: var(--color-primary); }
-.cgroup-head__bar { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-4); color: #fff; }
-.cgroup-head__back { display: inline-flex; color: inherit; flex: 0 0 auto; }
-.cgroup-head__name { font-size: 1.25rem; font-weight: 700; margin: 0; line-height: 1.2; }
-.cgroup-head__sub { font-size: .82rem; margin: 2px 0 0; opacity: .9; }
+/* ── Group feed page — Facebook-group style (mobile-first) ──────── */
+.cgroup { padding-bottom: var(--space-12); }
+
+/* Cover banner — full-bleed on mobile, a rounded card top on desktop. */
+.cgroup-cover { position: relative; height: 140px; overflow: hidden; background: var(--color-bg-alt); }
+.cgroup-cover__img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.cgroup-cover--t0 { background: linear-gradient(135deg, #E5252A, #ff8a65); }
+.cgroup-cover--t1 { background: linear-gradient(135deg, #F4A100, #ffd166); }
+.cgroup-cover--t2 { background: linear-gradient(135deg, #14A35E, #6ee7b7); }
+.cgroup-cover--t3 { background: linear-gradient(135deg, #2E7CF6, #7db1ff); }
+.cgroup-cover--t4 { background: linear-gradient(135deg, #8B5CF6, #c4b5fd); }
+.cgroup-cover--t5 { background: linear-gradient(135deg, #EC4899, #f9a8d4); }
+.cgroup-cover--t6 { background: linear-gradient(135deg, #0EA5A5, #5eead4); }
+.cgroup-cover__back { position: absolute; top: var(--space-3); left: var(--space-3); width: 38px; height: 38px; border-radius: 50%; background: rgba(255, 255, 255, .92); color: var(--color-text); display: inline-flex; align-items: center; justify-content: center; box-shadow: var(--shadow-1); }
+.cgroup-cover__back:hover { background: #fff; }
+
+/* Title / meta bar */
+.cgroup-bar { display: flex; align-items: center; gap: var(--space-3); background: var(--color-bg); padding: var(--space-4); border-bottom: 1px solid var(--color-border-soft); }
+.cgroup-bar__main { flex: 1; min-width: 0; }
+.cgroup-bar__name { font-size: 1.35rem; font-weight: 800; margin: 0; line-height: 1.15; color: var(--color-text); }
+.cgroup-bar__meta { display: inline-flex; align-items: center; gap: 6px; font-size: .8rem; color: var(--color-text-muted); margin: 4px 0 0; }
+.cgroup-bar__share { display: inline-flex; align-items: center; gap: 7px; flex: 0 0 auto; border: none; background: var(--color-primary-soft); color: var(--color-primary); font-weight: 700; font-size: .86rem; padding: 9px 15px; border-radius: var(--radius-md); cursor: pointer; font-family: inherit; }
+.cgroup-bar__share:hover { background: #fcd9da; }
+
+/* Body — single column on mobile; two columns (feed + About) on desktop. */
+.cgroup-body { padding: var(--space-4) var(--space-3); }
+.cfeed { min-width: 0; }
+.cgroup-side { display: none; }
+.cside-card { background: var(--color-bg); border: 1px solid var(--color-border); border-radius: var(--radius-lg); padding: var(--space-4); box-shadow: var(--shadow-1); }
+.cside-card__title { font-size: 1.05rem; font-weight: 800; margin: 0 0 var(--space-2); color: var(--color-text); }
+.cside-card__desc { font-size: .88rem; color: var(--color-text); margin: 0 0 var(--space-3); }
+.cside-card__rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-4); }
+.cside-card__rows li { display: flex; gap: var(--space-3); align-items: flex-start; }
+.cside-card__rows li svg { flex: 0 0 auto; color: var(--color-text-muted); margin-top: 1px; }
+.cside-card__rows span { display: flex; flex-direction: column; font-size: .78rem; color: var(--color-text-muted); line-height: 1.4; }
+.cside-card__rows strong { font-size: .9rem; color: var(--color-text); font-weight: 700; }
 
 /* ── Composer ───────────────────────────────────────────────────── */
 .ccompose--post {
@@ -74,12 +118,13 @@
     border-radius: var(--radius-lg); padding: var(--space-3); margin-bottom: var(--space-4);
     box-shadow: var(--shadow-1);
 }
-.ccompose__top { display: flex; gap: var(--space-3); align-items: flex-start; }
+.ccompose__top { display: flex; gap: var(--space-3); align-items: center; }
 .ccompose__text {
     flex: 1; border: none; resize: none; font-family: inherit; font-size: .95rem;
-    color: var(--color-text); background: transparent; padding: var(--space-2) 0; min-height: 44px;
+    color: var(--color-text); background: var(--color-bg-alt); border-radius: var(--radius-lg);
+    padding: 11px 16px; min-height: 42px; line-height: 1.4;
 }
-.ccompose__text:focus { outline: none; }
+.ccompose__text:focus { outline: none; background: var(--color-bg); box-shadow: inset 0 0 0 1px var(--color-border); }
 .ccompose__preview { position: relative; margin: var(--space-2) 0; border-radius: var(--radius-md); overflow: hidden; }
 .ccompose__preview img { width: 100%; max-height: 280px; object-fit: cover; display: block; }
 .ccompose__preview-x {
@@ -180,5 +225,18 @@
 @media (min-width: 768px) {
     .cwrap { padding-top: var(--space-6); }
     .cgroups { grid-template-columns: 1fr 1fr; gap: var(--space-5); }
-    .cgroup-head__cover { height: 200px; }
+}
+@media (min-width: 1000px) {
+    .cgroups { grid-template-columns: repeat(3, 1fr); }
+}
+
+/* Desktop group page — wide, rounded card header + two-column body. */
+@media (min-width: 980px) {
+    .cgroup { max-width: 1040px; margin: 0 auto; padding: var(--space-5) 0 var(--space-12); }
+    .cgroup-cover { height: 240px; border-radius: var(--radius-lg) var(--radius-lg) 0 0; }
+    .cgroup-bar { border: 1px solid var(--color-border); border-top: none; border-radius: 0 0 var(--radius-lg) var(--radius-lg); padding: var(--space-4) var(--space-6); }
+    .cgroup-bar__name { font-size: 1.65rem; }
+    .cgroup-body { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: var(--space-5); align-items: start; padding: var(--space-5) 0; }
+    .cgroup-side { display: block; }
+    .cside-card { position: sticky; top: 88px; }
 }

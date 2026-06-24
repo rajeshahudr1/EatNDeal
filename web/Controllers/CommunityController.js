@@ -38,6 +38,7 @@ async function groupsPage(req, res) {
         page_title:       'Community',
         _layoutFile:      '../_layout',
         active_nav:       'community',
+        extra_js:         '/js/pages/community-list.js',
         show_promo_strip: false,
         groups,
     });
@@ -73,6 +74,7 @@ async function groupPage(req, res) {
         show_promo_strip: false,
         group:            data.group,
         posts,
+        total:            Number(data.total) || posts.length,
         has_more:         !!data.has_more,
         next_offset:      (data.offset || 0) + posts.length,
         can_post:         !!user,

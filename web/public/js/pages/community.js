@@ -197,6 +197,8 @@
         var action = act.getAttribute('data-action');
         var card = act.closest('.cpost');
 
+        if (action === 'share-group') { sharePost(null); return; }
+
         if (action === 'like' && card) {
             if (!CAN_POST) { bounceToSignin(); return; }
             var pid = card.getAttribute('data-post-id');
@@ -326,7 +328,7 @@
 
     function sharePost(card) {
         var url = window.location.origin + '/community/g/' + GROUP_ID;
-        var title = (document.querySelector('.cgroup-head__name') || {}).textContent || 'Community';
+        var title = (document.querySelector('.cgroup-bar__name') || {}).textContent || 'Community';
         if (navigator.share) {
             navigator.share({ title: title, text: 'Check out this post on ' + title, url: url }).catch(function () {});
         } else if (navigator.clipboard && navigator.clipboard.writeText) {

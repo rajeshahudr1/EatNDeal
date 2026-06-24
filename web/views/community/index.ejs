@@ -8,7 +8,7 @@
   Inputs: groups[] (id, name, description, image_url, type, posts, initial, tint),
           user_session.
 -%>
-<section class="cwrap">
+<section class="cwrap" data-community-list data-uid="<%= user_session ? user_session.id : 'guest' %>">
 
     <header class="cland-head">
         <div>
@@ -30,25 +30,44 @@
             <p>No community groups yet. Please check back soon.</p>
         </div>
     <% } else { %>
-        <div class="cgroups">
+        <%#
+          Each card is a container: the whole card links to the feed, and a
+          small ✕ button removes it to the "Removed groups" section below. The
+          hide/restore state is per-person + saved in localStorage by
+          /js/pages/community-list.js (works for guests too).
+        -%>
+        <div class="cgroups" data-main-list>
             <% groups.forEach(function (g) { %>
-            <a class="cgroup-card" href="/community/g/<%= g.id %>">
-                <div class="cgroup-card__cover <%= g.image_url ? '' : ('cgroup-card__cover--t' + g.tint) %>">
-                    <% if (g.image_url) { %>
-                        <img src="<%= g.image_url %>" alt="" loading="lazy">
-                    <% } else { %>
-                        <span class="cgroup-card__initial" aria-hidden="true"><%= g.initial %></span>
-                    <% } %>
-                    <% if (g.type === 'restaurant') { %><span class="cgroup-card__type">Restaurants</span><% } %>
-                </div>
-                <div class="cgroup-card__body">
-                    <h2 class="cgroup-card__name"><%= g.name %></h2>
-                    <% if (g.description) { %><p class="cgroup-card__desc"><%= g.description %></p><% } %>
-                    <p class="cgroup-card__meta"><%= g.posts %> post<%= Number(g.posts) === 1 ? '' : 's' %></p>
-                </div>
-            </a>
+            <article class="cgroup-card" data-group-id="<%= g.id %>" data-group-name="<%= g.name %>">
+                <a class="cgroup-card__link" href="/community/g/<%= g.id %>">
+                    <div class="cgroup-card__cover <%= g.image_url ? '' : ('cgroup-card__cover--t' + g.tint) %>">
+                        <% if (g.image_url) { %>
+                            <img src="<%= g.image_url %>" alt="" loading="lazy">
+                        <% } else { %>
+                            <span class="cgroup-card__initial" aria-hidden="true"><%= g.initial %></span>
+                        <% } %>
+                        <% if (g.type === 'restaurant') { %><span class="cgroup-card__type">Restaurants</span><% } %>
+                    </div>
+                    <div class="cgroup-card__body">
+                        <h2 class="cgroup-card__name"><%= g.name %></h2>
+                        <% if (g.description) { %><p class="cgroup-card__desc"><%= g.description %></p><% } %>
+                        <p class="cgroup-card__meta"><%= g.posts %> post<%= Number(g.posts) === 1 ? '' : 's' %></p>
+                    </div>
+                </a>
+                <button type="button" class="cgroup-card__hide" data-action="toggle-hide" title="Remove from my list" aria-label="Remove this group">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+            </article>
             <% }); %>
         </div>
+        <p class="cland-allhidden" data-main-empty hidden>You’ve removed every group. Restore any from below.</p>
+
+        <%# Removed groups — filled client-side from localStorage; hidden when empty. %>
+        <section class="cremoved" data-removed-section hidden>
+            <h2 class="cremoved__title">Removed groups</h2>
+            <p class="cremoved__sub">Hidden from your list. Restore any to bring it back to the top.</p>
+            <div class="cgroups cgroups--removed" data-removed-list></div>
+        </section>
     <% } %>
 
 </section>

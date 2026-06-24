@@ -63,6 +63,16 @@ const app    = express();
 const ENV    = process.env.APP_ENV || 'development';
 const IS_DEV = ENV !== 'production';
 
+// ── Writable runtime data dir (sessions + uploaded photos) ──────
+// Defaults to web/runtime. On a server where the app directory is read-only
+// (e.g. /var/www/html/...), set RUNTIME_DIR to a writable path the node user
+// owns (e.g. /var/lib/eatndeal/web-runtime) so the session store + uploads
+// don't fail to boot with EACCES.
+const RUNTIME_DIR = process.env.RUNTIME_DIR
+    ? path.resolve(process.env.RUNTIME_DIR)
+    : path.join(__dirname, 'runtime');
+try { fs.mkdirSync(RUNTIME_DIR, { recursive: true }); } catch (e) { /* per-subdir mkdirs below surface the real error */ }
+
 app.set('trust proxy', true);
 app.disable('x-powered-by');
 
@@ -174,7 +184,7 @@ if (yiiUploadsPath) {
 // img-src 'self' CSP allows them. The API only stores the relative path
 // in customer.image. multer handles the multipart upload; the route is
 // POST /account/avatar (see AuthController.uploadAvatar).
-const AVATAR_DIR = path.join(__dirname, 'runtime', 'avatars');
+const AVATAR_DIR = path.join(RUNTIME_DIR,'avatars');
 try { fs.mkdirSync(AVATAR_DIR, { recursive: true }); } catch (e) { /* ignore */ }
 app.use('/avatars', express.static(AVATAR_DIR, { maxAge: ENV === 'production' ? '7d' : 0, fallthrough: true }));
 
@@ -184,7 +194,7 @@ app.use('/avatars', express.static(AVATAR_DIR, { maxAge: ENV === 'production' ? 
 // restaurant-images and are served from the web origin so the strict
 // img-src 'self' CSP allows them. branch.banner_image stores the
 // relative path "/restaurant-images/<file>".
-const RESTO_IMG_DIR = path.join(__dirname, 'runtime', 'restaurant-images');
+const RESTO_IMG_DIR = path.join(RUNTIME_DIR,'restaurant-images');
 try { fs.mkdirSync(RESTO_IMG_DIR, { recursive: true }); } catch (e) { /* ignore */ }
 app.use('/restaurant-images', express.static(RESTO_IMG_DIR, { maxAge: ENV === 'production' ? '7d' : 0, fallthrough: true }));
 
@@ -215,7 +225,7 @@ app.locals.avatarUpload = avatarUpload;
 // (web/runtime/review-images, gitignored) + served from the web origin so
 // the strict img-src 'self' CSP allows it; the api stores only the relative
 // path in review_rating.review_photo. Mirrors the avatar flow.
-const REVIEW_IMG_DIR = path.join(__dirname, 'runtime', 'review-images');
+const REVIEW_IMG_DIR = path.join(RUNTIME_DIR,'review-images');
 try { fs.mkdirSync(REVIEW_IMG_DIR, { recursive: true }); } catch (e) { /* ignore */ }
 app.use('/review-images', express.static(REVIEW_IMG_DIR, { maxAge: ENV === 'production' ? '7d' : 0, fallthrough: true }));
 const reviewUpload = multer({
@@ -237,7 +247,7 @@ const reviewUpload = multer({
 // the strict img-src 'self' CSP allows it; the api stores only the relative
 // path "/community-images/<file>" on mp_community_post.image. Mirrors the
 // avatar / review-photo flow.
-const COMMUNITY_IMG_DIR = path.join(__dirname, 'runtime', 'community-images');
+const COMMUNITY_IMG_DIR = path.join(RUNTIME_DIR,'community-images');
 try { fs.mkdirSync(COMMUNITY_IMG_DIR, { recursive: true }); } catch (e) { /* ignore */ }
 app.use('/community-images', express.static(COMMUNITY_IMG_DIR, { maxAge: ENV === 'production' ? '7d' : 0, fallthrough: true }));
 const communityUpload = multer({
@@ -276,7 +286,7 @@ app.use(session({
     resave:            false,
     saveUninitialized: false,
     store: new FileStore({
-        path:         path.join(__dirname, 'runtime', 'sessions'),
+        path:         path.join(RUNTIME_DIR,'sessions'),
         ttl:          Math.floor(SESSION_MAX_AGE / 1000),   // seconds
         retries:      1,
         reapInterval: 60 * 60,        // purge expired files hourly

@@ -63,6 +63,14 @@ const app    = express();
 const ENV    = process.env.APP_ENV || 'development';
 const IS_DEV = ENV !== 'production';
 
+// Writable runtime data dir (session store). Defaults to admin/runtime; on a
+// read-only server deploy set RUNTIME_DIR to a writable path the node user owns
+// so the session store doesn't fail to boot with EACCES.
+const RUNTIME_DIR = process.env.RUNTIME_DIR
+    ? path.resolve(process.env.RUNTIME_DIR)
+    : path.join(__dirname, 'runtime');
+try { fs.mkdirSync(RUNTIME_DIR, { recursive: true }); } catch (e) { /* surfaced by the session-store mkdir below */ }
+
 app.set('trust proxy', true);
 app.disable('x-powered-by');
 
@@ -152,7 +160,7 @@ app.use(session({
     resave:            false,
     saveUninitialized: false,
     store: new FileStore({
-        path:         path.join(__dirname, 'runtime', 'sessions'),
+        path:         path.join(RUNTIME_DIR, 'sessions'),
         ttl:          Math.floor(SESSION_MAX_AGE / 1000),
         retries:      1,
         reapInterval: 60 * 60,
@@ -781,7 +789,7 @@ app.use((err, req, res, next) => {
 const PORT = parseInt(process.env.PORT, 10) || 4503;
 
 // Make sure the sessions dir exists before the store writes to it.
-try { fs.mkdirSync(path.join(__dirname, 'runtime', 'sessions'), { recursive: true }); } catch (e) { /* ignore */ }
+try { fs.mkdirSync(path.join(RUNTIME_DIR, 'sessions'), { recursive: true }); } catch (e) { /* ignore */ }
 
 app.listen(PORT, '0.0.0.0', async () => {
     try {

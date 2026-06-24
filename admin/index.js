@@ -69,7 +69,9 @@ const IS_DEV = ENV !== 'production';
 const RUNTIME_DIR = process.env.RUNTIME_DIR
     ? path.resolve(process.env.RUNTIME_DIR)
     : path.join(__dirname, 'runtime');
-try { fs.mkdirSync(RUNTIME_DIR, { recursive: true }); } catch (e) { /* surfaced by the session-store mkdir below */ }
+try {  if (!fs.existsSync(RUNTIME_DIR)) {
+            fs.mkdirSync(RUNTIME_DIR);
+        } } catch (e) { /* surfaced by the session-store mkdir below */ }
 
 app.set('trust proxy', true);
 app.disable('x-powered-by');

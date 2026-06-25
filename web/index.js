@@ -105,6 +105,16 @@ app.set('view engine', 'ejs');
 // img-src adds 'data:' for tiny SVG/PNG data-urls used inside our own CSS
 // (component icons). font-src is 'self' — every font we ship is in
 // /fonts/ on our own origin. NO Google Fonts, NO CDN.
+// In production the CSP locks img-src to our own origin. The legacy Yii uploads
+// (product / restaurant images) may live on ANOTHER host — the marketplace then
+// references them by ABSOLUTE URL, so we allow that host (derived from
+// YII_UPLOADS_URL) plus any extra hosts / CDNs listed in IMG_HOSTS.
+function hostOf(u) { try { return new URL(u).origin; } catch (e) { return null; } }
+const EXTRA_IMG_HOSTS = [];
+const uploadsOrigin = hostOf(process.env.YII_UPLOADS_URL || '');
+if (uploadsOrigin) { EXTRA_IMG_HOSTS.push(uploadsOrigin); }
+(process.env.IMG_HOSTS || '').split(/[\s,]+/).filter(Boolean).forEach((h) => { if (EXTRA_IMG_HOSTS.indexOf(h) === -1) { EXTRA_IMG_HOSTS.push(h); } });
+
 if (IS_DEV) {
     app.use(helmet({ contentSecurityPolicy: false }));
 } else {
@@ -122,7 +132,7 @@ if (IS_DEV) {
                 // domain (hooks.stripe.com) so card input renders.
                 'script-src':      ["'self'", 'https://js.stripe.com'],
                 'style-src':       ["'self'"],
-                'img-src':         ["'self'", 'data:'],
+                'img-src':         ["'self'", 'data:'].concat(EXTRA_IMG_HOSTS),
                 'font-src':        ["'self'"],
                 // Card confirmation hits the Stripe API directly from
                 // the browser; allow it on the connect-src list.

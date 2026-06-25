@@ -87,6 +87,15 @@ app.set('view engine', 'ejs');
 // DEV runs without a CSP (a strict policy on plain-HTTP localhost can
 // silently block our own CSS/fonts). PROD locks everything to our own
 // origin — no inline scripts, no inline styles, no CDN (Conventions #6).
+// Legacy Yii uploads (product / restaurant images) may live on ANOTHER host;
+// the admin then references them by ABSOLUTE URL, so allow that host (from
+// YII_UPLOADS_URL) plus any extra hosts / CDNs in IMG_HOSTS in the prod CSP.
+function hostOf(u) { try { return new URL(u).origin; } catch (e) { return null; } }
+const EXTRA_IMG_HOSTS = [];
+const uploadsOrigin = hostOf(process.env.YII_UPLOADS_URL || '');
+if (uploadsOrigin) { EXTRA_IMG_HOSTS.push(uploadsOrigin); }
+(process.env.IMG_HOSTS || '').split(/[\s,]+/).filter(Boolean).forEach((h) => { if (EXTRA_IMG_HOSTS.indexOf(h) === -1) { EXTRA_IMG_HOSTS.push(h); } });
+
 if (IS_DEV) {
     app.use(helmet({ contentSecurityPolicy: false }));
 } else {
@@ -101,7 +110,7 @@ if (IS_DEV) {
                 'frame-ancestors': ["'none'"],
                 'script-src':      ["'self'"],
                 'style-src':       ["'self'"],
-                'img-src':         ["'self'", 'data:'],
+                'img-src':         ["'self'", 'data:'].concat(EXTRA_IMG_HOSTS),
                 'font-src':        ["'self'"],
                 'connect-src':     ["'self'", process.env.API_URL || 'http://localhost:4501'],
                 'worker-src':      ["'self'"],

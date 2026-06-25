@@ -60,22 +60,10 @@
             <span class="admin-nav__ic" aria-hidden="true">👥</span><span>Community</span>
         </a>
 
-        <%# Settings group — Cashback Review only. Loyalty Configuration, Review
-            CMS Pages and Store Settings are hidden from the menu (their routes
-            still work by direct URL if ever needed). %>
-        <% if (loyaltyOn) { %>
-        <details class="admin-nav__group" <%= nav === 'reviews' ? 'open' : '' %>>
-            <summary class="admin-nav__item admin-nav__sum">
-                <span class="admin-nav__ic" aria-hidden="true">⚙️</span><span>Settings</span>
-                <span class="admin-nav__chev" aria-hidden="true">▸</span>
-            </summary>
-            <div class="admin-nav__sub">
-                <a class="admin-nav__item admin-nav__subitem <%= nav === 'reviews' ? 'is-active' : '' %>" href="/loyalty/review-claims">
-                    <span class="admin-nav__ic" aria-hidden="true">✅</span><span>Cashback Review</span>
-                </a>
-            </div>
-        </details>
-        <% } %>
+        <%# Settings menu is fully HIDDEN per request — the whole group (incl.
+            Cashback Review, Loyalty Configuration, Review CMS Pages, Store
+            Settings) is removed from the sidebar. Their routes still work by
+            direct URL if needed (e.g. /loyalty/review-claims). %>
     </nav>
     <%# Sign out lives in the topbar account menu — not duplicated here. %>
 </aside>

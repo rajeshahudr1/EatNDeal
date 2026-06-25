@@ -42,11 +42,14 @@ async function resolveScope(req, res) {
     return { companyId: scope.companyId, actorId: scope.actorId, branch };
 }
 
-// The branch's category ids (company + branch-scoped, not deleted).
+// The branch's ACTIVE category ids (company + branch-scoped, status='1').
+// Only active categories — so the Products list shows the same items the
+// customer front shows (products in inactive/duplicate "(Copy)" categories,
+// status='3' etc., are hidden here too).
 async function branchCategoryIds(companyId, branchId) {
     return db('categories')
         .where('company_id', companyId)
-        .andWhereRaw("status <> '2'")
+        .andWhereRaw("status = '1'")
         .andWhereRaw('? = ANY (string_to_array(branch_id, \',\')::int[])', [branchId || 0])
         .pluck('id');
 }
@@ -85,7 +88,7 @@ async function list(req, res) {
         // option's id is the comma-joined ids sharing that name; the filter then
         // matches products in ANY of them.
         const catRows = catIds.length
-            ? await db('categories as c').where('c.company_id', cid).andWhereRaw("c.status <> '2'")
+            ? await db('categories as c').where('c.company_id', cid).andWhereRaw("c.status = '1'")
                 .whereIn('c.id', catIds)
                 .whereExists(function () {
                     this.select(db.raw('1')).from('product_product_category as pc')
@@ -651,8 +654,11 @@ async function formMeta(req, res) {
         const cid = got.companyId;
         const bid = got.branch ? Number(got.branch.id) : 0;
 
+        // Only ACTIVE categories (status='1'). Inactive / duplicate "(Copy)"
+        // categories (status='3' etc.) are hidden so a product is never assigned
+        // to a category the customer menu (which shows status='1' only) can't display.
         const cats = await db('categories')
-            .where('company_id', cid).andWhereRaw("status <> '2'")
+            .where('company_id', cid).andWhereRaw("status = '1'")
             .andWhereRaw('? = ANY (string_to_array(branch_id, \',\')::int[])', [bid])
             .orderBy('name', 'asc').select('id', 'name');
         const tax = await db('tax').where('company_id', cid).andWhereRaw("status <> '2'")

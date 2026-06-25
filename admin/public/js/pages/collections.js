@@ -86,7 +86,7 @@
         }
 
         var fetchList = U.debounce(function (q) {
-            A.getJson('/collections/companies?limit=10&q=' + encodeURIComponent(q)).then(function (res) {
+            A.getJson('/collections/companies?limit=50&q=' + encodeURIComponent(q)).then(function (res) {
                 var rows = (A.isSuccess(res) && res.data && res.data.companies) || [];
                 panel.innerHTML = '';
                 if (!rows.length) { panel.hidden = true; return; }
@@ -108,11 +108,11 @@
             });
         }, 250);
 
-        input.addEventListener('input', function () {
-            var q = input.value.trim();
-            if (q.length < 1) { panel.hidden = true; panel.innerHTML = ''; return; }
-            fetchList(q);
-        });
+        // Default list on focus (empty query → api returns up to 50), then
+        // search as you type. Already-picked restaurants are skipped (dedup in
+        // fetchList via has(); addChip() also guards) so no duplicates.
+        input.addEventListener('focus', function () { fetchList(input.value.trim()); });
+        input.addEventListener('input', function () { fetchList(input.value.trim()); });
         input.addEventListener('blur', function () { setTimeout(function () { panel.hidden = true; }, 180); });
 
         pickList.addEventListener('click', function (e) {

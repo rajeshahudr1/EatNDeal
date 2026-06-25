@@ -36,7 +36,7 @@
 
         if (input && panel) {
             var fetchList = U.debounce(function (q) {
-                A.getJson('/featured/companies?limit=10&q=' + encodeURIComponent(q)).then(function (res) {
+                A.getJson('/featured/companies?limit=50&q=' + encodeURIComponent(q)).then(function (res) {
                     var rows = (A.isSuccess(res) && res.data && res.data.companies) || [];
                     panel.innerHTML = '';
                     if (!rows.length) { panel.hidden = true; return; }
@@ -54,12 +54,12 @@
                 });
             }, 250);
 
+            // Default list on focus (empty query → up to 50); search as you type.
+            input.addEventListener('focus', function () { fetchList(input.value.trim()); });
             input.addEventListener('input', function () {
                 // Typing a new search invalidates a previous pick.
                 if (hidden) { hidden.value = ''; }
-                var q = input.value.trim();
-                if (q.length < 1) { panel.hidden = true; panel.innerHTML = ''; return; }
-                fetchList(q);
+                fetchList(input.value.trim());   // empty query → default list
             });
             input.addEventListener('blur', function () { setTimeout(function () { panel.hidden = true; }, 180); });
         }

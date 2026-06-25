@@ -226,7 +226,8 @@ async function reorder(req, res) {
 async function companies(req, res) {
     try {
         const q = String(req.query.q || '').trim().toLowerCase();
-        const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 10));
+        // Default (no search) returns up to 50; search is case-insensitive.
+        const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 50));
         let qb = db('company').where('is_marketplace', 1).andWhere('is_active', 1).whereNull('deleted_at')
             .orderBy('business_name', 'asc').limit(limit).select('id', 'business_name', 'domain_name', 'email');
         if (q) { qb = qb.andWhereRaw('LOWER(business_name) LIKE ?', ['%' + q + '%']); }

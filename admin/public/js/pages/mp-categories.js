@@ -74,7 +74,7 @@
             panel.hidden = false;
         }
         var fetchList = debounce(function (q) {
-            getJson('/marketplace-categories/companies?limit=10&q=' + encodeURIComponent(q)).then(function (res) {
+            getJson('/marketplace-categories/companies?limit=50&q=' + encodeURIComponent(q)).then(function (res) {
                 if (ok(res) && res.data) { render(res.data.companies || []); } else { render([]); }
             });
         }, 300);

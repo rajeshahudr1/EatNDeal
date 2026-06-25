@@ -254,7 +254,9 @@ function mapCompany(r) {
 async function companies(req, res) {
     try {
         const q = String(req.query.q || '').trim().toLowerCase();
-        const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 10));
+        // Default load (no search) returns up to 50 so the modal shows a list
+        // immediately. Search is case-insensitive (LOWER LIKE LOWER below).
+        const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 50));
         let qb = db('company').where('is_marketplace', 1).andWhere('is_active', 1).whereNull('deleted_at')
             .orderBy('business_name', 'asc').limit(limit).select('id', 'business_name', 'domain_name', 'email');
         if (q) { qb = qb.andWhereRaw('LOWER(business_name) LIKE ?', ['%' + q + '%']); }

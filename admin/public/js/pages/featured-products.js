@@ -31,7 +31,7 @@
             var rPanel = restAc.querySelector('[data-ac-panel]');
             var picked = form.querySelector('[data-fp-resto-picked]');
             var fetchRest = U.debounce(function (q) {
-                A.getJson('/featured-products/companies?limit=10&q=' + encodeURIComponent(q)).then(function (res) {
+                A.getJson('/featured-products/companies?limit=50&q=' + encodeURIComponent(q)).then(function (res) {
                     renderPanel(rPanel, (A.isSuccess(res) && res.data && res.data.companies) || [], function (c) {
                         companyHidden.value = Number(c.id) || '';
                         if (picked) { picked.hidden = false; picked.textContent = '🏪 ' + c.name; }
@@ -41,11 +41,9 @@
                     });
                 });
             }, 250);
-            rInput.addEventListener('input', function () {
-                var q = rInput.value.trim();
-                if (q.length < 1) { rPanel.hidden = true; rPanel.innerHTML = ''; return; }
-                fetchRest(q);
-            });
+            // Default list on focus (empty query → up to 50); search as you type.
+            rInput.addEventListener('focus', function () { fetchRest(rInput.value.trim()); });
+            rInput.addEventListener('input', function () { fetchRest(rInput.value.trim()); });
             rInput.addEventListener('blur', function () { setTimeout(function () { rPanel.hidden = true; }, 180); });
         }
 
@@ -57,7 +55,7 @@
             var fetchProd = U.debounce(function (q) {
                 var cid = companyHidden.value;
                 if (!cid) { pPanel.hidden = true; return; }
-                A.getJson('/featured-products/products?company_id=' + encodeURIComponent(cid) + '&limit=12&q=' + encodeURIComponent(q)).then(function (res) {
+                A.getJson('/featured-products/products?company_id=' + encodeURIComponent(cid) + '&limit=50&q=' + encodeURIComponent(q)).then(function (res) {
                     var list = (A.isSuccess(res) && res.data && res.data.products) || [];
                     // Hide products already added (by id OR by identical name).
                     list = list.filter(function (p) { return !hasChip(p.id) && !hasName(p.name); });
@@ -66,6 +64,9 @@
                     });
                 });
             }, 250);
+            // Default product list on focus once a restaurant is chosen (empty
+            // query → up to 50, deduped); search as you type.
+            pInput.addEventListener('focus', function () { if (companyHidden.value) { fetchProd(pInput.value.trim()); } });
             pInput.addEventListener('input', function () {
                 if (!companyHidden.value) { toast('info', 'Pick a restaurant first.'); pPanel.hidden = true; return; }
                 fetchProd(pInput.value.trim());

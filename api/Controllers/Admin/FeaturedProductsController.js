@@ -203,7 +203,8 @@ async function reorder(req, res) {
 async function companies(req, res) {
     try {
         const q = String(req.query.q || '').trim().toLowerCase();
-        const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 10));
+        // Default (no search) returns up to 50; search is case-insensitive.
+        const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 50));
         let qb = db('company').where('is_marketplace', 1).andWhere('is_active', 1).whereNull('deleted_at')
             .orderBy('business_name', 'asc').limit(limit).select('id', 'business_name', 'domain_name', 'email');
         if (q) { qb = qb.andWhereRaw('LOWER(business_name) LIKE ?', ['%' + q + '%']); }
@@ -223,7 +224,8 @@ async function products(req, res) {
         const companyId = Number(req.query.company_id) || 0;
         if (!companyId) { return H.successResponse(res, { products: [] }); }
         const q = String(req.query.q || '').trim().toLowerCase();
-        const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 10));
+        // Default (no search) returns up to 50; search is case-insensitive.
+        const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 50));
         let qb = db('products').where('company_id', companyId).andWhere('show_marketplace', 1).andWhere('status', '1')
             .orderBy('name', 'asc').limit(limit)
             .select('id', 'name', 'marketplace_price', 'online_platform_price', 'price_after_tax');

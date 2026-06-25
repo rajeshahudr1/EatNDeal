@@ -44,7 +44,7 @@ function slugify(s, id) {
 function imageUrl(file) {
     const f = str(file).trim();
     if (!f) { return ''; }
-    if (/^https?:\/\//i.test(f) || f.startsWith('/')) { return f; }
+    if (/^https?:\/\//i.test(f) || f.startsWith('/')) { return H.mediaUrl(f); }
     const base = H.getUploadsBaseUrl();
     return base + '/marketplace/category/' + f;
 }

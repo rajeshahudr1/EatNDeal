@@ -822,14 +822,18 @@ async function reviewClaimsGet(req, res) {
         const ruleMap = {};
         rules.forEach((r) => { ruleMap[r.company_id + ':' + r.type] = { cashback: Number(r.cashback) || 0, value_type: r.value_type || '£' }; });
 
-        // Review screenshots are stored under /review-images/*. We keep the URL
-        // relative (the admin serves /review-images from the web runtime folder),
-        // so it loads same-origin even when the customer web app isn't running.
-        const photoUrl = (p) => {
+        // Cashback review screenshots are LEGACY media — they live on the old
+        // Eat-n-Deal server under /uploads/<company>/review/<file>, NOT on our
+        // /upload tree. (Only 4 media types are "ours": community, home feed,
+        // avatar, marketplace category — everything else, incl. these
+        // screenshots, stays on the legacy server.) Build the legacy url from
+        // YII_UPLOADS_URL; pass through anything already absolute or a "/path".
+        const photoUrl = (companyId, p) => {
             const f = String(p || '').trim();
             if (!f) { return ''; }
             if (/^https?:\/\//i.test(f)) { return f; }
-            return f.charAt(0) === '/' ? f : ('/' + f);
+            if (f.charAt(0) === '/') { return H.mediaUrl(f); }
+            return H.getUploadsBaseUrl() + '/' + companyId + '/review/' + f;
         };
         const claims = rows.map((r) => {
             const rule = ruleMap[r.company_id + ':' + r.review_type] || { cashback: 0, value_type: '£' };
@@ -845,7 +849,7 @@ async function reviewClaimsGet(req, res) {
                 review_date:   r.review_date,
                 notes:         r.notes || '',
                 review_photo:  r.review_photo || '',
-                review_photo_url: photoUrl(r.review_photo),
+                review_photo_url: photoUrl(r.company_id, r.review_photo),
                 reject_reason: r.reject_reason || '',
                 reward:        rule.cashback,
                 reward_vt:     rule.value_type,

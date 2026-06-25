@@ -824,13 +824,19 @@ async function uploadAvatar(req, res) {
     if (!user) { return res.status(200).json({ status: 401, show: true, msg: 'Please sign in.' }); }
     if (!req.file) { return res.status(200).json({ status: 400, show: true, msg: 'Please choose an image (PNG or JPG, under 3 MB).' }); }
 
-    const imagePath = '/avatars/' + req.file.filename;
+    // Avatar is one of the 4 "our-server" media types (community, home feed,
+    // avatar, marketplace category). multer wrote the file into the shared api
+    // upload tree (MEDIA_DIR/avatar). We persist only the RELATIVE path; the
+    // api turns it into a full url on read — the web never builds the url.
+    const mediaUrl = (process.env.MEDIA_URL || '/upload').replace(/\/$/, '');
+    const imagePath = mediaUrl + '/avatar/' + req.file.filename;
     const apiRes = await callApi(req, 'POST', '/api/v1/auth/update-avatar', { customer_id: user.id, image: imagePath });
     const body = apiRes.body || {};
 
     if (body.status !== 200 || !body.data || !body.data.customer) {
         // Persistence failed — remove the orphaned file so it doesn't pile up.
-        try { fs.unlinkSync(path.join(__dirname, '..', 'runtime', 'avatars', req.file.filename)); } catch (e) { /* ignore */ }
+        // req.file.path is the actual saved location (whatever MEDIA_DIR resolved to).
+        try { fs.unlinkSync(req.file.path); } catch (e) { /* ignore */ }
         return res.status(200).json({ status: body.status || 502, show: true, msg: body.msg || 'Could not save your photo. Please try again.' });
     }
 
@@ -838,7 +844,9 @@ async function uploadAvatar(req, res) {
     // Persist the session before replying so the header avatar reflects the
     // new photo immediately on the next render (file-store writes async).
     return req.session.save(function () {
-        res.status(200).json({ status: 200, show: false, msg: 'Profile photo updated.', data: { image: imagePath } });
+        // Hand back the FULL url the api built (customer.image), not the
+        // relative path — so the in-page uploader shows the photo at once.
+        res.status(200).json({ status: 200, show: false, msg: 'Profile photo updated.', data: { image: body.data.customer.image } });
     });
 }
 

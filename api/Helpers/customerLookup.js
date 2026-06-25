@@ -37,6 +37,7 @@ const F = require('./format');
 
 const { db } = require('../config/db');
 const MSG    = require('./messages');
+const H       = require('./helper');   // mediaUrl — builds the full avatar URL
 
 const TABLE = 'customer';
 
@@ -143,7 +144,12 @@ function publicView(row) {
         // (see the m260529 gender migration).
         birthdate:     row.birthdate || '',
         gender:        row.gender != null ? String(row.gender) : '',
-        image:         row.image != null ? String(row.image) : '',
+        // Avatar — ONE of the 4 "our-server" media types (community, home
+        // feed, avatar, marketplace category). The file lives in the api's
+        // /upload/avatar/ folder and is stored as a relative "/upload/avatar/
+        // <file>"; mediaUrl() prepends the api host so web/admin get the FULL
+        // url and never build it themselves. Legacy/other values pass through.
+        image:         H.mediaUrl(row.image != null ? String(row.image) : ''),
         loyalty_points: Number(row.loyalty_points) || 0,
         is_registered: Number(row.is_registered) === 1,
         // The customer's OWN referral code — shown on their Rewards

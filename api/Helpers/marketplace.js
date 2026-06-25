@@ -236,9 +236,9 @@ const YII_FOLDERS = {
 function yiiImageUrl(type, companyId, filename) {
     const raw = String(filename || '').trim();
     if (!raw) { return null; }
-    // If the DB already stored a full URL (legacy rows that bypassed
-    // the upload helper), pass it through unchanged.
-    if (/^https?:\/\//i.test(raw) || raw.startsWith('/')) { return raw; }
+    // Already a full URL → unchanged; a "/upload/…" path → made absolute
+    // against the api (H.mediaUrl); any other "/path" → unchanged.
+    if (/^https?:\/\//i.test(raw) || raw.startsWith('/')) { return H.mediaUrl(raw); }
 
     const sub = YII_FOLDERS[type];
     if (!sub || !companyId) { return null; }

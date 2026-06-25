@@ -211,12 +211,16 @@ const MEDIA_URL = (process.env.MEDIA_URL || '/upload').replace(/\/$/, '');
 try { fs.mkdirSync(MEDIA_DIR, { recursive: true }); } catch (e) { /* shared api folder */ }
 
 // ── Profile avatar uploads ─────────────────────────────────────
-// Customer-uploaded profile photos live on the WEB disk (gitignored
-// web/runtime/avatars) and are served from the web origin so the strict
-// img-src 'self' CSP allows them. The API only stores the relative path
-// in customer.image. multer handles the multipart upload; the route is
-// POST /account/avatar (see AuthController.uploadAvatar).
-const AVATAR_DIR = path.join(RUNTIME_DIR,'avatars');
+// Avatar is ONE of the 4 "our-server" media types (community, home feed,
+// avatar, marketplace category). NEW photos go into the shared api upload
+// tree at MEDIA_DIR/avatar (the api serves it at /upload/avatar/) and are
+// stored as a relative "/upload/avatar/<file>" in customer.image — the api
+// builds the FULL url on read (customerLookup.publicView → mediaUrl), so the
+// web only WRITES the file and never builds the url. The old web-origin
+// /avatars mount stays so photos uploaded before this change still load.
+const AVATAR_MEDIA_DIR = path.join(MEDIA_DIR, 'avatar');
+try { fs.mkdirSync(AVATAR_MEDIA_DIR, { recursive: true }); } catch (e) { /* shared api folder */ }
+const AVATAR_DIR = path.join(RUNTIME_DIR,'avatars');   // legacy (pre-/upload) photos only
 try { fs.mkdirSync(AVATAR_DIR, { recursive: true }); } catch (e) { /* ignore */ }
 app.use('/avatars', express.static(AVATAR_DIR, { maxAge: ENV === 'production' ? '7d' : 0, fallthrough: true }));
 
@@ -239,7 +243,7 @@ const DOCS_DIR = path.join(__dirname, '..', 'docs');
 app.use('/docs', express.static(DOCS_DIR, { maxAge: 0, fallthrough: true }));
 const avatarUpload = multer({
     storage: multer.diskStorage({
-        destination: (req, file, cb) => cb(null, AVATAR_DIR),
+        destination: (req, file, cb) => cb(null, AVATAR_MEDIA_DIR),   // shared /upload/avatar
         filename: (req, file, cb) => {
             const uid = (req.session && req.session.user && req.session.user.id) || 'anon';
             const ext = ({ 'image/png': '.png', 'image/jpeg': '.jpg', 'image/webp': '.webp', 'image/gif': '.gif' })[file.mimetype] || '.img';

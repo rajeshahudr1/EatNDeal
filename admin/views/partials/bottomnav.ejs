@@ -18,9 +18,6 @@
         <span class="admin-bottomnav__ic" aria-hidden="true">🗂️</span><span class="admin-bottomnav__lbl">Categories</span>
     </a>
     <% } %>
-    <a class="admin-bottomnav__item <%= ['store-settings', 'loyalty', 'cms'].includes(bnav) ? 'is-active' : '' %>" href="/store-settings">
-        <span class="admin-bottomnav__ic" aria-hidden="true">⚙️</span><span class="admin-bottomnav__lbl">Settings</span>
-    </a>
     <% if (bcc.isSuper || bcc.loyaltyEnabled) { %>
     <a class="admin-bottomnav__item <%= bnav === 'reviews' ? 'is-active' : '' %>" href="/loyalty/review-claims">
         <span class="admin-bottomnav__ic" aria-hidden="true">✅</span><span class="admin-bottomnav__lbl">Cashback</span>

@@ -293,7 +293,7 @@ async function updateProfile(req, res) {
             const ln = String(req.body.last_name || '').trim();
             const bn = String(req.body.business_name || '').trim();
             req.session.admin.name  = [fn, ln].filter(Boolean).join(' ') || bn || req.session.admin.name;
-            req.session.admin.email = String(req.body.email || '').trim().toLowerCase() || req.session.admin.email;
+            // Email is never editable — leave req.session.admin.email untouched.
         }
         if (req.flash) { req.flash('success', body.msg || 'Profile updated.'); }
         return req.session.save(() => res.redirect('/profile'));

@@ -94,6 +94,10 @@ function hostOf(u) { try { return new URL(u).origin; } catch (e) { return null; 
 const EXTRA_IMG_HOSTS = [];
 const uploadsOrigin = hostOf(process.env.YII_UPLOADS_URL || '');
 if (uploadsOrigin) { EXTRA_IMG_HOSTS.push(uploadsOrigin); }
+// The api serves marketplace + community images at <api>/upload — allow the
+// api host in img-src (API_URL must be the api's PUBLIC url in production).
+const mediaOrigin = hostOf(process.env.API_URL || 'http://localhost:4501');
+if (mediaOrigin && EXTRA_IMG_HOSTS.indexOf(mediaOrigin) === -1) { EXTRA_IMG_HOSTS.push(mediaOrigin); }
 (process.env.IMG_HOSTS || '').split(/[\s,]+/).filter(Boolean).forEach((h) => { if (EXTRA_IMG_HOSTS.indexOf(h) === -1) { EXTRA_IMG_HOSTS.push(h); } });
 
 if (IS_DEV) {
@@ -151,6 +155,25 @@ if (yiiUploadsPath) {
         maxAge: ENV === 'production' ? '7d' : 0,
         fallthrough: true,
     }));
+}
+
+// ── Media: the NEW project's OWN image uploads (marketplace + community) ──
+// These live on THIS (new) server and serve at /media; legacy product /
+// restaurant images keep coming from the old server (YII_UPLOADS_URL). Default
+// <runtime>/media (always writable — see RUNTIME_DIR); set MEDIA_DIR to a
+// persistent path on a server. Stored DB values are "/media/<sub>/<file>" so the
+// api passes them through unchanged.
+// Uploads land in the api's shared folder (api/public/upload); the API serves
+// them + returns the FULL url, so the admin only WRITES the file and stores a
+// RELATIVE "/upload/<sub>/<file>". It does NOT build or serve the url — the api
+// owns that. On separate servers, point MEDIA_DIR at a shared mount the api reads.
+const MEDIA_DIR = process.env.MEDIA_DIR ? path.resolve(process.env.MEDIA_DIR) : path.join(__dirname, '..', 'api', 'public', 'upload');
+const MEDIA_URL = (process.env.MEDIA_URL || '/upload').replace(/\/$/, '');
+try { fs.mkdirSync(MEDIA_DIR, { recursive: true }); } catch (e) { /* shared api folder */ }
+// Rewrites req.file.filename to the stored "/media/<sub>/<file>" path so each
+// upload controller (which stores req.file.filename) persists the right value.
+function mediaStamp(sub) {
+    return (req) => { if (req.file && req.file.filename) { req.file.filename = MEDIA_URL + '/' + sub + '/' + req.file.filename; } };
 }
 
 // Customer review screenshots live in the web app's runtime folder
@@ -492,8 +515,7 @@ try {
     mpCatUpload = multer({
         storage: multer.diskStorage({
             destination: (req, file, cb) => {
-                if (!process.env.YII_UPLOADS_PATH) { return cb(new Error('upload_unavailable')); }
-                const dir = path.join(process.env.YII_UPLOADS_PATH, 'marketplace', 'category');
+                const dir = path.join(MEDIA_DIR, 'category');
                 try { fs.mkdirSync(dir, { recursive: true }); } catch (e) { /* ignore */ }
                 cb(null, dir);
             },
@@ -508,8 +530,8 @@ try {
 } catch (e) { /* multer not installed; uploads disabled */ }
 
 function mpCatImgMw(req, res, next) {
-    if (!mpCatUpload || !process.env.YII_UPLOADS_PATH) {
-        if (req.flash) { req.flash('error', 'Image uploads aren’t configured on this environment yet.'); }
+    if (!mpCatUpload) {
+        if (req.flash) { req.flash('error', 'Image uploads are unavailable (multer not installed).'); }
         return res.redirect('/marketplace-categories');
     }
     mpCatUpload.single('image')(req, res, (err) => {
@@ -518,6 +540,7 @@ function mpCatImgMw(req, res, next) {
             if (req.flash) { req.flash('error', msg); }
             return res.redirect((req.body && req.body.id) ? ('/marketplace-categories/edit/' + req.body.id) : '/marketplace-categories/new');
         }
+        mediaStamp('category')(req);
         return next();
     });
 }
@@ -542,8 +565,7 @@ try {
     mpColUpload = multer({
         storage: multer.diskStorage({
             destination: (req, file, cb) => {
-                if (!process.env.YII_UPLOADS_PATH) { return cb(new Error('upload_unavailable')); }
-                const dir = path.join(process.env.YII_UPLOADS_PATH, 'marketplace', 'collection');
+                const dir = path.join(MEDIA_DIR, 'collection');
                 try { fs.mkdirSync(dir, { recursive: true }); } catch (e) { /* ignore */ }
                 cb(null, dir);
             },
@@ -561,12 +583,13 @@ try {
 // multer / uploads path must NOT block the save (the form may carry no file).
 // So we parse the multipart body best-effort and continue regardless.
 function mpColImgMw(req, res, next) {
-    if (!mpColUpload || !process.env.YII_UPLOADS_PATH) { return next(); }
+    if (!mpColUpload) { return next(); }
     mpColUpload.single('image')(req, res, (err) => {
         if (err && err.code === 'LIMIT_FILE_SIZE') {
             if (req.flash) { req.flash('error', 'Cover image must be under 3 MB.'); }
             return res.redirect((req.body && req.body.id) ? ('/collections/edit/' + req.body.id) : '/collections/new');
         }
+        mediaStamp('collection')(req);
         return next();
     });
 }
@@ -615,8 +638,7 @@ try {
     mpCommUpload = multer({
         storage: multer.diskStorage({
             destination: (req, file, cb) => {
-                if (!process.env.YII_UPLOADS_PATH) { return cb(new Error('upload_unavailable')); }
-                const dir = path.join(process.env.YII_UPLOADS_PATH, 'marketplace', 'community_group');
+                const dir = path.join(MEDIA_DIR, 'community_group');
                 try { fs.mkdirSync(dir, { recursive: true }); } catch (e) { /* ignore */ }
                 cb(null, dir);
             },
@@ -632,12 +654,13 @@ try {
 
 // Cover image is OPTIONAL — a missing multer / uploads path must not block save.
 function mpCommImgMw(req, res, next) {
-    if (!mpCommUpload || !process.env.YII_UPLOADS_PATH) { return next(); }
+    if (!mpCommUpload) { return next(); }
     mpCommUpload.single('image')(req, res, (err) => {
         if (err && err.code === 'LIMIT_FILE_SIZE') {
             if (req.flash) { req.flash('error', 'Cover image must be under 3 MB.'); }
             return res.redirect((req.body && req.body.id) ? ('/community/edit/' + req.body.id) : '/community/new');
         }
+        mediaStamp('community_group')(req);
         return next();
     });
 }
@@ -650,8 +673,7 @@ try {
     mpCommPostUpload = multer({
         storage: multer.diskStorage({
             destination: (req, file, cb) => {
-                if (!process.env.YII_UPLOADS_PATH) { return cb(new Error('upload_unavailable')); }
-                const dir = path.join(process.env.YII_UPLOADS_PATH, 'marketplace', 'community');
+                const dir = path.join(MEDIA_DIR, 'community');
                 try { fs.mkdirSync(dir, { recursive: true }); } catch (e) { /* ignore */ }
                 cb(null, dir);
             },
@@ -665,9 +687,10 @@ try {
     });
 } catch (e) { /* multer not installed */ }
 function mpCommPostMw(req, res, next) {
-    if (!mpCommPostUpload || !process.env.YII_UPLOADS_PATH) { return next(); }
+    if (!mpCommPostUpload) { return next(); }
     mpCommPostUpload.single('image')(req, res, (err) => {
         if (err && err.code === 'LIMIT_FILE_SIZE') { return res.status(200).json({ status: 400, show: true, msg: 'Photo must be under 4 MB.' }); }
+        mediaStamp('community')(req);
         return next();
     });
 }

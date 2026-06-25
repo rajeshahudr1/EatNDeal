@@ -281,6 +281,30 @@ function getUploadsBaseUrl() {
     return (process.env.YII_UPLOADS_URL || '/yii-uploads').replace(/\/$/, '');
 }
 
+/**
+ * mediaUrl
+ * What:   Turns a stored image reference into the URL the browser loads, so the
+ *         API hands back the FULL path and web/admin just display it:
+ *           • already absolute (http…)  → unchanged
+ *           • "/upload/…"  (NEW marketplace + community uploads, served by THIS
+ *             api at /upload) → prefixed with the api's own public base
+ *           • any other "/path" or bare filename → unchanged (the caller
+ *             resolves legacy ones against YII_UPLOADS_URL).
+ *         Base = MEDIA_BASE_URL, else APP_URL (the api's url). web + admin DON'T
+ *         configure any media url — the api owns it.
+ * Type:   READ (pure but for the env read).
+ */
+function mediaUrl(f) {
+    const s = String(f || '');
+    if (!s) { return s; }
+    if (/^https?:\/\//i.test(s)) { return s; }
+    if (s.indexOf('/upload/') === 0) {
+        const base = (process.env.MEDIA_BASE_URL || process.env.APP_URL || '').replace(/\/$/, '');
+        return base ? (base + s) : s;
+    }
+    return s;
+}
+
 module.exports = {
     successResponse,
     errorResponse,
@@ -290,5 +314,6 @@ module.exports = {
     slugify,
     nullsToEmpty,
     getUploadsBaseUrl,
+    mediaUrl,
     log,
 };

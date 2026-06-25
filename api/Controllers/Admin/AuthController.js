@@ -338,16 +338,10 @@ async function updateProfile(req, res) {
         const { src, id } = accountRef(req);
         const companyId = Number(req.user && req.user.company_id) || 0;
         const b = req.body;
-        const email = String(b.email || '').trim().toLowerCase();
-        const table = src === 'company' ? 'company' : 'user';
         const pin = String(b.pin || '').trim();   // blank = keep the current PIN
-
-        // Email must be unique within the same account table.
-        const dupe = await db(table)
-            .whereRaw('LOWER(email) = ?', [email])
-            .andWhere('id', '!=', id)
-            .first();
-        if (dupe) { return H.errorResponse(res, 'That email is already in use.', 409, { code: 'email_taken' }); }
+        // Email is intentionally NOT editable here — we never read req.body.email
+        // or write the email/username columns, so an account's email can never be
+        // changed from the profile screen (enforced server-side for everyone).
 
         if (src === 'company') {
             // Company login → company.{name,email,mobile,pin}. (No address cols.)
@@ -355,7 +349,6 @@ async function updateProfile(req, res) {
                 business_name: String(b.business_name || '').trim() || null,
                 first_name:    String(b.first_name || '').trim() || null,
                 last_name:     String(b.last_name || '').trim() || null,
-                email,
                 mobile:        String(b.mobile || '').trim() || null,
                 updated_at:    db.fn.now(),
                 updated_by:    id,
@@ -386,8 +379,6 @@ async function updateProfile(req, res) {
             const patch = {
                 firstname:  String(b.first_name || '').trim() || null,
                 lastname:   String(b.last_name || '').trim() || null,
-                email,
-                username:   email,   // legacy keeps user.username in step with email
                 contact_no: contactNo || null,
                 address_1:  String(b.address_1 || '').trim() || null,
                 address_2:  String(b.address_2 || '').trim() || null,

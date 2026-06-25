@@ -113,6 +113,10 @@ function hostOf(u) { try { return new URL(u).origin; } catch (e) { return null; 
 const EXTRA_IMG_HOSTS = [];
 const uploadsOrigin = hostOf(process.env.YII_UPLOADS_URL || '');
 if (uploadsOrigin) { EXTRA_IMG_HOSTS.push(uploadsOrigin); }
+// The api serves marketplace + community images at <api>/upload — allow the
+// api host in img-src (API_URL must be the api's PUBLIC url in production).
+const mediaOrigin = hostOf(process.env.API_URL || 'http://localhost:4501');
+if (mediaOrigin && EXTRA_IMG_HOSTS.indexOf(mediaOrigin) === -1) { EXTRA_IMG_HOSTS.push(mediaOrigin); }
 (process.env.IMG_HOSTS || '').split(/[\s,]+/).filter(Boolean).forEach((h) => { if (EXTRA_IMG_HOSTS.indexOf(h) === -1) { EXTRA_IMG_HOSTS.push(h); } });
 
 if (IS_DEV) {
@@ -192,6 +196,20 @@ if (yiiUploadsPath) {
     }));
 }
 
+// ── Media: the NEW project's OWN image uploads (community post photos) ──
+// These live on THIS (new) server and serve at /media; legacy product /
+// restaurant images keep coming from the old server (YII_UPLOADS_URL). Default
+// <runtime>/media (always writable); set MEDIA_DIR to a persistent path. Stored
+// DB values are "/media/<sub>/<file>" so the api passes them through unchanged.
+// Uploads land in the api's shared folder (api/public/upload); the API serves
+// them + returns the FULL url, so the web only WRITES the file and stores a
+// RELATIVE "/upload/<sub>/<file>". It does NOT build or serve the url — the api
+// owns that (no api/media url configured here). On separate servers, point
+// MEDIA_DIR at a shared mount the api also reads.
+const MEDIA_DIR = process.env.MEDIA_DIR ? path.resolve(process.env.MEDIA_DIR) : path.join(__dirname, '..', 'api', 'public', 'upload');
+const MEDIA_URL = (process.env.MEDIA_URL || '/upload').replace(/\/$/, '');
+try { fs.mkdirSync(MEDIA_DIR, { recursive: true }); } catch (e) { /* shared api folder */ }
+
 // ── Profile avatar uploads ─────────────────────────────────────
 // Customer-uploaded profile photos live on the WEB disk (gitignored
 // web/runtime/avatars) and are served from the web origin so the strict
@@ -267,15 +285,12 @@ app.use('/community-images', express.static(COMMUNITY_IMG_DIR, { maxAge: ENV ===
 const communityUpload = multer({
     storage: multer.diskStorage({
         destination: (req, file, cb) => {
-            // Prefer the SHARED yii-uploads tree so the photo shows on BOTH the
-            // web feed AND the admin feed (both serve /yii-uploads). Fall back to
-            // the web-only runtime folder when the uploads path isn't configured.
-            if (process.env.YII_UPLOADS_PATH) {
-                const dir = path.join(process.env.YII_UPLOADS_PATH, 'marketplace', 'community');
-                try { fs.mkdirSync(dir, { recursive: true }); } catch (e) { /* ignore */ }
-                return cb(null, dir);
-            }
-            return cb(null, COMMUNITY_IMG_DIR);
+            // Community photos live in the NEW server's media tree, served at
+            // /media and stored as a "/media/community/<file>" path (shown on
+            // both the web + admin feeds when they share this server's MEDIA_DIR).
+            const dir = path.join(MEDIA_DIR, 'community');
+            try { fs.mkdirSync(dir, { recursive: true }); } catch (e) { /* ignore */ }
+            cb(null, dir);
         },
         filename: (req, file, cb) => {
             const uid = (req.session && req.session.user && req.session.user.id) || 'anon';

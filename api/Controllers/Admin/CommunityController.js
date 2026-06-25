@@ -25,14 +25,14 @@ const str = (v) => (v == null ? '' : String(v));
 function imageUrl(file) {
     const f = str(file).trim();
     if (!f) { return ''; }
-    if (/^https?:\/\//i.test(f) || f.startsWith('/')) { return f; }
+    if (/^https?:\/\//i.test(f) || f.startsWith('/')) { return H.mediaUrl(f); }
     return H.getUploadsBaseUrl() + '/marketplace/community_group/' + f;
 }
 // Post-photo url (web-served relative path stays as-is; bare filename → uploads).
 function postImageUrl(file) {
     const f = str(file).trim();
     if (!f) { return ''; }
-    if (/^https?:\/\//i.test(f) || f.startsWith('/')) { return f; }
+    if (/^https?:\/\//i.test(f) || f.startsWith('/')) { return H.mediaUrl(f); }
     return H.getUploadsBaseUrl() + '/marketplace/community/' + f;
 }
 function initialOf(name) { const s = str(name).trim(); return s ? s.charAt(0).toUpperCase() : '?'; }

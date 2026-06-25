@@ -60,31 +60,21 @@
             <span class="admin-nav__ic" aria-hidden="true">👥</span><span>Community</span>
         </a>
 
-        <%# Settings group (legacy "Settings" submenu). Open when a child is active. %>
-        <details class="admin-nav__group" <%= ['loyalty', 'cms', 'store-settings'].includes(nav) ? 'open' : '' %>>
+        <%# Settings group — Cashback Review only. Loyalty Configuration, Review
+            CMS Pages and Store Settings are hidden from the menu (their routes
+            still work by direct URL if ever needed). %>
+        <% if (loyaltyOn) { %>
+        <details class="admin-nav__group" <%= nav === 'reviews' ? 'open' : '' %>>
             <summary class="admin-nav__item admin-nav__sum">
                 <span class="admin-nav__ic" aria-hidden="true">⚙️</span><span>Settings</span>
                 <span class="admin-nav__chev" aria-hidden="true">▸</span>
             </summary>
             <div class="admin-nav__sub">
-                <% if (loyaltyOn) { %>
-                <a class="admin-nav__item admin-nav__subitem <%= nav === 'loyalty' ? 'is-active' : '' %>" href="/loyalty">
-                    <span class="admin-nav__ic" aria-hidden="true">🎁</span><span>Loyalty Configuration</span>
-                </a>
-                <a class="admin-nav__item admin-nav__subitem <%= nav === 'cms' ? 'is-active' : '' %>" href="/loyalty/cms-pages">
-                    <span class="admin-nav__ic" aria-hidden="true">📝</span><span>Review CMS Pages</span>
-                </a>
-                <% } %>
-                <a class="admin-nav__item admin-nav__subitem <%= nav === 'store-settings' ? 'is-active' : '' %>" href="/store-settings">
-                    <span class="admin-nav__ic" aria-hidden="true">🏪</span><span>Store Settings</span>
+                <a class="admin-nav__item admin-nav__subitem <%= nav === 'reviews' ? 'is-active' : '' %>" href="/loyalty/review-claims">
+                    <span class="admin-nav__ic" aria-hidden="true">✅</span><span>Cashback Review</span>
                 </a>
             </div>
         </details>
-
-        <% if (loyaltyOn) { %>
-        <a class="admin-nav__item <%= nav === 'reviews' ? 'is-active' : '' %>" href="/loyalty/review-claims">
-            <span class="admin-nav__ic" aria-hidden="true">✅</span><span>Cashback Review</span>
-        </a>
         <% } %>
     </nav>
     <%# Sign out lives in the topbar account menu — not duplicated here. %>

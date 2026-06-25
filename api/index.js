@@ -146,6 +146,15 @@ app.use('/brand', express.static(path.join(__dirname, 'public', 'brand'), {
     maxAge: '7d',
 }));
 
+// ── Media: marketplace + community image uploads ──────────────────
+// The web + admin write these uploads into MEDIA_DIR; the api serves them at
+// /media so BOTH the customer site and the admin can reference ONE URL
+// (set MEDIA_URL=<this api's public URL>/media on web + admin). When all three
+// run on one server, point MEDIA_DIR at the SAME folder in every .env. Files
+// are /media/<category|collection|community_group|community>/<file>.
+const MEDIA_DIR = process.env.MEDIA_DIR ? path.resolve(process.env.MEDIA_DIR) : path.join(__dirname, 'public', 'upload');
+app.use('/upload', express.static(MEDIA_DIR, { maxAge: ENV === 'production' ? '7d' : 0, fallthrough: true }));
+
 // ── Dev request logger (off in production) ────────────────────────
 if (IS_DEV) {
     app.use((req, res, next) => {

@@ -110,11 +110,12 @@ async function createPost(req, res) {
         group_id:    req.body.group_id,
         body:        req.body.body || '',
     };
-    // When the photo landed in the shared yii-uploads tree we store a BARE
-    // filename (the api resolves it to /yii-uploads/marketplace/community/…,
-    // which both web + admin serve). Otherwise it's a web-only runtime path.
+    // Store the photo as a "/media/community/<file>" path — the api passes it
+    // through unchanged and the new server serves it from MEDIA_DIR (shown on
+    // both web + admin feeds when they share this server).
     if (req.file) {
-        payload.image = process.env.YII_UPLOADS_PATH ? req.file.filename : ('/community-images/' + req.file.filename);
+        const mediaUrl = (process.env.MEDIA_URL || '/media').replace(/\/$/, '');
+        payload.image = mediaUrl + '/community/' + req.file.filename;
     }
     const apiRes = await callApi(req, 'POST', '/api/v1/customer/community/post', payload);
     return relay(res, apiRes);

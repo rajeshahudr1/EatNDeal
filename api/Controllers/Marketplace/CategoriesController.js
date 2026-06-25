@@ -122,8 +122,8 @@ async function list(req, res) {
             //   4. else                         → first-letter fallback
             let viewIcon    = null;                 // non-null → view renders <img src>
             let viewInitial = M.initialFor(name);   // shown when viewIcon is null
-            if (isPath(image))      { viewIcon = image; }
-            else if (isPath(icon))  { viewIcon = icon; }
+            if (isPath(image))      { viewIcon = H.mediaUrl(image); }
+            else if (isPath(icon))  { viewIcon = H.mediaUrl(icon); }
             else if (icon)          { viewInitial = icon; }   // emoji → text
 
             return {

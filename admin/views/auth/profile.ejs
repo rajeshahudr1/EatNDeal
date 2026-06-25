@@ -37,7 +37,10 @@
                 </div>
                 <div class="ly-field lc-full">
                     <label for="pf-email">Email address</label>
-                    <input id="pf-email" type="email" name="email" value="<%= profile.email || '' %>" maxlength="150" required>
+                    <%# Email is locked — read-only, and NOT submitted (no name=) so
+                        it can never be changed from here. %>
+                    <input id="pf-email" type="email" value="<%= profile.email || '' %>" readonly tabindex="-1" aria-readonly="true">
+                    <p class="ly-hint">Email can’t be changed.</p>
                 </div>
 
                 <% if (profile.src === 'company') { %>

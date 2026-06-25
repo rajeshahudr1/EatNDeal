@@ -27,7 +27,7 @@ const L = 'mp_community_like';
 function imageUrl(file, folder) {
     const f = String(file || '').trim();
     if (!f) { return ''; }
-    if (/^https?:\/\//i.test(f) || f.startsWith('/')) { return f; }
+    if (/^https?:\/\//i.test(f) || f.startsWith('/')) { return H.mediaUrl(f); }
     return H.getUploadsBaseUrl() + '/marketplace/' + folder + '/' + f;
 }
 function initialOf(name) { const s = String(name || '').trim(); return s ? s.charAt(0).toUpperCase() : '?'; }

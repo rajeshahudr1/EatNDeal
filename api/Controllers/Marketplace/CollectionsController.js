@@ -272,7 +272,7 @@ async function homeFeed(req, res) {
         const imageUrl = (file) => {
             const f = String(file || '').trim();
             if (!f) { return ''; }
-            if (/^https?:\/\//i.test(f) || f.startsWith('/')) { return f; }
+            if (/^https?:\/\//i.test(f) || f.startsWith('/')) { return H.mediaUrl(f); }
             return H.getUploadsBaseUrl() + '/marketplace/collection/' + f;
         };
         collections.forEach((c) => {

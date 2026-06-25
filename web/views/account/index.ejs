@@ -622,15 +622,12 @@
                     </div>
                 </div>
 
-                <%# Email — read-only + CHANGE %>
+                <%# Email — locked: read-only display, no CHANGE / no input, so it
+                    is never submitted or updated. %>
                 <div class="pf-field pf-field--lock" data-lock="email">
                     <label class="pf-field__label">Email Address</label>
                     <div class="pf-field__control">
-                        <span class="pf-readonly <%= hasEmail ? '' : 'is-empty' %>" data-readonly><%= hasEmail ? account_user.email : 'Add your email' %></span>
-                        <button type="button" class="pf-change" data-action="change-email">CHANGE</button>
-                        <div class="pf-edit" data-edit hidden>
-                            <input id="pf-email" class="pf-field__input" type="email" name="email" value="<%= account_user.email || '' %>" placeholder="you@example.com" autocomplete="email" maxlength="180">
-                        </div>
+                        <span class="pf-readonly <%= hasEmail ? '' : 'is-empty' %>" data-readonly><%= hasEmail ? account_user.email : 'No email on file' %></span>
                     </div>
                 </div>
 

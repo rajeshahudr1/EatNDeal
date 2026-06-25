@@ -707,9 +707,13 @@ async function index(req, res, next) {
             finalFeatured = finalFeatured.filter((r) => !(r && r.id != null && shownIds.has(String(r.id))));
         }
     }
+    // Only the REAL marketplace categories (from the api) drive the cuisine row
+    // + "Popular cuisines". On a fresh DB with none added, show NOTHING — never
+    // the hardcoded demo list (which looked like categories nobody created).
     let   finalCuisines = (liveCategories && liveCategories.length)
         ? liveCategories
-        : cuisines;
+        : [];
+    void cuisines;   // demo fallback kept for reference but intentionally unused
     // Cuisine row behaves differently depending on how the selection
     // was made:
     //   • from=search → NARROW the row to just the selected pill;

@@ -25,9 +25,12 @@
     right: var(--space-4);
     bottom: var(--space-4);
     z-index: 70;
-    pointer-events: none;            /* let scroll click-through until visible */
+    pointer-events: none;            /* container is ALWAYS click-through… */
 }
-.cookie-consent.is-visible { pointer-events: auto; }
+/* …only the visible card itself captures clicks, so the empty gutters on
+   either side of the centered banner never block the page behind them
+   (filters, cuisine cards, etc.). */
+.cookie-consent.is-visible .cookie-consent__inner { pointer-events: auto; }
 
 .cookie-consent[hidden] { display: none; }
 

@@ -403,7 +403,9 @@ async function updateProfile(req, res) {
         // gender + date-of-birth are NOT updated here anymore — they live
         // on customer_profile now (saved via /auth/update-about). Only the
         // photo (customer.image) remains a customer-row profile field.
-        const { customer_id, firstname, lastname, email, country_code, contact_no } = req.body;
+        // NOTE: `email` is intentionally NOT destructured/updated here — an
+        // existing account's email can never be changed from the profile screen.
+        const { customer_id, firstname, lastname, country_code, contact_no } = req.body;
 
         const row = await db('customer')
             .where({ id: customer_id })
@@ -438,7 +440,6 @@ async function updateProfile(req, res) {
         const update = {
             firstname:         firstname,
             lastname:          lastname || null,
-            email:             email    || null,
             updated_at:        db.fn.now(),
             server_updated_at: db.fn.now(),
         };

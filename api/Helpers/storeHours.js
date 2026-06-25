@@ -37,8 +37,30 @@ function clockMin(t) {                       // "HH:MM[:SS]" → minutes-of-day
     if (!m) { return null; }
     return (parseInt(m[1], 10) % 24) * 60 + parseInt(m[2], 10);
 }
-function nowMinutes() { const n = new Date(); return n.getHours() * 60 + n.getMinutes(); }
-function isoDow()     { const d = new Date().getDay(); return d === 0 ? 7 : d; } // 1=Mon..7=Sun
+// Store timezone (UK). Open/closed, hours, "today" and the shift day are ALL
+// evaluated in this zone — NOT the server's OS timezone — so the verdict is
+// identical whether the api runs locally (e.g. IST) or on the live server
+// (UTC). Without this, the same restaurant shows "Open" on a UK/IST machine
+// but "Closed" on a UTC server (the `new Date()` clock differs). Override with
+// STORE_TZ if the brand ever operates outside the UK.
+const STORE_TZ = process.env.STORE_TZ || 'Europe/London';
+const _DOW = { Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 7 };
+// Current date/time parts in STORE_TZ, independent of the server clock.
+function nowParts() {
+    const p = new Intl.DateTimeFormat('en-GB', {
+        timeZone: STORE_TZ, hour12: false, weekday: 'short',
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit',
+    }).formatToParts(new Date());
+    const v = (t) => { const f = p.find((x) => x.type === t); return f ? f.value : ''; };
+    return {
+        hour: Number(v('hour')) % 24, minute: Number(v('minute')) || 0,
+        dow: _DOW[v('weekday')] || 1, ymd: `${v('year')}-${v('month')}-${v('day')}`,
+    };
+}
+function nowMinutes() { const t = nowParts(); return t.hour * 60 + t.minute; }
+function isoDow()     { return nowParts().dow; }           // 1=Mon..7=Sun (UK)
+function todayYmd()   { return nowParts().ymd; }           // YYYY-MM-DD (UK)
 function ymd(d) {
     const y = d.getFullYear(), m = String(d.getMonth() + 1).padStart(2, '0'), day = String(d.getDate()).padStart(2, '0');
     return `${y}-${m}-${day}`;
@@ -239,7 +261,7 @@ function compute(branch, shifts, holidayToday, configured) {
 // ── DB loaders ───────────────────────────────────────────────────────
 async function loadHolidayToday(companyId, branchId) {
     try {
-        const today = ymd(new Date());
+        const today = todayYmd();   // UK date — server-timezone-independent
         return await db('store_holiday_details')
             .where({ company_id: companyId, branch_id: branchId, status: 1 })
             .andWhere('from_date', '<=', today)
@@ -284,7 +306,7 @@ async function availabilityForBranches(branches) {
     if (!rows.length) { return out; }
     const branchIds = rows.map(b => b.branch_id || b.id);
     const dow = isoDow();
-    const today = ymd(new Date());
+    const today = todayYmd();   // UK date — server-timezone-independent
 
     let shiftRows = [], holidayRows = [];
     try {

@@ -119,10 +119,38 @@ function friendly(err) {
     // The helper module throws messages we wrote ourselves; those are
     // already user-safe. Pass them through. Anything else (e.g. an
     // unexpected throw) falls back to the generic oops.
-    if (/timed out|reach the address service|non-JSON|not be located|details were not returned|not configured/i.test(raw)) {
+    if (/timed out|reach the address service|non-JSON|not be located|details were not returned|not configured|not supported/i.test(raw)) {
         return raw;
     }
     return MSG.server.oops;
 }
 
-module.exports = { searchAddress, retrieveAddress, postcodeCoords };
+/**
+ * reverseGeocode
+ *
+ * What:   Resolves geolocation coordinates to the nearest address + a concise
+ *         label, so "use my current location" shows the real area name.
+ * Type:   READ.
+ * Inputs: req.body.lat, req.body.lng (numbers).
+ * Output: 200 { ..., data: { address, label, formatted } }
+ *         502 on failure.
+ * Used:   POST /api/v1/delivery/reverse-geocode.
+ */
+async function reverseGeocode(req, res) {
+    try {
+        const result = await location.reverseGeocode(req.body.lat, req.body.lng);
+        // Served-country gate: ALLOWED_COUNTRIES is a comma list (e.g. "gb,in").
+        // Blank/unset = deliver everywhere. We tell the client whether the
+        // detected country is one we serve so it can block "use my location"
+        // outside our area with a clear message instead of silently proceeding.
+        const allowedList = String(process.env.ALLOWED_COUNTRIES || '').split(',').map((c) => c.trim().toLowerCase()).filter(Boolean);
+        const cc = String(result.country_code || '').toLowerCase();
+        const allowed = allowedList.length === 0 || (!!cc && allowedList.indexOf(cc) !== -1);
+        return H.successResponse(res, Object.assign({}, result, { allowed }));
+    } catch (err) {
+        H.log.warn('delivery.reverseGeocode', err && err.message);
+        return H.errorResponse(res, friendly(err), 502);
+    }
+}
+
+module.exports = { searchAddress, retrieveAddress, postcodeCoords, reverseGeocode };

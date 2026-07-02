@@ -35,6 +35,7 @@ const H = require('./helper');
 // Provider registry — id → module. Add a new line here to wire up a
 // new implementation.
 const PROVIDERS = {
+    google:          require('./googleMaps'),      // Google Maps (Places + Geocoding) — ACTIVE
     nominatim:       require('./nominatim'),
     postcodes_io:    require('./postcodesIo'),
     ideal_postcodes: require('./idealPostcodes'),
@@ -49,7 +50,10 @@ const PROVIDERS = {
 // Operators should swap to ideal_postcodes (paid, whitelisted) for
 // production-grade street autocomplete + higher rate limits, OR self-
 // host Nominatim and override NOMINATIM_BASE_URL.
-const DEFAULT_PROVIDER = 'nominatim';
+// All location now runs through Google Maps (Places Autocomplete + Place
+// Details + Geocoding). Needs GOOGLE_MAPS_API_KEY. The other providers stay
+// wired as fallbacks but Google is the active default.
+const DEFAULT_PROVIDER = 'google';
 
 /**
  * resolveProvider (private)
@@ -124,6 +128,24 @@ function coordsForPostcode(postcode) {
 }
 
 /**
+ * reverseGeocode
+ *
+ * What:   Delegates to the active provider's reverseGeocode (coords →
+ *         nearest address). Errors clearly if the provider doesn't support it.
+ * Type:   READ.
+ * Inputs: lat, lng (numbers).
+ * Output: { address: {...}, label, formatted }.
+ * Used:   DeliveryController.reverseGeocode.
+ */
+function reverseGeocode(lat, lng) {
+    const { impl } = resolveProvider();
+    if (typeof impl.reverseGeocode !== 'function') {
+        return Promise.reject(new Error('Reverse geocoding is not supported by the active location provider.'));
+    }
+    return impl.reverseGeocode(lat, lng);
+}
+
+/**
  * activeProviderId
  *
  * What:   Returns the id of the currently selected provider as a plain
@@ -141,5 +163,6 @@ module.exports = {
     searchAddresses,
     retrieveAddress,
     coordsForPostcode,
+    reverseGeocode,
     activeProviderId,
 };

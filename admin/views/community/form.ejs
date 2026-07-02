@@ -38,9 +38,9 @@
                 </div>
                 <div class="ly-field">
                     <label for="cm-type">Type <span class="ly-field__hint">(who sees it)</span></label>
-                    <select id="cm-type" name="type">
-                        <option value="user" <%= curType === 'user' ? 'selected' : '' %>>Users — shown to customers</option>
-                        <option value="restaurant" <%= curType === 'restaurant' ? 'selected' : '' %>>Restaurants — shown to admins + customers</option>
+                    <select id="cm-type" name="type" data-cm-type>
+                        <option value="user" <%= curType === 'user' ? 'selected' : '' %>>Users — shown to customers (by location)</option>
+                        <option value="restaurant" <%= curType === 'restaurant' ? 'selected' : '' %>>Restaurants — shown in that company's admin</option>
                     </select>
                 </div>
                 <div class="ly-field ly-field--full">
@@ -55,6 +55,59 @@
                     </select>
                 </div>
             </div>
+        </section>
+
+        <%# Moderation + AI (both types). Tags/rules drive the AI relevance check. %>
+        <section class="card ly-card">
+            <h3 class="card__title">Moderation &amp; AI</h3>
+            <div class="ly-grid">
+                <div class="ly-field">
+                    <label for="cm-mod">Posting</label>
+                    <select id="cm-mod" name="moderation">
+                        <option value="ai"     <%= (g.moderation || 'ai') === 'ai' ? 'selected' : '' %>>AI checks each post (auto-approve / hold)</option>
+                        <option value="open"   <%= g.moderation === 'open' ? 'selected' : '' %>>Open — publish instantly</option>
+                        <option value="manual" <%= g.moderation === 'manual' ? 'selected' : '' %>>Manual — always hold for review</option>
+                    </select>
+                </div>
+                <div class="ly-field">
+                    <label class="cm-check"><input type="checkbox" name="is_sensitive" value="1" <%= Number(g.is_sensitive) === 1 ? 'checked' : '' %>> Charity / sensitive — strict (block abuse, illegal, unsafe images)</label>
+                </div>
+                <div class="ly-field ly-field--full">
+                    <label for="cm-tags">Topics / tags <span class="ly-field__hint">(comma-separated — what belongs here; the AI uses these)</span></label>
+                    <input id="cm-tags" type="text" name="tags" maxlength="500" value="<%= g.tags || '' %>" placeholder="e.g. recipes, home cooking, food photos">
+                </div>
+                <div class="ly-field ly-field--full">
+                    <label for="cm-airules">AI rules <span class="ly-field__hint">(optional — extra instruction for the moderator AI)</span></label>
+                    <input id="cm-airules" type="text" name="ai_rules" maxlength="500" value="<%= g.ai_rules || '' %>" placeholder="e.g. Block fundraising scams; only genuine donation posts.">
+                </div>
+            </div>
+        </section>
+
+        <%# Coverage areas — USER groups only (radius). Empty = everywhere. %>
+        <section class="card ly-card" data-cm-loc-section<%= curType !== 'user' ? ' hidden' : '' %>>
+            <h3 class="card__title">Coverage areas <span class="ly-field__hint">(user groups — leave empty to show everywhere)</span></h3>
+            <div class="cm-pick">
+                <div class="cm-pick__row">
+                    <div class="cm-ac" data-cm-loc-ac>
+                        <input type="text" class="cm-ac__input" data-cm-loc-input placeholder="Search a city / area…" autocomplete="off">
+                        <ul class="cm-ac__list" data-cm-loc-suggest hidden></ul>
+                    </div>
+                    <label class="cm-pick__radius">Radius (km)<input type="number" min="1" max="500" value="25" data-cm-loc-radius></label>
+                </div>
+                <ul class="cm-chips" data-cm-loc-chips></ul>
+                <input type="hidden" name="locations" data-cm-loc-json value="<%= (g.locations && g.locations.length) ? JSON.stringify(g.locations) : '' %>">
+            </div>
+        </section>
+
+        <%# Company — RESTAURANT groups only. %>
+        <section class="card ly-card" data-cm-co-section<%= curType !== 'restaurant' ? ' hidden' : '' %>>
+            <h3 class="card__title">Restaurant <span class="ly-field__hint">(this group shows only in that company's admin)</span></h3>
+            <div class="cm-ac" data-cm-co-ac>
+                <input type="text" class="cm-ac__input" data-cm-co-input placeholder="Search a restaurant / company…" autocomplete="off">
+                <ul class="cm-ac__list" data-cm-co-suggest hidden></ul>
+            </div>
+            <p class="ly-hint" data-cm-co-chosen><%= g.company_id ? ('Selected company #' + g.company_id) : 'None selected' %></p>
+            <input type="hidden" name="company_id" data-cm-co-id value="<%= g.company_id || '' %>">
         </section>
 
         <section class="card ly-card">

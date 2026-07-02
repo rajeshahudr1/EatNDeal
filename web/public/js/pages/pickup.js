@@ -21,6 +21,39 @@
 (function () {
     'use strict';
 
+    // ── Sidebar / bottom-sheet filters on Pickup ──────────────────────
+    // home.js (which turns the filter state into a URL on delivery) isn't
+    // loaded here, so we listen for the SAME `eatndeal:filters-changed`
+    // event the sidebar/sheet dispatch and full-reload to a pickup URL.
+    function pickupFiltersToQuery(s) {
+        s = s || {};
+        var q = new URLSearchParams();
+        q.set('mode', 'pickup');
+        if (s.cuisine) { q.set('cuisine', String(s.cuisine).toLowerCase()); }
+        if (s.sort && s.sort !== 'relevance') { q.set('sort', s.sort); }
+        if (s.rating) { var n = parseFloat(String(s.rating).replace(/^rating-/, '')); if (isFinite(n) && n > 0) { q.set('rating', String(n)); } }
+        if (s.deliveryBuckets && s.deliveryBuckets.length) {
+            var keys = s.deliveryBuckets.filter(function (k) { return /^(15|30|45|60)$/.test(k); });
+            if (keys.length) { q.set('delivery', keys.join(',')); }
+        }
+        if (s.distance) { var km = parseInt(String(s.distance).replace(/^dist-/, ''), 10); if (isFinite(km) && km > 0) { q.set('max_km', String(km)); } }
+        if (s.price) { var b = String(s.price).replace(/^price-/, ''); if (b === 'low' || b === 'mid' || b === 'high') { q.set('price', b); } }
+        if ((s.trust || []).indexOf('trust-pure-veg') !== -1) { q.set('veg', '1'); }
+        if ((s.offers || []).indexOf('offer-discount') !== -1) { q.set('offer', '1'); }
+        if ((s.availability || []).indexOf('avail-open-now') !== -1) { q.set('open_now', '1'); }
+        return q;
+    }
+    document.addEventListener('eatndeal:filters-changed', function (ev) {
+        window.location.href = '/?' + pickupFiltersToQuery(ev.detail || {}).toString();
+    });
+    // Sidebar collapse/show toggle (home.js owns this on delivery).
+    document.addEventListener('click', function (ev) {
+        if (ev.target && ev.target.closest && ev.target.closest('[data-action="toggle-filters"]')) {
+            var shell = document.querySelector('.home-shell');
+            if (shell) { shell.classList.toggle('is-filters-collapsed'); }
+        }
+    });
+
     var DEG2RAD = Math.PI / 180;
     var PAD = 48;   // keep markers off the panel edges (px)
 
@@ -474,6 +507,7 @@
 
         bindImageFallback();
         applyTints(root);
+
         buildMarkers();
         layout();
         updateToggleLabel();

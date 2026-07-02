@@ -294,11 +294,27 @@ async function bulkPrice(req, res) {
         if (!got) { return; }
         const ids = (Array.isArray(req.body.ids) ? req.body.ids : []).map((x) => Number(x)).filter((x) => x > 0);
         if (!ids.length) { return H.errorResponse(res, 'Select at least one product.', 422); }
-        if (req.body.price == null || req.body.price === '') { return H.errorResponse(res, 'Price can not be blank.', 422); }
-        const col = PRICE_COLS[req.body.type] || 'price_before_tax';
-        const price = money(req.body.price);
+        const rawVal = (req.body.value != null && req.body.value !== '') ? req.body.value : req.body.price;
+        if (rawVal == null || rawVal === '') { return H.errorResponse(res, 'Price can not be blank.', 422); }
+        const value   = money(rawVal);
+        const mode    = String(req.body.update_type || 'set');
+        // Legacy "Bulk Menu Price Update" — increase/decrease computes FROM a
+        // source price (`from`) and writes the result INTO a target price (`to`),
+        // e.g. Normal +5% → Marketplace. 'set' just writes `value` to `to`.
+        // Both columns whitelisted via PRICE_COLS; NULL base treated as 0;
+        // round(max(0, …), 2). (Back-compat: old `type` → the target column.)
+        const toCol   = PRICE_COLS[req.body.to] || PRICE_COLS[req.body.type] || 'price_before_tax';
+        const fromCol = PRICE_COLS[req.body.from] || toCol;
+        let expr;
+        switch (mode) {
+            case 'percentage':     expr = db.raw(`ROUND(GREATEST(0, COALESCE(${fromCol},0) + COALESCE(${fromCol},0) * ? / 100), 2)`, [value]); break;  // base + %
+            case 'fixed':          expr = db.raw(`ROUND(GREATEST(0, COALESCE(${fromCol},0) + ?), 2)`, [value]); break;                                  // base + £
+            case 'dec_fixed':      expr = db.raw(`ROUND(GREATEST(0, COALESCE(${fromCol},0) - ?), 2)`, [value]); break;                                  // base − £
+            case 'dec_percentage': expr = db.raw(`ROUND(GREATEST(0, COALESCE(${fromCol},0) - COALESCE(${fromCol},0) * ? / 100), 2)`, [value]); break;  // base − %
+            default:               expr = value;                                                                                                        // set target = value
+        }
         const n = await db('products').where('company_id', got.companyId).whereIn('id', ids).andWhereRaw("status <> '2'")
-            .update({ [col]: price, updated_at: nowStr(), updated_by: got.actorId });
+            .update({ [toCol]: expr, updated_at: nowStr(), updated_by: got.actorId });
         return H.successResponse(res, { success: true, updated: n }, n + ' product' + (n === 1 ? '' : 's') + ' updated.');
     } catch (err) {
         console.error('[admin.products.bulkPrice]', err && err.message);

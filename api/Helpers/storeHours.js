@@ -83,8 +83,10 @@ function serviceState(shifts, serviceId, nowMin) {
     for (const s of list) {
         const o = clockMin(s.open_time), c = clockMin(s.close_time);
         if (o == null || c == null) { continue; }
-        const within = c > o ? (nowMin >= o && nowMin < c)    // same-day
-                             : (nowMin >= o || nowMin < c);   // crosses midnight
+        // Close time is INCLUSIVE (legacy parity, eatndeal commit a45f0403 —
+        // `<` → `<=`): a shop "open till 22:00" is still open AT 22:00.
+        const within = c > o ? (nowMin >= o && nowMin <= c)    // same-day
+                             : (nowMin >= o || nowMin <= c);   // crosses midnight
         if (within) { return { status: 'open', window: { open: o, close: c } }; }
         if (o > nowMin && (nextOpen == null || o < nextOpen.open)) { nextOpen = { open: o, close: c }; }
     }

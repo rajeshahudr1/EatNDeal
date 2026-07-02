@@ -127,6 +127,14 @@ function validateLocation(input) {
         }
     }
 
+    // ── type (optional) — the saved-address LABEL it came from (e.g.
+    // 'Home' / 'Work'), shown as a small tag on the header location chip
+    // so the user knows WHICH saved address is active. ───────────────
+    let type = '';
+    if (typeof input.type === 'string') {
+        type = input.type.trim().slice(0, 40);
+    }
+
     // ── mode (optional) — delivery | pickup. Defaults to delivery.
     // Carries the Delivery/Pickup choice the user made on the location
     // page so the feed header can show the same selection. ───────────
@@ -173,6 +181,7 @@ function validateLocation(input) {
         value: {
             source,
             label,
+            type,
             postcode,
             lat,
             lng,

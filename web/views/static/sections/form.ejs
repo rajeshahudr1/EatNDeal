@@ -1,0 +1,58 @@
+<%#
+  views/static/sections/form.ejs
+
+  Partner / contact LEAD form — a restaurant or visitor sends their details
+  and we email the enquiry (POST /partner/apply → api). Submitted via AJAX by
+  /js/pages/partner-form.js; on success the form swaps to a thank-you panel.
+  section = { type:'form', heading?, body? }.
+-%>
+<section class="static-section sform">
+    <% if (section.heading) { %><h2 class="static-section__title"><%= section.heading %></h2><% } %>
+    <% if (section.body) { %><p class="static-section__lede"><%= section.body %></p><% } %>
+
+    <form class="sform__form" data-partner-form novalidate>
+        <div class="sform__row">
+            <label class="sform__field">
+                <span class="sform__label">Your name *</span>
+                <input class="sform__input" name="name" type="text" required autocomplete="name" placeholder="Full name">
+            </label>
+            <label class="sform__field">
+                <span class="sform__label">Restaurant / business</span>
+                <input class="sform__input" name="business" type="text" autocomplete="organization" placeholder="Business name">
+            </label>
+        </div>
+        <div class="sform__row">
+            <label class="sform__field">
+                <span class="sform__label">Email</span>
+                <input class="sform__input" name="email" type="email" autocomplete="email" placeholder="you@example.com">
+            </label>
+            <label class="sform__field">
+                <span class="sform__label">Phone</span>
+                <input class="sform__input" name="phone" type="tel" autocomplete="tel" placeholder="Phone number">
+            </label>
+        </div>
+        <div class="sform__row">
+            <label class="sform__field">
+                <span class="sform__label">City / area</span>
+                <input class="sform__input" name="city" type="text" placeholder="City">
+            </label>
+            <label class="sform__field">
+                <span class="sform__label">Cuisine / category</span>
+                <input class="sform__input" name="cuisine" type="text" placeholder="e.g. Indian, Pizza">
+            </label>
+        </div>
+        <label class="sform__field">
+            <span class="sform__label">Message</span>
+            <textarea class="sform__input sform__textarea" name="message" rows="4" placeholder="Tell us a little about your restaurant…"></textarea>
+        </label>
+        <p class="sform__note">* Add an email or phone so we can reach you.</p>
+        <p class="sform__msg" data-partner-msg hidden></p>
+        <button type="submit" class="sform__submit" data-partner-submit>Send enquiry</button>
+    </form>
+
+    <div class="sform__done" data-partner-done hidden>
+        <span class="sform__done-ic" aria-hidden="true">✅</span>
+        <h3 class="sform__done-title">Thanks!</h3>
+        <p class="sform__done-sub">We've received your details and will be in touch soon.</p>
+    </div>
+</section>

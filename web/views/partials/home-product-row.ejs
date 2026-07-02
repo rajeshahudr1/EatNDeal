@@ -12,15 +12,22 @@
     var sym = (typeof brand !== 'undefined' && brand && brand.currencySymbol) ? brand.currencySymbol : '£';
 %>
 <% if (row && row.products && row.products.length) { %>
-<section class="home-row home-row--product" aria-label="<%= row.title %>">
+<section class="home-row home-row--product" data-rail-wrap aria-label="<%= row.title %>">
     <div class="hv2-head">
         <h2 class="hv2-head__title"><%= row.title %></h2>
-        <a href="/?restaurant=<%= encodeURIComponent(row.restaurantSlug) %>" class="hv2-head__link" data-action="pick-restaurant">View all</a>
+        <div class="hv2-head__actions">
+            <a href="/?restaurant=<%= encodeURIComponent(row.restaurantSlug) %>" class="hv2-head__link" data-action="pick-restaurant">View all</a>
+            <div class="hv2-head__nav">
+                <button type="button" class="rail-arrow rail-arrow--prev" data-rail-prev aria-label="Scroll left" disabled>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+                </button>
+                <button type="button" class="rail-arrow rail-arrow--next" data-rail-next aria-label="Scroll right" disabled>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+                </button>
+            </div>
+        </div>
     </div>
-    <div class="rail-wrap home-rail-wrap" data-rail-wrap>
-        <button type="button" class="rail-arrow rail-arrow--prev" data-rail-prev aria-label="Scroll left" hidden>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
-        </button>
+    <div class="rail-wrap home-rail-wrap">
         <ul class="home-rail home-rail--product" role="list" data-rail>
             <% row.products.forEach(function (p) { %>
             <li>
@@ -37,9 +44,6 @@
             </li>
             <% }); %>
         </ul>
-        <button type="button" class="rail-arrow rail-arrow--next" data-rail-next aria-label="Scroll right" hidden>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
-        </button>
     </div>
 </section>
 <% } %>

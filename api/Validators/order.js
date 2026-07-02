@@ -39,6 +39,10 @@ const orderPlaceSchema = Joi.object({
     }),
     payment_intent_id: Joi.string().trim().max(120).allow('', null)
         .messages({ 'string.max': 'Payment confirmation is invalid.' }),
+    // Card via Stripe Connect → the Checkout Session id (legacy flow); the
+    // server verifies payment_status='paid' on the connected account.
+    session_id: Joi.string().trim().max(200).allow('', null)
+        .messages({ 'string.max': 'Payment confirmation is invalid.' }),
     customer_note:  Joi.string().trim().max(240).allow('', null)
         .messages({ 'string.max': 'Note is too long.' }),
 });

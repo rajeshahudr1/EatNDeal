@@ -20,6 +20,19 @@
 -%>
 <% var __cards = (typeof featured !== 'undefined' && featured) ? featured : []; %>
 <% var __sel   = (typeof selected_cuisine !== 'undefined' && selected_cuisine) ? String(selected_cuisine).toLowerCase() : ''; %>
+<%# Pickup now shares the delivery home's filter rail: sidebar on the left,
+    the split list + map on the right. Applying a filter full-reloads to
+    /?mode=pickup&<filters> (pickup.js handles it — home.js isn't loaded here). %>
+<div class="home-shell">
+
+    <%- include('filter-sidebar') -%>
+
+    <div class="home-shell__content">
+        <button type="button" class="filters-show" data-action="toggle-filters" aria-label="Show filters" title="Show filters">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+            <span>Filters</span>
+        </button>
+
 <div class="pickup" data-pickup>
 
     <%# ── Left: list ──────────────────────────────────────────────── %>
@@ -133,3 +146,6 @@
         </div>
     </div>
 </div>
+
+    </div><%# /.home-shell__content %>
+</div><%# /.home-shell %>

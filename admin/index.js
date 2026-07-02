@@ -708,6 +708,20 @@ function requireSuper(req, res, next) {
 app.get ('/community',                requireAdmin, companyContext, CommunityController.list);
 app.get ('/community/new',            requireAdmin, companyContext, requireSuper, CommunityController.form);
 app.get ('/community/edit/:id',       requireAdmin, companyContext, requireSuper, CommunityController.form);
+// Group-form pickers (super-admin): company search + location geocode.
+app.get ('/community/companies',      requireAdmin, companyContext, requireSuper, CommunityController.companies);
+app.post('/community/loc-search',     requireAdmin, companyContext, requireSuper, CommunityController.locSearch);
+app.post('/community/loc-resolve',    requireAdmin, companyContext, requireSuper, CommunityController.locResolve);
+// AI-moderation review queue (super-admin): approve / reject held posts + comments.
+app.get ('/community/review',         requireAdmin, companyContext, requireSuper, CommunityController.reviewPage);
+app.get ('/community/pending',        requireAdmin, companyContext, requireSuper, CommunityController.pendingData);
+app.post('/community/moderate',       requireAdmin, companyContext, requireSuper, CommunityController.moderate);
+// Blocked users (super-admin): list / search customers / block / unblock.
+app.get ('/community/blocked',        requireAdmin, companyContext, requireSuper, CommunityController.blockedPage);
+app.get ('/community/blocked-data',   requireAdmin, companyContext, requireSuper, CommunityController.blockedData);
+app.get ('/community/customers',      requireAdmin, companyContext, requireSuper, CommunityController.customersData);
+app.post('/community/block',          requireAdmin, companyContext, requireSuper, CommunityController.blockUser);
+app.post('/community/unblock',        requireAdmin, companyContext, requireSuper, CommunityController.unblockUser);
 app.post('/community/save',           requireAdmin, companyContext, requireSuper, mpCommImgMw, CommunityController.save);
 app.post('/community/delete',         requireAdmin, companyContext, requireSuper, CommunityController.remove);
 app.post('/community/status',         requireAdmin, companyContext, requireSuper, CommunityController.statusToggle);

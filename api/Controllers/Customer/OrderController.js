@@ -34,6 +34,7 @@ const OrderPlace   = require('../../Helpers/orderPlace');
 const Orders       = require('../../Helpers/orders');
 const OrderStatus  = require('../../Helpers/orderStatus');
 const Payments     = require('../../Helpers/payments');
+const StripeConnect = require('../../Helpers/stripeConnect');   // legacy StripeController.js port
 const M            = require('../../Helpers/marketplace');
 const A            = require('../../Helpers/availability');
 const { db }       = require('../../config/db');
@@ -96,39 +97,42 @@ async function place(req, res) {
                 return H.errorResponse(res,
                     'Card payments aren\'t available right now. Please pick Cash on Delivery.', 503);
             }
-            if (!b.payment_intent_id) {
+            if (!b.session_id) {
                 return H.errorResponse(res, 'Payment confirmation is missing.', 422);
             }
             try {
-                const intent = await Payments.retrieveIntent(b.payment_intent_id);
-                if (!intent || intent.status !== 'succeeded') {
+                // Connect DIRECT charge — the Checkout Session lives ON the
+                // restaurant's connected account. Legacy checkoutSessionRetrieve:
+                // verify payment_status='paid', polling a few times like the legacy.
+                const css = await db('company_stripe_settings')
+                    .where({ company_id: v.cart.company_id, is_enable: 1 })
+                    .first('stripe_account_id');
+                const stripeAccount = (css && css.stripe_account_id) || null;
+                let session = await StripeConnect.checkoutSessionRetrieve({ session_id: b.session_id, account_id: stripeAccount });
+                for (let i = 0; i < 10 && session && session.payment_status !== 'paid'; i++) {
+                    await new Promise((r) => setTimeout(r, 500));
+                    session = await StripeConnect.checkoutSessionRetrieve({ session_id: b.session_id, account_id: stripeAccount });
+                }
+                if (!session || session.payment_status !== 'paid') {
                     return H.errorResponse(res,
                         'Payment hasn\'t completed yet. Please try again.', 422,
-                        { stripeStatus: intent && intent.status });
+                        { stripeStatus: session && session.payment_status });
                 }
-                // Card payments include the company's card service charge
-                // on top of the cart total — the SAME figure createIntent
-                // charged and orderPlace records (one source: company_stripe
-                // _settings via Cart.cardServiceCharge). Compare against
-                // grandtotal + that surcharge so they line up.
+                // Customer pays grand total + the restaurant's card service charge
+                // — the SAME figure createIntent charged. Compare to the session
+                // total (pence) so a tampered amount can't slip through.
                 const cardCharge    = await Cart.cardServiceCharge(v.cart.company_id);
                 const expectedMinor = Math.round(((Number(v.cart.grandtotal) || 0) + cardCharge) * 100);
-                if (Number(intent.amount) !== expectedMinor) {
+                if (Number(session.amount_total) !== expectedMinor) {
                     return H.errorResponse(res,
                         'Payment amount doesn\'t match your cart total. Please refresh and try again.', 422);
                 }
-                const metaCart = intent.metadata && String(intent.metadata.cart_id || '');
-                if (metaCart !== String(v.cart.id)) {
-                    return H.errorResponse(res,
-                        'Payment doesn\'t match this cart. Please refresh and try again.', 422);
-                }
-                paymentIntentId  = intent.id;
+                paymentIntentId  = session.payment_intent;
                 paymentSucceeded = true;
-                // Capture the FULL payment detail (which method, card brand/
-                // last4, charge id, …) to store on the order. Best-effort —
-                // a detail-fetch hiccup must never block a paid order.
+                // Capture the FULL payment detail (method, card brand/last4, …) to
+                // store on the order. Best-effort — a hiccup must never block a paid order.
                 try {
-                    paymentDetail = await Payments.retrieveIntentDetail(intent.id);
+                    paymentDetail = await Payments.retrieveIntentDetail(session.payment_intent, stripeAccount);
                 } catch (detailErr) {
                     H.log.warn('order.place.detail', detailErr && detailErr.message);
                 }

@@ -1,0 +1,35 @@
+<%#
+  views/community/blocked.ejs — block customers from the community.
+
+  A blocked customer can READ the community but can't post / like / comment.
+  Search a customer to block; the blocked list supports search + unblock.
+-%>
+<div class="ly" data-cm-blocked>
+
+    <div class="ly__head">
+        <div>
+            <h2 class="ly__title">🚫 Blocked users</h2>
+            <p class="ly__sub">A blocked customer can read the community but can't post, like or comment.</p>
+        </div>
+        <a href="/community" class="ly-btn ly-btn--ghost ly-btn--sm">← Back to groups</a>
+    </div>
+
+    <%# Block a customer — search → pick → block. %>
+    <section class="card ly-card">
+        <h3 class="card__title">Block a customer</h3>
+        <div class="cm-ac" data-blk-ac>
+            <input type="text" class="cm-ac__input" data-blk-search placeholder="Search by name / email / phone…" autocomplete="off">
+            <ul class="cm-ac__list" data-blk-suggest hidden></ul>
+        </div>
+    </section>
+
+    <%# Blocked list — filter + unblock. %>
+    <section class="card ly-card">
+        <div class="cmrev-toolbar">
+            <h3 class="card__title" style="margin:0">Blocked list</h3>
+            <input type="search" class="cmrev-search" data-blk-listsearch placeholder="Filter blocked…" aria-label="Filter blocked">
+        </div>
+        <div data-blk-list></div>
+        <p class="cf-pendpanel__empty" data-blk-empty hidden>No blocked users.</p>
+    </section>
+</div>

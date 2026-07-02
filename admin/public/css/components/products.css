@@ -477,3 +477,137 @@ body.pr-modal-open, body.filters-open { overflow: hidden; }
 @media (max-width: 899px) {
     .col-reorderbar { left: 10px; right: 10px; transform: none; bottom: 74px; justify-content: space-between; }
 }
+
+/* ── Community group form (Phase 2): location/company pickers + chips ── */
+.cm-ac { position: relative; }
+.cm-ac__input { width: 100%; padding: 9px 12px; border: 1px solid var(--border, #d8dce2); border-radius: 10px; font-size: 0.92rem; }
+.cm-ac__list { list-style: none; margin: 4px 0 0; padding: 4px; position: absolute; left: 0; right: 0; top: 100%; z-index: 40; max-height: 240px; overflow-y: auto; background: #fff; border: 1px solid var(--border, #d8dce2); border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,0.12); }
+.cm-ac__item { padding: 9px 11px; border-radius: 7px; font-size: 0.9rem; cursor: pointer; }
+.cm-ac__item:hover { background: #f4f6f8; }
+.cm-pick__row { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
+.cm-pick__row .cm-ac { flex: 1 1 240px; }
+.cm-pick__radius { display: flex; flex-direction: column; gap: 4px; font-size: 0.82rem; font-weight: 600; }
+.cm-pick__radius input { width: 110px; padding: 8px 10px; border: 1px solid var(--border, #d8dce2); border-radius: 10px; }
+.cm-chips { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.cm-chip { display: inline-flex; align-items: center; gap: 8px; padding: 6px 8px 6px 12px; background: #eef1f5; border-radius: 999px; font-size: 0.85rem; font-weight: 600; }
+.cm-chip__x { border: 0; background: #d8dce2; width: 20px; height: 20px; border-radius: 50%; cursor: pointer; font-size: 1rem; line-height: 1; }
+.cm-chip__x:hover { background: #c2c8d0; }
+.cm-check { display: inline-flex; align-items: flex-start; gap: 8px; font-size: 0.88rem; font-weight: 600; cursor: pointer; }
+.cm-check input { margin-top: 2px; }
+
+/* ── Community review queue (Phase 2): responsive moderation cards ── */
+.cmrev-card { background: #fff; border: 1px solid var(--border, #d8dce2); border-radius: 12px; padding: 14px 16px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+.cmrev-card__head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 4px; }
+.cmrev-card__type { font-weight: 700; font-size: 0.85rem; }
+.cmrev-card__group { font-size: 0.78rem; color: #6b7280; background: #f1f3f6; padding: 2px 10px; border-radius: 999px; }
+.cmrev-card__by { font-size: 0.8rem; color: #6b7280; margin-bottom: 6px; }
+.cmrev-card__body { margin: 0 0 8px; font-size: 0.95rem; line-height: 1.45; white-space: pre-wrap; word-break: break-word; }
+.cmrev-card__img img { max-width: 260px; max-height: 220px; border-radius: 8px; display: block; }
+.cmrev-card__reason { margin: 8px 0 0; font-size: 0.82rem; color: #b45309; background: #fff7ed; border: 1px solid #fed7aa; border-radius: 8px; padding: 6px 10px; }
+.cmrev-card__acts { display: flex; gap: 8px; justify-content: flex-end; align-items: center; margin-top: 12px; }
+.cmrev-card__rej { margin-right: auto; font-size: 0.8rem; font-weight: 700; color: #dc2626; }
+@media (max-width: 560px) { .cmrev-card__acts { flex-direction: column-reverse; } .cmrev-card__acts .ly-btn { width: 100%; } .cmrev-card__img img { max-width: 100%; } }
+.cmrev-tabs { display: inline-flex; gap: 6px; margin-bottom: 16px; background: #eef1f5; padding: 4px; border-radius: 10px; }
+.cmrev-tab { border: 0; background: transparent; padding: 7px 16px; border-radius: 7px; font-size: 0.88rem; font-weight: 700; color: #6b7280; cursor: pointer; }
+.cmrev-tab.is-active { background: #fff; color: #111827; box-shadow: 0 1px 2px rgba(0,0,0,0.08); }
+.cmrev-toolbar { display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+.cmrev-filters { display: flex; gap: 8px; flex-wrap: wrap; }
+.cmrev-select, .cmrev-search { padding: 8px 12px; border: 1px solid var(--border, #d8dce2); border-radius: 10px; font-size: 0.88rem; }
+.cmrev-search { min-width: 180px; }
+@media (max-width: 600px) {
+    .cmrev-toolbar { flex-direction: column; align-items: stretch; }
+    .cmrev-tabs { justify-content: center; }
+    .cmrev-filters { flex-direction: column; }
+    .cmrev-select, .cmrev-search { width: 100%; }
+}
+
+/* Feed page: pending count button + the approve/reject popup. */
+.cf-headbtns { display: flex; gap: 8px; align-items: center; }
+.cf-pendbtn__n { display: inline-block; min-width: 18px; padding: 0 5px; background: #fff7ed; color: #b45309; border-radius: 999px; font-size: 0.75rem; font-weight: 700; }
+.cf-pendpanel { max-width: 560px; width: 92vw; max-height: 82vh; display: flex; flex-direction: column; padding: 0; text-align: left; }
+.cf-pendpanel__head { display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; border-bottom: 1px solid #eef1f5; }
+.cf-pendpanel__head .pr-modal__title { margin: 0; }
+.cf-pendpanel__x { border: 0; background: transparent; font-size: 1.1rem; cursor: pointer; color: #6b7280; }
+.cf-pendpanel__body { overflow-y: auto; padding: 16px 20px; }
+.cf-pendpanel__empty, .cf-pendpanel__loading { text-align: center; color: #6b7280; padding: 24px; }
+.cf-pendcard { border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px 14px; margin: 0 0 12px; }
+.cf-pendcard__by { font-size: 0.82rem; font-weight: 700; margin-bottom: 6px; }
+.cf-pendcard__body { margin: 0 0 8px; font-size: 0.92rem; white-space: pre-wrap; word-break: break-word; }
+.cf-pendcard__img img { max-width: 200px; max-height: 160px; border-radius: 8px; display: block; }
+.cf-pendcard__reason { margin: 8px 0 0; font-size: 0.8rem; color: #b45309; background: #fff7ed; border-radius: 8px; padding: 6px 10px; }
+.cf-pendcard__acts { display: flex; gap: 8px; justify-content: flex-end; margin-top: 10px; }
+@media (max-width: 560px) {
+    .cf-pendcard__acts { flex-direction: column-reverse; }
+    .cf-pendcard__acts .ly-btn { width: 100%; }
+    .cf-pendcard__img img { max-width: 100%; }
+}
+
+/* ── Admin community feed: full-width (cover + feed | About sidebar) with soft
+   cards, like the customer (front) feed — same Facebook-style look. ── */
+[data-cm-feed] { max-width: none; margin: 0; }
+[data-cm-feed] .cf-compose,
+[data-cm-feed] .cf-post { box-shadow: 0 1px 3px rgba(0,0,0,0.06); border-radius: 14px; }
+[data-cm-feed] .cf-compose { padding: 14px 16px; }
+[data-cm-feed] .cf-compose__text { min-height: 52px; font-size: 0.95rem; }
+[data-cm-feed] .cf-post { padding: 14px 16px; }
+[data-cm-feed] .cf-post__media { margin-left: -16px; margin-right: -16px; border-radius: 0; }
+[data-cm-feed] .cf-act { font-size: 0.9rem; }
+/* Moderation status pill on an admin-feed post (pending/rejected awareness). */
+.cf-post__status { display: inline-block; margin: 8px 0 0; padding: 3px 10px; border-radius: 999px; font-size: 0.74rem; font-weight: 700; }
+.cf-post__status--pending  { background: #fff7ed; color: #b45309; }
+.cf-post__status--rejected { background: #fef2f2; color: #b91c1c; }
+
+/* Feed moderation popup — 3 status tabs (pending / approved / rejected). */
+.cf-pendtabs { display: flex; gap: 6px; padding: 14px 20px 0; flex-wrap: wrap; }
+.cf-pendtab { border: 0; background: #eef1f5; padding: 6px 14px; border-radius: 7px; font-size: 0.82rem; font-weight: 700; color: #6b7280; cursor: pointer; }
+.cf-pendtab.is-active { background: var(--primary, #e5252a); color: #fff; }
+
+/* Community blocked-users page. */
+.blk-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid #eef1f5; }
+.blk-row:last-child { border-bottom: 0; }
+.blk-row__info { display: flex; flex-direction: column; min-width: 0; }
+.blk-row__info small { color: #6b7280; font-size: 0.78rem; }
+.blk-tag { background: #fef2f2; color: #b91c1c; font-size: 0.7rem; font-weight: 700; padding: 1px 7px; border-radius: 999px; }
+.cm-ac__item small { color: #9ca3af; font-size: 0.78rem; }
+
+/* Reject-reason modal — sits above the pending popup; the author sees the text. */
+.pr-modal--reject { z-index: 70; }
+.cmrej { width: 440px; }
+.cmrej__hint { margin: 4px 0 12px; font-size: 0.82rem; color: #6b7280; }
+.cmrej__ta { width: 100%; border: 1px solid #d1d5db; border-radius: 10px; padding: 10px 12px; font: inherit; font-size: 0.9rem; resize: vertical; min-height: 76px; outline: none; box-sizing: border-box; }
+.cmrej__ta:focus { border-color: var(--color-primary, #e5252a); }
+.cmrej__acts { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+
+/* Per-group post breakdown chips (super-admin community list). */
+.cm-counts { display: inline-flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.cm-count { font-size: 0.7rem; font-weight: 700; padding: 1px 8px; border-radius: 999px; white-space: nowrap; }
+.cm-count--ok { background: #ecfdf5; color: #047857; }
+.cm-count--pend { background: #fff7ed; color: #b45309; }
+.cm-count--rej { background: #fef2f2; color: #b91c1c; }
+.cm-count--total { background: #eef2ff; color: #4338ca; }
+
+/* Community feed — Facebook-style cover + About sidebar (mirrors the web front). */
+.cf-actions { display: flex; justify-content: flex-end; margin: 0 0 6px; }
+.cf-cover { height: 200px; border-radius: 16px; overflow: hidden; background: #e5e7eb; }
+.cf-cover__img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.cf-cover--t0 { background: linear-gradient(135deg, #fb7185, #e11d48); }
+.cf-cover--t1 { background: linear-gradient(135deg, #fbbf24, #f59e0b); }
+.cf-cover--t2 { background: linear-gradient(135deg, #34d399, #059669); }
+.cf-cover--t3 { background: linear-gradient(135deg, #60a5fa, #2563eb); }
+.cf-cover--t4 { background: linear-gradient(135deg, #a78bfa, #7c3aed); }
+.cf-cover--t5 { background: linear-gradient(135deg, #f472b6, #db2777); }
+.cf-cover--t6 { background: linear-gradient(135deg, #2dd4bf, #0d9488); }
+.cf-bar { padding: 14px 4px 4px; }
+.cf-bar__name { margin: 0; font-size: 1.5rem; font-weight: 800; color: var(--color-text); }
+.cf-bar__meta { margin: 5px 0 0; font-size: 0.85rem; color: var(--color-text-muted); }
+.cf-grid { display: block; margin-top: 12px; }
+.cf-about { border: 1px solid var(--color-border); border-radius: 16px; background: #fff; padding: 18px; }
+.cf-about__title { margin: 0 0 10px; font-size: 1.05rem; font-weight: 800; color: var(--color-text); }
+.cf-about__desc { margin: 0 0 14px; font-size: 0.9rem; color: var(--color-text-soft); }
+.cf-about__rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 14px; }
+.cf-about__rows li { display: flex; gap: 10px; align-items: flex-start; }
+.cf-about__rows li > span:last-child { font-size: 0.82rem; color: var(--color-text-muted); line-height: 1.45; }
+.cf-about__ic { font-size: 1.05rem; flex: 0 0 auto; line-height: 1.3; }
+.cf-about__rows strong { display: block; font-size: 0.9rem; color: var(--color-text); margin-bottom: 1px; }
+@media (min-width: 900px) { .cf-grid { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 20px; align-items: start; } }
+@media (max-width: 560px) { .cf-cover { height: 150px; border-radius: 12px; } .cf-bar__name { font-size: 1.25rem; } }

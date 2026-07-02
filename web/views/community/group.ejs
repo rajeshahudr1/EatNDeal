@@ -31,10 +31,20 @@
                 Public group · <%= total %> post<%= Number(total) === 1 ? '' : 's' %>
             </p>
         </div>
-        <button type="button" class="cgroup-bar__share" data-action="share-group">
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.6" y1="13.5" x2="15.4" y2="17.5"/><line x1="15.4" y1="6.5" x2="8.6" y2="10.5"/></svg>
-            <span>Share</span>
-        </button>
+        <div class="cgroup-bar__acts">
+            <% if (can_post) {
+                var pend = (typeof my_counts !== 'undefined' && my_counts) ? (Number(my_counts.pending) || 0) : 0; %>
+            <button type="button" class="cgroup-bar__mine" data-action="open-myposts">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+                <span>My posts</span>
+                <span class="cgroup-bar__badge" data-myposts-badge<%= pend > 0 ? '' : ' hidden' %>><%= pend %></span>
+            </button>
+            <% } %>
+            <button type="button" class="cgroup-bar__share" data-action="share-group">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.6" y1="13.5" x2="15.4" y2="17.5"/><line x1="15.4" y1="6.5" x2="8.6" y2="10.5"/></svg>
+                <span>Share</span>
+            </button>
+        </div>
     </div>
 
     <%# ── Body: feed (left) + About sidebar (right, desktop) ───── %>
@@ -46,7 +56,7 @@
                 <form class="ccompose ccompose--post" data-post-form>
                     <div class="ccompose__top">
                         <span class="cavatar cavatar--t<%= (user_session && user_session.id ? (Number(user_session.id) % 7) : 0) %>" aria-hidden="true"><%= (user_session && user_session.firstname ? user_session.firstname.charAt(0).toUpperCase() : '?') %></span>
-                        <textarea class="ccompose__text" name="body" rows="1" placeholder="Share something with the group…" maxlength="5000"></textarea>
+                        <textarea class="ccompose__text" name="body" rows="1" placeholder="Write something…" maxlength="5000"></textarea>
                     </div>
                     <div class="ccompose__preview" data-photo-preview hidden>
                         <img alt="" data-photo-img>
@@ -86,8 +96,17 @@
 
         </main>
 
-        <%# About sidebar — desktop only (CSS hides it on mobile). %>
+        <%# About sidebar (desktop). On mobile the About card is hidden but the
+            search box floats to the top of the feed (see community.css). %>
         <aside class="cgroup-side">
+            <%# Search this group's posts. Word-search (each word matched
+                anywhere in the post) — posts with MORE matching words rank
+                higher. Handled client-side in /js/pages/community.js. %>
+            <div class="cside-search" data-community-search-box>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <input type="search" class="cside-search__input" data-community-search placeholder="Search posts…" aria-label="Search posts in this group" autocomplete="off">
+                <button type="button" class="cside-search__clear" data-community-search-clear hidden aria-label="Clear search">✕</button>
+            </div>
             <div class="cside-card">
                 <h2 class="cside-card__title">About</h2>
                 <% if (group.description) { %><p class="cside-card__desc"><%= group.description %></p><% } %>
@@ -109,4 +128,28 @@
         </aside>
 
     </div>
+
+    <%# ── My posts modal — the author tracks their own submissions by status.
+         The public feed only shows approved posts, so this is where they see
+         what's still pending review or was rejected (with the AI's reason). ── %>
+    <% if (can_post) { %>
+    <div class="cmine-modal" data-myposts-modal hidden>
+        <div class="cmine-modal__backdrop" data-action="close-myposts"></div>
+        <div class="cmine-modal__panel" role="dialog" aria-label="My posts">
+            <header class="cmine-modal__head">
+                <h2 class="cmine-modal__title">📝 My posts</h2>
+                <button type="button" class="cmine-modal__x" data-action="close-myposts" aria-label="Close">✕</button>
+            </header>
+            <div class="cmine-tabs">
+                <button type="button" class="cmine-tab is-active" data-myposts-tab="pending">⏳ Pending <span class="cmine-tab__n" data-myposts-cnt="pending">0</span></button>
+                <button type="button" class="cmine-tab" data-myposts-tab="approved">✅ Approved <span class="cmine-tab__n" data-myposts-cnt="approved">0</span></button>
+                <button type="button" class="cmine-tab" data-myposts-tab="rejected">🚫 Rejected <span class="cmine-tab__n" data-myposts-cnt="rejected">0</span></button>
+            </div>
+            <div class="cmine-modal__body">
+                <div data-myposts-list></div>
+                <p class="cmine-modal__empty" data-myposts-empty hidden>Nothing here yet.</p>
+            </div>
+        </div>
+    </div>
+    <% } %>
 </section>

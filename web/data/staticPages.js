@@ -235,6 +235,11 @@ const pages = {
                 body:    'If you have an issue with a SPECIFIC order (missing items, late delivery, refund request) the fastest route is through the Orders page on your account — every order has a "Help with this order" button that routes to the right team.',
             },
             {
+                type: 'form',
+                heading: 'Send us a message',
+                body:    'Fill in the form and we\'ll get back to you within 24 hours.',
+            },
+            {
                 type: 'cta',
                 heading: 'Restaurant partner?',
                 body:    'Partnership enquiries go through our restaurant team.',
@@ -268,10 +273,9 @@ const pages = {
                 ],
             },
             {
-                type: 'cta',
-                heading: 'Ready to start?',
-                body:    'Apply today — we\'ll get back to you within one working day.',
-                button:  { label: 'Apply now', href: '/contact' },
+                type: 'form',
+                heading: 'List your restaurant',
+                body:    'Fill in your details and our team will get back to you within one working day.',
             },
         ],
     },

@@ -64,6 +64,26 @@
     }
 
     // ── change: checkboxes + status selects ──
+    // Bulk-price modal: the "From price" base shows only for increase/decrease;
+    // set the value label; pre-fill the configured online % for % modes.
+    function syncBulkPriceMode() {
+        var modeSel  = document.querySelector('[data-bulk-price-mode]');
+        var fromWrap = document.querySelector('[data-bp-from-wrap]');
+        var lbl      = document.querySelector('[data-bp-val-label]');
+        var bpv      = document.querySelector('[data-bulk-price-val]');
+        if (!modeSel) { return; }
+        var m = modeSel.value;
+        var isSet = (m === 'set');
+        var isPct = (m.indexOf('percentage') !== -1);
+        if (fromWrap) { fromWrap.hidden = isSet; }
+        if (lbl) { lbl.textContent = isSet ? 'Price' : (isPct ? 'Percentage (%)' : 'Amount'); }
+        if (bpv) {
+            var defPct = bpv.getAttribute('data-default-pct') || '';
+            if (isSet) { bpv.value = ''; }
+            else if (isPct && defPct && !bpv.value) { bpv.value = defPct; }
+        }
+    }
+
     document.addEventListener('change', function (e) {
         var t = e.target;
         if (!t) { return; }
@@ -76,6 +96,7 @@
         if (t.classList && t.classList.contains('pr-status')) {
             handleStatus([Number(t.getAttribute('data-id'))], Number(t.value), [t]); return;
         }
+        if (t.matches && t.matches('[data-bulk-price-mode]')) { syncBulkPriceMode(); return; }
         if (t.matches && t.matches('[data-bulk-status]')) {
             var st = t.value; if (st === '') { return; }
             var ids = selectedIds();
@@ -193,8 +214,11 @@
             var openIds = selectedIds();
             if (!openIds.length) { toast('error', 'Select items first.'); return; }
             var cEl = document.querySelector('[data-bp-count]'); if (cEl) { cEl.textContent = openIds.length; }
-            var bpv = document.querySelector('[data-bulk-price-val]'); if (bpv) { bpv.value = ''; }
+            var modeSel = document.querySelector('[data-bulk-price-mode]');
+            if (modeSel) { modeSel.value = 'set'; }
+            syncBulkPriceMode();   // toggle the "From" row + the value label + default-fill
             showModal('bulkprice');
+            var bpv = document.querySelector('[data-bulk-price-val]');
             if (bpv) { setTimeout(function () { bpv.focus(); }, 50); }
             return;
         }
@@ -202,19 +226,29 @@
         if (t.closest('[data-action="pr-bulk-price"]')) {
             var bids = selectedIds();
             if (!bids.length) { toast('error', 'Select items first.'); hideModals(); return; }
-            var typeSel = document.querySelector('[data-bulk-price-type]');
-            var valIn = document.querySelector('[data-bulk-price-val]');
-            var bType = typeSel ? typeSel.value : 'normal';
-            var bPrice = valIn ? valIn.value.trim() : '';
-            if (bPrice === '') { toast('error', 'Enter a price.'); if (valIn) { valIn.focus(); } return; }
+            var modeSel2 = document.querySelector('[data-bulk-price-mode]');
+            var fromSel  = document.querySelector('[data-bulk-price-from]');
+            var toSel    = document.querySelector('[data-bulk-price-to]');
+            var valIn    = document.querySelector('[data-bulk-price-val]');
+            var bMode = modeSel2 ? modeSel2.value : 'set';
+            var bFrom = fromSel ? fromSel.value : 'normal';   // base price (increase/decrease)
+            var bTo   = toSel ? toSel.value : 'normal';       // price column being written
+            var bVal  = valIn ? valIn.value.trim() : '';
+            if (bVal === '') { toast('error', 'Enter a value.'); if (valIn) { valIn.focus(); } return; }
             hideModals();
-            post('/products/bulk-price', { ids: bids, type: bType, price: bPrice }).then(function (res) {
+            // Compute FROM bFrom, write INTO bTo; 'set' ignores bFrom.
+            post('/products/bulk-price', { ids: bids, update_type: bMode, from: bFrom, to: bTo, value: bVal }).then(function (res) {
                 if (ok(res)) {
                     toast('success', res.msg || 'Prices updated.');
-                    bids.forEach(function (id) {
-                        var inp = document.querySelector('.pr-priceinput[data-type="' + bType + '"][data-id="' + id + '"]');
-                        if (inp) { inp.value = money(bPrice); inp.setAttribute('data-original', money(bPrice)); }
-                    });
+                    if (bMode === 'set') {
+                        bids.forEach(function (id) {
+                            var inp = document.querySelector('.pr-priceinput[data-type="' + bTo + '"][data-id="' + id + '"]');
+                            if (inp) { inp.value = money(bVal); inp.setAttribute('data-original', money(bVal)); }
+                        });
+                    } else {
+                        // Increase/decrease are computed per product server-side → reload to show them.
+                        setTimeout(function () { window.location.reload(); }, 600);
+                    }
                 } else { toast('error', res.msg || 'Could not update prices.'); }
             });
             return;

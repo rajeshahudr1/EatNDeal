@@ -24,6 +24,15 @@
 <%
   var fc = (typeof facet_counts !== 'undefined' && facet_counts) ? facet_counts : null;
   function badge(v) { return (v === 0 || v) ? ('<b class="fsb__count">' + v + '</b>') : ''; }
+  // Count-gating: hide an option ONLY when its count is explicitly 0. A null/
+  // absent count (facet not computed, or api down) → keep it, so the filter
+  // never disappears just because we don't have numbers. A group hides when
+  // ALL its options are an explicit 0.
+  function keep(v)    { return v == null || Number(v) > 0; }
+  function anyKeep(a) { return (a || []).some(function (v) { return v == null || Number(v) > 0; }); }
+  function dc(k) { return (fc && fc.delivery) ? fc.delivery[k] : null; }
+  function rc(k) { return (fc && fc.rating)   ? fc.rating[k]   : null; }
+  function pc(k) { return (fc && fc.price)    ? fc.price[k]    : null; }
 %>
 <aside class="fsb" aria-label="Filters">
     <header class="fsb__head">
@@ -48,37 +57,45 @@
             <label class="fsb__radio"><input type="radio" name="sort-web" value="distance"><span>Distance: Low to High</span></label>
         </section>
 
-        <%# ── Delivery time ── (multi-select union of bands) %>
+        <%# ── Delivery time ── (only bands with count > 0) %>
+        <% if (anyKeep([dc('15'), dc('30'), dc('45'), dc('60')])) { %>
         <section class="fsb__group">
             <h3 class="fsb__group-title">Delivery Time</h3>
-            <label class="fsb__check"><input type="checkbox" data-filter="time-15"><span>Up to 15 min</span><%- badge(fc && fc.delivery ? fc.delivery['15'] : null) %></label>
-            <label class="fsb__check"><input type="checkbox" data-filter="time-30"><span>15 – 30 min</span><%- badge(fc && fc.delivery ? fc.delivery['30'] : null) %></label>
-            <label class="fsb__check"><input type="checkbox" data-filter="time-45"><span>30 – 45 min</span><%- badge(fc && fc.delivery ? fc.delivery['45'] : null) %></label>
-            <label class="fsb__check"><input type="checkbox" data-filter="time-60"><span>45+ min</span><%- badge(fc && fc.delivery ? fc.delivery['60'] : null) %></label>
+            <% if (keep(dc('15'))) { %><label class="fsb__check"><input type="checkbox" data-filter="time-15"><span>Up to 15 min</span><%- badge(dc('15')) %></label><% } %>
+            <% if (keep(dc('30'))) { %><label class="fsb__check"><input type="checkbox" data-filter="time-30"><span>15 – 30 min</span><%- badge(dc('30')) %></label><% } %>
+            <% if (keep(dc('45'))) { %><label class="fsb__check"><input type="checkbox" data-filter="time-45"><span>30 – 45 min</span><%- badge(dc('45')) %></label><% } %>
+            <% if (keep(dc('60'))) { %><label class="fsb__check"><input type="checkbox" data-filter="time-60"><span>45+ min</span><%- badge(dc('60')) %></label><% } %>
         </section>
+        <% } %>
 
-        <%# ── Offers ── (single data-backed option) %>
+        <%# ── Offers ── (only when there are offers nearby) %>
+        <% if (keep(fc ? fc.offer : null)) { %>
         <section class="fsb__group">
             <h3 class="fsb__group-title">Offers</h3>
             <label class="fsb__check"><input type="checkbox" data-filter="offer-discount"><span>Offers near you</span><%- badge(fc ? fc.offer : null) %></label>
         </section>
+        <% } %>
 
-        <%# ── Rating ── (single threshold) %>
+        <%# ── Rating ── (only thresholds with count > 0) %>
+        <% if (anyKeep([rc('4.5'), rc('4.0'), rc('3.5'), rc('3.0')])) { %>
         <section class="fsb__group">
             <h3 class="fsb__group-title">Rating</h3>
-            <label class="fsb__radio fsb__rating"><input type="radio" name="rating-web" data-filter="rating-4.5"><span class="fsb__stars">★</span><span>4.5 &amp; above</span><%- badge(fc && fc.rating ? fc.rating['4.5'] : null) %></label>
-            <label class="fsb__radio fsb__rating"><input type="radio" name="rating-web" data-filter="rating-4.0"><span class="fsb__stars">★</span><span>4.0 &amp; above</span><%- badge(fc && fc.rating ? fc.rating['4.0'] : null) %></label>
-            <label class="fsb__radio fsb__rating"><input type="radio" name="rating-web" data-filter="rating-3.5"><span class="fsb__stars">★</span><span>3.5 &amp; above</span><%- badge(fc && fc.rating ? fc.rating['3.5'] : null) %></label>
-            <label class="fsb__radio fsb__rating"><input type="radio" name="rating-web" data-filter="rating-3.0"><span class="fsb__stars">★</span><span>3.0 &amp; above</span><%- badge(fc && fc.rating ? fc.rating['3.0'] : null) %></label>
+            <% if (keep(rc('4.5'))) { %><label class="fsb__radio fsb__rating"><input type="radio" name="rating-web" data-filter="rating-4.5"><span class="fsb__stars">★</span><span>4.5 &amp; above</span><%- badge(rc('4.5')) %></label><% } %>
+            <% if (keep(rc('4.0'))) { %><label class="fsb__radio fsb__rating"><input type="radio" name="rating-web" data-filter="rating-4.0"><span class="fsb__stars">★</span><span>4.0 &amp; above</span><%- badge(rc('4.0')) %></label><% } %>
+            <% if (keep(rc('3.5'))) { %><label class="fsb__radio fsb__rating"><input type="radio" name="rating-web" data-filter="rating-3.5"><span class="fsb__stars">★</span><span>3.5 &amp; above</span><%- badge(rc('3.5')) %></label><% } %>
+            <% if (keep(rc('3.0'))) { %><label class="fsb__radio fsb__rating"><input type="radio" name="rating-web" data-filter="rating-3.0"><span class="fsb__stars">★</span><span>3.0 &amp; above</span><%- badge(rc('3.0')) %></label><% } %>
         </section>
+        <% } %>
 
-        <%# ── Price for one ── %>
+        <%# ── Price for one ── (only tiers with count > 0) %>
+        <% if (anyKeep([pc('low'), pc('mid'), pc('high')])) { %>
         <section class="fsb__group">
             <h3 class="fsb__group-title">Price for one</h3>
-            <label class="fsb__check"><input type="checkbox" data-filter="price-low"><span><%= brand.currencySymbol %> &ndash; 6</span><%- badge(fc && fc.price ? fc.price.low : null) %></label>
-            <label class="fsb__check"><input type="checkbox" data-filter="price-mid"><span><%= brand.currencySymbol %><%= brand.currencySymbol %> 6 &ndash; 12</span><%- badge(fc && fc.price ? fc.price.mid : null) %></label>
-            <label class="fsb__check"><input type="checkbox" data-filter="price-high"><span><%= brand.currencySymbol %><%= brand.currencySymbol %><%= brand.currencySymbol %> 12+</span><%- badge(fc && fc.price ? fc.price.high : null) %></label>
+            <% if (keep(pc('low')))  { %><label class="fsb__check"><input type="checkbox" data-filter="price-low"><span><%= brand.currencySymbol %> &ndash; 6</span><%- badge(pc('low')) %></label><% } %>
+            <% if (keep(pc('mid')))  { %><label class="fsb__check"><input type="checkbox" data-filter="price-mid"><span><%= brand.currencySymbol %><%= brand.currencySymbol %> 6 &ndash; 12</span><%- badge(pc('mid')) %></label><% } %>
+            <% if (keep(pc('high'))) { %><label class="fsb__check"><input type="checkbox" data-filter="price-high"><span><%= brand.currencySymbol %><%= brand.currencySymbol %><%= brand.currencySymbol %> 12+</span><%- badge(pc('high')) %></label><% } %>
         </section>
+        <% } %>
 
         <%# ── Cuisines ── (dynamic list from the api categories) %>
         <% if (typeof cuisines !== 'undefined' && cuisines && cuisines.length) { %>
@@ -99,11 +116,13 @@
         </section>
         <% } %>
 
-        <%# ── Dietary Preference ── (only the data-backed option) %>
+        <%# ── Dietary Preference ── (only when there are veg-only places) %>
+        <% if (keep(fc ? fc.veg : null)) { %>
         <section class="fsb__group">
             <h3 class="fsb__group-title">Dietary Preference</h3>
             <label class="fsb__check"><input type="checkbox" data-filter="trust-pure-veg"><span>Veg Only</span><%- badge(fc ? fc.veg : null) %></label>
         </section>
+        <% } %>
 
         <%# ── More filters (toggles) ── %>
         <section class="fsb__group">
@@ -112,6 +131,26 @@
             <label class="fsb__toggle"><span>Top Rated</span><input type="checkbox" data-filter="rating-4.0"><i class="fsb__switch" aria-hidden="true"></i></label>
             <label class="fsb__toggle"><span>Restaurants near me</span><input type="checkbox" data-filter="dist-5"><i class="fsb__switch" aria-hidden="true"></i></label>
         </section>
+
+        <%# ── Browse (2-level): main category (Favourites / Collections / Offers
+            / Sponsored / Featured) → its items. Built from the live feed; ONLY
+            items whose count > 0 are listed. Picking one narrows the whole home
+            to just that set's restaurants. %>
+        <% var __browse = (typeof browse_options !== 'undefined' && browse_options) ? browse_options : []; %>
+        <% if (__browse.length) { %>
+        <section class="fsb__group fsb__group--browse">
+            <h3 class="fsb__group-title">Collections &amp; offers</h3>
+            <% ['Favourites', 'Collections', 'Offers', 'Sponsored', 'Featured'].forEach(function (grp) { %>
+                <% var __items = __browse.filter(function (o) { return o.group === grp; }); %>
+                <% if (__items.length) { %>
+                <p class="fsb__subhead"><%= grp %></p>
+                <% __items.forEach(function (o) { %>
+                    <label class="fsb__radio fsb__radio--browse"><input type="radio" name="browse-web" data-filter="browse-<%= o.key %>"<%= (typeof browse !== 'undefined' && browse === o.key) ? ' checked' : '' %>><span><%= o.label %></span><b class="fsb__count"><%= o.count %></b></label>
+                <% }); %>
+                <% } %>
+            <% }); %>
+        </section>
+        <% } %>
     </div>
 
     <footer class="fsb__foot">

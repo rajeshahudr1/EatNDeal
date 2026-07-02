@@ -575,6 +575,9 @@ async function detail(req, res) {
                 'b.show_delivery_option', 'b.show_delivery_option_tab', 'b.delivery_closed_util_date',
                 'b.show_pickup_option', 'b.show_pickup_option_tab', 'b.pickup_closed_util_date',
                 'b.pre_order',
+                // Surprise box ("Too Good To Go") — branch-level discounted box.
+                'b.is_toogoodtogo_product', 'b.price', 'b.discount_price', 'b.qty',
+                'b.about_surprise_box', 'b.saving_product_description',
                 db.raw(`(SELECT ROUND(AVG(rr.rating)::numeric, 1) FROM review_rating rr
                           WHERE rr.company_id = c.id AND rr.publish_online = 1) AS avg_rating`),
                 db.raw(`(SELECT COUNT(*) FROM review_rating rr
@@ -656,6 +659,17 @@ async function detail(req, res) {
             logo:            M.yiiImageUrl('logo', row.company_id, row.business_image) || null,
             tint:            M.tintFor(row.company_id),
             initial:         M.initialFor(name),
+            // Surprise box ("Too Good To Go"): a discounted mystery box this
+            // branch offers — shown at the top of the detail page when enabled.
+            surpriseBox:     Number(row.is_toogoodtogo_product) === 1 ? {
+                price:         Number(row.price) || 0,
+                discountPrice: Number(row.discount_price) || 0,
+                qty:           Number(row.qty) || 0,
+                description:   String(row.saving_product_description || '').trim(),
+                about:         String(row.about_surprise_box || '').trim(),
+                pickupFrom:    open || '',
+                pickupTo:      close || '',
+            } : null,
         };
 
         // ── Menu categories ────────────────────────────────────────

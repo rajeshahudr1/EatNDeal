@@ -108,14 +108,14 @@ function stripeError(code, msg, extra) {
  *        bearer auth. Returns the parsed JSON or throws.
  * Type:  WRITE (talks to Stripe).
  */
-async function post(path, body) {
+async function post(path, body, extraHeaders) {
     if (!isConfigured()) { throw stripeError('stripe.not_configured', 'Card payments are not configured.'); }
     const res = await fetch(API_BASE + path, {
         method:  'POST',
-        headers: {
+        headers: Object.assign({
             'Authorization': 'Bearer ' + SECRET,
             'Content-Type':  'application/x-www-form-urlencoded',
-        },
+        }, extraHeaders || {}),   // e.g. { 'Stripe-Account': acct } for Connect direct charges
         body: buildForm(body),
     });
     const json = await res.json().catch(() => null);
@@ -132,10 +132,10 @@ async function post(path, body) {
  * What:  Stripe's `GET /v1/<resource>/<id>` call. Same auth shape.
  * Type:  READ (talks to Stripe).
  */
-async function get(path) {
+async function get(path, extraHeaders) {
     if (!isConfigured()) { throw stripeError('stripe.not_configured', 'Card payments are not configured.'); }
     const res = await fetch(API_BASE + path, {
-        headers: { 'Authorization': 'Bearer ' + SECRET },
+        headers: Object.assign({ 'Authorization': 'Bearer ' + SECRET }, extraHeaders || {}),  // Stripe-Account for Connect
     });
     const json = await res.json().catch(() => null);
     if (!res.ok) {
@@ -162,7 +162,7 @@ async function get(path) {
  *        (1250), so we × 100 here.
  * Type:  WRITE.
  */
-async function createIntent({ amount, currency, metadata, customer, savePaymentMethod }) {
+async function createIntent({ amount, currency, metadata, customer, savePaymentMethod, account, applicationFeeCents }) {
     const minor = Math.round((Number(amount) || 0) * 100);
     if (minor <= 0) { throw stripeError('stripe.bad_amount', 'Amount must be greater than zero.'); }
     const body = {
@@ -171,16 +171,23 @@ async function createIntent({ amount, currency, metadata, customer, savePaymentM
         'automatic_payment_methods[enabled]': 'true',
         metadata: metadata || {},
     };
-    // When the caller supplies a Stripe Customer id, bind the intent
-    // to it so saved cards become reusable for this checkout AND any
-    // card entered here can be saved for future orders (default: yes).
-    if (customer) {
+    const headers = {};
+    if (account) {
+        // Stripe CONNECT — DIRECT charge on the restaurant's connected account
+        // (legacy StripeController.paymentCreate): the charge is created ON the
+        // connected account via the Stripe-Account header and the platform keeps
+        // application_fee_amount; the money lands in the restaurant's balance.
+        // A platform Stripe Customer can't be used on a connected account, so
+        // saved-cards are skipped for direct charges (legacy doesn't bind one).
+        headers['Stripe-Account'] = account;
+        if (Number(applicationFeeCents) > 0) { body.application_fee_amount = Math.round(Number(applicationFeeCents)); }
+    } else if (customer) {
+        // Platform charge — bind the Stripe Customer so saved cards work + a new
+        // card can be saved for future orders (default: yes).
         body.customer = customer;
-        if (savePaymentMethod !== false) {
-            body.setup_future_usage = 'off_session';
-        }
+        if (savePaymentMethod !== false) { body.setup_future_usage = 'off_session'; }
     }
-    return post('/payment_intents', body);
+    return post('/payment_intents', body, headers);
 }
 
 /**
@@ -191,8 +198,10 @@ async function createIntent({ amount, currency, metadata, customer, savePaymentM
  *        — the browser is never trusted to report success.
  * Type:  READ.
  */
-async function retrieveIntent(intentId) {
-    return get('/payment_intents/' + encodeURIComponent(intentId));
+async function retrieveIntent(intentId, account) {
+    // Connect direct charge → the intent lives ON the connected account, so we
+    // must read it with the Stripe-Account header (else Stripe 404s it).
+    return get('/payment_intents/' + encodeURIComponent(intentId), account ? { 'Stripe-Account': account } : undefined);
 }
 
 /**
@@ -208,9 +217,9 @@ async function retrieveIntent(intentId) {
  *        which one it actually was.
  * Type:  READ.
  */
-async function retrieveIntentDetail(intentId) {
+async function retrieveIntentDetail(intentId, account) {
     const id = encodeURIComponent(intentId);
-    const intent = await get('/payment_intents/' + id + '?expand[]=latest_charge&expand[]=payment_method');
+    const intent = await get('/payment_intents/' + id + '?expand[]=latest_charge&expand[]=payment_method', account ? { 'Stripe-Account': account } : undefined);
     const charge = (intent && intent.latest_charge) || null;
     const pmd    = (charge && charge.payment_method_details) || {};
     const pm     = (intent && intent.payment_method) || null;

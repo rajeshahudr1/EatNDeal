@@ -13,7 +13,7 @@
                 guests get a read-only "sign in to join" hint.
 -%>
 <% var __mine = can_post && post.author.type === 'customer' && (typeof my_id !== 'undefined') && Number(post.author.id) === Number(my_id); %>
-<article class="cpost" data-post-id="<%= post.id %>" data-liked="<%= post.liked ? '1' : '0' %>">
+<article class="cpost<%= post.pending ? ' cpost--pending' : (post.rejected ? ' cpost--rejected' : '') %>" data-post-id="<%= post.id %>" data-liked="<%= post.liked ? '1' : '0' %>">
 
     <header class="cpost__head">
         <span class="cavatar cavatar--t<%= post.author.tint %>" aria-hidden="true"><%= post.author.initial %></span>
@@ -23,6 +23,13 @@
         </span>
         <% if (__mine) { %><button type="button" class="cpost__del" data-action="delete-post" title="Delete" aria-label="Delete your post">🗑</button><% } %>
     </header>
+
+    <%# Moderation status — only the author sees their own pending/rejected posts. %>
+    <% if (post.rejected) { %>
+        <div class="cpost__status cpost__status--rejected"><strong>🚫 Rejected.</strong> Only you can see this.<% if (post.ai_reason) { %> <span>Reason: <%= post.ai_reason %></span><% } %></div>
+    <% } else if (post.pending) { %>
+        <div class="cpost__status cpost__status--pending"><strong>⏳ Pending review.</strong> Only you can see this until a moderator approves it.<% if (post.ai_reason) { %> <span>(<%= post.ai_reason %>)</span><% } %></div>
+    <% } %>
 
     <% if (post.body) { %><p class="cpost__body"><%= post.body %></p><% } %>
 

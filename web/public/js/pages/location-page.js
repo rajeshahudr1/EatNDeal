@@ -29,6 +29,10 @@
         status.textContent = text || '';
     }
 
+    // Full-screen spinner helpers (defensive — no-op if the loader UI is absent).
+    function loaderOn(label) { if (window.EatNDealUi && window.EatNDealUi.showLoader) { window.EatNDealUi.showLoader({ label: label || 'Loading…' }); } }
+    function loaderOff()     { if (window.EatNDealUi && window.EatNDealUi.hideLoader) { window.EatNDealUi.hideLoader(); } }
+
     /** Persist the picked location to the session, then reload home.
      *  The current Delivery/Pickup choice is stamped on every save. */
     async function save(location) {
@@ -42,8 +46,10 @@
                 body:    JSON.stringify(location),
             });
             if (resp && resp.ok) { window.location.href = '/'; return; }
+            loaderOff();
             setStatus('Could not save your location. Please try again.');
         } catch (e) {
+            loaderOff();
             setStatus('Network error — please check your connection and try again.');
         }
     }
@@ -112,11 +118,31 @@
             return;
         }
         setStatus('Getting your location…');
+        loaderOn('Getting your location…');
         navigator.geolocation.getCurrentPosition(
             function (pos) {
-                save({ label: 'My current location', postcode: null, lat: pos.coords.latitude, lng: pos.coords.longitude, source: 'geolocation' });
+                var lat = pos.coords.latitude, lng = pos.coords.longitude;
+                // Reverse-geocode → real area name; also gate on served country.
+                window.EatNDealApi.post('/api/v1/delivery/reverse-geocode', { lat: lat, lng: lng })
+                    .then(function (data) {
+                        if (data && data.allowed === false) {
+                            loaderOff();
+                            var cn = (data.address && data.address.country) || 'your country';
+                            setStatus('Sorry, we don’t deliver in ' + cn + ' yet.');
+                            return;   // stop — do NOT save or continue
+                        }
+                        var label    = (data && data.label)
+                            || (data && data.address && (data.address.line_1 || data.address.post_town))
+                            || 'My current location';
+                        var postcode = (data && data.address && data.address.postcode) || null;
+                        save({ label: label, postcode: postcode, lat: lat, lng: lng, source: 'geolocation' });
+                    })
+                    .catch(function () {
+                        save({ label: 'My current location', postcode: null, lat: lat, lng: lng, source: 'geolocation' });
+                    });
             },
             function (err) {
+                loaderOff();
                 setStatus('Could not get your location. ' + ((err && err.message) || 'Please allow access or enter a postcode.'));
             },
             { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }

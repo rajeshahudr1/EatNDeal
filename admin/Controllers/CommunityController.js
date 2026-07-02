@@ -86,6 +86,8 @@ async function feedPage(req, res) {
     let posts = [];
     let has_more = false;
     let next_offset = 0;
+    let pending_count = 0;
+    let total = 0;
     let load_error = null;
     try {
         const r = await callApi(req, 'GET', '/api/v1/admin/community/feed?group_id=' + id + '&limit=15&offset=0');
@@ -94,6 +96,8 @@ async function feedPage(req, res) {
             posts = r.body.data.posts || [];
             has_more = !!r.body.data.has_more;
             next_offset = (r.body.data.offset || 0) + posts.length;
+            pending_count = Number(r.body.data.pending_count) || 0;
+            total = Number(r.body.data.total) || posts.length;
         } else { load_error = (r && r.body && r.body.msg) || 'Could not load the feed.'; }
     } catch (e) { load_error = 'Could not reach the server.'; }
 
@@ -102,7 +106,7 @@ async function feedPage(req, res) {
         _layoutFile: '../_layout',
         active_nav:  'community',
         extra_js:    '/js/pages/community.js',
-        group, posts, has_more, next_offset, load_error,
+        group, posts, has_more, next_offset, pending_count, total, load_error,
     });
 }
 
@@ -146,4 +150,28 @@ const addComment    = ajaxProxy('/api/v1/admin/community/comment');
 const deletePost    = ajaxProxy('/api/v1/admin/community/post-delete');
 const deleteComment = ajaxProxy('/api/v1/admin/community/comment-delete');
 
-module.exports = { list, form, save, remove, statusToggle, feedPage, feedData, commentsData, createPost, addComment, deletePost, deleteComment };
+// Group-form pickers — reuse the shared admin/delivery endpoints:
+//   companies  → company search (restaurant groups)
+//   locSearch  → address autocomplete suggestions (user-group coverage points)
+//   locResolve → resolve a picked suggestion → label + lat/lng
+const companies   = ajaxGetProxy('/api/v1/admin/marketplace-categories/companies', ['q', 'limit']);
+const locSearch   = ajaxProxy('/api/v1/delivery/search-address');
+const locResolve  = ajaxProxy('/api/v1/delivery/retrieve-address');
+
+// AI-moderation review queue (super-admin): page + data + approve/reject.
+function reviewPage(req, res) {
+    res.render('community/review', { page_title: 'Community review', _layoutFile: '../_layout', active_nav: 'community-review', extra_js: '/js/pages/community-review.js' });
+}
+const pendingData = ajaxGetProxy('/api/v1/admin/community/pending', ['status', 'group_id', 'q']);
+const moderate    = ajaxProxy('/api/v1/admin/community/moderate');
+
+// Blocked users — a blocked customer can read but can't post / like / comment.
+function blockedPage(req, res) {
+    res.render('community/blocked', { page_title: 'Blocked users', _layoutFile: '../_layout', active_nav: 'community-blocked', extra_js: '/js/pages/community-blocked.js' });
+}
+const blockedData   = ajaxGetProxy('/api/v1/admin/community/blocked', ['q']);
+const customersData = ajaxGetProxy('/api/v1/admin/community/customers', ['q']);
+const blockUser     = ajaxProxy('/api/v1/admin/community/block');
+const unblockUser   = ajaxProxy('/api/v1/admin/community/unblock');
+
+module.exports = { list, form, save, remove, statusToggle, feedPage, feedData, commentsData, createPost, addComment, deletePost, deleteComment, companies, locSearch, locResolve, reviewPage, pendingData, moderate, blockedPage, blockedData, customersData, blockUser, unblockUser };

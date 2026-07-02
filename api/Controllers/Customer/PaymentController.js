@@ -29,6 +29,8 @@ const Payments       = require('../../Helpers/payments');
 const OrderPlace     = require('../../Helpers/orderPlace');
 const M              = require('../../Helpers/marketplace');
 const stripeCustomer = require('../../Helpers/stripeCustomer');
+const StripeFee      = require('../../config/stripe');   // legacy calculateStripeCharge port
+const StripeConnect  = require('../../Helpers/stripeConnect');  // legacy StripeController.js port
 const { db }         = require('../../config/db');
 
 /**
@@ -70,39 +72,49 @@ async function createIntent(req, res) {
         if (baseAmount <= 0) {
             return H.errorResponse(res, 'Add at least one item before paying.', 422);
         }
-        // Card payments add the company's service charge (cash never does).
-        // Charge base + surcharge so Stripe collects the exact card total;
-        // orderPlace records the same figures from the same source.
-        const cardCharge = await Cart.cardServiceCharge(cart.company_id);
-        const amount = Cart.round2(baseAmount + cardCharge);
+        // ── Stripe Connect — EXACTLY like the legacy (StripeController.paymentCreate +
+        //    CompanyStripeSettings::calculateStripeCharge). Every value comes from
+        //    company_stripe_settings (DB): NO static fee, NO default, NO platform
+        //    fallback. No enabled row / no connected account → error, like the legacy.
+        const css = await db('company_stripe_settings')
+            .where({ company_id: cart.company_id, is_enable: 1 })
+            .first('stripe_account_id', 'service_charge', 'commission');
+        if (!css || !css.stripe_account_id) {
+            return H.errorResponse(res, 'Card payment isn\'t set up for this restaurant yet.', 422);
+        }
+        const serviceCharge = Number(css.service_charge) || 0;
+        // Customer pays grand total + the restaurant's service charge.
+        const amount = Cart.round2(baseAmount + serviceCharge);
+        // Platform application fee = (grandAmount × commission%) + service_charge.
+        const fee = StripeFee.computeStripeCharge({
+            grandtotal:    baseAmount,
+            charityAmount: Number(cart.charity_amount) || 0,
+            usedCashback:  Number(cart.used_cashback)  || 0,
+            serviceCharge,
+            commission:    css.commission,
+        });
 
         try {
-            // Bind the intent to the customer's Stripe Customer so
-            // saved cards become available at checkout. The card itself
-            // is only attached for re-use when the customer ticked
-            // "Save this card for future orders" on the cart UI.
-            const wantsSave    = req.body.save_card === true;
-            const stripeCustId = await stripeCustomer.ensure(cust);
-            const intent = await Payments.createIntent({
-                amount,
-                customer:           stripeCustId,
-                savePaymentMethod:  wantsSave,
-                metadata: {
-                    cart_id:     String(cart.id),
-                    customer_id: String(customerId),
-                    company_id:  String(cart.company_id || ''),
-                    branch_id:   String(cart.branch_id  || ''),
-                    card_service_charge: String(cardCharge),
-                    is_marketplace: '1',
-                },
+            // EXACT legacy StripeController.paymentCreate — a Checkout Session
+            // (embedded Payment Element, ui_mode='elements') created as a DIRECT
+            // charge on the restaurant's connected account, with the platform
+            // application fee. amount is in pence; the customer pays grand+service.
+            const currency  = (process.env.DEFAULT_CURRENCY || process.env.STRIPE_CURRENCY || 'gbp').toLowerCase();
+            const returnUrl = (process.env.WEB_URL || process.env.APP_URL || '').replace(/\/$/, '') + '/cart';
+            const session = await StripeConnect.paymentCreate({
+                amount:       Math.round(amount * 100),
+                appFeesCents: fee.appFeesCents,
+                currency,
+                account_id:   css.stripe_account_id,
+                return_url:   returnUrl,
             });
             return H.successResponse(res, {
-                clientSecret:    intent.client_secret,
-                intentId:        intent.id,
-                amount:          (Number(intent.amount) || 0) / 100,
-                currency:        intent.currency,
+                clientSecret:    session.client_secret,
+                sessionId:       session.id,
+                amount,
+                currency,
                 publishableKey:  Payments.publishableKey(),
-                stripeCustomer:  stripeCustId,
+                stripeAccount:   css.stripe_account_id,   // browser inits Stripe.js with this (direct charge)
             });
         } catch (stripeErr) {
             H.log.error('payment.createIntent.stripe', stripeErr && stripeErr.message);

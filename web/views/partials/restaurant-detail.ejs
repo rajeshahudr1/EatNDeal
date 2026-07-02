@@ -210,13 +210,48 @@
 
     <%# ── Main: product sections ─────────────────────────────────── %>
     <div class="rd__main">
+        <%# Surprise box ("Too Good To Go") — a discounted mystery box this
+            restaurant offers. Shown at the top when the branch has one
+            enabled (legacy is_toogoodtogo_product logic). %>
+        <% if (r.surpriseBox) { var sb = r.surpriseBox; %>
+        <section class="rd-surprise<%= sb.qty > 0 ? '' : ' is-out' %>" aria-label="Surprise box">
+            <span class="rd-surprise__icon" aria-hidden="true">🎁</span>
+            <div class="rd-surprise__body">
+                <div class="rd-surprise__top">
+                    <h2 class="rd-surprise__title">Surprise Box</h2>
+                    <span class="rd-surprise__tag">Too Good To Go</span>
+                </div>
+                <% if (sb.description) { %><p class="rd-surprise__desc"><%= sb.description %></p><% } %>
+                <p class="rd-surprise__meta">
+                    <% if (sb.pickupFrom && sb.pickupTo) { %><span>⏰ Collect <%= sb.pickupFrom %> – <%= sb.pickupTo %></span><% } %>
+                    <% if (sb.qty > 0) { %><span class="rd-surprise__left"><%= sb.qty %> left</span><% } else { %><span class="rd-surprise__left rd-surprise__left--out">Sold out today</span><% } %>
+                </p>
+            </div>
+            <div class="rd-surprise__price">
+                <% if (sb.price && sb.price > sb.discountPrice) { %><span class="rd-surprise__was"><%= sym %><%= sb.price.toFixed(2) %></span><% } %>
+                <span class="rd-surprise__now"><%= sym %><%= (sb.discountPrice || 0).toFixed(2) %></span>
+            </div>
+        </section>
+        <% } %>
+
         <%# Active offers (banners + promo codes + auto-discounts) — real
             data from store_offer_banner_table / coupons / discounts. %>
         <% var offers = (typeof restaurant_offers !== 'undefined' && restaurant_offers) ? restaurant_offers : null; %>
         <% if (offers && offers.hasAny) { %>
-        <section class="rd-offers" aria-label="Offers and deals">
-            <h2 class="rd-offers__title">Offers &amp; deals</h2>
-            <div class="rd-offers__list">
+        <section class="rd-offers" data-rail-wrap aria-label="Offers and deals">
+            <div class="rd-offers__head">
+                <h2 class="rd-offers__title">Offers &amp; deals</h2>
+                <div class="hv2-head__nav rd-offers__nav">
+                    <button type="button" class="rail-arrow rail-arrow--prev" data-rail-prev aria-label="Scroll left" disabled>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+                    </button>
+                    <button type="button" class="rail-arrow rail-arrow--next" data-rail-next aria-label="Scroll right" disabled>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+                    </button>
+                </div>
+            </div>
+            <div class="rail-wrap">
+                <div class="rd-offers__list" data-rail>
                 <% offers.banners.forEach(function (b) { %>
                     <div class="rd-offer rd-offer--banner">
                         <span class="rd-offer__icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.6 13.4 12 22l-9-9V3h10l7.6 7.6a2 2 0 0 1 0 2.8z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg></span>
@@ -245,7 +280,8 @@
                         </div>
                     </div>
                 <% }); %>
-            </div>
+                </div><%# /.rd-offers__list %>
+            </div><%# /.rail-wrap %>
         </section>
         <% } %>
 

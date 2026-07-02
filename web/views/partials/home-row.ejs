@@ -10,28 +10,31 @@
   Used: views/site/index.ejs (loops `home_feed`).
 -%>
 <% if (row && row.restaurants && row.restaurants.length) { %>
-<section class="home-row home-row--<%= row.type || 'collection' %>" aria-label="<%= row.title %>">
+<%# A SINGLE horizontal carousel. Header carries prev/next arrows (Uber-Eats
+    style) — wired by home.js bindRailArrows via the section's data-rail-wrap.
+    Desktop: arrows always shown (disabled at the ends). Mobile: hidden →
+    touch-swipe. The rail never wraps to a second line. %>
+<section class="home-row home-row--<%= row.type || 'collection' %>" data-rail-wrap aria-label="<%= row.title %>">
     <div class="hv2-head">
         <h2 class="hv2-head__title">
             <% if (row.type === 'featured') { %><span class="home-row__star" aria-hidden="true"><%= (row.title === 'Sponsored') ? '📌' : '⭐' %></span> <% } %><%= row.title %>
+            <% if (row.subtitle) { %><span class="home-row__sub"><%= row.subtitle %></span><% } %>
         </h2>
-        <% if (row.subtitle) { %><span class="home-row__sub"><%= row.subtitle %></span><% } %>
+        <div class="hv2-head__nav">
+            <button type="button" class="rail-arrow rail-arrow--prev" data-rail-prev aria-label="Scroll left" disabled>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+            </button>
+            <button type="button" class="rail-arrow rail-arrow--next" data-rail-next aria-label="Scroll right" disabled>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+            </button>
+        </div>
     </div>
-    <%# home-rail = a SINGLE horizontal carousel. Desktop: prev/next arrows
-        (data-rail-wrap, wired by home.js bindRailArrows) slide it card-by-card.
-        Mobile: arrows hidden → touch-swipe. Never wraps to a second line. %>
-    <div class="rail-wrap home-rail-wrap" data-rail-wrap>
-        <button type="button" class="rail-arrow rail-arrow--prev" data-rail-prev aria-label="Scroll left" hidden>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
-        </button>
+    <div class="rail-wrap home-rail-wrap">
         <ul class="home-rail" role="list" data-rail>
             <% row.restaurants.forEach(function (r) { %>
                 <%- include('restaurant-card', { r: r, showOffer: true, metaIcons: true, showDelivery: true }) %>
             <% }); %>
         </ul>
-        <button type="button" class="rail-arrow rail-arrow--next" data-rail-next aria-label="Scroll right" hidden>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
-        </button>
     </div>
 </section>
 <% } %>

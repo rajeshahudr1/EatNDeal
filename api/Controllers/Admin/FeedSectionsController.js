@@ -20,6 +20,7 @@ const T = 'mp_feed_section';
 // reorderable and can be shown / hidden.
 const SECTIONS = [
     { key: 'favourites',  label: 'My Favourites',           icon: '❤️', hint: 'Each signed-in customer\'s saved restaurants' },
+    { key: 'order-again', label: 'Order again',             icon: '🔁', hint: 'Each customer\'s recently-ordered restaurants (top 10)' },
     { key: 'featured',    label: 'Featured row',            icon: '⭐', hint: 'Paid placements labelled "Featured"' },
     { key: 'sponsored',   label: 'Sponsored row',           icon: '📌', hint: 'Paid placements labelled "Sponsored"' },
     { key: 'collections', label: 'Collections',             icon: '🗂️', hint: 'Your curated restaurant rows' },

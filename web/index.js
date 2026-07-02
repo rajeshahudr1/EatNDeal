@@ -136,12 +136,14 @@ if (IS_DEV) {
                 // domain (hooks.stripe.com) so card input renders.
                 'script-src':      ["'self'", 'https://js.stripe.com'],
                 'style-src':       ["'self'"],
-                'img-src':         ["'self'", 'data:'].concat(EXTRA_IMG_HOSTS),
+                // maps.googleapis.com → Google Static Maps image (pickup map).
+                'img-src':         ["'self'", 'data:', 'https://maps.googleapis.com'].concat(EXTRA_IMG_HOSTS),
                 'font-src':        ["'self'"],
                 // Card confirmation hits the Stripe API directly from
                 // the browser; allow it on the connect-src list.
                 'connect-src':     ["'self'", process.env.API_URL || 'http://localhost:4501', 'https://api.stripe.com'],
-                'frame-src':       ["'self'", 'https://js.stripe.com', 'https://hooks.stripe.com'],
+                // Google Maps Embed API renders the location maps in an iframe.
+                'frame-src':       ["'self'", 'https://js.stripe.com', 'https://hooks.stripe.com', 'https://www.google.com'],
                 'worker-src':      ["'self'"],
                 'manifest-src':    ["'self'"],
             },
@@ -502,6 +504,7 @@ app.use((req, res, next) => {
     res.locals.flash_error      = (req.flash('error')   || [])[0] || null;
     res.locals.user_session     = (req.session && req.session.user) || null;
     res.locals.user_location    = (req.session && req.session.userLocation) || null;
+    res.locals.google_maps_key  = process.env.GOOGLE_MAPS_BROWSER_KEY || '';   // Embed API (browser key)
     res.locals.page_title       = '';
     res.locals.active_nav       = '';
     // Cart count — primed by the middleware above; 0 when not signed in.
@@ -710,6 +713,16 @@ app.get ('/wallet/json',         WalletController.walletJson);
 // Earn Cashback — review/share a restaurant to earn its cashback (picker +
 // per-restaurant types). Submitting posts to POST /review-cashback below.
 app.get ('/earn',                EarnController.earnPage);
+// Loyalty Program — "how rewards work" explainer (legacy loyalty_program.php).
+app.get ('/loyalty-program', function (req, res) {
+    res.render('loyalty/program', {
+        page_title:       'EatNDeal Rewards',
+        _layoutFile:      '../_layout',
+        active_nav:       'profile',
+        show_promo_strip: false,
+        bare:             false,
+    });
+});
 
 // ── Community (Facebook-style groups; reads work for guests) ────
 // Group browsing + feed are open to everyone; posting / liking /
@@ -717,6 +730,7 @@ app.get ('/earn',                EarnController.earnPage);
 // returns a 401 envelope for guests → the JS bounces to /signin).
 app.get ('/community',            CommunityController.groupsPage);
 app.get ('/community/feed',       CommunityController.feedData);
+app.get ('/community/my-posts',   CommunityController.myPostsData);
 app.get ('/community/comments',   CommunityController.commentsData);
 app.get ('/community/g/:id',      CommunityController.groupPage);
 app.post('/community/like',       CommunityController.like);
@@ -798,6 +812,10 @@ app.get('/partner',  StaticPageController.partner);
 app.get('/ride',     StaticPageController.ride);
 app.get('/business', StaticPageController.business);
 app.get('/careers',  StaticPageController.careers);
+// Partner / contact lead form submit (AJAX → api emails the enquiry).
+app.post('/partner/apply', StaticPageController.partnerApply);
+// Help chatbot (AJAX → api answers from the customer's real data).
+app.post('/chatbot/ask', require('./Controllers/ChatbotController').ask);
 
 // ── 404 ────────────────────────────────────────────────────────
 app.use((req, res) => {

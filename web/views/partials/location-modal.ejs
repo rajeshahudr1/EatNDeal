@@ -158,7 +158,19 @@
 
                 <div class="loc-field">
                     <label class="loc-field__label" for="af-address">Address</label>
-                    <input id="af-address" class="loc-field__input" name="address" data-af-address type="text" placeholder="Flat / house, street, area" maxlength="500" required>
+                    <div class="addr-ac" data-af-ac>
+                        <input id="af-address" class="loc-field__input" name="address" data-af-address type="text" placeholder="Start typing your address…" maxlength="500" required autocomplete="off">
+                        <ul class="addr-ac__list" data-af-suggestions role="listbox" hidden></ul>
+                    </div>
+                    <button type="button" class="addr-ac__loc" data-af-useloc>
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22"/></svg>
+                        Use my current location
+                    </button>
+                </div>
+
+                <div class="loc-field">
+                    <label class="loc-field__label" for="af-postcode">Postcode</label>
+                    <input id="af-postcode" class="loc-field__input" name="post_code" data-af-postcode type="text" maxlength="20" placeholder="e.g. AB56 1AH" autocomplete="postal-code">
                 </div>
 
                 <%# Building type — custom dropdown (consistent across browsers). %>

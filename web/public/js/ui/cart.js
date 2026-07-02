@@ -169,6 +169,9 @@
     // ── Envelope handler (401 / 409 conflict / 422 / 200) ───────────
     function handleEnvelope(env, opts) {
         opts = opts || {};
+        // The request has settled (it will reload, error, or conflict) — tell any
+        // open checkout popup to drop its "busy" state so it never hangs.
+        document.dispatchEvent(new CustomEvent('ckt:settle-done'));
         if (!env) { toast('error', 'Could not reach the server.'); return false; }
         if (env.status === 401) {
             var here = window.location.pathname + window.location.search;
@@ -712,10 +715,14 @@
     // first picks the Card tab so a Cash-only checkout never touches
     // Stripe at all.
     var stripeApi = null;          // window.Stripe instance
+    var stripeAccountUsed = null;  // connected account the instance is bound to (direct charge)
     var payElements = null;        // Stripe.elements() bag (Payment Element)
     var payElement = null;         // the mounted Payment Element
     var payElementPromise = null;  // in-flight init (create intent + mount)
     var payIntentId = null;        // the pre-created PaymentIntent id (new card / wallet)
+    var checkoutEle = null;        // Stripe Checkout Elements SDK (legacy initCheckoutElementsSdk)
+    var checkoutActions = null;    // its actions: updateEmail, confirm
+    var paySessionId = null;       // the Checkout Session id — order is placed with this
     var stripeMethod = 'cash';     // 'cash' | 'card'
 
     function getPayRoot() { return document.querySelector('[data-cart-pay]'); }
@@ -757,8 +764,28 @@
         }
     }
 
-    function ensureStripe() {
-        if (stripeApi) { return stripeApi; }
+    // Show a spinner in place of the (still-empty) card box while the secure
+    // payment form is being created, then swap back once it's mounted/failed.
+    function setPayLoading(on) {
+        var mount   = document.querySelector('[data-stripe-mount]');
+        var loading = document.querySelector('[data-stripe-loading]');
+        if (loading) { loading.hidden = !on; }
+        if (mount)   { mount.hidden   = !!on; }
+    }
+
+    function ensureStripe(account) {
+        var acct = account || null;
+        // Stripe Connect DIRECT charge — Stripe.js MUST be bound to the
+        // restaurant's connected account so the Payment Element confirms on it.
+        if (acct && stripeAccountUsed !== acct) {
+            var rootA = getPayRoot();
+            var keyA  = rootA && rootA.getAttribute('data-stripe-key');
+            if (!keyA || typeof window.Stripe !== 'function') { return null; }
+            stripeApi = window.Stripe(keyA, { stripeAccount: acct });
+            stripeAccountUsed = acct;
+            return stripeApi;
+        }
+        if (stripeApi) { return stripeApi; }   // confirm step reuses the bound instance
         var root = getPayRoot();
         var key  = root && root.getAttribute('data-stripe-key');
         if (!key || typeof window.Stripe !== 'function') { return null; }
@@ -778,30 +805,43 @@
     function ensurePaymentElement(forceRecreate) {
         if (payElementPromise && !forceRecreate) { return payElementPromise; }
         if (forceRecreate) { teardownPaymentElement(); }
-        var stripe = ensureStripe();
         var mount  = document.querySelector('[data-stripe-mount]');
-        if (!stripe || !mount) { return Promise.resolve(null); }
+        if (!mount || typeof window.Stripe !== 'function') { return Promise.resolve(null); }
 
-        var saveBox  = document.querySelector('[data-cart-save-card]');
-        var saveCard = !!(saveBox && saveBox.checked);
         setError('');
+        setPayLoading(true);   // spinner until the card form is mounted (or fails)
 
-        payElementPromise = postCart('/payment/intent', { save_card: saveCard }).then(function (env) {
+        // EXACT legacy flow (delivery.js): the backend created a Checkout Session
+        // ON the restaurant's connected account; mount it with the Checkout
+        // Elements SDK (initCheckoutElementsSdk) and confirm later via
+        // checkoutActions.confirm(). No saved cards on a direct charge (the
+        // platform Stripe Customer can't be used on a connected account).
+        payElementPromise = postCart('/payment/intent', {}).then(function (env) {
             if (!env || env.status !== 200 || !env.data || !env.data.clientSecret) {
                 throw new Error((env && env.msg) || 'Could not start the payment.');
             }
-            payIntentId = env.data.intentId;
-            payElements = stripe.elements({
-                clientSecret: env.data.clientSecret,
-                appearance: { theme: 'stripe', variables: { colorPrimary: '#e5252a', fontSizeBase: '15px', borderRadius: '10px' } },
+            var stripe = ensureStripe(env.data.stripeAccount);   // bind to the connected account (direct charge)
+            if (!stripe || typeof stripe.initCheckoutElementsSdk !== 'function') {
+                throw new Error('Could not start the payment.');
+            }
+            paySessionId = env.data.sessionId;
+            checkoutEle  = stripe.initCheckoutElementsSdk({ clientSecret: env.data.clientSecret });
+            return checkoutEle.loadActions().then(function (loaded) {
+                if (!loaded || loaded.type !== 'success' || !loaded.actions) {
+                    throw new Error('Could not start the payment.');
+                }
+                checkoutActions = loaded.actions;
+                var emailEl = document.querySelector('[data-customer-email]');
+                var email   = (emailEl && (emailEl.value || emailEl.getAttribute('data-customer-email'))) || '';
+                if (email && checkoutActions.updateEmail) { checkoutActions.updateEmail(email); }
+                setPayLoading(false);   // reveal the card box, then mount into it
+                payElement = checkoutEle.createPaymentElement({ wallets: { applePay: 'auto', googlePay: 'auto' } });
+                payElement.mount(mount);
+                if (payElement.on) { payElement.on('change', function (event) { setError(event && event.error ? event.error.message : ''); }); }
+                return payElement;
             });
-            payElement = payElements.create('payment', { layout: 'tabs' });
-            payElement.mount(mount);
-            payElement.on('change', function (event) { setError(event && event.error ? event.error.message : ''); });
-            payElement.on('focus', function () { var f = payFieldEl(); if (f) { f.classList.add('is-focus'); } });
-            payElement.on('blur',  function () { var f = payFieldEl(); if (f) { f.classList.remove('is-focus'); } });
-            return payElement;
         }).catch(function (err) {
+            setPayLoading(false);   // drop the spinner; show the error in its place
             setError((err && err.message) || 'Could not start the payment.');
             payElementPromise = null;   // let the next pick retry
             return null;
@@ -815,6 +855,7 @@
     function teardownPaymentElement() {
         try { if (payElement) { payElement.unmount(); } } catch (e) { /* ignore */ }
         payElement = null; payElements = null; payElementPromise = null; payIntentId = null;
+        checkoutEle = null; checkoutActions = null; paySessionId = null;
     }
 
     // Back-compat shim: checkout-popups.js calls ensureCardElement() to
@@ -926,45 +967,30 @@
         //                   up front; confirm it (card + Apple/Google Pay /
         //                   Link / …). redirect:'if_required' keeps the
         //                   common methods inline (no page navigation).
-        var paidIntentPromise;
-        if (mode.kind === 'card-saved') {
-            paidIntentPromise = postCart('/payment/intent', { save_card: false }).then(function (env) {
-                if (!env || env.status !== 200) { throw new Error((env && env.msg) || 'Could not start the payment.'); }
-                var clientSecret = env.data && env.data.clientSecret;
-                if (!clientSecret) { throw new Error('Payment configuration error.'); }
-                origLabel.textContent = 'Confirming card...';
-                return stripe.confirmCardPayment(clientSecret, { payment_method: mode.paymentMethodId }).then(function (result) {
-                    if (result.error) { setError(result.error.message || 'Card declined.'); throw result.error; }
-                    if (!result.paymentIntent || result.paymentIntent.status !== 'succeeded') {
-                        throw new Error('Payment did not complete. Please try again.');
-                    }
-                    return result.paymentIntent.id;
-                });
+        // EXACT legacy: confirm the Checkout Session via the Checkout Elements
+        // SDK (checkoutActions.confirm()), then place the order with the SESSION
+        // id — the server verifies payment_status='paid' on the connected
+        // account. No saved-card path: a Connect direct charge has no platform
+        // customer, so both card modes use the same session flow.
+        var paidIntentPromise = ensurePaymentElement(false).then(function (el) {
+            if (!el || !checkoutActions) { throw new Error('Payment form is not ready. Please refresh and try again.'); }
+            origLabel.textContent = 'Confirming payment...';
+            return checkoutActions.confirm().then(function (result) {
+                if (result && result.type === 'error') {
+                    var m = (result.error && result.error.message) || 'Payment failed.';
+                    setError(m); throw new Error(m);
+                }
+                return paySessionId;
             });
-        } else {
-            paidIntentPromise = ensurePaymentElement(false).then(function (el) {
-                if (!el || !payIntentId) { throw new Error('Payment form is not ready. Please refresh and try again.'); }
-                origLabel.textContent = 'Confirming payment...';
-                return stripe.confirmPayment({
-                    elements: payElements,
-                    confirmParams: { return_url: window.location.origin + '/cart' },
-                    redirect: 'if_required',
-                }).then(function (result) {
-                    if (result.error) { setError(result.error.message || 'Payment failed.'); throw result.error; }
-                    if (!result.paymentIntent || result.paymentIntent.status !== 'succeeded') {
-                        throw new Error('Payment did not complete. Please try again.');
-                    }
-                    return result.paymentIntent.id;
-                });
-            });
-        }
+        });
 
-        paidIntentPromise.then(function (paidIntentId) {
-            // Place the order — server re-verifies the intent server-side.
+        paidIntentPromise.then(function (sessionId) {
+            // Place the order — server verifies payment_status='paid' on the
+            // connected account via the session id (legacy checkoutSessionRetrieve).
             origLabel.textContent = 'Placing order...';
             return postCart('/order/place', {
-                payment_option:    2,
-                payment_intent_id: paidIntentId,
+                payment_option: 2,
+                session_id:     sessionId,
             }).then(function (env) {
                 if (!env) { throw new Error('Could not reach the server.'); }
                 if (env.status === 401) {

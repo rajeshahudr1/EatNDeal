@@ -196,6 +196,12 @@
 }
 .loc-map__pin { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -100%); pointer-events: none; filter: drop-shadow(0 3px 4px rgba(0,0,0,0.25)); }
 .loc-map__hint { position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%); background: #fff; border-radius: 999px; padding: 4px 10px; font-size: 0.72rem; font-weight: 700; box-shadow: var(--shadow-1); white-space: nowrap; }
+/* Real Google Map (Embed iframe) replaces the cosmetic grid + pin. */
+.loc-map--real { cursor: default; touch-action: auto; }
+.loc-map--real .loc-map__pin,
+.loc-map--real .loc-map__hint { display: none; }
+.loc-map__grid.has-gmap { inset: 0; background: none; }
+.loc-map__grid.has-gmap .gmap-frame { width: 100%; height: 100%; }
 
 .loc-field { position: relative; display: flex; flex-direction: column; gap: 6px; }
 .loc-field__label { font-size: 0.82rem; font-weight: 700; color: var(--color-text-soft); }

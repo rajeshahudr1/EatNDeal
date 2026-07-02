@@ -19,6 +19,7 @@
 <% var __viewMode = (typeof view_mode !== 'undefined' && view_mode) ? view_mode : ''; %>
 <% var __order   = (typeof order_mode !== 'undefined' && order_mode) ? order_mode : 'delivery'; %>
 <% var __pickup  = (__order === 'pickup' && !__viewMode); %>
+<% var __browseActive = (typeof browse_active !== 'undefined' && browse_active); %>
 
 <% if (__pickup) { %>
 <%# ══════════════════════════════════════════════════════════════════
@@ -54,7 +55,15 @@
             user — just the horizontal category slider. The arrows
             scroll the rail; /js/pages/home.js wires them and hides
             an arrow when there's nothing more to scroll that way. %>
-        <% if (cuisines && cuisines.length > 0) { %>
+        <%# Browse mode — a "back to home" bar above the filtered set. %>
+        <% if (__browseActive) { %>
+        <a href="/" class="browse-back" data-action="view-home">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+            Back to home
+        </a>
+        <% } %>
+
+        <% if (!__browseActive && cuisines && cuisines.length > 0) { %>
         <section aria-label="Browse cuisines" class="rail-wrap" data-rail-wrap>
             <button type="button" class="rail-arrow rail-arrow--prev" data-rail-prev aria-label="Scroll left" hidden>
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
@@ -96,7 +105,7 @@
             in the controller so they never duplicate. %>
         <%
             var DEFAULT_FEED_ORDER = [
-                { key: 'favourites', status: 1 }, { key: 'featured', status: 1 }, { key: 'sponsored', status: 1 },
+                { key: 'favourites', status: 1 }, { key: 'order-again', status: 1 }, { key: 'featured', status: 1 }, { key: 'sponsored', status: 1 },
                 { key: 'collections', status: 1 }, { key: 'products', status: 1 }, { key: 'restaurants', status: 1 }
             ];
             var feedOrder = (typeof home_feed_order !== 'undefined' && home_feed_order && home_feed_order.length) ? home_feed_order : DEFAULT_FEED_ORDER;
@@ -104,32 +113,66 @@
             var rowsBySection = {};
             __feed.forEach(function (row) { var k = row.section || row.type; (rowsBySection[k] = rowsBySection[k] || []).push(row); });
             var myFavs = (typeof my_favourites !== 'undefined' && my_favourites) ? my_favourites : [];
+            var orderAgainList = (typeof order_again !== 'undefined' && order_again) ? order_again : [];
         %>
         <% feedOrder.forEach(function (sec) { %>
             <% if (Number(sec.status) === 0) { return; } %>
 
             <% if (sec.key === 'favourites') { %>
                 <% if (user_session && myFavs.length > 0) { %>
-                <section aria-labelledby="my-fav-rail-title">
+                <section aria-labelledby="my-fav-rail-title" data-rail-wrap>
                     <div class="hv2-head">
                         <h2 id="my-fav-rail-title" class="hv2-head__title">
                             <svg class="hv2-head__title-icon" width="18" height="18" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
                             My Favourites
                         </h2>
-                        <a href="/account?tab=favourites" class="hv2-head__link" data-action="view-favourites">View all</a>
+                        <div class="hv2-head__actions">
+                            <a href="/account?tab=favourites" class="hv2-head__link" data-action="view-favourites">View all</a>
+                            <div class="hv2-head__nav">
+                                <button type="button" class="rail-arrow rail-arrow--prev" data-rail-prev aria-label="Scroll left" disabled>
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+                                </button>
+                                <button type="button" class="rail-arrow rail-arrow--next" data-rail-next aria-label="Scroll right" disabled>
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+                                </button>
+                            </div>
+                        </div>
                     </div>
-                    <div class="rail-wrap home-rail-wrap" data-rail-wrap>
-                        <button type="button" class="rail-arrow rail-arrow--prev" data-rail-prev aria-label="Scroll left" hidden>
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
-                        </button>
+                    <div class="rail-wrap home-rail-wrap">
                         <ul class="home-rail" role="list" data-rail>
                             <% myFavs.forEach(function (r) { %>
                                 <%- include('../partials/restaurant-card', { r: r, forceFavourite: true }) %>
                             <% }); %>
                         </ul>
-                        <button type="button" class="rail-arrow rail-arrow--next" data-rail-next aria-label="Scroll right" hidden>
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
-                        </button>
+                    </div>
+                </section>
+                <% } %>
+
+            <% } else if (sec.key === 'order-again') { %>
+                <% if (user_session && orderAgainList.length > 0) { %>
+                <section aria-labelledby="order-again-title" data-rail-wrap>
+                    <div class="hv2-head">
+                        <h2 id="order-again-title" class="hv2-head__title">
+                            <svg class="hv2-head__title-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                            Order again
+                        </h2>
+                        <div class="hv2-head__actions">
+                            <div class="hv2-head__nav">
+                                <button type="button" class="rail-arrow rail-arrow--prev" data-rail-prev aria-label="Scroll left" disabled>
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+                                </button>
+                                <button type="button" class="rail-arrow rail-arrow--next" data-rail-next aria-label="Scroll right" disabled>
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="rail-wrap home-rail-wrap">
+                        <ul class="home-rail" role="list" data-rail>
+                            <% orderAgainList.forEach(function (r) { %>
+                                <%- include('../partials/restaurant-card', { r: r, showOffer: true, metaIcons: true, showDelivery: true }) %>
+                            <% }); %>
+                        </ul>
                     </div>
                 </section>
                 <% } %>
@@ -138,8 +181,8 @@
                 <% if (featured && featured.length > 0) { %>
                 <section aria-labelledby="resto-rail-title">
                     <div class="hv2-head">
-                        <h2 id="resto-rail-title" class="hv2-head__title"><% if (typeof cuisine_no_match !== 'undefined' && cuisine_no_match) { %>More restaurants near you<% } else if (typeof selected_cuisine_label !== 'undefined' && selected_cuisine_label) { %><%= selected_cuisine_label %> restaurants near you<% } else { %>Top restaurants near you<% } %></h2>
-                        <a href="/?view=restaurants" class="hv2-head__link" data-action="view-all">View all</a>
+                        <h2 id="resto-rail-title" class="hv2-head__title"><% if (__browseActive) { %><%= browse_label %><% } else if (typeof cuisine_no_match !== 'undefined' && cuisine_no_match) { %>More restaurants near you<% } else if (typeof selected_cuisine_label !== 'undefined' && selected_cuisine_label) { %><%= selected_cuisine_label %> restaurants near you<% } else { %>Top restaurants near you<% } %></h2>
+                        <% if (!__browseActive) { %><a href="/?view=restaurants" class="hv2-head__link" data-action="view-all">View all</a><% } %>
                     </div>
                     <ul class="resto-rail" role="list" data-load-target>
                         <% featured.forEach(function (r) { %>
@@ -153,6 +196,8 @@
                         </div>
                     <% } %>
                 </section>
+                <% } else if (__browseActive) { %>
+                <p class="feed-note">No restaurants in this selection right now.</p>
                 <% } %>
 
             <% } else { %>
@@ -169,72 +214,7 @@
         <% }); %>
         </div><%# /[data-home-feed] %>
 
-        <%# ── BEST OFFERS — real store-offer banners (fallback: static) ─ %>
-        <% var __offers = (typeof home_offers !== 'undefined' && home_offers) ? home_offers : []; %>
-        <% if (__offers.length) { %>
-        <section aria-labelledby="offers-title">
-            <div class="hv2-head">
-                <h2 id="offers-title" class="hv2-head__title">Best offers for you</h2>
-            </div>
-            <div class="offers-rail">
-                <% var __ov = ['offer-banner--red','offer-banner--orange','offer-banner--purple']; %>
-                <% __offers.forEach(function (o, i) { %>
-                    <a class="offer-banner offer-banner--real <%= __ov[i % __ov.length] %>" href="/?restaurant=<%= encodeURIComponent(o.restaurant.slug) %>" data-action="pick-restaurant">
-                        <span class="offer-banner__title"><%= o.title %></span>
-                        <% if (o.details) { %><span class="offer-banner__sub"><%= o.details %></span><% } %>
-                        <span class="offer-banner__from"><%= o.restaurant.name %></span>
-                        <span class="offer-banner__cta">Order Now →</span>
-                    </a>
-                <% }); %>
-            </div>
-        </section>
-        <% } else { %>
-        <section aria-labelledby="offers-title">
-            <div class="hv2-head">
-                <h2 id="offers-title" class="hv2-head__title">Best offers for you</h2>
-                <a href="/?view=restaurants&offer=1" class="hv2-head__link" data-action="view-all">View all offers</a>
-            </div>
-            <div class="offers-rail">
-                <div class="offer-banner offer-banner--red">
-                    <span class="offer-banner__title">50% OFF</span>
-                    <span class="offer-banner__sub">On your first order</span>
-                    <span class="offer-banner__code">Use code: WELCOME50</span>
-                </div>
-                <div class="offer-banner offer-banner--orange">
-                    <span class="offer-banner__title">BUY 1 GET 1</span>
-                    <span class="offer-banner__sub">On selected items</span>
-                    <a href="/?view=restaurants" class="offer-banner__cta" data-action="view-all">Order Now →</a>
-                </div>
-                <div class="offer-banner offer-banner--purple">
-                    <span class="offer-banner__title">Weekend Special</span>
-                    <span class="offer-banner__sub">Up to 40% OFF on family combos</span>
-                    <a href="/?view=restaurants" class="offer-banner__cta" data-action="view-all">Order Now →</a>
-                </div>
-            </div>
-        </section>
-        <% } %>
-
-        <%# ── POPULAR CUISINES (dark cards) ────────────────────── %>
-        <% if (cuisines && cuisines.length > 0) { %>
-        <section aria-labelledby="popcuisine-title">
-            <div class="hv2-head">
-                <h2 id="popcuisine-title" class="hv2-head__title">Popular cuisines</h2>
-            </div>
-            <div class="popcuisine-grid">
-                <% cuisines.slice(0, 4).forEach(function (c) { %>
-                    <a class="popcuisine-card" href="/?cuisine=<%= encodeURIComponent(c.searchName || (c.name||'').toLowerCase()) %>" data-action="pick-cuisine">
-                        <span class="popcuisine-card__copy">
-                            <span class="popcuisine-card__name"><%= c.name %></span><br>
-                            <span class="popcuisine-card__explore">Explore →</span>
-                        </span>
-                        <span class="popcuisine-card__art">
-                            <% if (c.icon) { %><img src="<%= c.icon %>" alt="" loading="lazy" data-img-fallback><% } else { %><%= c.initial || '🍽️' %><% } %>
-                        </span>
-                    </a>
-                <% }); %>
-            </div>
-        </section>
-        <% } %>
+        <%# "Best offers for you" + "Popular cuisines" sections removed per request. %>
 
         <%# ── FEATURE STRIP (static) ───────────────────────────── %>
         <section aria-label="Why EatNDeal">
@@ -254,7 +234,9 @@
                 <div class="appcta__badges">
                     <span class="appcta__badge"> App Store</span>
                     <span class="appcta__badge">▶ Google Play</span>
-                    <span class="appcta__qr">QR</span>
+                    <button type="button" class="appcta__qr" data-action="open-app-qr" aria-label="Show QR code to download the app" title="Scan to download">
+                        <img src="/img/app-qr.svg?v=<%= ASSET_VERSION %>" alt="" class="appcta__qr-code">
+                    </button>
                 </div>
             </div>
             <div class="appcta__phone" aria-hidden="true">📱</div>
@@ -264,6 +246,21 @@
                 <li class="appcta__check"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>Real-time order tracking</li>
                 <li class="appcta__check"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>Save your favorite places</li>
             </ul>
+
+            <%# Scan-to-download QR popup (foodpanda-style) — opens from the QR
+                badge above. The QR is a local SVG (no external service). %>
+            <div class="appqr" data-app-qr hidden>
+                <div class="appqr__backdrop" data-action="close-app-qr"></div>
+                <div class="appqr__panel" role="dialog" aria-label="Download the app">
+                    <button type="button" class="appqr__x" data-action="close-app-qr" aria-label="Close">✕</button>
+                    <div class="appqr__code"><img src="/img/app-qr.svg?v=<%= ASSET_VERSION %>" alt="Scan to download the app"></div>
+                    <h3 class="appqr__title">Unlock more app-only deals.<br>Download now.</h3>
+                    <div class="appqr__stores">
+                        <span class="appqr__store"> App Store</span>
+                        <span class="appqr__store">▶ Play Store</span>
+                    </div>
+                </div>
+            </div>
         </section>
 
     </div><%# /.home-shell__content %>

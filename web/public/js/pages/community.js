@@ -108,15 +108,23 @@
         var media = p.image_url ? '<div class="cpost__media"><img src="' + esc(p.image_url) + '" alt="" loading="lazy"></div>' : '';
         var bodyHtml = p.body ? '<p class="cpost__body">' + esc(p.body) + '</p>' : '';
         var statsHidden = (p.likes || p.comments) ? '' : ' hidden';
+        var statusBanner = '';
+        if (p.rejected) {
+            statusBanner = '<div class="cpost__status cpost__status--rejected"><strong>🚫 Rejected.</strong> Only you can see this.'
+                + (p.ai_reason ? ' <span>Reason: ' + esc(p.ai_reason) + '</span>' : '') + '</div>';
+        } else if (p.pending) {
+            statusBanner = '<div class="cpost__status cpost__status--pending"><strong>⏳ Pending review.</strong> Only you can see this until a moderator approves it.'
+                + (p.ai_reason ? ' <span>(' + esc(p.ai_reason) + ')</span>' : '') + '</div>';
+        }
         var composer = canPost
             ? '<form class="ccompose ccompose--comment" data-comment-form><input type="text" class="ccompose__input" name="body" placeholder="Write a comment…" maxlength="2000" autocomplete="off" required><button type="submit" class="ccompose__send" aria-label="Send comment"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></button></form>'
             : '<p class="cpost__signin"><a href="/signin">Sign in</a> to comment.</p>';
-        return '<article class="cpost" data-post-id="' + p.id + '" data-liked="' + (liked ? '1' : '0') + '">'
+        return '<article class="cpost' + (p.pending ? ' cpost--pending' : (p.rejected ? ' cpost--rejected' : '')) + '" data-post-id="' + p.id + '" data-liked="' + (liked ? '1' : '0') + '">'
             + '<header class="cpost__head"><span class="cavatar cavatar--t' + (p.author.tint || 0) + '" aria-hidden="true">' + esc(p.author.initial) + '</span>'
             + '<span class="cpost__meta"><span class="cpost__author">' + esc(p.author.name)
             + (p.author.type === 'admin' ? '<span class="cpost__tag">Restaurant</span>' : '')
             + '</span><time class="cpost__time" data-time="' + esc(p.created_at) + '">' + timeAgo(p.created_at) + '</time></span>' + delBtn + '</header>'
-            + bodyHtml + media
+            + statusBanner + bodyHtml + media
             + '<div class="cpost__stats"' + statsHidden + '><span class="cpost__stat" data-likes-line><span data-likes-n>' + (p.likes || 0) + '</span> like' + (Number(p.likes) === 1 ? '' : 's') + '</span>'
             + '<span class="cpost__stat" data-comments-line><span data-comments-n>' + (p.comments || 0) + '</span> comment' + (Number(p.comments) === 1 ? '' : 's') + '</span></div>'
             + '<div class="cpost__actions"><button type="button" class="cact ' + (liked ? 'is-on' : '') + '" data-action="like" aria-pressed="' + (liked ? 'true' : 'false') + '"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1.1L12 21l7.8-7.5 1-1.1a5.5 5.5 0 0 0 0-7.8z"/></svg><span>Like</span></button>'
@@ -132,6 +140,15 @@
         var photoInput = postForm.querySelector('[data-photo-input]');
         var preview = postForm.querySelector('[data-photo-preview]');
         var previewImg = postForm.querySelector('[data-photo-img]');
+
+        // Auto-grow the composer textarea (Facebook-style) up to a max height.
+        var taEl = postForm.querySelector('.ccompose__text');
+        function autoGrowTa() {
+            if (!taEl) { return; }
+            taEl.style.height = 'auto';
+            taEl.style.height = Math.min(taEl.scrollHeight, 140) + 'px';
+        }
+        if (taEl) { taEl.addEventListener('input', autoGrowTa); }
         photoInput && photoInput.addEventListener('change', function () {
             var f = photoInput.files && photoInput.files[0];
             if (!f) { return; }
@@ -165,8 +182,15 @@
                     btn.disabled = false; btn.textContent = 'Post';
                     if (env.status === 401) { bounceToSignin(); return; }
                     if (env.status !== 200) { toast('error', env.msg || 'Could not post.'); return; }
-                    // Build the new card optimistically from what we submitted
-                    // (identity comes from the data-me-* attrs on the root).
+                    // Held for review → it won't appear in the feed until a
+                    // moderator approves it (even for the author). Just confirm.
+                    if (env.data && env.data.pending) {
+                        ta.value = ''; ta.style.height = ''; if (photoInput) { photoInput.value = ''; }
+                        var pvp = postForm.querySelector('[data-photo-preview]'); if (pvp) { pvp.hidden = true; }
+                        toast('success', env.msg || 'Sent for review — it will appear once approved.');
+                        return;
+                    }
+                    // Approved → show it immediately.
                     var post = {
                         id: (env.data && env.data.id) || 0, body: text,
                         image_url: hasPhoto ? URL.createObjectURL(photoInput.files[0]) : '',
@@ -192,11 +216,17 @@
 
     // ── Delegated actions on posts (like / comments / share) ─────────
     root.addEventListener('click', function (e) {
+        // My posts modal — status tabs carry no data-action, handle them first.
+        var mtab = e.target.closest && e.target.closest('[data-myposts-tab]');
+        if (mtab && root.contains(mtab)) { myPostsTab(mtab.getAttribute('data-myposts-tab')); return; }
+
         var act = e.target.closest && e.target.closest('[data-action]');
         if (!act || !root.contains(act)) { return; }
         var action = act.getAttribute('data-action');
         var card = act.closest('.cpost');
 
+        if (action === 'open-myposts') { openMyPosts(); return; }
+        if (action === 'close-myposts') { closeMyPosts(); return; }
         if (action === 'share-group') { sharePost(null); return; }
 
         if (action === 'like' && card) {
@@ -291,6 +321,8 @@
             if (send) { send.disabled = false; }
             if (env.status === 401) { bounceToSignin(); return; }
             if (env.status !== 200 || !env.data) { toast('error', env.msg || 'Could not comment.'); return; }
+            // Held for review → clear the box, don't show it until approved.
+            if (env.data.pending) { input.value = ''; toast('success', env.msg || 'Sent for review.'); return; }
             if (isReply && block) {
                 block.querySelector('[data-replies]').insertAdjacentHTML('beforeend', buildBubble(env.data.comment, true));
                 form.hidden = true;
@@ -362,6 +394,148 @@
             })
             .catch(function () { btn.disabled = false; btn.textContent = 'Load more posts'; });
     });
+
+    // ── My posts modal — the author tracks their OWN submissions by status.
+    //    The public feed shows only approved posts, so this is where they see
+    //    what's pending review or was rejected (with the AI's reason). ──
+    var myModal = document.querySelector('[data-myposts-modal]');
+    var myList  = myModal && myModal.querySelector('[data-myposts-list]');
+    var myEmpty = myModal && myModal.querySelector('[data-myposts-empty]');
+    var myStatus = 'pending';
+
+    function openMyPosts() {
+        if (!myModal) { return; }
+        myModal.hidden = false;
+        document.body.classList.add('cmine-open');
+        myPostsTab('pending');
+    }
+    function closeMyPosts() {
+        if (!myModal) { return; }
+        myModal.hidden = true;
+        document.body.classList.remove('cmine-open');
+    }
+    function myPostsTab(status) {
+        if (!myModal) { return; }
+        myStatus = status;
+        myModal.querySelectorAll('[data-myposts-tab]').forEach(function (t) { t.classList.toggle('is-active', t.getAttribute('data-myposts-tab') === status); });
+        loadMyPosts();
+    }
+    function setMyCounts(counts) {
+        if (!counts || !myModal) { return; }
+        myModal.querySelectorAll('[data-myposts-cnt]').forEach(function (el) { el.textContent = Number(counts[el.getAttribute('data-myposts-cnt')]) || 0; });
+        var badge = document.querySelector('[data-myposts-badge]');
+        if (badge) { var p = Number(counts.pending) || 0; badge.textContent = p; badge.hidden = p === 0; }
+    }
+    function myPostCard(p) {
+        var img = p.image_url ? '<div class="cmine-card__img"><img src="' + esc(p.image_url) + '" alt=""></div>' : '';
+        var tag;
+        if (p.moderation_status === 'pending')       { tag = '<span class="cmine-card__tag cmine-card__tag--pending">⏳ Pending review</span>'; }
+        else if (p.moderation_status === 'rejected') { tag = '<span class="cmine-card__tag cmine-card__tag--rejected">🚫 Rejected</span>'; }
+        else                                         { tag = '<span class="cmine-card__tag cmine-card__tag--approved">✅ Live</span>'; }
+        var reason = p.ai_reason ? '<p class="cmine-card__reason">🤖 ' + esc(p.ai_reason) + '</p>' : '';
+        return '<div class="cmine-card">'
+            + '<div class="cmine-card__top">' + tag + '<span class="cmine-card__time">' + esc(timeAgo(p.created_at)) + '</span></div>'
+            + (p.body ? '<p class="cmine-card__body">' + esc(p.body) + '</p>' : '') + img + reason + '</div>';
+    }
+    function loadMyPosts() {
+        if (!myList) { return; }
+        myList.innerHTML = '<p class="cmine-modal__loading">Loading…</p>';
+        if (myEmpty) { myEmpty.hidden = true; }
+        fetch('/community/my-posts?group_id=' + encodeURIComponent(GROUP_ID) + '&status=' + myStatus, { headers: { Accept: 'application/json' }, credentials: 'same-origin' })
+            .then(function (r) { return r.json().catch(function () { return { status: 0 }; }); })
+            .then(function (env) {
+                if (env.status === 401) { closeMyPosts(); bounceToSignin(); return; }
+                var d = env.data || {};
+                setMyCounts(d.counts);
+                var posts = d.posts || [];
+                myList.innerHTML = posts.map(myPostCard).join('');
+                if (myEmpty) { myEmpty.hidden = posts.length > 0; }
+            })
+            .catch(function () { myList.innerHTML = ''; toast('error', 'Could not load your posts.'); });
+    }
+    // Close on Escape for accessibility.
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && myModal && !myModal.hidden) { closeMyPosts(); } });
+
+    // ── Search this group's posts (client-side, tokenized) ───────────
+    //    Each query WORD is matched anywhere in a post (body + author) — not
+    //    the exact phrase. Posts with MORE matching words rank higher; posts
+    //    with zero matches are hidden while a search is active. Clearing the
+    //    box restores the exact order the feed had when the search began.
+    (function initPostSearch() {
+        var listEl = root.querySelector('[data-feed-list]');
+        var inputs = Array.prototype.slice.call(root.querySelectorAll('[data-community-search]'));
+        if (!listEl || !inputs.length) { return; }
+        var clears = Array.prototype.slice.call(root.querySelectorAll('[data-community-search-clear]'));
+        var active = false, snapshot = null, order = null, emptyEl = null, deb = null;
+
+        function allPosts() { return Array.prototype.slice.call(listEl.querySelectorAll('.cpost')); }
+        function searchText(p) {
+            var body = (p.querySelector('.cpost__body') || {}).textContent || '';
+            var who  = (p.querySelector('.cpost__author') || {}).textContent || '';
+            return (body + ' ' + who).toLowerCase();
+        }
+        function ensureEmpty() {
+            if (!emptyEl) {
+                emptyEl = document.createElement('div');
+                emptyEl.className = 'cfeed__empty cfeed__empty--search';
+                emptyEl.innerHTML = '<span class="cfeed__empty-ic" aria-hidden="true">🔍</span><p>No posts match your search.</p>';
+                listEl.parentNode.insertBefore(emptyEl, listEl.nextSibling);
+            }
+            return emptyEl;
+        }
+        function moreWrap() { return root.querySelector('[data-more-wrap]'); }
+
+        function restore() {
+            // Re-append in the order captured when the search started (skip any
+            // node that was removed meanwhile, e.g. deleted).
+            (snapshot || allPosts()).forEach(function (p) { if (p.parentNode === listEl) { p.hidden = false; listEl.appendChild(p); } });
+            allPosts().forEach(function (p) { p.hidden = false; });
+            ensureEmpty().classList.remove('is-on');
+            clears.forEach(function (b) { b.hidden = true; });
+            var mw = moreWrap();
+            if (mw && mw.getAttribute('data-search-hid') != null) { mw.hidden = mw.getAttribute('data-search-hid') === '1'; mw.removeAttribute('data-search-hid'); }
+            snapshot = null; order = null; active = false;
+        }
+
+        function apply(q) {
+            var tokens = String(q || '').toLowerCase().split(/\s+/).filter(function (t) { return t.length >= 1; });
+            if (!tokens.length) { if (active) { restore(); } return; }
+
+            if (!active) {
+                // Snapshot the current order (for a faithful restore + stable
+                // tie-breaking) and hide load-more (search ranks what's loaded).
+                snapshot = allPosts();
+                order = new Map(); snapshot.forEach(function (p, i) { order.set(p, i); });
+                var mw0 = moreWrap();
+                if (mw0 && mw0.getAttribute('data-search-hid') == null) { mw0.setAttribute('data-search-hid', mw0.hidden ? '1' : '0'); }
+                active = true;
+            }
+            var mw = moreWrap(); if (mw) { mw.hidden = true; }
+            clears.forEach(function (b) { b.hidden = false; });
+
+            var matches = [];
+            allPosts().forEach(function (p) {
+                var text = searchText(p), m = 0;
+                tokens.forEach(function (t) { if (text.indexOf(t) !== -1) { m += 1; } });
+                if (m > 0) { matches.push({ p: p, m: m }); p.hidden = false; } else { p.hidden = true; }
+            });
+            // More matched words first; ties keep the original (newest-first) order.
+            matches.sort(function (a, b) { return b.m - a.m || ((order.get(a.p) || 0) - (order.get(b.p) || 0)); });
+            matches.forEach(function (x) { listEl.appendChild(x.p); });
+            ensureEmpty().classList.toggle('is-on', matches.length === 0);
+        }
+
+        function onInput(e) {
+            var val = e.target.value;
+            inputs.forEach(function (inp) { if (inp !== e.target) { inp.value = val; } });
+            clearTimeout(deb);
+            deb = setTimeout(function () { apply(val); }, 160);
+        }
+        inputs.forEach(function (inp) { inp.addEventListener('input', onInput); });
+        clears.forEach(function (b) {
+            b.addEventListener('click', function () { inputs.forEach(function (inp) { inp.value = ''; }); restore(); if (inputs[0]) { inputs[0].focus(); } });
+        });
+    })();
 
     // First paint of relative times on the SSR posts.
     paintTimes(document);

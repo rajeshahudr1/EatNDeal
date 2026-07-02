@@ -191,6 +191,30 @@
         }, 220);
     }
 
+    // Prev/next arrows on horizontal rails (the Offers & deals row). Mirrors
+    // home.js#bindRailArrows — home.js isn't loaded on the restaurant page.
+    function bindRails() {
+        document.querySelectorAll('[data-rail-wrap]').forEach(function (wrap) {
+            var rail = wrap.querySelector('[data-rail]');
+            var prev = wrap.querySelector('[data-rail-prev]');
+            var next = wrap.querySelector('[data-rail-next]');
+            if (!rail) { return; }
+            function refresh() {
+                var has = rail.scrollWidth - rail.clientWidth > 4;
+                var max = rail.scrollWidth - rail.clientWidth - 2;
+                if (prev) { prev.disabled = !has || rail.scrollLeft <= 2; }
+                if (next) { next.disabled = !has || rail.scrollLeft >= max; }
+            }
+            function nudge(d) { rail.scrollBy({ left: Math.max(200, Math.round(rail.clientWidth * 0.8)) * d, behavior: 'smooth' }); }
+            if (prev) { prev.addEventListener('click', function () { nudge(-1); }); }
+            if (next) { next.addEventListener('click', function () { nudge(1); }); }
+            rail.addEventListener('scroll', refresh, { passive: true });
+            window.addEventListener('resize', refresh);
+            refresh();
+            window.setTimeout(refresh, 250);
+        });
+    }
+
     function onReady() {
         if (!document.querySelector('[data-restaurant]')) { return; }
         bindImageFallback();
@@ -201,6 +225,7 @@
         bindActions();
         bindProductClick();
         applyDeepLink();
+        bindRails();
     }
 
     if (document.readyState === 'loading') {

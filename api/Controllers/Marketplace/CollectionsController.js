@@ -192,7 +192,7 @@ async function featuredProductRows() {
 // The admin-configured order of the 4 home-feed sections. Graceful default
 // (featured → sponsored → collections → products) when mp_feed_section is
 // missing/empty. Returns [{ key, position, status }] sorted by position.
-const DEFAULT_SECTIONS = ['favourites', 'featured', 'sponsored', 'collections', 'products', 'restaurants'];
+const DEFAULT_SECTIONS = ['favourites', 'order-again', 'featured', 'sponsored', 'collections', 'products', 'restaurants'];
 async function feedSectionOrder() {
     let saved = [];
     try { saved = await db('mp_feed_section').select('section', 'position', 'status'); } catch (e) { saved = []; }

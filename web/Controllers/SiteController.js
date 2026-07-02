@@ -283,6 +283,11 @@ async function index(req, res, next) {
         featured:    String(q.featured    || '') === '1',
     };
 
+    // "Browse" — the dynamic sidebar filter that narrows the home to ONE
+    // curated set: favourites | collection-<id> | featured | sponsored |
+    // offer-<id>. Empty = normal home. Resolved against the fetched feed below.
+    const browse = String((q.browse || '')).trim();
+
     // ── Live marketplace data ───────────────────────────────────────
     // Both rails (Popular near you + For you) come from the api now.
     // The /static fallbacks below are kept ONLY for two cases:
@@ -312,6 +317,10 @@ async function index(req, res, next) {
     let liveHomeFeedOrder  = null;   // admin section order (all 6 sections)
     let cuisineNoMatch     = false;  // cuisine filter returned 0 → showing fallback restaurants
     let myFavourites       = [];     // signed-in customer's saved restaurants (default home only)
+    let orderAgain         = [];     // signed-in customer's recently-ordered restaurants (top 10)
+    let browseOptions      = [];     // dynamic "Browse" filter list (favs/collections/offers/sponsored)
+    let browseActive       = false;  // a browse option is picked → show only its restaurants
+    let browseLabel        = '';     // the picked option's label (for the heading)
     if (userLocation) {
         try {
             const lat = userLocation.lat != null ? Number(userLocation.lat) : null;
@@ -422,6 +431,16 @@ async function index(req, res, next) {
                 if (Number.isFinite(lat)) pqs.set('lat', String(lat));
                 if (Number.isFinite(lng)) pqs.set('lng', String(lng));
                 if (cuisine)              pqs.set('cuisine', cuisine);
+                // Forward the sidebar filters so Pickup respects them too.
+                if (filters.sort)     pqs.set('sort',     filters.sort);
+                if (filters.rating)   pqs.set('rating',   String(filters.rating));
+                if (filters.max_km)   pqs.set('max_km',   String(filters.max_km));
+                if (filters.max_min)  pqs.set('max_min',  String(filters.max_min));
+                if (filters.open_now) pqs.set('open_now', '1');
+                if (filters.veg)      pqs.set('veg',      '1');
+                if (filters.offer)    pqs.set('offer',    '1');
+                if (filters.price)    pqs.set('price',    filters.price);
+                if (filters.delivery) pqs.set('delivery', filters.delivery);
                 if (customerId)           pqs.set('customer_id', customerId);
                 const [rRes, cRes] = await Promise.all([
                     callApi(req, 'GET', '/api/v1/marketplace/restaurants?' + pqs.toString()),
@@ -473,7 +492,7 @@ async function index(req, res, next) {
                     filters.sort || filters.rating || filters.max_km || filters.max_min ||
                     filters.open_now || filters.veg || filters.offer ||
                     filters.price || filters.delivery ||
-                    filters.recommended || filters.featured
+                    filters.recommended || filters.featured || browse
                 );
                 if (customerId && !cuisine && !hasActiveFilters) {
                     const fqs = new URLSearchParams({ customer_id: customerId });
@@ -490,12 +509,130 @@ async function index(req, res, next) {
                         const favIds = new Set(myFavourites.map(f => String(f.id)));
                         liveFeatured = liveFeatured.filter(r => !favIds.has(String(r.id)));
                     }
+
+                    // "Order again" — the customer's recently-ordered restaurants
+                    // (top 10, newest first). Same gate as favourites; the rail
+                    // shows only when they have at least one past order.
+                    const oaRes = await callApi(req, 'GET', '/api/v1/customer/order-again?' + fqs.toString());
+                    if (oaRes.body && oaRes.body.status === 200 && oaRes.body.data) {
+                        orderAgain = oaRes.body.data.restaurants || [];
+                    }
+                    if (orderAgain.length && Array.isArray(liveFeatured) && liveFeatured.length) {
+                        const oaIds = new Set(orderAgain.map(r => String(r.id)));
+                        liveFeatured = liveFeatured.filter(r => !oaIds.has(String(r.id)));
+                    }
                 }
             }
         } catch (err) {
             // Don't fail the whole page — fall through to the static
             // arrays declared further down.
             console.error('[SiteController] marketplace fetch failed:', err && err.message);
+        }
+    }
+
+    // ── Filter the curated home-feed rows by the active sidebar filters ──
+    // The main grid (liveFeatured) is already filtered by the api. When the
+    // user narrows the list (rating / price / delivery-time / offers / veg /
+    // open-now / distance), EVERY curated row (Offer / collections / featured
+    // products) must show ONLY restaurants that survived that filter — and a
+    // row that ends up empty is DROPPED. We intersect each row with the
+    // filtered grid's ids so the feed never advertises an excluded place.
+    // (Cuisine is excluded here: with cuisine-only the favourites rail strips
+    //  liveFeatured, so the intersection wouldn't be a faithful match.)
+    {
+        const reducing = !!(
+            filters.rating || filters.max_km || filters.max_min ||
+            filters.open_now || filters.veg || filters.offer || filters.price ||
+            filters.delivery || filters.recommended || filters.featured
+        );
+        if (reducing && Array.isArray(liveHomeFeed) && liveHomeFeed.length) {
+            const feat      = Array.isArray(liveFeatured) ? liveFeatured : [];
+            const keepIds   = new Set(feat.map((r) => String(r.id)));
+            const keepSlugs = new Set(feat.map((r) => String(r.slug || r.id).toLowerCase()));
+            liveHomeFeed = liveHomeFeed
+                .map((row) => (row && Array.isArray(row.restaurants))
+                    ? Object.assign({}, row, { restaurants: row.restaurants.filter((r) => keepIds.has(String(r.id))) })
+                    : row)
+                .filter((row) => {
+                    if (!row) { return false; }
+                    if (Array.isArray(row.restaurants)) { return row.restaurants.length > 0; }
+                    if (Array.isArray(row.products))    { return keepSlugs.has(String(row.restaurantSlug || '').toLowerCase()); }
+                    return true;
+                });
+        }
+    }
+
+    // ── Dynamic "Browse" filter — Favourites / Collections / Offers / Sponsored ──
+    // Build the option list from the curated feed; when one is picked (?browse=)
+    // narrow the WHOLE page to just that set's restaurants (a section filter).
+    if (!viewMode && userLocation) {
+        const bSess = (req.session && req.session.user) || null;
+        const bCustomerId = bSess && bSess.id ? String(bSess.id) : null;
+        const bLat = userLocation.lat != null ? Number(userLocation.lat) : null;
+        const bLng = userLocation.lng != null ? Number(userLocation.lng) : null;
+
+        // Favourites for the "Favourites" option count + its target. Reuse the
+        // rail's fetch when it already ran (default home); only hit the api when
+        // a filter/browse suppressed the rail so we still know the fav count.
+        let favsForBrowse = (myFavourites && myFavourites.length) ? myFavourites.slice() : [];
+        if (bCustomerId && !favsForBrowse.length) {
+            try {
+                const bqs = new URLSearchParams({ customer_id: bCustomerId });
+                if (Number.isFinite(bLat)) bqs.set('lat', String(bLat));
+                if (Number.isFinite(bLng)) bqs.set('lng', String(bLng));
+                const fr = await callApi(req, 'GET', '/api/v1/customer/favourites?' + bqs.toString());
+                favsForBrowse = (fr.body && fr.body.status === 200 && fr.body.data && fr.body.data.favourites) || [];
+            } catch (e) { favsForBrowse = []; }
+        }
+
+        // Pre-computed target sets (also drive each option's count).
+        const featSet = (liveHomeFeed || []).filter((r) => r && r.section === 'featured').reduce((a, r) => a.concat(r.restaurants || []), []);
+        const spSet   = (liveHomeFeed || []).filter((r) => r && r.section === 'sponsored').reduce((a, r) => a.concat(r.restaurants || []), []);
+
+        // ── Build the 2-level option list: main category (group) → items.
+        //    ONLY items whose count > 0 are listed (empty ones are dropped). ──
+        if (favsForBrowse.length > 0) {
+            browseOptions.push({ key: 'favourites', group: 'Favourites', label: 'My Favourites', count: favsForBrowse.length });
+        }
+        (liveHomeFeed || []).forEach((row) => {
+            if (row && row.section === 'collections' && row.id && (row.restaurants || []).length > 0) {
+                browseOptions.push({ key: 'collection-' + row.id, group: 'Collections', label: row.title || 'Collection', count: row.restaurants.length });
+            }
+        });
+        if (featSet.length > 0) { browseOptions.push({ key: 'featured',  group: 'Featured',  label: 'Featured',  count: featSet.length }); }
+        if (spSet.length   > 0) { browseOptions.push({ key: 'sponsored', group: 'Sponsored', label: 'Sponsored', count: spSet.length   }); }
+        (liveHomeOffers || []).forEach((o) => {
+            const slug = o && o.restaurant && o.restaurant.slug;
+            if (o && o.id != null && slug) {
+                const n = (liveFeatured || []).filter((r) => String(r.slug) === String(slug)).length;
+                if (n > 0) { browseOptions.push({ key: 'offer-' + o.id, group: 'Offers', label: o.title || 'Offer', count: n }); }
+            }
+        });
+
+        // ── Apply the picked option → focus the page on just that set ──
+        const opt = browse ? browseOptions.find((o) => o.key === browse) : null;
+        if (opt) {
+            browseActive = true;
+            browseLabel  = opt.label;
+            let target = [];
+            if (browse === 'favourites')                { target = favsForBrowse; }
+            else if (browse === 'featured')             { target = featSet; }
+            else if (browse === 'sponsored')            { target = spSet; }
+            else if (browse.indexOf('collection-') === 0) {
+                const cid = browse.slice('collection-'.length);
+                const row = (liveHomeFeed || []).find((r) => r && r.section === 'collections' && String(r.id) === cid);
+                target = row ? (row.restaurants || []) : [];
+            } else if (browse.indexOf('offer-') === 0) {
+                const oid = browse.slice('offer-'.length);
+                const off = (liveHomeOffers || []).find((o) => o && String(o.id) === oid);
+                const slug = off && off.restaurant && off.restaurant.slug;
+                target = slug ? (liveFeatured || []).filter((r) => String(r.slug) === String(slug)) : [];
+            }
+            // De-dupe + focus: only the picked set shows; rails + feed dropped.
+            const seenB = new Set();
+            liveFeatured = target.filter((r) => { const k = String(r.id); if (seenB.has(k)) { return false; } seenB.add(k); return true; });
+            liveHomeFeed = []; myFavourites = []; orderAgain = []; liveHomeOffers = [];
+            featuredMore = false;
         }
     }
 
@@ -785,6 +922,11 @@ async function index(req, res, next) {
         facet_counts:     liveFacets,
         featured:         finalFeatured,
         my_favourites:    myFavourites,
+        order_again:      orderAgain,
+        browse_options:   browseOptions,
+        browse:           browse || '',
+        browse_active:    browseActive,
+        browse_label:     browseLabel,
         home_offers:      liveHomeOffers,
         home_feed:        liveHomeFeed,
         home_feed_order:  liveHomeFeedOrder,

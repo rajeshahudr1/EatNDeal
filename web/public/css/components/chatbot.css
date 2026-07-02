@@ -1,0 +1,70 @@
+/*
+ * components/chatbot.css — floating help-chatbot widget (partials/chatbot.ejs).
+ * Bottom-right FAB + chat panel. Mobile: the panel is a full-width bottom sheet.
+ */
+
+.chatbot { position: fixed; right: 20px; bottom: 20px; z-index: 1200; }
+
+/* Floating action button. */
+.chatbot__fab {
+    width: 56px; height: 56px; border-radius: 50%; border: none; cursor: pointer;
+    background: var(--color-primary, #e5252a); color: #fff;
+    display: grid; place-items: center; box-shadow: 0 8px 24px rgba(229, 37, 42, .4);
+    transition: transform .15s ease;
+}
+.chatbot__fab:hover { transform: scale(1.06); }
+.chatbot__fab-close { display: none; }
+.chatbot.is-open .chatbot__fab-open { display: none; }
+.chatbot.is-open .chatbot__fab-close { display: block; }
+
+/* Panel. */
+.chatbot__panel {
+    position: absolute; right: 0; bottom: 70px;
+    width: 360px; max-width: calc(100vw - 40px); height: 520px; max-height: calc(100dvh - 120px);
+    background: var(--color-bg, #fff); border: 1px solid var(--color-border, #e5e7eb);
+    border-radius: 18px; overflow: hidden; display: flex; flex-direction: column;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, .28);
+}
+.chatbot__panel[hidden] { display: none; }
+
+.chatbot__head {
+    flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 16px; background: var(--color-primary, #e5252a); color: #fff;
+}
+.chatbot__title { font-weight: 800; font-size: 0.98rem; }
+.chatbot__x { border: none; background: rgba(255, 255, 255, .18); color: #fff; width: 28px; height: 28px; border-radius: 50%; cursor: pointer; font-size: 0.85rem; }
+
+.chatbot__body {
+    flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 14px;
+    display: flex; flex-direction: column; gap: 10px; background: var(--color-bg-alt, #f7f8fa);
+    -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
+}
+.chatbot__msg { max-width: 82%; padding: 9px 13px; border-radius: 14px; font-size: 0.9rem; line-height: 1.4; word-break: break-word; }
+.chatbot__msg--bot  { align-self: flex-start; background: #fff; color: var(--color-text, #111); border: 1px solid var(--color-border-soft, #eef1f5); border-bottom-left-radius: 4px; }
+.chatbot__msg--user { align-self: flex-end; background: var(--color-primary, #e5252a); color: #fff; border-bottom-right-radius: 4px; }
+.chatbot__msg--typing { color: var(--color-text-muted, #6b7280); letter-spacing: 2px; }
+
+/* One-tap action (e.g. Reorder) offered inline under a bot reply. */
+.chatbot__action { align-self: flex-start; margin: -2px 0 2px; }
+.chatbot__action-btn {
+    border: none; cursor: pointer; font: inherit; font-size: 0.86rem; font-weight: 800;
+    background: var(--color-primary, #e5252a); color: #fff;
+    padding: 8px 16px; border-radius: 999px; box-shadow: 0 4px 12px rgba(229, 37, 42, .3);
+}
+.chatbot__action-btn:hover { filter: brightness(1.05); }
+.chatbot__action-btn:disabled { opacity: .6; cursor: default; }
+
+.chatbot__chips { flex: 0 0 auto; display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 12px; background: var(--color-bg, #fff); border-top: 1px solid var(--color-border-soft, #eef1f5); }
+.chatbot__chip { border: 1px solid var(--color-primary, #e5252a); background: var(--color-primary-soft, #fde8e8); color: var(--color-primary, #e5252a); font-size: 0.78rem; font-weight: 700; padding: 5px 11px; border-radius: 999px; cursor: pointer; }
+.chatbot__chip:hover { background: var(--color-primary, #e5252a); color: #fff; }
+
+.chatbot__form { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; padding: 10px 12px; background: var(--color-bg, #fff); border-top: 1px solid var(--color-border-soft, #eef1f5); }
+.chatbot__input { flex: 1 1 auto; min-width: 0; border: 1px solid var(--color-border, #e5e7eb); border-radius: 999px; padding: 10px 14px; font: inherit; font-size: 0.9rem; outline: none; }
+.chatbot__input:focus { border-color: var(--color-primary, #e5252a); }
+.chatbot__send { flex: 0 0 auto; width: 40px; height: 40px; border: none; border-radius: 50%; background: var(--color-primary, #e5252a); color: #fff; cursor: pointer; display: grid; place-items: center; }
+
+/* Mobile — full-width bottom sheet. */
+@media (max-width: 560px) {
+    .chatbot { right: 14px; bottom: 78px; }   /* clear the mobile bottom-nav */
+    .chatbot__panel { position: fixed; right: 0; left: 0; bottom: 0; width: 100%; max-width: 100%; height: 78dvh; max-height: 78dvh; border-radius: 18px 18px 0 0; }
+}

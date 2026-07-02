@@ -348,7 +348,16 @@
                     <div class="acct-addr-form__grid">
                         <div class="acct-addr-form__field acct-addr-form__field--full">
                             <label for="af-address">Address <span class="acct-addr-form__req">*</span></label>
-                            <input id="af-address" name="address" type="text" placeholder="Flat / house, street, area" maxlength="500" required>
+                            <%# Google-backed autocomplete: type → suggestions → pick → auto-fills
+                                postcode + coords. "Use my current location" does the same via GPS. %>
+                            <div class="addr-ac" data-addr-ac>
+                                <input id="af-address" name="address" type="text" placeholder="Start typing your address…" maxlength="500" required autocomplete="off">
+                                <ul class="addr-ac__list" data-addr-suggestions role="listbox" hidden></ul>
+                            </div>
+                            <button type="button" class="addr-ac__loc" data-action="acct-use-location">
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22"/></svg>
+                                <span data-loc-label>Use my current location</span>
+                            </button>
                         </div>
                         <div class="acct-addr-form__field">
                             <label for="af-postcode">Postcode</label>
@@ -433,7 +442,7 @@
                         </span>
                         <div class="acct-addr__body">
                             <div class="acct-addr__top">
-                                <h3 class="acct-addr__name"><%= a.label || 'Saved address' %></h3>
+                                <h3 class="acct-addr__name"><%= a.label || (a.addressType ? a.addressType.charAt(0).toUpperCase() + a.addressType.slice(1) : '') || 'Saved address' %></h3>
                                 <% if (a.isDefault) { %><span class="acct-addr__badge">Default</span><% } %>
                             </div>
                             <p class="acct-addr__line"><%= [a.address, a.postCode].filter(Boolean).join(', ') %></p>

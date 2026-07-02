@@ -21,6 +21,7 @@
  */
 
 const PAGES = require('../data/staticPages');
+const { callApi } = require('../Helpers/apiClient');
 
 /**
  * renderPage (private factory)
@@ -44,11 +45,14 @@ function renderPage(slug) {
             // sync with staticPages.js. Pass to the 404 handler.
             return next();
         }
+        const hasForm = (page.sections || []).some((s) => s && s.type === 'form');
         res.render('static/page', {
             page_title:       page.title,
             _layoutFile:      '../_layout',
             active_nav:       page.slug,           // header underlines the matching nav link
             page:             page,                // { title, lede, sections }
+            // Lead-form pages get the submit script; the rest stay JS-free.
+            extra_js:         hasForm ? '/js/pages/partner-form.js' : undefined,
             // Static pages are focused-flow — hide the promo strip so the
             // header stays clean. (legal pages especially.)
             show_promo_strip: false,
@@ -56,7 +60,16 @@ function renderPage(slug) {
     };
 }
 
+// POST /partner/apply — relay the lead form to the api (which emails it).
+async function partnerApply(req, res) {
+    let apiRes;
+    try { apiRes = await callApi(req, 'POST', '/api/v1/partner/lead', req.body || {}); }
+    catch (e) { apiRes = { body: { status: 0, show: true, msg: 'Could not reach the server. Please try again.' } }; }
+    return res.status(200).json((apiRes && apiRes.body) || { status: 0, show: true, msg: 'Something went wrong.' });
+}
+
 module.exports = {
+    partnerApply,
     about:    renderPage('about'),
     help:     renderPage('help'),
     terms:    renderPage('terms'),

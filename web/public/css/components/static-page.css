@@ -289,3 +289,23 @@
     .static-cta__heading { font-size: 1.2rem; }
     .static-cta .btn--primary { width: 100%; justify-content: center; }
 }
+
+/* ── Partner / contact lead form (sections/form.ejs) ─────────────────── */
+.sform { max-width: 760px; }
+.sform__form { margin-top: var(--space-4); }
+.sform__row { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); }
+.sform__field { display: flex; flex-direction: column; gap: 6px; margin-bottom: var(--space-4); }
+.sform__label { font-size: 0.82rem; font-weight: 700; color: var(--color-text); }
+.sform__input { width: 100%; box-sizing: border-box; border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 12px 14px; font: inherit; font-size: 0.92rem; color: var(--color-text); background: var(--color-bg); }
+.sform__input:focus { outline: none; border-color: var(--color-primary); box-shadow: 0 0 0 3px var(--color-primary-soft, rgba(229,37,42,.12)); }
+.sform__textarea { resize: vertical; min-height: 110px; }
+.sform__note { font-size: 0.8rem; color: var(--color-text-muted); margin: 0 0 var(--space-3); }
+.sform__msg { margin: 0 0 var(--space-3); font-size: 0.88rem; font-weight: 600; color: var(--color-primary); }
+.sform__submit { border: none; background: var(--color-primary); color: #fff; font-weight: 700; font-size: 0.95rem; padding: 13px 28px; border-radius: var(--radius-pill); cursor: pointer; }
+.sform__submit:hover { filter: brightness(1.05); }
+.sform__submit:disabled { opacity: .6; cursor: default; }
+.sform__done { text-align: center; padding: var(--space-8) var(--space-4); }
+.sform__done-ic { font-size: 2.4rem; }
+.sform__done-title { margin: var(--space-3) 0 6px; font-size: 1.4rem; font-weight: 800; color: var(--color-text); }
+.sform__done-sub { color: var(--color-text-muted); margin: 0; }
+@media (max-width: 640px) { .sform__row { grid-template-columns: 1fr; gap: 0; } }

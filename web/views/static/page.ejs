@@ -48,6 +48,8 @@
                 <%- include('sections/perks', { section: section }) -%>
             <% } else if (section.type === 'cta') { %>
                 <%- include('sections/cta', { section: section }) -%>
+            <% } else if (section.type === 'form') { %>
+                <%- include('sections/form', { section: section }) -%>
             <% } %>
         <% }); %>
     </div>

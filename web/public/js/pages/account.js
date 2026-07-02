@@ -456,6 +456,34 @@
         else     { box.textContent = '';  box.hidden = true; }
     }
 
+    // Google-backed autocomplete + "use my current location" on the address
+    // field — picking a suggestion (or GPS) auto-fills address + postcode + coords.
+    function bindAddressAutocomplete() {
+        // Scope to the account form — #af-address also exists in the global
+        // location modal, so a document-wide lookup would grab the wrong one.
+        var form  = getForm();
+        var input = form && form.querySelector('[name="address"]');
+        if (!input || input.dataset.acBound === '1' || !window.AddressAutocomplete) { return; }
+        input.dataset.acBound = '1';
+        window.AddressAutocomplete.attach({
+            input:  input,
+            list:   form.querySelector('[data-addr-suggestions]'),
+            locBtn: form.querySelector('[data-action="acct-use-location"]'),
+            onPick: function (addr) {
+                var form = getForm();
+                if (!form) { return; }
+                var a   = form.querySelector('[name="address"]');
+                var pc  = form.querySelector('[name="post_code"]');
+                var lat = form.querySelector('[data-af-lat]');
+                var lng = form.querySelector('[data-af-lng]');
+                if (a)   { a.value   = window.AddressAutocomplete.line(addr) || a.value; }
+                if (pc)  { pc.value  = addr.postcode || ''; }
+                if (lat) { lat.value = (addr.latitude  != null) ? addr.latitude  : ''; }
+                if (lng) { lng.value = (addr.longitude != null) ? addr.longitude : ''; }
+            }
+        });
+    }
+
     function bindAddressFormSubmit() {
         var form = getForm();
         if (!form || form.dataset.bound === '1') { return; }
@@ -630,14 +658,16 @@
         else     { box.textContent = '';  box.hidden = true; }
     }
 
-    // Load Stripe.js v3 once and cache the handle. Resolves with the
-    // window.Stripe constructor; rejects if the script can't be loaded
-    // (offline, CSP blocked, etc.).
+    // Load Stripe.js once and cache the handle. Pinned "dahlia" release to
+    // match the cart + legacy eatndeal (one Stripe.js version across the app;
+    // dahlia is backward-compatible with the classic card Element used here).
+    // Resolves with the window.Stripe constructor; rejects if the script can't
+    // be loaded (offline, CSP blocked, etc.).
     function loadStripeJs() {
         if (window.Stripe) { return Promise.resolve(window.Stripe); }
         return new Promise(function (resolve, reject) {
             var s = document.createElement('script');
-            s.src = 'https://js.stripe.com/v3/';
+            s.src = 'https://js.stripe.com/dahlia/stripe.js';
             s.async = true;
             s.onload  = function () { resolve(window.Stripe); };
             s.onerror = function () { reject(new Error('Could not load Stripe.js')); };
@@ -809,6 +839,7 @@
     // page JS runs on every account tab — guard the lookup.
     function bootAddressesTab() {
         bindAddressFormSubmit();
+        bindAddressAutocomplete();
         bindContactDigitsOnly();
         consumePendingFlash();
     }

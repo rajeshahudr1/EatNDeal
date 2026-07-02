@@ -147,7 +147,9 @@
         <div class="ckt-popup__body">
             <% if (!addrList.length) { %>
                 <p class="ckt-popup__empty">You don't have any saved addresses yet.</p>
-                <a class="btn btn--primary ckt-popup__add" href="/account?tab=addresses">+ Add an address</a>
+                <%# Open the in-page location modal (search + use-current-location +
+                    add address) instead of sending the user to the account page. %>
+                <button type="button" class="btn btn--primary ckt-popup__add" data-action="open-location-modal">+ Add an address</button>
             <% } else { %>
                 <ul class="ckt-list" role="list" data-cart-address-list>
                     <% addrList.forEach(function (a) {
@@ -163,7 +165,7 @@
                                 </span>
                                 <span class="ckt-list__body">
                                     <span class="ckt-list__title">
-                                        <% if (a.label) { %><%= a.label %><% } else { %>Address<% } %>
+                                        <%= a.label || (a.addressType ? a.addressType.charAt(0).toUpperCase() + a.addressType.slice(1) : '') || 'Address' %>
                                         <% if (a.isDefault) { %><span class="ckt-list__tag">Default</span><% } %>
                                     </span>
                                     <span class="ckt-list__sub"><%= [a.address, a.postCode].filter(Boolean).join(', ') %></span>
@@ -442,6 +444,12 @@
                 <div class="ckt-popup__field">
                     <label class="ckt-popup__label">Payment details</label>
                     <div class="ckt-popup__stripe" data-stripe-mount></div>
+                    <%# Loader shown while the secure card form is being created
+                        (backend session + Stripe Element mount), hidden once ready. %>
+                    <div class="ckt-popup__stripe-loading" data-stripe-loading hidden>
+                        <span class="loader-spinner loader-spinner--sm" role="status" aria-label="Loading"></span>
+                        <span>Loading secure payment…</span>
+                    </div>
                     <p class="ckt-popup__err" data-stripe-error role="alert" hidden></p>
                 </div>
                 <label class="ckt-popup__check">

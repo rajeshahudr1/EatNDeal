@@ -1,0 +1,44 @@
+<%#
+  views/loyalty/program.ejs — Loyalty Program info / "how it works" page.
+
+  Ports the legacy webordering loyalty_program.php: a plain content page that
+  explains how EatNDeal rewards work (earn on every order, extra on collection,
+  refer a friend, spend at checkout). No per-restaurant config — a general
+  explainer, linked from the rewards/wallet area. Rendered inside _layout.
+-%>
+<main class="lp-page">
+  <section class="lp-hero">
+    <h1 class="lp-hero__title">🎁 EatNDeal Rewards</h1>
+    <p class="lp-hero__sub">Order direct and earn cashback every time — then spend it on your next order. No points to decode, just real money back.</p>
+  </section>
+
+  <section class="lp-section">
+    <h2 class="lp-section__title">How it works</h2>
+    <ol class="lp-steps">
+      <li class="lp-step"><span class="lp-step__n">1</span><div><strong>Order from any restaurant.</strong> Cashback is added automatically once your order is placed — nothing to claim.</div></li>
+      <li class="lp-step"><span class="lp-step__n">2</span><div><strong>Cashback lands in your wallet</strong>, kept per restaurant. Check it any time on your <a href="/wallet">Rewards wallet</a>.</div></li>
+      <li class="lp-step"><span class="lp-step__n">3</span><div><strong>Spend it at checkout.</strong> Use your balance against any future order at that restaurant — it comes straight off the total.</div></li>
+    </ol>
+  </section>
+
+  <section class="lp-section">
+    <h2 class="lp-section__title">Ways to earn</h2>
+    <div class="lp-cards">
+      <div class="lp-card"><span class="lp-card__ic">💷</span><h3>Cashback on every order</h3><p>Earn a set % back on what you spend — credited to that restaurant's wallet.</p></div>
+      <div class="lp-card"><span class="lp-card__ic">🛍️</span><h3>Extra on collection</h3><p>Pick up your order and earn even more cashback than delivery — restaurants reward you for coming direct.</p></div>
+      <div class="lp-card"><span class="lp-card__ic">🔁</span><h3>Order streaks</h3><p>Keep ordering from a restaurant and hit a streak for a bonus reward.</p></div>
+      <div class="lp-card"><span class="lp-card__ic">🎂</span><h3>Birthday &amp; special offers</h3><p>Get a treat on your birthday and from time-limited offers your restaurants run.</p></div>
+    </div>
+  </section>
+
+  <section class="lp-section lp-refer">
+    <h2 class="lp-section__title">Refer a friend or family</h2>
+    <p>Share EatNDeal — when your friend or family places their <strong>first order</strong>, you both earn cashback. The more you share, the more you both save.</p>
+    <a class="lp-cta" href="/wallet">View your rewards →</a>
+  </section>
+
+  <section class="lp-section lp-why">
+    <h2 class="lp-section__title">Why order direct?</h2>
+    <p>Ordering through EatNDeal means more goes to your restaurant — not to high delivery-app commissions. They pass that saving back to you as cashback, so everyone wins.</p>
+  </section>
+</main>

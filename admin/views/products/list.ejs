@@ -196,19 +196,41 @@
 
 <div class="pr-modal" data-modal="bulkprice" hidden>
     <div class="pr-modal__panel">
-        <h3 class="pr-modal__title">💷 Set price</h3>
-        <p class="pr-modal__msg">Set one price for <strong><span data-bp-count>0</span></strong> selected item(s).</p>
+        <h3 class="pr-modal__title">💷 Update price</h3>
+        <p class="pr-modal__msg">Update the price of <strong><span data-bp-count>0</span></strong> selected item(s).</p>
+        <%# Legacy "Bulk Menu Price Update": pick an update type, then compute FROM
+            a source price and write the result INTO a target price — e.g.
+            Normal +5% → Marketplace. "Set to a price" ignores the source. %>
         <label class="pr-field">
-            <span>Which price</span>
-            <select data-bulk-price-type>
+            <span>Update type</span>
+            <select data-bulk-price-mode>
+                <option value="set">Set to a price</option>
+                <option value="percentage">Increase by %</option>
+                <option value="fixed">Increase by fixed (<%= sym %>)</option>
+                <option value="dec_percentage">Decrease by %</option>
+                <option value="dec_fixed">Decrease by fixed (<%= sym %>)</option>
+            </select>
+        </label>
+        <label class="pr-field" data-bp-from-wrap hidden>
+            <span>From price (base)</span>
+            <select data-bulk-price-from>
                 <option value="normal">Normal price</option>
                 <option value="online">Third Party price</option>
                 <option value="marketplace">Marketplace price</option>
             </select>
         </label>
         <label class="pr-field">
-            <span>Price (<%= sym %>)</span>
-            <input type="text" inputmode="decimal" data-bulk-price-val placeholder="0.00">
+            <span>To price (update this one)</span>
+            <select data-bulk-price-to>
+                <option value="normal">Normal price</option>
+                <option value="online">Third Party price</option>
+                <option value="marketplace">Marketplace price</option>
+            </select>
+        </label>
+        <label class="pr-field">
+            <span data-bp-val-label>Price (<%= sym %>)</span>
+            <input type="text" inputmode="decimal" data-bulk-price-val placeholder="0.00"
+                   data-default-pct="<%= (typeof pd !== 'undefined' && pd && pd.third_pct != null) ? pd.third_pct : '' %>">
         </label>
         <div class="pr-modal__foot">
             <button type="button" class="ly-btn ly-btn--ghost" data-action="pr-modal-cancel">Cancel</button>

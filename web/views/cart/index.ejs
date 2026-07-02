@@ -133,7 +133,7 @@
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s7-7.5 7-13a7 7 0 0 0-14 0c0 5.5 7 13 7 13z"/><circle cx="12" cy="9" r="2.5"/></svg>
                     </span>
                     <div class="ckt-row__body">
-                        <p class="ckt-row__title"><%= (selected && selected.label) || cart.deliveryLabel || 'Delivery address' %></p>
+                        <p class="ckt-row__title"><%= (selected && (selected.label || (selected.addressType ? selected.addressType.charAt(0).toUpperCase() + selected.addressType.slice(1) : ''))) || cart.deliveryLabel || 'Delivery address' %></p>
                         <p class="ckt-row__sub"><%= cart.deliveryAddress || 'Pick a delivery address to see the fee.' %></p>
                     </div>
                     <button type="button" class="ckt-row__edit" data-action="ckt-open-address">Edit</button>
@@ -357,7 +357,10 @@
                 var rwMax  = cart.rewardMax || 0;
                 var rwUsed = cart.usedCashback || 0;
             %>
-            <% if (rwUsed > 0 || rwMax > 0) { %>
+            <%# Legacy: the redeem option appears only when the available balance
+                is at least £1 (availableCashback >= 1); always show it once some
+                is applied so it can be removed. %>
+            <% if (rwUsed > 0 || (rwBal >= 1 && rwMax > 0)) { %>
             <div class="ckt-loyalty" data-cart-loyalty
                  data-reward-balance="<%= rwBal.toFixed(2) %>"
                  data-reward-max="<%= rwMax.toFixed(2) %>"
@@ -535,5 +538,8 @@
     mounts Stripe Elements inside it (data-stripe-mount lives in the
     checkout-popups partial). -%>
 <% if (stripe_publishable_key) { %>
-<script src="https://js.stripe.com/v3"></script>
+<%# Pinned "dahlia" release (same as legacy eatndeal) — its Checkout Elements
+    SDK (initCheckoutElementsSdk) needs Basil-or-newer; the evergreen /v3 build
+    does not have it ("must upgrade to Basil" error). %>
+<script src="https://js.stripe.com/dahlia/stripe.js"></script>
 <% } %>

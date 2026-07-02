@@ -79,8 +79,22 @@ const postcodeCoordsSchema = Joi.object({
         }),
 });
 
+// ── /delivery/reverse-geocode ─────────────────────────────────────
+// Coordinates → nearest address (for "use my current location").
+const reverseGeocodeSchema = Joi.object({
+    lat: Joi.number().min(-90).max(90).required().messages({
+        'any.required': 'Latitude is required.',
+        'number.base':  'Latitude is not valid.',
+    }),
+    lng: Joi.number().min(-180).max(180).required().messages({
+        'any.required': 'Longitude is required.',
+        'number.base':  'Longitude is not valid.',
+    }),
+});
+
 module.exports = {
     searchAddressSchema,
     retrieveAddressSchema,
     postcodeCoordsSchema,
+    reverseGeocodeSchema,
 };

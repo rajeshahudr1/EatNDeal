@@ -835,6 +835,11 @@
         var cols = state.collections || [];
         if (cols.indexOf('col-recommended') !== -1) { qs.set('recommended', '1'); }
         if (cols.indexOf('col-featured')    !== -1) { qs.set('featured',    '1'); }
+        // Browse (Collections & offers) — narrows the home to one curated set.
+        if (state.browse) {
+            var bkey = String(state.browse).replace(/^browse-/, '');
+            if (bkey) { qs.set('browse', bkey); }
+        }
         return qs;
     }
 
@@ -982,13 +987,19 @@
             var next = wrap.querySelector('[data-rail-next]');
             if (!rail) { return; }
 
+            // Header arrows (in .hv2-head__nav) stay VISIBLE on desktop and just
+            // DISABLE at the ends (Uber-Eats style); floating arrows (the cuisine
+            // rail, direct children of .rail-wrap) HIDE when there's nothing to do.
+            function setEnd(btn, off) {
+                if (!btn) { return; }
+                if (btn.closest('.hv2-head__nav')) { btn.disabled = off; }
+                else { btn.hidden = off; }
+            }
             function refresh() {
-                // Overflow only exists when the content is wider than
-                // the visible rail. No overflow → BOTH arrows hidden.
                 var hasOverflow = rail.scrollWidth - rail.clientWidth > 4;
                 var maxScroll   = rail.scrollWidth - rail.clientWidth - 2;
-                if (prev) { prev.hidden = !hasOverflow || rail.scrollLeft <= 2; }
-                if (next) { next.hidden = !hasOverflow || rail.scrollLeft >= maxScroll; }
+                setEnd(prev, !hasOverflow || rail.scrollLeft <= 2);
+                setEnd(next, !hasOverflow || rail.scrollLeft >= maxScroll);
             }
             function nudge(dir) {
                 var amount = Math.max(200, Math.round(rail.clientWidth * 0.8)) * dir;
@@ -1005,6 +1016,20 @@
         });
     }
 
+    // Scan-to-download QR popup — open from the QR badge, close on X / backdrop / Esc.
+    function bindAppQr() {
+        var modal = document.querySelector('[data-app-qr]');
+        if (!modal) { return; }
+        function open()  { modal.hidden = false; document.body.classList.add('appqr-open'); }
+        function close() { modal.hidden = true;  document.body.classList.remove('appqr-open'); }
+        document.addEventListener('click', function (e) {
+            if (!e.target.closest) { return; }
+            if (e.target.closest('[data-action="open-app-qr"]'))  { open();  return; }
+            if (e.target.closest('[data-action="close-app-qr"]')) { close(); }
+        });
+        document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !modal.hidden) { close(); } });
+    }
+
     function onReady() {
         applyCardTints();
         bindImageFallback();
@@ -1016,6 +1041,7 @@
         bindFilterEvents();
         bindFilterToggle();
         bindRailArrows();
+        bindAppQr();
     }
 
     if (document.readyState === 'loading') {

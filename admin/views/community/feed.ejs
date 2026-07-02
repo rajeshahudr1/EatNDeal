@@ -9,43 +9,78 @@
 -%>
 <div class="ly" data-cm-feed="<%= group ? group.id : 0 %>" data-is-super="<%= (typeof company_ctx !== 'undefined' && company_ctx && company_ctx.isSuper) ? '1' : '0' %>">
 
-    <div class="ly__head">
-        <div>
-            <h2 class="ly__title">💬 <%= group ? group.name : 'Community feed' %></h2>
-            <p class="ly__sub"><%= group ? ((group.type === 'restaurant' ? 'Restaurants' : 'Users') + ' group · post & moderate') : 'Group feed' %></p>
+    <%# Action row — Pending (→ review queue) + Back. The group identity (name,
+        meta, About) mirrors the customer front, below the cover. %>
+    <div class="cf-actions">
+        <div class="cf-headbtns">
+            <% if (group && (typeof company_ctx !== 'undefined' && company_ctx && company_ctx.isSuper)) { %>
+            <a href="/community/review?group_id=<%= group.id %>" class="ly-btn ly-btn--ghost ly-btn--sm cf-pendbtn">
+                ⏳ Pending <span class="cf-pendbtn__n"><%= (typeof pending_count !== 'undefined' ? pending_count : 0) %></span>
+            </a>
+            <% } %>
+            <a href="/community" class="ly-btn ly-btn--ghost ly-btn--sm">← Back to groups</a>
         </div>
-        <a href="/community" class="ly-btn ly-btn--ghost ly-btn--sm">← Back to groups</a>
     </div>
 
     <% if (load_error || !group) { %>
         <div class="ly-empty"><span class="ly-empty__ic" aria-hidden="true">🏢</span><p class="ly-empty__msg"><%= load_error || 'Group not found.' %></p></div>
     <% } else { %>
 
-    <%# Composer — admin posts as themselves (text). %>
-    <form class="cf-compose" data-cf-post-form>
-        <textarea class="cf-compose__text" name="body" rows="2" placeholder="Post an update to this group…" maxlength="5000"></textarea>
-        <div class="cf-compose__preview" data-photo-preview hidden>
-            <img alt="" data-photo-img>
-            <button type="button" class="cf-compose__preview-x" data-action="cf-remove-photo" aria-label="Remove photo">✕</button>
-        </div>
-        <div class="cf-compose__bar">
-            <label class="cf-compose__photo"><input type="file" name="image" accept="image/png,image/jpeg,image/webp,image/gif" hidden data-photo-input>📷 Photo</label>
-            <button type="submit" class="ly-btn ly-btn--primary ly-btn--sm" data-cf-post-submit>Post</button>
-        </div>
-    </form>
-
-    <div class="cf-list" data-cf-list>
-        <% posts.forEach(function (post) { %>
-            <%- include('../partials/community-post', { post: post }) %>
-        <% }); %>
+    <%# Cover banner — mirrors the customer-facing group page. %>
+    <div class="cf-cover <%= group.image_url ? 'has-cover' : ('cf-cover--t' + (Number(group.id) % 7)) %>">
+        <% if (group.image_url) { %><img class="cf-cover__img" src="<%= group.image_url %>" alt=""><% } %>
     </div>
 
-    <% if (!posts.length) { %>
-        <div class="ly-empty" data-cf-empty><span class="ly-empty__ic" aria-hidden="true">💬</span><p class="ly-empty__msg">No posts yet.</p></div>
-    <% } %>
+    <%# Title + meta strip (post count). %>
+    <div class="cf-bar">
+        <h3 class="cf-bar__name"><%= group.name %></h3>
+        <p class="cf-bar__meta">🌐 <%= group.type === 'restaurant' ? 'Restaurants group' : 'Public group' %> · <%= total %> post<%= Number(total) === 1 ? '' : 's' %></p>
+    </div>
 
-    <div class="cf-more" data-cf-more-wrap<%= has_more ? '' : ' hidden' %>>
-        <button type="button" class="ly-btn ly-btn--ghost" data-action="cf-more" data-next-offset="<%= next_offset %>">Load more</button>
+    <%# Two columns on desktop: feed (composer + posts) | About sidebar. %>
+    <div class="cf-grid">
+        <main class="cf-main">
+
+            <%# Composer — admin posts as themselves (text + photo). %>
+            <form class="cf-compose" data-cf-post-form>
+                <textarea class="cf-compose__text" name="body" rows="2" placeholder="Post an update to this group…" maxlength="5000"></textarea>
+                <div class="cf-compose__preview" data-photo-preview hidden>
+                    <img alt="" data-photo-img>
+                    <button type="button" class="cf-compose__preview-x" data-action="cf-remove-photo" aria-label="Remove photo">✕</button>
+                </div>
+                <div class="cf-compose__bar">
+                    <label class="cf-compose__photo"><input type="file" name="image" accept="image/png,image/jpeg,image/webp,image/gif" hidden data-photo-input>📷 Photo</label>
+                    <button type="submit" class="ly-btn ly-btn--primary ly-btn--sm" data-cf-post-submit>Post</button>
+                </div>
+            </form>
+
+            <div class="cf-list" data-cf-list>
+                <% posts.forEach(function (post) { %>
+                    <%- include('../partials/community-post', { post: post }) %>
+                <% }); %>
+            </div>
+
+            <% if (!posts.length) { %>
+                <div class="ly-empty" data-cf-empty><span class="ly-empty__ic" aria-hidden="true">💬</span><p class="ly-empty__msg">No posts yet.</p></div>
+            <% } %>
+
+            <div class="cf-more" data-cf-more-wrap<%= has_more ? '' : ' hidden' %>>
+                <button type="button" class="ly-btn ly-btn--ghost" data-action="cf-more" data-next-offset="<%= next_offset %>">Load more</button>
+            </div>
+        </main>
+
+        <%# About sidebar — same details the customer front shows. %>
+        <aside class="cf-side">
+            <div class="cf-about">
+                <h3 class="cf-about__title">About</h3>
+                <% if (group.description) { %><p class="cf-about__desc"><%= group.description %></p><% } %>
+                <ul class="cf-about__rows">
+                    <li><span class="cf-about__ic" aria-hidden="true">🌐</span><span><strong>Public</strong>Anyone can see who’s in the group and what they post.</span></li>
+                    <li><span class="cf-about__ic" aria-hidden="true">👁️</span><span><strong>Visible</strong>Anyone can find this group.</span></li>
+                    <li><span class="cf-about__ic" aria-hidden="true">👥</span><span><strong><%= group.type === 'restaurant' ? 'Restaurants & customers' : 'Customers' %></strong><%= total %> post<%= Number(total) === 1 ? '' : 's' %> so far.</span></li>
+                </ul>
+            </div>
+        </aside>
     </div>
 
     <% } %>
@@ -63,3 +98,6 @@
         </div>
     </div>
 </div>
+
+<%# Pending/held items are moderated on the dedicated Review queue page
+    (the "⏳ Pending" button links there, filtered to this group) — no popup. %>

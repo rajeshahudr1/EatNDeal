@@ -46,11 +46,16 @@
         if (/work|office|shop|business/.test(l)) { return ICON.briefcase; }
         return ICON.heart;
     }
+    // Building type → display tag (house → "House"). Used when no custom label.
+    function titleCaseType(t) {
+        var s = String(t || '').trim();
+        return s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
+    }
 
     var modal, panel, pickerView, formView;
     var input, list, status, clearBtn, currentAddrEl;
     var savedSection, savedList, nearbySection, nearbyList, guestHint;
-    var form, afId, afLat, afLng, afAddress, afType, afDial, afContact;
+    var form, afId, afLat, afLng, afAddress, afPostcode, afType, afDial, afContact;
     var deleteBtn, saveBtn, mapEl, mapGrid;
 
     var loggedIn = false;
@@ -150,6 +155,7 @@
         afLat         = modal.querySelector('[data-af-lat]');
         afLng         = modal.querySelector('[data-af-lng]');
         afAddress     = modal.querySelector('[data-af-address]');
+        afPostcode    = modal.querySelector('[data-af-postcode]');
         afType        = modal.querySelector('[data-af-type]');
         afDial        = modal.querySelector('[data-af-dial]');
         afContact     = modal.querySelector('[data-af-contact]');
@@ -167,6 +173,22 @@
         // Contact number — digits only.
         if (afContact) {
             afContact.addEventListener('input', function () { afContact.value = afContact.value.replace(/\D/g, ''); });
+        }
+        // Address autocomplete on the form's Address field: type → pick → fills
+        // the address + coords, then refreshes the map.
+        if (afAddress && window.AddressAutocomplete) {
+            window.AddressAutocomplete.attach({
+                input:  afAddress,
+                list:   modal.querySelector('[data-af-suggestions]'),
+                locBtn: modal.querySelector('[data-af-useloc]'),
+                onPick: function (addr) {
+                    afAddress.value = window.AddressAutocomplete.line(addr) || afAddress.value;
+                    if (afPostcode) { afPostcode.value = addr.postcode || ''; }
+                    if (afLat) { afLat.value = (addr.latitude  != null) ? addr.latitude  : ''; }
+                    if (afLng) { afLng.value = (addr.longitude != null) ? addr.longitude : ''; }
+                    renderLocationMap(afLat && afLat.value, afLng && afLng.value);
+                }
+            });
         }
         bindMapDrag();
         bindDelegatedClicks();
@@ -308,17 +330,44 @@
         }
     }
 
+    // Full-screen spinner helpers (defensive — no-op if the loader UI is absent).
+    function loaderOn(label) { if (window.EatNDealUi && window.EatNDealUi.showLoader) { window.EatNDealUi.showLoader({ label: label || 'Loading…' }); } }
+    function loaderOff()     { if (window.EatNDealUi && window.EatNDealUi.hideLoader) { window.EatNDealUi.hideLoader(); } }
+
     function useCurrentLocation() {
         if (!navigator.geolocation) {
             if (window.EatNDealUi) { window.EatNDealUi.showToast('error', 'Your browser does not support location sharing. Please enter a postcode.'); }
             return;
         }
         if (currentAddrEl) { currentAddrEl.textContent = 'Getting your location…'; }
+        loaderOn('Getting your location…');   // visible feedback while GPS + lookup run
         navigator.geolocation.getCurrentPosition(
             function (pos) {
-                save({ label: 'My current location', postcode: null, lat: pos.coords.latitude, lng: pos.coords.longitude, source: 'geolocation' });
+                var lat = pos.coords.latitude, lng = pos.coords.longitude;
+                // Reverse-geocode the coords so the chip shows the REAL area name.
+                window.EatNDealApi.post('/api/v1/delivery/reverse-geocode', { lat: lat, lng: lng })
+                    .then(function (data) {
+                        // Served-country gate — block locations outside our delivery area.
+                        if (data && data.allowed === false) {
+                            loaderOff();
+                            if (currentAddrEl) { currentAddrEl.textContent = 'Detect my location'; }
+                            var cn = (data.address && data.address.country) || 'your country';
+                            if (window.EatNDealUi) { window.EatNDealUi.showToast('error', 'Sorry, we don’t deliver in ' + cn + ' yet.'); }
+                            return;   // stop — do NOT save or continue
+                        }
+                        var label    = (data && data.label)
+                            || (data && data.address && (data.address.line_1 || data.address.post_town))
+                            || 'My current location';
+                        var postcode = (data && data.address && data.address.postcode) || null;
+                        save({ label: label, postcode: postcode, lat: lat, lng: lng, source: 'geolocation' });  // reloads (loader stays until then)
+                    })
+                    .catch(function () {
+                        // Lookup failed (network) → still usable: coords + generic label.
+                        save({ label: 'My current location', postcode: null, lat: lat, lng: lng, source: 'geolocation' });
+                    });
             },
             function (err) {
+                loaderOff();
                 if (currentAddrEl) { currentAddrEl.textContent = 'Detect my location'; }
                 if (window.EatNDealUi) { window.EatNDealUi.showToast('warn', 'Please allow location access or enter a postcode. ' + (err.message || '')); }
             },
@@ -337,10 +386,12 @@
             });
             var body = await resp.json();
             if (!(body && body.status === 200)) {
+                loaderOff();
                 if (body && body.msg && window.EatNDealUi) { window.EatNDealUi.showToast('error', body.msg); }
                 return;
             }
         } catch (e) {
+            loaderOff();
             if (window.EatNDealUi) { window.EatNDealUi.showToast('warn', 'Could not save right now — please check your connection.'); }
             return;
         }
@@ -405,7 +456,7 @@
 
             var icon = document.createElement('span');
             icon.className = 'loc-saved__icon';
-            icon.innerHTML = iconForLabel(a.label);
+            icon.innerHTML = iconForLabel(a.label || a.addressType);
             card.appendChild(icon);
 
             var main = document.createElement('button');
@@ -415,7 +466,8 @@
             top.className = 'loc-saved__top';
             var name = document.createElement('span');
             name.className = 'loc-saved__name';
-            name.textContent = a.label || 'Saved address';
+            // Type tag: the Home/Work label, else the building type (House…).
+            name.textContent = a.label || titleCaseType(a.addressType) || 'Saved address';
             top.appendChild(name);
             if (a.isDefault) {
                 var badge = document.createElement('span');
@@ -428,7 +480,7 @@
             addr.className = 'loc-saved__addr';
             addr.textContent = a.address || '';
             main.appendChild(addr);
-            main.addEventListener('click', function () { save({ label: a.label || a.address, postcode: a.postCode, lat: a.latitude, lng: a.longitude, source: 'saved' }); });
+            main.addEventListener('click', function () { save({ label: a.address || a.label, postcode: a.postCode, lat: a.latitude, lng: a.longitude, source: 'saved' }); });
             card.appendChild(main);
 
             var actions = document.createElement('span');
@@ -473,7 +525,9 @@
         afId.value      = a.id || '';
         afLat.value     = (a.latitude != null) ? a.latitude : ((activeLoc && activeLoc.lat != null) ? activeLoc.lat : '');
         afLng.value     = (a.longitude != null) ? a.longitude : ((activeLoc && activeLoc.lng != null) ? activeLoc.lng : '');
+        renderLocationMap(afLat.value, afLng.value);   // real Google Map for the chosen point
         afAddress.value = a.address || (a.id ? '' : (input && input.value ? '' : (activeLoc ? activeLoc.label : '')));
+        if (afPostcode) { afPostcode.value = a.postCode || a.post_code || a.postcode || ''; }
         setSelectValue(modal.querySelector('[data-loc-select="type"]'), a.addressType || '');
         setField('additional_details', a.additionalDetails || '');
         setField('delivery_instructions', a.deliveryInstructions || '');
@@ -517,6 +571,7 @@
         var payload = {
             id:                    afId.value || undefined,
             address:               afAddress.value.trim(),
+            post_code:             afPostcode ? afPostcode.value.trim() : '',
             label:                 valOf('label'),
             address_type:          afType.value || '',
             additional_details:    valOf('additional_details'),
@@ -644,9 +699,20 @@
         }
     }
 
+    // ── Real Google Map for the chosen point (Embed API) ───────────
+    // Replaces the cosmetic grid with an actual map when a browser key +
+    // coords are present; otherwise the stylized grid stays as the fallback.
+    function renderLocationMap(lat, lng) {
+        if (!mapEl || !mapGrid) { cacheNodes(); }
+        if (!mapEl || !mapGrid || !window.GMap) { return; }
+        var ok = window.GMap.embed(mapGrid, lat, lng, { title: 'Selected location', zoom: 16 });
+        mapEl.classList.toggle('loc-map--real', !!ok);   // CSS hides the cosmetic pin/hint
+    }
+
     // ── Local stylized map: drag to pan the grid (cosmetic pin) ─────
     function bindMapDrag() {
         if (!mapEl || !mapGrid) { return; }
+        if (mapEl.classList.contains('loc-map--real')) { return; }   // real map handles its own pan/zoom
         var dragging = false, startX = 0, startY = 0, offX = 0, offY = 0, baseX = 0, baseY = 0;
         mapEl.addEventListener('pointerdown', function (ev) {
             dragging = true; startX = ev.clientX; startY = ev.clientY; baseX = offX; baseY = offY;

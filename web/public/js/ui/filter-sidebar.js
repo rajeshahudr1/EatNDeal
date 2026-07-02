@@ -43,7 +43,7 @@
     function collectState() {
         var state = {
             sort: 'relevance', rating: null, deliveryBuckets: [], distance: null,
-            price: null, cuisine: null, trust: [], offers: [], availability: [], collections: [],
+            price: null, cuisine: null, trust: [], offers: [], availability: [], collections: [], browse: null,
         };
         if (!root) { return state; }
 
@@ -54,6 +54,10 @@
         // Rating radio (data-filter="rating-4.5" etc).
         var ratingR = root.querySelector('input[name="rating-web"]:checked');
         if (ratingR) { state.rating = ratingR.getAttribute('data-filter'); }
+
+        // Browse radio (Collections & offers — data-filter="browse-<key>").
+        var browseR = root.querySelector('input[name="browse-web"]:checked');
+        if (browseR) { state.browse = browseR.getAttribute('data-filter'); }
 
         // Checkboxes + toggles — read every checked data-filter.
         root.querySelectorAll('input[type="checkbox"]:checked').forEach(function (cb) {
@@ -136,6 +140,7 @@
         if (q.get('offer') === '1') { check('input[data-filter="offer-discount"]'); }
         if (q.get('open_now') === '1') { check('input[data-filter="avail-open-now"]'); }
         if (q.get('max_km')) { check('input[data-filter="dist-' + q.get('max_km') + '"]'); }
+        if (q.get('browse')) { check('input[name="browse-web"][data-filter="browse-' + q.get('browse') + '"]'); }
         syncActiveClasses();
     }
 

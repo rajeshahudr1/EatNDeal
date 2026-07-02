@@ -1,0 +1,49 @@
+<%#
+  views/community/review.ejs — super-admin AI-moderation review queue.
+
+  Posts & comments the AI (or a manual-mode group) held → approve to publish,
+  or reject. Cards are built client-side from GET /community/pending.
+  Responsive: full-width cards on desktop, single column on mobile.
+-%>
+<div class="ly">
+
+    <div class="ly__head">
+        <div>
+            <h2 class="ly__title">🛡️ Review queue</h2>
+            <p class="ly__sub">Posts &amp; comments held by AI moderation — approve to publish, or reject.</p>
+        </div>
+        <a href="/community" class="ly-btn ly-btn--ghost ly-btn--sm">← Back to groups</a>
+    </div>
+
+    <div class="cmrev" data-cmrev>
+        <div class="cmrev-toolbar">
+            <div class="cmrev-tabs">
+                <button type="button" class="cmrev-tab is-active" data-cmrev-tab="pending">⏳ Pending</button>
+                <button type="button" class="cmrev-tab" data-cmrev-tab="rejected">🚫 Rejected</button>
+            </div>
+            <div class="cmrev-filters">
+                <select class="cmrev-select" data-cmrev-group aria-label="Filter by group"><option value="">All groups</option></select>
+                <input type="search" class="cmrev-search" data-cmrev-search placeholder="Search text…" aria-label="Search">
+            </div>
+        </div>
+        <div class="ly-empty" data-cmrev-empty hidden>
+            <span class="ly-empty__ic" aria-hidden="true">✅</span>
+            <p class="ly-empty__msg" data-cmrev-emptymsg>Nothing waiting for review.</p>
+        </div>
+        <div data-cmrev-list></div>
+
+        <%# Reject reason — the author sees this in their "My posts", so it tells
+            them WHY it was rejected and what to fix. %>
+        <div class="pr-modal" data-modal="reject-reason" hidden>
+            <div class="pr-modal__panel cmrej">
+                <h3 class="pr-modal__title">Reason for rejecting</h3>
+                <p class="cmrej__hint">The author sees this in their “My posts”, so tell them what to fix.</p>
+                <textarea class="cmrej__ta" data-reject-reason rows="3" maxlength="500" placeholder="e.g. Not related to offers — please post deals / discounts only."></textarea>
+                <div class="cmrej__acts">
+                    <button type="button" class="ly-btn ly-btn--ghost ly-btn--sm" data-reject-cancel>Cancel</button>
+                    <button type="button" class="ly-btn ly-btn--primary ly-btn--sm" data-reject-confirm>Reject</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

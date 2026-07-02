@@ -312,6 +312,16 @@
     }
 
     // ── Document delegate ──────────────────────────────────────────
+    // A settle action (set-address / coupon / schedule) marks the popup sheet
+    // busy until cart.js fires 'ckt:settle-done' (request resolved — reload,
+    // error, or conflict). clearBusy() drops the spinner so it never hangs.
+    var busySheet = null, busyTimer = null;
+    function clearBusy() {
+        if (busyTimer) { window.clearTimeout(busyTimer); busyTimer = null; }
+        if (busySheet) { busySheet.classList.remove('is-busy'); busySheet = null; }
+    }
+    document.addEventListener('ckt:settle-done', clearBusy);
+
     document.addEventListener('click', function (ev) {
         var t = ev.target;
         if (!t || !t.closest) { return; }
@@ -332,6 +342,16 @@
         if (t.closest('[data-action="ckt-popup-close"]')) {
             ev.preventDefault();
             close();
+            return;
+        }
+        // "+ Add an address" opens the global location modal — hide this cart
+        // popup first so the two don't stack. Don't reset body scroll-lock
+        // (the location modal manages its own) and don't preventDefault, so
+        // location-modal.js's handler still opens the modal on the same click.
+        if (t.closest('[data-action="open-location-modal"]')) {
+            var addrEl = popupRoot(openName);
+            if (addrEl) { addrEl.hidden = true; addrEl.setAttribute('aria-hidden', 'true'); }
+            openName = null;
             return;
         }
         // Cash tile on the cart page — commit cash, no popup.
@@ -368,14 +388,21 @@
         // cart.js toast fires and the (still-open) popup lets them retry.
         var settle = t.closest('[data-action="cart-set-address"], [data-action="cart-apply-coupon"], [data-action="cart-remove-coupon"], [data-action="cart-sched-save"], [data-action="cart-sched-asap"]');
         if (settle && openName) {
+            // Re-tapping the already-active address makes no API call (cart.js
+            // no-ops it → no reload), so close the popup here; otherwise it
+            // sticks on the "busy" state with nothing to dismiss it.
+            if (settle.getAttribute('data-action') === 'cart-set-address' && settle.classList.contains('is-selected')) {
+                close();
+                return;
+            }
             var sheet = popupRoot(openName) && popupRoot(openName).querySelector('.ckt-popup__sheet');
             if (sheet) { sheet.classList.add('is-busy'); }
-            // No early close — the page reload (or a failure toast) takes
-            // it from here. Re-enable the sheet after a safety timeout in
-            // case the request 4xx'd without a reload.
-            window.setTimeout(function () {
-                if (sheet) { sheet.classList.remove('is-busy'); }
-            }, 4000);
+            // 'ckt:settle-done' (from cart.js) clears this the moment the request
+            // resolves — success reloads, errors/conflicts just drop the spinner
+            // so the popup never hangs. The timeout is only a safety net.
+            busySheet = sheet || null;
+            if (busyTimer) { window.clearTimeout(busyTimer); }
+            busyTimer = window.setTimeout(clearBusy, 8000);
             return;
         }
     });

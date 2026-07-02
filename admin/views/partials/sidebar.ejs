@@ -53,12 +53,27 @@
         </details>
         <% } %>
 
-        <%# Community — visible to ALL admins. Super-admin manages the groups
-            (create/edit/delete); company (restaurant) admins join the feeds —
-            read, post, comment and reply. %>
-        <a class="admin-nav__item <%= nav === 'community' ? 'is-active' : '' %>" href="/community">
-            <span class="admin-nav__ic" aria-hidden="true">👥</span><span>Community</span>
-        </a>
+        <%# Community group — Groups (manage + feeds) + the AI-moderation Review
+            queue (super-admin) in ONE expandable menu. Open when a child is active. %>
+        <details class="admin-nav__group" <%= ['community', 'community-review', 'community-blocked'].includes(nav) ? 'open' : '' %>>
+            <summary class="admin-nav__item admin-nav__sum">
+                <span class="admin-nav__ic" aria-hidden="true">👥</span><span>Community</span>
+                <span class="admin-nav__chev" aria-hidden="true">▸</span>
+            </summary>
+            <div class="admin-nav__sub">
+                <a class="admin-nav__item admin-nav__subitem <%= nav === 'community' ? 'is-active' : '' %>" href="/community">
+                    <span class="admin-nav__ic" aria-hidden="true">👥</span><span>Groups</span>
+                </a>
+                <% if (scc.isSuper) { %>
+                <a class="admin-nav__item admin-nav__subitem <%= nav === 'community-review' ? 'is-active' : '' %>" href="/community/review">
+                    <span class="admin-nav__ic" aria-hidden="true">🛡️</span><span>Review queue</span>
+                </a>
+                <a class="admin-nav__item admin-nav__subitem <%= nav === 'community-blocked' ? 'is-active' : '' %>" href="/community/blocked">
+                    <span class="admin-nav__ic" aria-hidden="true">🚫</span><span>Blocked users</span>
+                </a>
+                <% } %>
+            </div>
+        </details>
 
         <%# Settings menu is fully HIDDEN per request — the whole group (incl.
             Cashback Review, Loyalty Configuration, Review CMS Pages, Store

@@ -140,3 +140,8 @@
     body.is-mobile-filters-open .fsb__head,
     body.is-mobile-filters-open .fsb__foot { flex: 0 0 auto; }
 }
+
+/* Browse filter — 2-level: main-category sub-heading + count-gated items. */
+.fsb__subhead { font-size: 0.7rem; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; color: var(--color-text-muted); margin: 12px 0 4px; }
+.fsb__group--browse .fsb__subhead:first-of-type { margin-top: 4px; }
+.fsb__radio--browse .fsb__count { margin-left: auto; }

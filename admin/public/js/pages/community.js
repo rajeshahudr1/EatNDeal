@@ -37,6 +37,107 @@
             var name = form.querySelector('[data-cm-name]');
             if (name && name.value.trim() === '') { e.preventDefault(); toast('error', 'Group name is required.'); name.focus(); }
         });
+
+        // ── Type toggle: locations (user) vs company (restaurant) ──
+        function esc(s) { var d = document.createElement('div'); d.textContent = (s == null ? '' : String(s)); return d.innerHTML; }
+        var typeSel = form.querySelector('[data-cm-type]');
+        var locSec  = form.querySelector('[data-cm-loc-section]');
+        var coSec   = form.querySelector('[data-cm-co-section]');
+        function syncType() {
+            var t = typeSel ? typeSel.value : 'user';
+            if (locSec) { locSec.hidden = (t !== 'user'); }
+            if (coSec)  { coSec.hidden  = (t !== 'restaurant'); }
+        }
+        if (typeSel) { typeSel.addEventListener('change', syncType); syncType(); }
+
+        // Shared mini-autocomplete: input → fetch(items) → click → onPick(item).
+        function bindAc(opts) {
+            var input = form.querySelector(opts.input), list = form.querySelector(opts.list);
+            if (!input || !list) { return; }
+            var deb = null;
+            function hide() { list.hidden = true; list.innerHTML = ''; }
+            input.addEventListener('input', function () {
+                var q = input.value.trim();
+                if (deb) { clearTimeout(deb); }
+                if (q.length < opts.min) { hide(); return; }
+                deb = setTimeout(function () {
+                    opts.fetch(q).then(function (items) {
+                        list.innerHTML = '';
+                        (items || []).forEach(function (it) {
+                            var li = document.createElement('li');
+                            li.className = 'cm-ac__item';
+                            li.textContent = opts.label(it);
+                            li.addEventListener('mousedown', function (ev) { ev.preventDefault(); });
+                            li.addEventListener('click', function () { hide(); opts.pick(it); });
+                            list.appendChild(li);
+                        });
+                        list.hidden = !(items && items.length);
+                    });
+                }, 250);
+            });
+            input.addEventListener('blur', function () { setTimeout(hide, 150); });
+            return { input: input };
+        }
+
+        // ── Coverage areas (user groups) ──
+        var locRadius = form.querySelector('[data-cm-loc-radius]');
+        var locChips  = form.querySelector('[data-cm-loc-chips]');
+        var locJson   = form.querySelector('[data-cm-loc-json]');
+        var locs = [];
+        try { locs = (locJson && locJson.value) ? JSON.parse(locJson.value) : []; } catch (e2) { locs = []; }
+        function saveLocs() { if (locJson) { locJson.value = locs.length ? JSON.stringify(locs) : ''; } }
+        function renderLocs() {
+            if (!locChips) { return; }
+            locChips.innerHTML = '';
+            locs.forEach(function (l, i) {
+                var li = document.createElement('li');
+                li.className = 'cm-chip';
+                li.innerHTML = '<span>' + esc(l.label || (l.lat + ', ' + l.lng)) + ' · ' + (l.radius_km || 25) + ' km</span>' +
+                    '<button type="button" class="cm-chip__x" data-cm-loc-rm="' + i + '" aria-label="Remove">×</button>';
+                locChips.appendChild(li);
+            });
+        }
+        renderLocs();
+        bindAc({
+            input: '[data-cm-loc-input]', list: '[data-cm-loc-suggest]', min: 3,
+            fetch: function (q) { return A.post('/community/loc-search', { query: q }).then(function (env) { return (env && env.data && env.data.suggestions) || []; }); },
+            label: function (s) { return s.address || ''; },
+            pick:  function (s) {
+                A.post('/community/loc-resolve', { id: s.id }).then(function (env) {
+                    var a = env && env.data && env.data.address;
+                    if (!a || a.latitude == null || a.longitude == null) { toast('error', 'Could not locate that.'); return; }
+                    var r = Math.max(1, Math.min(500, Number(locRadius && locRadius.value) || 25));
+                    var lbl = (s.address || a.post_town || '').split(',').slice(0, 2).join(',').trim();
+                    locs.push({ label: lbl, lat: Number(a.latitude), lng: Number(a.longitude), radius_km: r });
+                    saveLocs(); renderLocs();
+                    var li = form.querySelector('[data-cm-loc-input]'); if (li) { li.value = ''; }
+                });
+            },
+        });
+        if (locChips) {
+            locChips.addEventListener('click', function (ev) {
+                var b = ev.target.closest('[data-cm-loc-rm]'); if (!b) { return; }
+                locs.splice(Number(b.getAttribute('data-cm-loc-rm')), 1); saveLocs(); renderLocs();
+            });
+        }
+
+        // ── Company (restaurant groups) ──
+        var coId = form.querySelector('[data-cm-co-id]'), coChosen = form.querySelector('[data-cm-co-chosen]');
+        bindAc({
+            input: '[data-cm-co-input]', list: '[data-cm-co-suggest]', min: 2,
+            fetch: function (q) {
+                return A.getJson('/community/companies?q=' + encodeURIComponent(q) + '&limit=10').then(function (env) {
+                    var d = env && env.data; var arr = (d && (d.companies || d.items)) || d || [];
+                    return Array.isArray(arr) ? arr : [];
+                });
+            },
+            label: function (c) { return c.name || c.label || ('#' + c.id); },
+            pick:  function (c) {
+                if (coId) { coId.value = c.id; }
+                if (coChosen) { coChosen.textContent = 'Selected: ' + (c.name || ('#' + c.id)); }
+                var ci = form.querySelector('[data-cm-co-input]'); if (ci) { ci.value = c.name || ''; }
+            },
+        });
     }
 
     // ─────────────────────────── LIST ───────────────────────────
@@ -248,6 +349,9 @@
                 });
             }
         });
+        // NOTE: held/pending items are moderated on the dedicated Review queue
+        // page (/community/review?group_id=…) — the feed's "Pending" button links
+        // there. No in-feed moderation popup (per request).
 
         // Add a comment OR a reply (delegated submit).
         root.addEventListener('submit', function (e) {

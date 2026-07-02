@@ -66,7 +66,9 @@
     <link rel="stylesheet" href="/css/components/how-step.css?v=<%= ASSET_VERSION %>">
     <link rel="stylesheet" href="/css/components/promo-banner.css?v=<%= ASSET_VERSION %>">
     <link rel="stylesheet" href="/css/components/location-modal.css?v=<%= ASSET_VERSION %>">
+    <link rel="stylesheet" href="/css/components/address-autocomplete.css?v=<%= ASSET_VERSION %>">
     <link rel="stylesheet" href="/css/components/toast.css?v=<%= ASSET_VERSION %>">
+    <link rel="stylesheet" href="/css/components/chatbot.css?v=<%= ASSET_VERSION %>">
     <link rel="stylesheet" href="/css/components/dialog.css?v=<%= ASSET_VERSION %>">
     <link rel="stylesheet" href="/css/components/product-modal.css?v=<%= ASSET_VERSION %>">
     <link rel="stylesheet" href="/css/components/loader.css?v=<%= ASSET_VERSION %>">
@@ -111,6 +113,7 @@
     data-has-location="<%= user_location ? 'true' : 'false' %>"
     data-lat="<%= (user_location && user_location.lat != null) ? user_location.lat : '' %>"
     data-lng="<%= (user_location && user_location.lng != null) ? user_location.lng : '' %>"
+    data-gmaps-key="<%= typeof google_maps_key !== 'undefined' ? google_maps_key : '' %>"
     data-active-nav="<%= active_nav %>"
     class="<%= (user_session && !(typeof bare !== 'undefined' && bare)) ? 'has-bottom-nav' : '' %> <%= (typeof view_mode !== 'undefined' && view_mode) ? ('view-' + view_mode) : '' %>"
 >
@@ -206,6 +209,8 @@
             <%- include('partials/bottom-nav') -%>
         <% } %>
         <%- include('partials/mobile-drawer') -%>
+        <%# Floating help chatbot — orders / cashback / offers / FAQ. %>
+        <%- include('partials/chatbot') -%>
     <% } %>
 
     <%#
@@ -225,7 +230,10 @@
         before the ui/* and pages/* scripts that use it. -%>
     <script defer src="/js/common/format.js?v=<%= ASSET_VERSION %>"></script>
     <script defer src="/js/common/dom.js?v=<%= ASSET_VERSION %>"></script>
+    <script defer src="/js/common/gmap.js?v=<%= ASSET_VERSION %>"></script>
+    <script defer src="/js/common/address-autocomplete.js?v=<%= ASSET_VERSION %>"></script>
     <script defer src="/js/ui/toast.js?v=<%= ASSET_VERSION %>"></script>
+    <script defer src="/js/ui/chatbot.js?v=<%= ASSET_VERSION %>"></script>
     <script defer src="/js/ui/dialog.js?v=<%= ASSET_VERSION %>"></script>
     <script defer src="/js/ui/loader.js?v=<%= ASSET_VERSION %>"></script>
     <script defer src="/js/ui/search-overlay.js?v=<%= ASSET_VERSION %>"></script>

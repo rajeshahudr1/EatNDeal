@@ -29,7 +29,13 @@ const { requireUser, relay } = require('../Helpers/authProxy');
 async function groupsPage(req, res) {
     let groups = [];
     try {
-        const apiRes = await callApi(req, 'GET', '/api/v1/customer/community/groups');
+        // Location-scope the user groups: a group shows only if the customer is
+        // inside one of its areas (groups with no areas are global).
+        const loc = (req.session && req.session.userLocation) || null;
+        const qs = new URLSearchParams();
+        if (loc && loc.lat != null && loc.lng != null) { qs.set('lat', String(loc.lat)); qs.set('lng', String(loc.lng)); }
+        const url = '/api/v1/customer/community/groups' + (qs.toString() ? ('?' + qs.toString()) : '');
+        const apiRes = await callApi(req, 'GET', url);
         const body = apiRes && apiRes.body;
         if (body && body.status === 200 && body.data) { groups = body.data.groups || []; }
     } catch (e) { /* render an empty state rather than a 500 */ }
@@ -66,6 +72,16 @@ async function groupPage(req, res) {
 
     const data = body.data;
     const posts = data.posts || [];
+
+    // The author's own pending/approved/rejected counts (for the "My posts" badge).
+    let myCounts = { approved: 0, pending: 0, rejected: 0 };
+    if (user) {
+        try {
+            const mp = await callApi(req, 'GET', '/api/v1/customer/community/my-posts?customer_id=' + user.id + '&group_id=' + groupId + '&status=pending');
+            if (mp && mp.body && mp.body.data && mp.body.data.counts) { myCounts = mp.body.data.counts; }
+        } catch (e) { /* non-fatal — badge just shows 0 */ }
+    }
+
     return res.render('community/group', {
         page_title:       data.group.name + ' · Community',
         _layoutFile:      '../_layout',
@@ -78,6 +94,7 @@ async function groupPage(req, res) {
         has_more:         !!data.has_more,
         next_offset:      (data.offset || 0) + posts.length,
         can_post:         !!user,
+        my_counts:        myCounts,
     });
 }
 
@@ -91,6 +108,18 @@ async function feedData(req, res) {
     });
     if (user) { qs.set('customer_id', String(user.id)); }
     const apiRes = await callApi(req, 'GET', '/api/v1/customer/community/feed?' + qs.toString());
+    return relay(res, apiRes);
+}
+
+// GET /community/my-posts?group_id=&status= — the signed-in customer's OWN
+// posts by moderation status (+ per-status counts). Sign-in required.
+async function myPostsData(req, res) {
+    const user = requireUser(req, res, 'Please sign in.');
+    if (!user) { return; }
+    const qs = new URLSearchParams({ customer_id: String(user.id) });
+    if (req.query.group_id) { qs.set('group_id', String(req.query.group_id)); }
+    if (req.query.status) { qs.set('status', String(req.query.status)); }
+    const apiRes = await callApi(req, 'GET', '/api/v1/customer/community/my-posts?' + qs.toString());
     return relay(res, apiRes);
 }
 
@@ -110,11 +139,12 @@ async function createPost(req, res) {
         group_id:    req.body.group_id,
         body:        req.body.body || '',
     };
-    // Store the photo as a "/media/community/<file>" path — the api passes it
-    // through unchanged and the new server serves it from MEDIA_DIR (shown on
-    // both web + admin feeds when they share this server).
+    // Store the photo as a "/upload/community/<file>" path. The file lands in
+    // the api's shared MEDIA_DIR (api/public/upload/community), the api serves
+    // it at /upload + builds the FULL url on read (mediaUrl), so it shows on
+    // both web + admin. (Must be /upload — NOT /media — or the api can't map it.)
     if (req.file) {
-        const mediaUrl = (process.env.MEDIA_URL || '/media').replace(/\/$/, '');
+        const mediaUrl = (process.env.MEDIA_URL || '/upload').replace(/\/$/, '');
         payload.image = mediaUrl + '/community/' + req.file.filename;
     }
     const apiRes = await callApi(req, 'POST', '/api/v1/customer/community/post', payload);
@@ -153,4 +183,4 @@ async function deleteComment(req, res) {
     return relay(res, apiRes);
 }
 
-module.exports = { groupsPage, groupPage, feedData, commentsData, createPost, like, comment, deletePost, deleteComment };
+module.exports = { groupsPage, groupPage, feedData, myPostsData, commentsData, createPost, like, comment, deletePost, deleteComment };

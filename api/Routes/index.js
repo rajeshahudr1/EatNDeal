@@ -153,6 +153,7 @@ const {
     searchAddressSchema,
     retrieveAddressSchema,
     postcodeCoordsSchema,
+    reverseGeocodeSchema,
 }                   = require('../Validators/delivery');
 
 router.post('/delivery/search-address',
@@ -166,6 +167,10 @@ router.post('/delivery/retrieve-address',
 router.post('/delivery/postcode-coords',
     validate(postcodeCoordsSchema),
     DeliveryCtl.postcodeCoords);
+
+router.post('/delivery/reverse-geocode',
+    validate(reverseGeocodeSchema),
+    DeliveryCtl.reverseGeocode);
 
 // ── Customer auth (public — no auth yet) ───────────────────────────
 // Two OTP endpoints powering the web sign-in flow:
@@ -592,6 +597,14 @@ router.post('/admin/community/post',           authenticate, requireRole('admin'
 router.post('/admin/community/comment',        authenticate, requireRole('admin'), AdminCommunityCtl.addComment);
 router.post('/admin/community/post-delete',    authenticate, requireRole('admin'), AdminCommunityCtl.deletePost);
 router.post('/admin/community/comment-delete', authenticate, requireRole('admin'), AdminCommunityCtl.deleteComment);
+// Phase 2 — super-admin AI-moderation review queue (approve / reject held items).
+router.get ('/admin/community/pending',  authenticate, requireRole('admin'), AdminCommunityCtl.pending);
+router.post('/admin/community/moderate', authenticate, requireRole('admin'), AdminCommunityCtl.moderate);
+// Phase 2 — blocked users (a blocked customer can read but not post/like/comment).
+router.get ('/admin/community/blocked',   authenticate, requireRole('admin'), AdminCommunityCtl.blockedList);
+router.get ('/admin/community/customers', authenticate, requireRole('admin'), AdminCommunityCtl.searchCustomers);
+router.post('/admin/community/block',     authenticate, requireRole('admin'), AdminCommunityCtl.blockUser);
+router.post('/admin/community/unblock',   authenticate, requireRole('admin'), AdminCommunityCtl.unblockUser);
 router.post('/admin/products/price',         authenticate, requireRole('admin'), AdminProductsCtl.updatePrice);
 router.post('/admin/products/bulk-price',    authenticate, requireRole('admin'), AdminProductsCtl.bulkPrice);
 router.post('/admin/products/marketplace',   authenticate, requireRole('admin'), AdminProductsCtl.marketplaceToggle);
@@ -635,6 +648,12 @@ router.get('/customer/favourites',
     validateQuery(favouriteListSchema),
     FavouriteCtl.list);
 
+// "Order again" rail — the customer's recently-ordered restaurants (top 10).
+// Reuses the favourites query schema (same customer_id + lat/lng params).
+router.get('/customer/order-again',
+    validateQuery(favouriteListSchema),
+    require('../Controllers/Customer/OrderAgainController').list);
+
 router.post('/customer/favourite/toggle',
     validate(favouriteToggleSchema),
     FavouriteCtl.toggle);
@@ -646,12 +665,19 @@ router.post('/customer/favourite/toggle',
 const CommunityCtl = require('../Controllers/Customer/CommunityController');
 router.get ('/customer/community/groups',   CommunityCtl.groups);
 router.get ('/customer/community/feed',      CommunityCtl.feed);
+router.get ('/customer/community/my-posts',  CommunityCtl.myPosts);
 router.get ('/customer/community/comments',  CommunityCtl.comments);
 router.post('/customer/community/post',      CommunityCtl.createPost);
 router.post('/customer/community/like',      CommunityCtl.toggleLike);
 router.post('/customer/community/comment',   CommunityCtl.addComment);
 router.post('/customer/community/post-delete',    CommunityCtl.deletePost);
 router.post('/customer/community/comment-delete', CommunityCtl.deleteComment);
+
+// ── Public partner / contact lead form (emails the enquiry; no auth, no DB) ──
+router.post('/partner/lead', require('../Controllers/PartnerController').lead);
+
+// ── Marketplace help chatbot (personalises when a valid customer_id is sent) ──
+router.post('/customer/chatbot/ask', require('../Controllers/Customer/ChatbotController').ask);
 
 // ── Customer cart (signed-in marketplace customers only) ───────────
 // Phase 2A.3 — read-only. Write endpoints (add / update / remove /

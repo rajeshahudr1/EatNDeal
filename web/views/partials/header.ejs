@@ -262,10 +262,13 @@
                             <svg class="account-menu__item-icon" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="8" width="18" height="4" rx="1"/><path d="M5 12v7a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-7"/><path d="M12 8V4M12 8c-1.5 0-4-.5-4-2.5S10.5 4 12 8zM12 8c1.5 0 4-.5 4-2.5S13.5 4 12 8z"/></svg>
                             <span>Earn Cashback</span>
                         </a>
+                        <%# Notifications — hidden for now. Remove the if(false) to show it. %>
+                        <% if (false) { %>
                         <a href="/account?tab=notifications" class="account-menu__item" role="menuitem">
                             <svg class="account-menu__item-icon" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
                             <span>Notifications</span>
                         </a>
+                        <% } %>
 
                         <div class="account-menu__sep" role="separator"></div>
 

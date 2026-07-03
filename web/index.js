@@ -706,6 +706,11 @@ app.post('/signin/verify',       AuthController.verifyOtp);
 app.post('/signin/save-profile', AuthController.saveProfile);
 app.get ('/account',             AuthController.accountPage);
 app.post('/account',             AuthController.updateProfile);
+// Change mobile — OTP-verified (send code to the new number, then verify).
+app.post('/account/phone/send-otp', AuthController.changePhoneSendOtp);
+app.post('/account/phone/verify',   AuthController.changePhoneVerify);
+// Delete my account (soft-delete) — then the client redirects home.
+app.post('/account/delete',         AuthController.deleteAccount);
 
 // Loyalty Wallet — multi-restaurant cards + transaction history.
 app.get ('/wallet',              WalletController.walletPage);

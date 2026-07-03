@@ -170,6 +170,35 @@ const updateProfileSchema = Joi.object({
         .messages({ 'any.only': 'Please choose a valid gender option.' }),
 });
 
+// ── /auth/change-phone ────────────────────────────────────────────
+// Change (or add) the signed-in customer's mobile — the NEW number must be
+// OTP-verified. customer_id identifies the account; the OTP proves the new
+// number belongs to them, so it's safe for their loyalty to follow it.
+const changePhoneSchema = Joi.object({
+    customer_id: C.idRule
+        .required()
+        .messages({ 'any.required': 'Customer id is required.', 'alternatives.match': 'Customer id is not valid.' }),
+    country_code: countryCodeRule,
+    contact_no:   contactNoRule,
+    otp: Joi.string()
+        .trim()
+        .pattern(/^[0-9]{6}$/)
+        .required()
+        .messages({
+            'string.empty':        'Please enter the verification code.',
+            'string.pattern.base': 'The verification code must be 6 digits.',
+            'any.required':        'Please enter the verification code.',
+        }),
+});
+
+// ── /auth/delete-account ──────────────────────────────────────────
+// Soft-delete the signed-in customer's own marketplace account.
+const deleteAccountSchema = Joi.object({
+    customer_id: C.idRule
+        .required()
+        .messages({ 'any.required': 'Customer id is required.', 'alternatives.match': 'Customer id is not valid.' }),
+});
+
 // ── /auth/social-signin ───────────────────────────────────────────
 // Provider-specific tokens — at least one of id_token (Google) or
 // access_token (Facebook) must be present. Joi's `xor` enforces
@@ -288,4 +317,6 @@ module.exports = {
     meSchema,
     updateAboutSchema,
     socialSigninSchema,
+    changePhoneSchema,
+    deleteAccountSchema,
 };

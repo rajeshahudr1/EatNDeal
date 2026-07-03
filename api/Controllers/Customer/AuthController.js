@@ -400,12 +400,11 @@ async function saveProfile(req, res) {
  */
 async function updateProfile(req, res) {
     try {
-        // gender + date-of-birth are NOT updated here anymore — they live
-        // on customer_profile now (saved via /auth/update-about). Only the
-        // photo (customer.image) remains a customer-row profile field.
-        // NOTE: `email` is intentionally NOT destructured/updated here — an
-        // existing account's email can never be changed from the profile screen.
-        const { customer_id, firstname, lastname, country_code, contact_no } = req.body;
+        // Only the NAME is editable here. gender/DOB live on customer_profile
+        // (/auth/update-about); email is locked; and the PHONE can now only be
+        // changed via the OTP-verified /auth/change-phone flow (so a number is
+        // always proven before the customer's loyalty follows it).
+        const { customer_id, firstname, lastname } = req.body;
 
         const row = await db('customer')
             .where({ id: customer_id })
@@ -428,46 +427,12 @@ async function updateProfile(req, res) {
             return H.errorResponse(res, MSG.validation.missingFields, 422);
         }
 
-        // Phone fields travel together — either both empty (no change)
-        // or both populated. A half-filled pair (only country, or only
-        // number) is user error.
-        const wantsCountry = country_code !== undefined && country_code !== '' && country_code !== null;
-        const wantsContact = contact_no   !== undefined && contact_no   !== '' && contact_no   !== null;
-        if (wantsCountry !== wantsContact) {
-            return H.errorResponse(res, 'Please enter both the country code and mobile number.', 422);
-        }
-
         const update = {
             firstname:         firstname,
             lastname:          lastname || null,
             updated_at:        db.fn.now(),
             server_updated_at: db.fn.now(),
         };
-
-        if (wantsContact) {
-            const cleanCountry = Number(customers.normalisePhone(country_code)) || 0;
-            const cleanContact = customers.normalisePhone(contact_no);
-
-            // Only check the duplicate-phone guard when the phone is
-            // actually changing — re-saving the same phone is fine.
-            if (cleanContact !== row.contact_no || cleanCountry !== row.country_code) {
-                const clash = await db('customer')
-                    .where({ contact_no: cleanContact, country_code: cleanCountry })
-                    .whereNull('company_id')
-                    .whereNot({ id: row.id })
-                    .first();
-                if (clash) {
-                    return H.errorResponse(
-                        res,
-                        'That mobile number is already used by another account.',
-                        409,
-                    );
-                }
-            }
-
-            update.country_code = cleanCountry;
-            update.contact_no   = cleanContact;
-        }
 
         await db('customer').where({ id: row.id }).update(update);
 
@@ -477,6 +442,100 @@ async function updateProfile(req, res) {
         }, MSG.resource.updated);
     } catch (err) {
         H.log.error('auth.updateProfile', err && err.message);
+        return H.errorResponse(res, MSG.server.oops, 500);
+    }
+}
+
+/**
+ * changePhone
+ *
+ * What:  Changes (or adds) the signed-in customer's mobile number — but ONLY
+ *        after the NEW number is OTP-verified. This is the safe path for a
+ *        world where a customer's loyalty follows their mobile: you can only
+ *        move to a number you can prove you own, so nobody can point their
+ *        account at someone else's number to steal its reward balance.
+ *
+ *        Flow: the web already sent an OTP to the new number (/auth/send-otp);
+ *        this endpoint re-verifies that code, refuses a number already held by
+ *        another marketplace account (409), then writes contact_no/country_code.
+ *        The customer's wallet auto-re-syncs on the next read (loyalty follows
+ *        the number — see Helpers/loyalty.linkedCustomerIds), so the OLD
+ *        number's rewards drop off and the NEW number's appear.
+ * Type:  WRITE.
+ *
+ * Inputs:  customer_id, country_code, contact_no, otp
+ * Output:  200 { customer } | 403 blocked | 404 no row | 409 number taken |
+ *          422 bad OTP
+ */
+async function changePhone(req, res) {
+    try {
+        const { customer_id, country_code, contact_no, otp: code } = req.body;
+
+        const row = await db('customer').where({ id: customer_id }).whereNull('company_id').first();
+        if (!row) { return H.errorResponse(res, MSG.resource.notFound, 404); }
+        const state = customers.classify(row);
+        if (state === 'deleted' || state === 'disabled') { return H.errorResponse(res, MSG.auth.accountDisabled, 403); }
+        if (state === 'banned') { return H.errorResponse(res, MSG.auth.accountBanned, 403); }
+
+        // Verify the code for the NEW number (consumes it on success).
+        const check = await otp.verify({ countryCode: country_code, contactNo: contact_no, otp: code });
+        if (!check.ok) { return H.errorResponse(res, MSG.auth.otpInvalid, 422); }
+
+        const cleanContact = customers.normalisePhone(contact_no);
+        const cleanCountry = Number(customers.normalisePhone(country_code)) || 0;
+
+        // Duplicate guard — only against OTHER marketplace accounts. Matching a
+        // restaurant's POS row (company_id > 0) is fine + intended: that's the
+        // same person, and their loyalty links to it.
+        if (cleanContact !== row.contact_no || cleanCountry !== row.country_code) {
+            const clash = await db('customer')
+                .where({ contact_no: cleanContact, country_code: cleanCountry })
+                .whereNull('company_id').whereNot({ id: row.id }).first('id');
+            if (clash) { return H.errorResponse(res, 'That mobile number is already used by another account.', 409); }
+        }
+
+        await db('customer').where({ id: row.id }).update({
+            contact_no:        cleanContact,
+            country_code:      cleanCountry,
+            verify_at:         H.now(),
+            updated_at:        db.fn.now(),
+            server_updated_at: db.fn.now(),
+        });
+        const fresh = await db('customer').where({ id: row.id }).first();
+        return H.successResponse(res, { customer: customers.publicView(fresh) }, MSG.resource.updated);
+    } catch (err) {
+        H.log.error('auth.changePhone', err && err.message);
+        return H.errorResponse(res, MSG.server.oops, 500);
+    }
+}
+
+/**
+ * deleteAccount
+ *
+ * What:  Soft-deletes the signed-in customer's OWN marketplace account —
+ *        status = '2' (the legacy "deleted" marker). classify() then reads the
+ *        row as 'deleted', so every guard (verifyOtp, loadMarketplaceCustomer,
+ *        me…) blocks it from signing in or being read again. The loyalty ledger
+ *        + past orders are left untouched for the restaurants' records (legacy
+ *        parity — we soft-delete the person, not their history).
+ * Type:  WRITE.
+ *
+ * Inputs:  customer_id
+ * Output:  200 { deleted:1 } | 404 no row
+ */
+async function deleteAccount(req, res) {
+    try {
+        const { customer_id } = req.body;
+        const row = await db('customer').where({ id: customer_id }).whereNull('company_id').first('id');
+        if (!row) { return H.errorResponse(res, MSG.resource.notFound, 404); }
+        await db('customer').where({ id: row.id }).update({
+            status:            '2',
+            updated_at:        db.fn.now(),
+            server_updated_at: db.fn.now(),
+        });
+        return H.successResponse(res, { deleted: 1 }, 'Your account has been deleted.');
+    } catch (err) {
+        H.log.error('auth.deleteAccount', err && err.message);
         return H.errorResponse(res, MSG.server.oops, 500);
     }
 }
@@ -826,4 +885,4 @@ async function socialSignin(req, res) {
     }
 }
 
-module.exports = { sendOtp, verifyOtp, saveProfile, updateProfile, updateAvatar, me, getAbout, updateAbout, socialSignin };
+module.exports = { sendOtp, verifyOtp, saveProfile, updateProfile, updateAvatar, me, getAbout, updateAbout, socialSignin, changePhone, deleteAccount };

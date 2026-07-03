@@ -188,6 +188,8 @@ const {
     meSchema,
     updateAboutSchema,
     socialSigninSchema,
+    changePhoneSchema,
+    deleteAccountSchema,
 }             = require('../Validators/auth');
 
 router.post('/auth/send-otp',
@@ -205,6 +207,16 @@ router.post('/auth/save-profile',
 router.post('/auth/update-profile',
     validate(updateProfileSchema),
     AuthCtl.updateProfile);
+
+// Change (or add) the customer's mobile — OTP-verified for the new number.
+router.post('/auth/change-phone',
+    validate(changePhoneSchema),
+    AuthCtl.changePhone);
+
+// Soft-delete the customer's own account (status = '2').
+router.post('/auth/delete-account',
+    validate(deleteAccountSchema),
+    AuthCtl.deleteAccount);
 
 router.get('/auth/me',
     validateQuery(meSchema),

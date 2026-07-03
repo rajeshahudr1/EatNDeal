@@ -44,6 +44,7 @@ const crypto       = require('node:crypto');
 const fs           = require('node:fs');
 const path         = require('node:path');
 const { callApi }  = require('../Helpers/apiClient');
+const { requireUser, relay } = require('../Helpers/authProxy');
 const oauth        = require('../Helpers/oauthProviders');
 
 const OAUTH_PROVIDERS = new Set(['google', 'facebook']);
@@ -851,6 +852,79 @@ async function uploadAvatar(req, res) {
 }
 
 /**
+ * changePhoneSendOtp
+ *
+ * What:  POST /account/phone/send-otp — sends an OTP to the NEW mobile number
+ *        the signed-in customer typed on My Profile. Reuses /auth/send-otp.
+ *        Returns the JSON envelope for the in-page AJAX flow.
+ * Type:  WRITE.
+ */
+async function changePhoneSendOtp(req, res) {
+    const user = requireUser(req, res, 'Please sign in.');
+    if (!user) { return; }
+    const country = normaliseCountry((req.body && req.body.country_dial) || (req.body && req.body.country_code));
+    const contact = normalisePhone(req.body && req.body.mobile);
+    if (!country || !contact) {
+        return res.status(200).json({ status: 422, show: true, msg: 'Please enter your new mobile number.' });
+    }
+    const apiRes = await callApi(req, 'POST', '/api/v1/auth/send-otp', { country_code: country, contact_no: contact });
+    return relay(res, apiRes);
+}
+
+/**
+ * changePhoneVerify
+ *
+ * What:  POST /account/phone/verify — verifies the OTP for the new number and
+ *        (on success) updates the customer's mobile via /auth/change-phone. The
+ *        session user is refreshed so the header/profile show the new number.
+ *        The customer's loyalty auto-re-syncs to the new number on the next
+ *        loyalty/checkout read (handled entirely in the api).
+ * Type:  WRITE.
+ */
+async function changePhoneVerify(req, res) {
+    const user = requireUser(req, res, 'Please sign in.');
+    if (!user) { return; }
+    const country = normaliseCountry((req.body && req.body.country_dial) || (req.body && req.body.country_code));
+    const contact = normalisePhone(req.body && req.body.mobile);
+    const otp     = String((req.body && req.body.otp) || '').replace(/\D/g, '');
+    const apiRes  = await callApi(req, 'POST', '/api/v1/auth/change-phone', {
+        customer_id: user.id, country_code: country, contact_no: contact, otp,
+    });
+    const body = apiRes && apiRes.body;
+    if (body && body.status === 200 && body.data && body.data.customer) {
+        req.session.user = body.data.customer;
+        return req.session.save(function () { return relay(res, apiRes); });
+    }
+    return relay(res, apiRes);
+}
+
+/**
+ * deleteAccount
+ *
+ * What:  POST /account/delete — soft-deletes the signed-in customer's account
+ *        (api sets status='2'), then wipes the session (fresh id — like a clean
+ *        sign-out) while KEEPING the chosen location, and tells the client to
+ *        redirect home.
+ * Type:  WRITE.
+ */
+async function deleteAccount(req, res) {
+    const user = requireUser(req, res, 'Please sign in.');
+    if (!user) { return; }
+    const apiRes = await callApi(req, 'POST', '/api/v1/auth/delete-account', { customer_id: user.id });
+    const body = apiRes && apiRes.body;
+    if (body && body.status === 200) {
+        const loc = (req.session && req.session.userLocation) || null;
+        return req.session.regenerate(function () {
+            if (loc && req.session) { req.session.userLocation = loc; }
+            const done = function () { res.status(200).json({ status: 200, show: false, msg: body.msg || 'Account deleted.', data: { redirect: '/' } }); };
+            if (req.session && typeof req.session.save === 'function') { return req.session.save(done); }
+            return done();
+        });
+    }
+    return relay(res, apiRes);
+}
+
+/**
  * signOut
  *
  * What:  Signs the customer out and bounces home — but KEEPS the chosen
@@ -889,5 +963,8 @@ module.exports = {
     uploadAvatar,
     oauthRedirect,
     oauthCallback,
+    changePhoneSendOtp,
+    changePhoneVerify,
+    deleteAccount,
     signOut,
 };

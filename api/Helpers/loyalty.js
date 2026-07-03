@@ -172,18 +172,61 @@ async function earnForOrder({ customerId, companyId, orderId, subtotal }) {
 }
 
 /**
+ * linkedCustomerIds
+ *
+ * What:  The set of customer ids that belong to the SAME PERSON as the given
+ *        marketplace customer — matched by MOBILE NUMBER across every company
+ *        (marketplace company_id NULL + each restaurant's own POS row
+ *        company_id > 0). One mobile = one person: they may have a separate
+ *        `customer` row (with its own password) in each restaurant, but their
+ *        loyalty follows the number, so we aggregate every row's rewards.
+ *
+ *        Mobile is the RIGHT key (not email): the marketplace verifies the
+ *        number by OTP at sign-up, so linking by it is trustworthy. A customer
+ *        with NO mobile yet (e.g. a fresh Google sign-in) links to ONLY their
+ *        own id — the moment they add a mobile on My Profile, the next read
+ *        auto-picks up their restaurant points.
+ *
+ *        Computed on EVERY read (no copy / no cache) so the wallet is always
+ *        live — this is the "sync on loyalty/checkout open" the product wants.
+ * Type:  READ. Returns number[] (always includes the passed id).
+ */
+async function linkedCustomerIds(customerId) {
+    const id = Number(customerId) || 0;
+    if (!id) { return []; }
+    const me = await db('customer').where({ id }).first('id', 'contact_no', 'country_code');
+    if (!me) { return []; }
+    const contact = String(me.contact_no || '').trim();
+    if (!contact) { return [id]; }   // no mobile yet → only their own points
+
+    let q = db('customer').where('contact_no', contact);
+    // country_code is INTEGER in the schema; match it too when we have one so
+    // the same local number in a different country stays separate.
+    if (me.country_code != null && me.country_code !== '') { q = q.andWhere('country_code', me.country_code); }
+    const rows = await q.select('id');
+
+    const ids = rows.map((r) => Number(r.id));
+    if (!ids.includes(id)) { ids.push(id); }
+    return ids;
+}
+
+/**
  * balanceFor
  *
  * What:  The usable balance on ONE restaurant's card (not expired, not
- *        fully used). £, 2-dp.
+ *        fully used). £, 2-dp. Aggregated across ALL of the person's
+ *        mobile-linked accounts (see linkedCustomerIds).
  * Type:  READ.
  */
 async function balanceFor(customerId, companyId) {
     if (!customerId || !companyId || !(await isReady())) { return 0; }
+    const ids = await linkedCustomerIds(customerId);
+    if (!ids.length) { return 0; }
     const row = await db(REWARDS)
         // is_redeemable = 1 only — LOCKED stamp rewards (is_redeemable = 0)
         // aren't spendable yet, so they don't count toward the balance.
-        .where({ customer_id: customerId, company_id: companyId, is_expired: 0, is_redeemable: 1 })
+        .whereIn('customer_id', ids)
+        .andWhere({ company_id: companyId, is_expired: 0, is_redeemable: 1 })
         .andWhere(function () {
             this.whereNull('expiry_date').orWhere('expiry_date', '>=', db.fn.now());
         })
@@ -205,9 +248,16 @@ async function balanceFor(customerId, companyId) {
  */
 async function cardsFor(customerId) {
     if (!customerId || !(await isReady())) { return []; }
+    const ids = await linkedCustomerIds(customerId);
+    if (!ids.length) { return []; }
     const rows = await db(REWARDS + ' as cr')
-        .leftJoin('company as c', 'c.id', 'cr.company_id')
-        .where('cr.customer_id', customerId)
+        // INNER join + eligibility → only restaurants that are LIVE on the
+        // marketplace (active, not deleted, not in maintenance) show a card.
+        // Points at a restaurant that isn't on the marketplace are hidden
+        // (the customer can't order there to redeem them anyway).
+        .innerJoin('company as c', 'c.id', 'cr.company_id')
+        .whereIn('cr.customer_id', ids)
+        .modify((qb) => M.eligibleCompanyScope(qb, 'c'))
         .groupBy('cr.company_id', 'c.business_name', 'c.domain_name')
         .havingRaw('SUM(cr.amount) > 0')
         .select(
@@ -281,15 +331,22 @@ async function historyFor(customerId, opts) {
     const limit = Math.min(100, Math.max(1, Number(o.limit) || 50));
     const offset = Math.max(0, Number(o.offset) || 0);
     if (!customerId || !(await isReady())) { return { totals: { available: 0, earned: 0, used: 0, expired: 0 }, transactions: [], total_count: 0 }; }
+    const ids = await linkedCustomerIds(customerId);
+    if (!ids.length) { return { totals: { available: 0, earned: 0, used: 0, expired: 0 }, transactions: [], total_count: 0 }; }
 
     // Wallet totals for the scope (unaffected by the status filter / paging).
-    let tq = db(REWARDS).where('customer_id', customerId);
-    if (companyId) { tq = tq.where('company_id', companyId); }
+    // Aggregated across the person's mobile-linked accounts, and only for
+    // restaurants that are LIVE on the marketplace.
+    let tq = db(REWARDS + ' as cr')
+        .innerJoin('company as c', 'c.id', 'cr.company_id')
+        .whereIn('cr.customer_id', ids)
+        .modify((qb) => M.eligibleCompanyScope(qb, 'c'));
+    if (companyId) { tq = tq.where('cr.company_id', companyId); }
     const t = await tq.select(
-        db.raw('COALESCE(SUM(amount), 0) as earned'),
-        db.raw('COALESCE(SUM(COALESCE(used_amount,0)), 0) as used'),
-        db.raw('COALESCE(SUM(CASE WHEN is_expired = 1 THEN amount - COALESCE(used_amount,0) ELSE 0 END), 0) as expired'),
-        db.raw('COALESCE(SUM(CASE WHEN is_expired = 0 AND is_redeemable = 1 AND (expiry_date IS NULL OR expiry_date >= NOW()) THEN amount - COALESCE(used_amount,0) ELSE 0 END), 0) as available'),
+        db.raw('COALESCE(SUM(cr.amount), 0) as earned'),
+        db.raw('COALESCE(SUM(COALESCE(cr.used_amount,0)), 0) as used'),
+        db.raw('COALESCE(SUM(CASE WHEN cr.is_expired = 1 THEN cr.amount - COALESCE(cr.used_amount,0) ELSE 0 END), 0) as expired'),
+        db.raw('COALESCE(SUM(CASE WHEN cr.is_expired = 0 AND cr.is_redeemable = 1 AND (cr.expiry_date IS NULL OR cr.expiry_date >= NOW()) THEN cr.amount - COALESCE(cr.used_amount,0) ELSE 0 END), 0) as available'),
     ).first();
     const totals = {
         available: round2(t && t.available),
@@ -300,7 +357,10 @@ async function historyFor(customerId, opts) {
 
     // Filtered, paginated history rows.
     const base = () => {
-        let q = db(REWARDS + ' as cr').leftJoin('company as c', 'c.id', 'cr.company_id').where('cr.customer_id', customerId);
+        let q = db(REWARDS + ' as cr')
+            .innerJoin('company as c', 'c.id', 'cr.company_id')
+            .whereIn('cr.customer_id', ids)
+            .modify((qb) => M.eligibleCompanyScope(qb, 'c'));
         if (companyId) { q = q.where('cr.company_id', companyId); }
         if (filter === 'earned')   { q = q.where('cr.is_expired', 0).where('cr.expired_from', 0); }
         else if (filter === 'redeemed') { q = q.where('cr.expired_from', 3); }
@@ -471,9 +531,14 @@ async function consumeForRedeem(trx, { customerId, companyId, orderId, amount })
     const want = round2(amount);
     if (!trx || !customerId || !companyId || want <= 0) { return { consumed: 0, breakdown: [] }; }
 
-    // FIFO, oldest first, only live + redeemable + with remaining balance.
+    // Spend across ALL of the person's mobile-linked accounts at this
+    // restaurant (same person, one number). FIFO by reward id (oldest first),
+    // only live + redeemable + with remaining balance.
+    const ids = await linkedCustomerIds(customerId);
+    if (!ids.length) { return { consumed: 0, breakdown: [] }; }
     const rows = await trx(REWARDS)
-        .where({ customer_id: customerId, company_id: companyId, is_expired: 0, is_redeemable: 1 })
+        .whereIn('customer_id', ids)
+        .andWhere({ company_id: companyId, is_expired: 0, is_redeemable: 1 })
         .andWhere(function () {
             this.whereNull('expiry_date').orWhere('expiry_date', '>=', db.fn.now());
         })
@@ -1353,6 +1418,7 @@ module.exports = {
     earnReferral, earnEventCashback, earnSmartCampaign, earnCollectionCashback,
     bogoForProduct, payableQtyFor, bogoMapFor,
     balanceFor, cardsFor, historyFor, reviewTypesFor, reviewRestaurants, maxRedeemable, consumeForRedeem, reverseForOrder, streakProgressFor,
+    linkedCustomerIds,
     // Shared reward-write (commission skim + expiry + ledger + audit row).
     // Exposed so the admin Review-Claims approval can grant a review reward
     // through the SAME path the earn rules use — keeping the ledger consistent.

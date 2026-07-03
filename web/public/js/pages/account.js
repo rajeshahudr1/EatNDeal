@@ -254,6 +254,25 @@
                 return;
             }
 
+            // Change mobile → send an OTP to the NEW number.
+            if (t.closest('[data-action="phone-send-otp"]')) {
+                ev.preventDefault();
+                changePhoneSendOtp(t.closest('.pf-field--lock'));
+                return;
+            }
+            // Change mobile → verify the OTP + save the new number.
+            if (t.closest('[data-action="phone-verify-otp"]')) {
+                ev.preventDefault();
+                changePhoneVerify(t.closest('.pf-field--lock'));
+                return;
+            }
+            // Delete account — button is hidden for now, but the flow is wired.
+            if (t.closest('[data-action="delete-account"]')) {
+                ev.preventDefault();
+                deleteAccountFlow();
+                return;
+            }
+
             // Avatar pencil — open the file picker (upload wired below).
             if (t.closest('[data-action="avatar-edit"]')) {
                 ev.preventDefault();
@@ -635,6 +654,94 @@
                   if (card) { card.classList.remove('is-busy'); }
                   toast('error', 'Could not reach the server.');
               });
+        });
+    }
+
+    // ── Change mobile (OTP-verified) ───────────────────────────────
+    // The number can only change once the NEW number is OTP-verified, so a
+    // customer's loyalty (which follows their mobile) can never be pointed at
+    // someone else's number. Read the current picker + input each time.
+    function readNewPhone() {
+        var dialEl = hiddenDial || document.getElementById('account-country-dial');
+        var mobEl  = phoneInput || document.getElementById('pf-mobile');
+        return {
+            country_dial: (dialEl && dialEl.value) || '',
+            mobile:       String((mobEl && mobEl.value) || '').trim(),
+        };
+    }
+    // The Send-code button has an icon + a <span> label, so only touch the span.
+    function setBtnLabel(btn, text) { if (!btn) { return; } var s = btn.querySelector('span'); if (s) { s.textContent = text; } else { btn.textContent = text; } }
+    function changePhoneSendOtp(lock) {
+        if (!lock) { return; }
+        var f = readNewPhone();
+        if (!f.mobile) { toast('error', 'Enter your new mobile number.'); return; }
+        var btn = lock.querySelector('[data-action="phone-send-otp"]');
+        if (btn) { btn.disabled = true; setBtnLabel(btn, 'Sending…'); }
+        fetch('/account/phone/send-otp', {
+            method: 'POST', credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+            body: JSON.stringify({ country_dial: f.country_dial, mobile: f.mobile }),
+        }).then(function (r) { return r.json().catch(function () { return null; }); })
+          .then(function (env) {
+              if (btn) { btn.disabled = false; setBtnLabel(btn, 'Resend code'); }
+              if (!env || env.status !== 200) { toast('error', (env && env.msg) || 'Could not send the code.'); return; }
+              var row = lock.querySelector('[data-phone-otp-row]');
+              if (row) { row.hidden = false; var inp = row.querySelector('[data-phone-otp-input]'); if (inp) { inp.value = ''; inp.focus(); } }
+              var dev = env.data && env.data.dev_otp;
+              var hint = lock.querySelector('[data-phone-otp-hint]');
+              if (hint) { hint.hidden = false; hint.textContent = dev ? ('Demo mode — your code is ' + dev) : 'We sent a 6-digit code to your new number.'; }
+              toast('success', dev ? ('Demo code: ' + dev) : 'Code sent to your new number.');
+          })
+          .catch(function () { if (btn) { btn.disabled = false; setBtnLabel(btn, 'Send verification code'); } toast('error', 'Could not reach the server. Please refresh and try again.'); });
+    }
+    function changePhoneVerify(lock) {
+        if (!lock) { return; }
+        var f   = readNewPhone();
+        var row = lock.querySelector('[data-phone-otp-row]');
+        var inp = row && row.querySelector('[data-phone-otp-input]');
+        var otp = inp ? String(inp.value || '').replace(/\D/g, '') : '';
+        if (otp.length !== 6) { toast('error', 'Enter the 6-digit code.'); return; }
+        var btn = lock.querySelector('[data-action="phone-verify-otp"]');
+        if (btn) { btn.disabled = true; btn.textContent = 'Verifying…'; }
+        fetch('/account/phone/verify', {
+            method: 'POST', credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+            body: JSON.stringify({ country_dial: f.country_dial, mobile: f.mobile, otp: otp }),
+        }).then(function (r) { return r.json().catch(function () { return null; }); })
+          .then(function (env) {
+              if (!env || env.status !== 200) {
+                  if (btn) { btn.disabled = false; btn.textContent = 'Verify & save'; }
+                  toast('error', (env && env.msg) || 'The code is incorrect or has expired.');
+                  return;
+              }
+              // Reload so the new number shows + the loyalty wallet re-syncs.
+              flashAfterReload('success', 'Mobile number updated.');
+              window.location.reload();
+          })
+          .catch(function () { if (btn) { btn.disabled = false; btn.textContent = 'Verify & save'; } toast('error', 'Could not reach the server.'); });
+    }
+
+    // ── Delete account (flow wired; the button is hidden for now) ───
+    function deleteAccountFlow() {
+        var confirmer = (window.EatNDealUi && window.EatNDealUi.confirmDialog)
+            ? window.EatNDealUi.confirmDialog
+            : function (o) { return Promise.resolve(window.confirm((o && o.message) || 'Delete your account?')); };
+        confirmer({
+            title:       'Delete your account?',
+            message:     'This permanently removes your access to your account. This cannot be undone.',
+            okLabel:     'Delete account',
+            cancelLabel: 'Keep my account',
+        }).then(function (ok) {
+            if (!ok) { return; }
+            fetch('/account/delete', {
+                method: 'POST', credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' }, body: '{}',
+            }).then(function (r) { return r.json().catch(function () { return null; }); })
+              .then(function (env) {
+                  if (!env || env.status !== 200) { toast('error', (env && env.msg) || 'Could not delete your account.'); return; }
+                  window.location.href = (env.data && env.data.redirect) || '/';
+              })
+              .catch(function () { toast('error', 'Could not reach the server.'); });
         });
     }
 

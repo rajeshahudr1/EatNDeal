@@ -514,7 +514,11 @@
     <%# Mobile sticky CTA — duplicates the desktop CTA so it stays in
         view while the customer scrolls the long left column. Opens the
         same review-order confirmation popup. -%>
-    <button type="button" class="ckt-sticky-cta" data-action="ckt-open-confirm" aria-hidden="true">
+    <%# aria-hidden removed: this is the ONLY checkout CTA visible on mobile
+        (the desktop .ckt-cta is display:none there), so hiding it from the
+        a11y tree blocked screen-reader users from placing an order. The
+        desktop CTA is hidden from AT correctly via display:none. -%>
+    <button type="button" class="ckt-sticky-cta" data-action="ckt-open-confirm">
         <span data-cart-cta-total>Continue · <%= sym %><%= cart.grandtotal.toFixed(2) %></span>
     </button>
 

@@ -601,6 +601,17 @@ router.get ('/admin/welcome-banner/get',    authenticate, requireRole('admin'), 
 router.post('/admin/welcome-banner/save',   authenticate, requireRole('admin'), AdminWelcomeBannerCtl.save);
 router.post('/admin/welcome-banner/delete', authenticate, requireRole('admin'), AdminWelcomeBannerCtl.remove);
 
+// ── Admin: home OFFER BANNER carousel (super-admin — a list of banners) ──
+const AdminOfferBannerCtl = require('../Controllers/Admin/OfferBannerController');
+router.get ('/admin/offer-banner',             authenticate, requireRole('admin'), AdminOfferBannerCtl.list);
+router.get ('/admin/offer-banner/get',         authenticate, requireRole('admin'), AdminOfferBannerCtl.getBanner);
+router.post('/admin/offer-banner/save',        authenticate, requireRole('admin'), AdminOfferBannerCtl.save);
+router.post('/admin/offer-banner/delete',      authenticate, requireRole('admin'), AdminOfferBannerCtl.remove);
+router.post('/admin/offer-banner/status',      authenticate, requireRole('admin'), AdminOfferBannerCtl.statusToggle);
+router.post('/admin/offer-banner/reorder',     authenticate, requireRole('admin'), AdminOfferBannerCtl.reorder);
+router.get ('/admin/offer-banner/companies',   authenticate, requireRole('admin'), AdminOfferBannerCtl.companies);
+router.get ('/admin/offer-banner/restaurants', authenticate, requireRole('admin'), AdminOfferBannerCtl.restaurants);
+
 // ── Admin: COMMUNITY groups (Facebook-style; super-admin manages groups) ──
 const AdminCommunityCtl = require('../Controllers/Admin/CommunityController');
 router.get ('/admin/community',        authenticate, requireRole('admin'), AdminCommunityCtl.list);
@@ -982,6 +993,17 @@ router.get('/marketplace/offers', RestaurantsCtl.offers);
 
 // Home welcome strip (super-admin configured) — public read for the home page.
 router.get('/marketplace/welcome-banner', require('../Controllers/Marketplace/WelcomeBannerController').get);
+
+// Home OFFER BANNER carousel (super-admin configured) — public read; each
+// banner carries a resolved href to its filtered restaurant grid.
+router.get('/marketplace/offer-banner', require('../Controllers/Marketplace/OfferBannerController').list);
+
+// Location gate helpers — dynamic "popular cities" grid (branches grouped by
+// city, top-N by restaurant count) + a TEMPORARY demo-location button (browser
+// / IP geolocation needs HTTPS, unavailable in the demo setup). Public reads.
+const MarketplacePlacesCtl = require('../Controllers/Marketplace/PlacesController');
+router.get('/marketplace/cities',        MarketplacePlacesCtl.cities);
+router.get('/marketplace/demo-location', MarketplacePlacesCtl.demoLocation);
 
 // Curated home FEED — Featured row + collection rows (Uber-Eats-style shelves).
 const MarketplaceCollectionsCtl = require('../Controllers/Marketplace/CollectionsController');

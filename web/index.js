@@ -399,6 +399,18 @@ app.use((req, res, next) => {
 // this for a git SHA or build hash.
 app.locals.ASSET_VERSION = String(Date.now());
 
+// Dev only: re-stamp the asset version on EVERY request so CSS/JS edits show
+// on a plain reload — no server restart needed (this was a constant friction:
+// fixes looked broken because the browser / app WebView served cached CSS).
+// Production keeps the stable boot-time value so assets stay cacheable.
+// Set NODE_ENV=production to disable.
+if (process.env.NODE_ENV !== 'production') {
+    app.use(function (req, res, next) {
+        res.locals.ASSET_VERSION = String(Date.now());
+        next();
+    });
+}
+
 // Shared server-side render helpers (money / esc / date / initial) available
 // in EVERY EJS view as `fmt.*` — one home for display formatting. Browser twin
 // is /js/common/format.js (window.EatNDealFormat). See Helpers/viewHelpers.js.
@@ -613,6 +625,11 @@ app.get('/restaurant-reviews', SiteController.restaurantReviews);
 app.post('/location/save',  LocationController.save);
 app.post('/location/clear', LocationController.clear);
 app.get ('/location',       LocationController.get);
+// TEMP demo shortcut — picks a deliverable restaurant's location server-side
+// and saves it to the session. Routed through the web (not the api directly)
+// so it works on a phone, where the browser can't reach the api's localhost.
+// Remove with the demo feature.
+app.post('/location/use-demo', LocationController.useDemo);
 
 // ── Saved addresses (signed-in customers; proxied to the api) ───
 // Backs the location sheet's "Saved addresses" section + the
@@ -825,6 +842,29 @@ app.get('/app',      AppController.appRedirect);
 app.post('/partner/apply', StaticPageController.partnerApply);
 // Help chatbot (AJAX → api answers from the customer's real data).
 app.post('/chatbot/ask', require('./Controllers/ChatbotController').ask);
+
+// ── Same-origin API proxy (public reads) ────────────────────────
+// The browser's EatNDealApi base is now same-origin (data-api-url=""), so
+// client-side calls land here and we forward them to the api. This is what
+// makes the country list / postcode search / "use my location" / live search
+// work on a real PHONE: the device can't reach the api's localhost, but it
+// CAN reach this web server. The session JWT is forwarded by callApi, so
+// personalised reads still work; only PUBLIC endpoints are called client-side
+// (countries / marketplace / delivery), so no customer_id injection is needed.
+app.all('/api/v1/*', async (req, res) => {
+    const method = req.method.toUpperCase();
+    const hasBody = method !== 'GET' && method !== 'HEAD';
+    try {
+        const upstream = await callApi(req, method, req.originalUrl, hasBody ? (req.body || {}) : undefined);
+        if (upstream && upstream.body) {
+            return res.status(upstream.status || 200).json(upstream.body);
+        }
+        // Upstream unreachable / non-JSON → a clean envelope the client parses.
+        return res.status(502).json({ status: 502, show: true, msg: 'We could not reach the server. Please try again.' });
+    } catch (e) {
+        return res.status(502).json({ status: 502, show: true, msg: 'We could not reach the server. Please try again.' });
+    }
+});
 
 // ── 404 ────────────────────────────────────────────────────────
 app.use((req, res) => {

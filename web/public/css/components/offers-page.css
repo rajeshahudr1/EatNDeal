@@ -72,4 +72,10 @@
     .offp2 { padding: var(--space-3) var(--space-3) var(--space-10); }
     .offp2__title { font-size: 1.4rem; }
     .ofc { width: 224px; }
+    /* PWA-audit C1: 16px prevents iOS auto-zoom on focus. */
+    .offp2-search__input { font-size: 16px; }
+    /* PWA-audit C2: 44px min hit area (padding grows the tap zone, glyph unchanged). */
+    .offp2-tab { min-height: 44px; padding: 0 12px; }
+    /* PWA-audit C2: copy-code button reaches the 44px min tap target. */
+    .ofc__code { min-height: 44px; min-width: 44px; }
 }

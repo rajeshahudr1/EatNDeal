@@ -141,6 +141,15 @@
     body.is-mobile-filters-open .fsb__foot { flex: 0 0 auto; }
 }
 
+/* PWA-audit mobile fixes. */
+@media (max-width: 767px) {
+    /* C1: 16px input font stops iOS Safari auto-zoom on focus (was 0.85rem). */
+    .fsb__search-input { font-size: 16px; }
+    /* C2: grow the sidebar hide button hit area to the 44px minimum
+     * touch target (was 30px) without changing the chevron glyph. */
+    .fsb__hide { width: 44px; height: 44px; }
+}
+
 /* Browse filter — 2-level: main-category sub-heading + count-gated items. */
 .fsb__subhead { font-size: 0.7rem; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; color: var(--color-text-muted); margin: 12px 0 4px; }
 .fsb__group--browse .fsb__subhead:first-of-type { margin-top: 4px; }

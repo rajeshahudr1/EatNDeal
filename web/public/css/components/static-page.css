@@ -309,3 +309,8 @@
 .sform__done-title { margin: var(--space-3) 0 6px; font-size: 1.4rem; font-weight: 800; color: var(--color-text); }
 .sform__done-sub { color: var(--color-text-muted); margin: 0; }
 @media (max-width: 640px) { .sform__row { grid-template-columns: 1fr; gap: 0; } }
+
+/* Mobile (<=767px) — PWA-audit fix: 16px input stops iOS focus-zoom. */
+@media (max-width: 767px) {
+    .sform__input { font-size: 16px; }
+}

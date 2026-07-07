@@ -1,0 +1,87 @@
+/*
+ * components/promo-carousel.css — the super-admin OFFER BANNER carousel
+ * (partials/offer-banner-row.ejs) shown on the marketplace home under the
+ * category rail. A horizontal scroll-snap slider of promo cards: ~2.2 visible
+ * on desktop, ~1.1 on mobile (Keeta "Save Everyday / 40% off" style).
+ *
+ * Reuses .hv2-head + .rail-wrap + .rail-arrow from home-v2.css for the heading
+ * and prev/next arrows (wired by home.js bindRailArrows). Only the .banner-*
+ * rail + card live here. CSP-clean (no inline styles), all assets local.
+ */
+
+.offer-banner-row { margin: 0 0 var(--space-6, 28px); }
+
+/* The rail — one horizontal line, scrolls, never wraps. */
+.banner-rail {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: var(--space-4, 16px);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scroll-snap-type: x mandatory;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+.banner-rail::-webkit-scrollbar { display: none; }
+
+/* Each card takes ~44% of the row on desktop (so ~2.2 peek), full-bleed
+   88% on mobile (so ~1.1 peek — the next card hints there's more). */
+.banner-rail > li {
+    flex: 0 0 44%;
+    scroll-snap-align: start;
+}
+
+.banner-card__link {
+    display: block;
+    position: relative;
+    height: 120px;               /* match the welcome strip's compact height */
+    border-radius: 20px;
+    overflow: hidden;
+    background: var(--color-bg-alt, #f2f3f5);
+    box-shadow: var(--shadow-1);
+    text-decoration: none;
+    transition: transform 120ms ease, box-shadow 120ms ease;
+}
+.banner-card__link:hover { transform: translateY(-2px); box-shadow: var(--shadow-2); }
+
+.banner-card__img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+/* Text banner — a gradient card with an ICON BADGE + title/subtitle, styled to
+   match the welcome strip so it never reads as a plain, empty block. */
+.banner-card__link--text {
+    background: linear-gradient(120deg, var(--color-primary, #e5252a) 0%, #ff5f83 100%);
+}
+/* Soft decorative glow (same as the welcome strip). */
+.banner-card__link--text::after {
+    content: ''; position: absolute; right: -40px; top: 50%; transform: translateY(-50%);
+    width: 170px; height: 170px; border-radius: 50%; background: rgba(255, 255, 255, .12);
+    pointer-events: none;
+}
+.banner-card__text {
+    position: absolute; inset: 0; z-index: 1;
+    display: flex; align-items: center; gap: 16px;
+    padding: 16px 22px; color: #fff;
+}
+.banner-card__ic {
+    flex: 0 0 auto; width: 54px; height: 54px; border-radius: 50%;
+    background: rgba(255, 255, 255, .22); display: grid; place-items: center; font-size: 1.7rem;
+}
+.banner-card__body  { position: relative; min-width: 0; }
+.banner-card__title { font-size: 1.3rem; font-weight: 800; line-height: 1.2; }
+.banner-card__sub   { font-size: 0.95rem; font-weight: 600; opacity: 0.95; margin-top: 4px; }
+
+/* Mobile — one card per screen (with a peek of the next). */
+@media (max-width: 767px) {
+    .offer-banner-row { margin-bottom: var(--space-5, 22px); }
+    .banner-rail > li { flex: 0 0 88%; }
+    .banner-card__link  { height: 100px; border-radius: 16px; }   /* match welcome strip on mobile */
+    .banner-card__text  { gap: 13px; padding: 14px 18px; }
+    .banner-card__ic    { width: 44px; height: 44px; font-size: 1.4rem; }
+    .banner-card__link--text::after { width: 130px; height: 130px; right: -35px; }
+    .banner-card__title { font-size: 1.1rem; }
+    .banner-card__sub   { font-size: 0.85rem; }
+}

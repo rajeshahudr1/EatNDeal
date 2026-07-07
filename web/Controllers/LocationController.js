@@ -34,6 +34,7 @@
  */
 
 const { validateLocation } = require('../Validators/location');
+const { callApi } = require('../Helpers/apiClient');
 
 /**
  * save
@@ -139,4 +140,67 @@ function get(req, res) {
     });
 }
 
-module.exports = { save, clear, get };
+/**
+ * useDemo
+ *
+ * What:   TEMPORARY testing shortcut. Fetches a deliverable restaurant's own
+ *         coordinates from the api (server-side), then saves them to the
+ *         session exactly like save() — so the user lands in the feed with a
+ *         working delivery location in one tap.
+ * Why:    Browser/IP geolocation needs HTTPS + a secure context, unavailable
+ *         in the demo setup. Critically, this runs the api call SERVER-SIDE:
+ *         on a phone the browser can't reach the api's localhost:4501, but the
+ *         web server can — so the demo works on a real device where a direct
+ *         client → api call ("We could not reach the server") would fail.
+ * Type:   READ (api) + WRITE (session).
+ * Inputs: req.body.mode? — 'delivery' | 'pickup' (defaults delivery).
+ * Output: 200 envelope with the saved location, or an error envelope.
+ * Used:   POST /location/use-demo (called by /js/pages/location-page.js).
+ *
+ * REMOVE this (+ the route + the button) once real geolocation is available.
+ */
+async function useDemo(req, res) {
+    if (!req.session) {
+        return res.status(500).json({ status: 500, show: true, msg: 'Session is not available. Please try again later.' });
+    }
+
+    // Ask the api (server-side) for one deliverable restaurant's location.
+    let loc = null;
+    try {
+        const r = await callApi(req, 'GET', '/api/v1/marketplace/demo-location');
+        if (r && r.body && r.body.status === 200 && r.body.data) { loc = r.body.data; }
+    } catch (e) { loc = null; }
+
+    if (!loc || loc.lat == null || loc.lng == null) {
+        return res.status(200).json({ status: 502, show: true, msg: 'No demo delivery location is available right now.' });
+    }
+
+    // Reuse the SAME validation + shape as a normal save.
+    const mode  = (req.body && String(req.body.mode || '').toLowerCase() === 'pickup') ? 'pickup' : 'delivery';
+    const check = validateLocation({
+        source:   'demo',
+        label:    loc.label || 'Demo location',
+        postcode: loc.postcode || null,
+        lat:      loc.lat,
+        lng:      loc.lng,
+        mode:     mode,
+    });
+    if (!check.ok) {
+        return res.status(200).json({ status: 422, show: true, msg: check.errors[0] });
+    }
+
+    req.session.userLocation = check.value;
+
+    const respond = () => res.status(200).json({
+        status: 200, show: false, msg: 'Demo location set.', data: check.value,
+    });
+    if (typeof req.session.save === 'function') {
+        return req.session.save(function (err) {
+            if (err) { return res.status(200).json({ status: 500, show: true, msg: 'Could not save your location. Please try again.' }); }
+            return respond();
+        });
+    }
+    return respond();
+}
+
+module.exports = { save, clear, get, useDemo };

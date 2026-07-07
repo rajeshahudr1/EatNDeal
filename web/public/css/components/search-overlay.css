@@ -410,3 +410,17 @@
 /* When the body is locked (overlay open), prevent the page underneath
  * from scrolling. JS toggles this class on <body>. */
 body.is-search-open { overflow: hidden; }
+
+/* PWA-audit mobile fixes. */
+@media (max-width: 767px) {
+    /* C3: the full-screen overlay head sits at the very top edge — pad
+     * it down past the iOS notch/status-bar safe area (preserves the
+     * existing var(--space-3) top padding). */
+    .search-overlay__head {
+        padding-top: calc(var(--space-3) + env(safe-area-inset-top, 0));
+    }
+    /* C2: grow the back + clear button hit areas to the 44px minimum
+     * touch target (were 40px / 28px) without changing their glyphs. */
+    .search-overlay__back { width: 44px; height: 44px; }
+    .search-overlay__clear { width: 44px; height: 44px; }
+}

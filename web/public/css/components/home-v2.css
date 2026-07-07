@@ -96,9 +96,10 @@
  * dropped so it's a compact icon. */
 @media (max-width: 767px) {
     .site-header__ordernow, .site-header__signin { display: none; }
-    .header-quick { display: flex; gap: var(--space-2); }
-    .header-quick__item:not(.header-quick__cart) { display: none; }
-    .header-quick__cart span:not(.header-quick__badge) { display: none; }   /* icon only */
+    /* Mobile: NOTHING from the quick cluster in the top header — the bottom-nav
+       Cart tab carries the cart (with its count badge) now, per the user. This
+       drops the duplicate cart icon from the header. */
+    .header-quick { display: none; }
 }
 
 /* ── Shell: sidebar + content ─────────────────────────────────────── *
@@ -432,6 +433,14 @@
     display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--space-4);
     margin: 0; padding: 0; list-style: none;
 }
+/* The full "all restaurants" grid (view=restaurants) — fluid auto-fill instead
+ * of the fixed 4-col, so it fills the width at any viewport (collapses to a
+ * single column on a phone since 220px min only fits once). Replaces the old
+ * inline style="display:grid;..." on that <ul> (CSP #9). Double-class so it
+ * wins over the responsive .resto-rail overrides in the media queries below. */
+.resto-rail.resto-rail--grid {
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+}
 .resto-card {
     position: relative; background: #fff;
     border: 1px solid var(--color-border-soft);
@@ -568,9 +577,15 @@
 .home-topline { display: block; }
 .app-mini { display: none; }   /* desktop-only */
 @media (min-width: 768px) {
-    .home-topline { display: flex; align-items: center; gap: var(--space-4); }
-    .home-topline .welcome-strip { flex: 1 1 auto; min-width: 0; }
-    .home-topline .app-mini { flex: 0 0 auto; margin: var(--space-4) 0 var(--space-5) auto; }
+    /* Pull the promo zone (welcome strip + offer carousel) tighter to the
+     * category rail — the shell's flex gap (space-8) PLUS the strips' own
+     * vertical margins left too much air. The strips carry no margin of their
+     * own inside the topline; a negative margin-top trims the flex gap so the
+     * category → welcome → offer spacing reads tight, not loose. */
+    .home-topline { display: flex; align-items: center; gap: var(--space-4); margin-top: calc(-1 * var(--space-4)); }
+    .home-topline .welcome-strip { flex: 1 1 auto; min-width: 0; margin: 0; }
+    .home-topline .app-mini { flex: 0 0 auto; margin: 0 0 0 auto; }
+    .offer-banner-row { margin-top: calc(-1 * var(--space-4)); }
     .app-mini {
         position: relative; display: flex; align-items: center; gap: 16px; max-width: 100%;
         padding: 14px 18px; border-radius: 16px;
@@ -583,9 +598,9 @@
     #app-ios:checked ~ .app-mini__qr .app-mini__img--ios         { display: block; }
     #app-android:checked ~ .app-mini__qr .app-mini__img--android { display: block; }
     .app-mini__body { min-width: 0; }
-    .app-mini__title { margin: 0; font-weight: 800; font-size: 0.98rem; color: var(--color-text); }
-    .app-mini__sub { margin: 2px 0 9px; font-size: 0.82rem; color: var(--color-text-muted); }
-    /* iOS / Android tabs (replace the old store buttons). */
+    .app-mini__title { margin: 10px 0 0; font-weight: 800; font-size: 0.98rem; color: var(--color-text); }
+    .app-mini__sub { margin: 2px 0 0; font-size: 0.82rem; color: var(--color-text-muted); }
+    /* iOS / Android tabs — sit at the TOP of the body (the platform picker). */
     .app-mini__tabs { display: flex; gap: 8px; }
     .app-mini__tab { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--color-border); background: var(--color-bg-alt, #f7f8fa); color: var(--color-text); font-weight: 700; font-size: 0.82rem; cursor: pointer; user-select: none; }
     .app-mini__tab:hover { border-color: var(--color-primary); }
@@ -634,8 +649,14 @@
 
     /* Cuisines — single horizontal scrolling row, STICKY just below
      * the (also sticky) search bar so both stay pinned to the top
-     * while the feed scrolls underneath. Full-bleed white strip. */
-    .rail-wrap {
+     * while the feed scrolls underneath. Full-bleed white strip.
+     *
+     * Scoped with :not(.home-rail-wrap) so ONLY the cuisine rail is sticky
+     * + full-bleed. The feed shelves (favourites / order-again / product
+     * rows) reuse `.rail-wrap home-rail-wrap`; without this guard they all
+     * became sticky at the same top offset with edge-bleed + a stray white
+     * strip. They stay position:relative (the base .rail-wrap rule). */
+    .rail-wrap:not(.home-rail-wrap) {
         position: sticky;
         top: 56px;                              /* below the sticky mobile search row */
         z-index: 40;
@@ -772,13 +793,23 @@ body.appqr-open { overflow: hidden; }
 .app-page__qr    { width: 160px; height: 160px; background: #fff; border: 1px solid var(--color-border); border-radius: 12px; padding: 8px; }
 .app-page__qr img { width: 100%; height: 100%; display: block; object-fit: contain; }
 .app-page__store {
-    display: inline-flex; align-items: center; height: 40px; padding: 0 20px;
+    display: inline-flex; align-items: center; min-height: 44px; padding: 0 20px;
     border-radius: 8px; background: #111; color: #fff; font-weight: 700; text-decoration: none;
 }
 .app-page__store:hover { background: #000; }
 .app-page__soon  { margin: var(--space-5, 22px) 0 0; color: var(--color-text-muted); font-size: 0.9rem; }
-.app-page__home  { display: inline-block; margin-top: var(--space-4, 16px); color: var(--color-primary); font-weight: 700; text-decoration: none; }
+.app-page__home  { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 12px; margin-top: var(--space-4, 16px); color: var(--color-primary); font-weight: 700; text-decoration: none; }
 @media (max-width: 560px) {
     .app-page__qr { width: 140px; height: 140px; }
     .app-page__title { font-size: 1.35rem; }
+}
+
+/* ── Mobile touch-target polish (PWA audit C2) ────────────────────────
+ * These two base rules live in THIS file, so their 44px mobile overrides
+ * must also live here (home-v2.css loads after filter-sidebar.css, so an
+ * override placed there would lose the cascade). Enlarge the hit area to
+ * 44px without changing the glyph size. */
+@media (max-width: 767px) {
+    .resto-card__fav { width: 44px; height: 44px; }   /* was 32px */
+    .fsb__hide       { width: 44px; height: 44px; }   /* was 30px */
 }

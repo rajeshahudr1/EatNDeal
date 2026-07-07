@@ -400,3 +400,8 @@
     .pm__head-icon { width: 44px; height: 44px; }
     .pm-add        { gap: 6px; padding: 12px; }
 }
+
+/* PWA-audit fix — C1: 16px note input stops iOS zoom-on-focus. */
+@media (max-width: 767px) {
+    .pm-note__input { font-size: 16px; }
+}

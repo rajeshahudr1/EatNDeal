@@ -207,3 +207,16 @@ body.earn-modal-open { overflow: hidden; }
     background: rgba(255, 255, 255, 0.15); color: #fff; font-size: 1.1rem;
 }
 .earn-zoom__close:hover { background: rgba(255, 255, 255, 0.28); }
+
+/* ── PWA-audit mobile fixes ──────────────────────────────────────── */
+@media (max-width: 767px) {
+    /* C1: 16px input so iOS doesn't zoom on focus. */
+    .earn-input { font-size: 16px; }
+    /* C2: enlarge the modal-close hit area to >=44px without growing the glyph. */
+    .earn-modal__x {
+        min-width: 44px; min-height: 44px;
+        display: inline-flex; align-items: center; justify-content: center;
+    }
+    /* C2: lightbox close is fixed 40px — override to 44px. */
+    .earn-zoom__close { width: 44px; height: 44px; }
+}

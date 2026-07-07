@@ -33,7 +33,10 @@
  *   2026-05-29 — added saved / recent / searched (location-sheet redesign).
  */
 
-const ALLOWED_SOURCES = new Set(['postcode', 'geolocation', 'popular', 'manual', 'saved', 'recent', 'searched']);
+// NOTE: 'demo' is a TEMPORARY testing source (the location-page "Use a demo
+// delivery location" button, which drops into a real deliverable restaurant's
+// coordinates). Remove it with that feature.
+const ALLOWED_SOURCES = new Set(['postcode', 'geolocation', 'popular', 'manual', 'saved', 'recent', 'searched', 'demo']);
 const MAX_LABEL_LEN   = 200;
 const MAX_POSTCODE_LEN = 20;
 

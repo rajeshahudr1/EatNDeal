@@ -256,6 +256,7 @@ async function receipt(req, res, next) {
             _layoutFile:      '../_layout',
             bare:             true,            // no header/footer/nav — clean print page
             show_promo_strip: false,
+            extra_js:         '/js/pages/receipt.js',   // CSP-safe Print button binding
             order,
         });
     } catch (err) { next(err); }

@@ -13,7 +13,8 @@
 <div class="receipt">
     <div class="receipt__bar receipt__no-print">
         <a class="receipt__back" href="/order/<%= o.id %>">&lsaquo; Back to order</a>
-        <button type="button" class="receipt__print" onclick="window.print()">Print / Save as PDF</button>
+        <%# CSP: no inline onclick — bound in /js/pages/receipt.js (extra_js). %>
+        <button type="button" class="receipt__print" data-action="print-receipt">Print / Save as PDF</button>
     </div>
 
     <div class="receipt__paper">

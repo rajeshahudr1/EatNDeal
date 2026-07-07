@@ -311,3 +311,28 @@ body.cmine-open { overflow: hidden; }
     .cmine-modal { align-items: center; padding: 20px; }
     .cmine-modal__panel { height: auto; max-height: 82vh; border-radius: var(--radius-lg); }
 }
+
+/* ── Mobile (<=767px) — PWA-audit fixes ─────────────────────────── */
+@media (max-width: 767px) {
+    /* C1 — 16px inputs stop iOS auto-zoom on focus. */
+    .ccompose__text,
+    .ccompose__input,
+    .cside-search__input { font-size: 16px; }
+
+    /* C2 — grow small icon buttons to a >=44px hit area (glyph unchanged). */
+    .cgroup-card__hide,
+    .ccompose__preview-x,
+    .cmine-modal__x,
+    .cgroup-cover__back {
+        width: 44px; height: 44px;
+        display: inline-flex; align-items: center; justify-content: center;
+    }
+    .cpost__del,
+    .ccomment__del,
+    .ccompose__send,
+    .ccompose__photo {
+        min-width: 44px; min-height: 44px;
+        display: inline-flex; align-items: center; justify-content: center;
+    }
+    .cact { min-height: 44px; }
+}

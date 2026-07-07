@@ -1,0 +1,146 @@
+<%#
+  views/offer-banner/list.ejs
+
+  OFFER BANNER carousel — search, status filter, sort, pagination, inline
+  status toggle, delete, Add / Edit. `pd` = { banners[], total, page, limit,
+  total_pages } or null. Reuses the products list (.pr-*) styling.
+
+  Used: Controllers/OfferBannerController.list.
+-%>
+<%
+    var STATUSES = [[1, 'Active'], [0, 'Inactive']];
+    var SORTS = [['sort_order', 'Carousel order'], ['title_asc', 'Title A–Z'], ['title_desc', 'Title Z–A'], ['newest', 'Newest']];
+    var SIZES = [['all', 'All'], ['10', '10'], ['25', '25'], ['50', '50'], ['100', '100']];
+    var STATUS_F = [['', 'All status'], ['active', 'Active'], ['inactive', 'Inactive']];
+    function statusSel(id, cur) {
+        var h = '<select class="pr-status col-status" data-id="' + id + '">';
+        STATUSES.forEach(function (s) { h += '<option value="' + s[0] + '"' + (Number(cur) === s[0] ? ' selected' : '') + '>' + s[1] + '</option>'; });
+        return h + '</select>';
+    }
+    function ruleSummary(b) {
+        var r = Number(b.rule_type);
+        var v = b.rule_value;
+        if (r === 1) { return (v ? v + '% off' : '%') + ' or more'; }
+        if (r === 2) { return 'Up to ' + (v ? v + '% off' : '%'); }
+        if (r === 3) { return '£' + (v || '—') + ' off or more'; }
+        if (r === 4) { return 'Free delivery'; }
+        if (r === 5) { return 'Free / item deal'; }
+        if (r === 6) { return 'Coupon ' + (b.rule_code || '—'); }
+        if (r === 7) { return 'Any offer'; }
+        if (r === 8) { return 'Category #' + (b.category_id || '—'); }
+        if (r === 9) { return 'Hand-picked (' + (b.restaurants || 0) + ')'; }
+        if (r === 10) { return 'Up to £' + (v || '—') + ' off'; }
+        return 'Rule';
+    }
+    function pageUrl(n) {
+        var qp = [];
+        if (search_q) { qp.push('q=' + encodeURIComponent(search_q)); }
+        if (cur_status) { qp.push('status=' + encodeURIComponent(cur_status)); }
+        qp.push('sort=' + cur_sort); qp.push('limit=' + cur_limit); qp.push('page=' + n);
+        return '/offer-banner?' + qp.join('&');
+    }
+    var page = pd ? Number(pd.page) : 1;
+    var totalPages = pd ? Number(pd.total_pages) : 1;
+%>
+<div class="pr" data-ob-root>
+
+    <div class="ly__head">
+        <div>
+            <h2 class="ly__title">🎟️ Offer Banners</h2>
+            <p class="ly__sub">Promo carousel on the marketplace home — each banner opens the restaurants that match its rule</p>
+        </div>
+        <% if (pd) { %>
+        <div class="pr-head-act">
+            <a href="/offer-banner/arrange" class="ly-btn ly-btn--ghost ly-btn--sm">↕ Arrange</a>
+            <a href="/offer-banner/new" class="ly-btn ly-btn--primary ly-btn--sm">➕ New banner</a>
+        </div>
+        <% } %>
+    </div>
+
+    <% if (load_error) { %>
+        <div class="ly-empty"><span class="ly-empty__ic" aria-hidden="true">🎟️</span><p class="ly-empty__msg"><%= load_error %></p></div>
+    <% } else if (pd && pd.enabled === false) { %>
+        <div class="ly-empty"><span class="ly-empty__ic" aria-hidden="true">🗄️</span><p class="ly-empty__msg">Run the <code>mp_offer_banner</code> migration first (<code>php yii migrate</code>), then reload.</p></div>
+    <% } else if (pd) { %>
+
+        <div class="pr-toolbar">
+            <form method="get" action="/offer-banner" class="pr-filter" id="pr-filter">
+                <div class="pr-search">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                    <input type="text" name="q" value="<%= search_q %>" placeholder="Search banners…" autocomplete="off">
+                    <% if (search_q) { %><a href="/offer-banner" class="pr-search__clear" aria-label="Clear">✕</a><% } %>
+                </div>
+                <div class="pr-filters" data-filters>
+                    <select name="status" class="pr-filter-sel" data-filter-submit aria-label="Status">
+                        <% STATUS_F.forEach(function (s) { %><option value="<%= s[0] %>" <%= cur_status === s[0] ? 'selected' : '' %>><%= s[1] %></option><% }); %>
+                    </select>
+                    <select name="sort" class="pr-filter-sel" data-filter-submit aria-label="Sort">
+                        <% SORTS.forEach(function (s) { %><option value="<%= s[0] %>" <%= cur_sort === s[0] ? 'selected' : '' %>><%= s[1] %></option><% }); %>
+                    </select>
+                    <select name="limit" class="pr-filter-sel" data-filter-submit aria-label="Per page">
+                        <% SIZES.forEach(function (s) { %><option value="<%= s[0] %>" <%= cur_limit === s[0] ? 'selected' : '' %>>Show <%= s[1] %></option><% }); %>
+                    </select>
+                    <button type="submit" class="ly-btn ly-btn--ghost ly-btn--sm">Apply</button>
+                </div>
+            </form>
+        </div>
+
+        <% if (!pd.banners.length) { %>
+            <div class="ly-empty"><span class="ly-empty__ic" aria-hidden="true">🎟️</span><p class="ly-empty__msg"><%= search_q ? 'No banners match your search.' : 'No offer banners yet. Create your first promo card.' %></p></div>
+        <% } else { %>
+        <div class="pr-list" data-list>
+            <% pd.banners.forEach(function (b) { %>
+            <div class="pr-item" data-id="<%= b.id %>">
+                <div class="pr-item__main">
+                    <span class="pr-item__img col-cover">
+                        <% if (b.image_url) { %><img src="<%= b.image_url %>" alt="">
+                        <% } else { %><span class="pr-item__noimg">🎟️</span><% } %>
+                    </span>
+                    <span class="pr-item__name">
+                        <%= b.title || '(untitled banner)' %>
+                        <span class="col-sub">
+                            <% if (b.subtitle) { %><span class="col-sub__line"><%= b.subtitle %></span><% } %>
+                            <span class="col-sub__meta"><%= ruleSummary(b) %> · order #<%= b.sort_order %></span>
+                        </span>
+                    </span>
+                </div>
+                <div class="pr-item__controls">
+                    <span class="pr-statuswrap"><%- statusSel(b.id, b.status) %></span>
+                    <span class="pr-item__act">
+                        <a href="/offer-banner/edit/<%= b.id %>" class="ly-iconbtn" title="Edit">✎</a>
+                        <button type="button" class="ly-iconbtn ly-iconbtn--danger" data-action="ob-delete" data-id="<%= b.id %>" title="Delete">🗑</button>
+                    </span>
+                </div>
+            </div>
+            <% }); %>
+        </div>
+
+        <% if (totalPages > 1 || pd.total) { %>
+        <div class="pr-pager">
+            <span class="pr-pager__info"><%= pd.total %> banner<%= pd.total === 1 ? '' : 's' %><% if (totalPages > 1) { %> · page <%= page %> of <%= totalPages %><% } %></span>
+            <% if (totalPages > 1) { %>
+            <div class="pr-pager__nav">
+                <% if (page > 1) { %><a class="pr-pager__btn" href="<%= pageUrl(page - 1) %>">‹ Prev</a><% } else { %><span class="pr-pager__btn is-disabled">‹ Prev</span><% } %>
+                <% for (var n = Math.max(1, page - 2); n <= Math.min(totalPages, page + 2); n++) { %><a class="pr-pager__btn <%= n === page ? 'is-active' : '' %>" href="<%= pageUrl(n) %>"><%= n %></a><% } %>
+                <% if (page < totalPages) { %><a class="pr-pager__btn" href="<%= pageUrl(page + 1) %>">Next ›</a><% } else { %><span class="pr-pager__btn is-disabled">Next ›</span><% } %>
+            </div>
+            <% } %>
+        </div>
+        <% } %>
+        <% } %>
+
+    <% } %>
+</div>
+
+<%# Delete confirm modal. %>
+<div class="pr-modal" data-modal="delete" hidden>
+    <div class="pr-modal__panel pr-modal__panel--sm">
+        <div class="pr-modal__icon">⚠️</div>
+        <h3 class="pr-modal__title">Are you sure?</h3>
+        <p class="pr-modal__msg">Delete this offer banner? It will stop showing on the home page (kept, recoverable).</p>
+        <div class="pr-modal__foot pr-modal__foot--center">
+            <button type="button" class="ly-btn ly-btn--ghost" data-action="ob-modal-cancel">No, cancel</button>
+            <button type="button" class="ly-btn ly-btn--danger" data-action="ob-delete-confirm">Yes, delete</button>
+        </div>
+    </div>
+</div>

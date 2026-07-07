@@ -126,6 +126,26 @@
     }
 
     /**
+     * isMobileApp
+     *
+     * What:  True when we're on a phone-sized screen OR running as an
+     *        installed PWA (standalone display-mode / iOS navigator.standalone).
+     * Why:   The app is used as a web-app on mobile, where a GDPR banner over
+     *        the small screen is intrusive. Per the user, on mobile we
+     *        auto-accept (the session / saved-location cookies are strictly
+     *        necessary anyway) and never show the banner. Desktop still asks.
+     * Type:  READ.
+     */
+    function isMobileApp() {
+        try {
+            if (window.matchMedia && window.matchMedia('(max-width: 767px)').matches) { return true; }
+            if (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) { return true; }
+            if (window.navigator && window.navigator.standalone === true) { return true; }
+        } catch (e) { /* matchMedia unsupported — fall through */ }
+        return false;
+    }
+
+    /**
      * onReady
      *
      * What:  Boot. Looks up the banner, checks the consent cookie, and
@@ -137,6 +157,13 @@
 
         // Already decided? Stay hidden.
         if (readConsent()) { return; }
+
+        // Mobile / installed PWA → auto-accept silently, no banner.
+        if (isMobileApp()) {
+            writeConsent('accepted');
+            dispatch('eatndeal:cookies:accepted');
+            return;
+        }
 
         // Wire the buttons BEFORE we show the banner so a fast tap still
         // works (mobile users sometimes tap during the slide-in).

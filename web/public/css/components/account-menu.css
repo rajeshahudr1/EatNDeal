@@ -199,4 +199,10 @@
     .account-menu {
         display: none;
     }
+    /* PWA-audit fix (C3): pad the fixed bottom save bar for the home-indicator. */
+    .acct-actions {
+        padding-bottom: calc(var(--space-4) + env(safe-area-inset-bottom, 0));
+    }
+    /* PWA-audit fix (C2): 44px-tall account tab pills for reliable tapping. */
+    .acct-nav__item { min-height: 44px; }
 }

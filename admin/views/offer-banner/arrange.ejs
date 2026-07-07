@@ -1,0 +1,69 @@
+<%#
+  views/offer-banner/arrange.ejs
+
+  Full-page drag-and-drop reorder of EVERY offer banner (loaded on one page so
+  the saved order is global). Posts the new order to /offer-banner/reorder.
+  `pd` = { banners[] } (limit=all) or null. Reuses the collection reorder styles.
+
+  Used: Controllers/OfferBannerController.arrange.
+-%>
+<%
+    function ruleSummary(b) {
+        var r = Number(b.rule_type); var v = b.rule_value;
+        if (r === 1) { return (v ? v + '% off' : '%') + ' or more'; }
+        if (r === 2) { return 'Up to ' + (v ? v + '% off' : '%'); }
+        if (r === 3) { return '£' + (v || '—') + ' off or more'; }
+        if (r === 4) { return 'Free delivery'; }
+        if (r === 5) { return 'Free / item deal'; }
+        if (r === 6) { return 'Coupon ' + (b.rule_code || '—'); }
+        if (r === 7) { return 'Any offer'; }
+        if (r === 8) { return 'Category #' + (b.category_id || '—'); }
+        if (r === 9) { return 'Hand-picked (' + (b.restaurants || 0) + ')'; }
+        if (r === 10) { return 'Up to £' + (v || '—') + ' off'; }
+        return 'Rule';
+    }
+%>
+<div class="pr" data-ob-arrange>
+
+    <div class="ly__head">
+        <div>
+            <h2 class="ly__title">↕ Arrange banners</h2>
+            <p class="ly__sub">Drag to set the order banners appear in the home carousel</p>
+        </div>
+        <a href="/offer-banner" class="ly-btn ly-btn--ghost ly-btn--sm">← Back to list</a>
+    </div>
+
+    <% if (load_error) { %>
+        <div class="ly-empty"><span class="ly-empty__ic" aria-hidden="true">🎟️</span><p class="ly-empty__msg"><%= load_error %></p></div>
+    <% } else if (!pd || !pd.banners || !pd.banners.length) { %>
+        <div class="ly-empty"><span class="ly-empty__ic" aria-hidden="true">🎟️</span><p class="ly-empty__msg">No offer banners to arrange yet.</p></div>
+    <% } else { %>
+
+    <p class="col-draghint">⠿ Drag banners to reorder, then save.</p>
+    <div class="pr-list col-list--drag" data-list data-draggable>
+        <% pd.banners.forEach(function (b) { %>
+        <div class="pr-item" data-id="<%= b.id %>" draggable="true">
+            <div class="pr-item__main">
+                <span class="col-pick__drag" data-drag-handle aria-hidden="true">⠿</span>
+                <span class="pr-item__img col-cover">
+                    <% if (b.image_url) { %><img src="<%= b.image_url %>" alt=""><% } else { %><span class="pr-item__noimg">🎟️</span><% } %>
+                </span>
+                <span class="pr-item__name"><%= b.title || '(untitled banner)' %>
+                    <span class="col-sub"><span class="col-sub__meta"><%= ruleSummary(b) %></span></span>
+                </span>
+            </div>
+        </div>
+        <% }); %>
+    </div>
+
+    <% } %>
+</div>
+
+<%# Sticky save bar — appears after a drag. %>
+<div class="col-reorderbar" data-reorderbar hidden>
+    <span class="col-reorderbar__msg">Order changed.</span>
+    <div class="col-reorderbar__act">
+        <button type="button" class="ly-btn ly-btn--ghost ly-btn--sm" data-action="ob-reorder-reset">Reset</button>
+        <button type="button" class="ly-btn ly-btn--primary ly-btn--sm" data-action="ob-reorder-save">Save order</button>
+    </div>
+</div>

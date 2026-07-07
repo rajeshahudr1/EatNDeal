@@ -1,0 +1,46 @@
+/*
+ * components/offline.css — the PWA offline fallback page (public/offline.html).
+ * Self-contained (base.css may not be cached when this shows) and CSP-clean
+ * (no inline styles). Served by the service worker when a navigation fails.
+ */
+.offline {
+    margin: 0;
+    min-height: 100vh;
+    min-height: 100dvh;
+    display: grid;
+    place-items: center;
+    padding: 24px;
+    background: #f7f8fa;
+    color: #111;
+    font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+}
+.offline__card { text-align: center; max-width: 360px; }
+.offline__icon { font-size: 3rem; line-height: 1; }
+.offline__title { margin: 14px 0 6px; font-size: 1.4rem; font-weight: 800; }
+.offline__sub { margin: 0 0 22px; color: #555; line-height: 1.5; }
+.offline__btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    min-height: 44px; padding: 0 24px;
+    background: #e5252a; color: #fff; text-decoration: none;
+    border-radius: 999px; font-weight: 700;
+}
+.offline__btn:hover { background: #c81f24; }
+
+/* ── Live offline strip (partials/offline-banner.ejs) ─────────────────────
+ * Shown app-wide by bindOfflineIndicator() in /js/app.js when the browser
+ * fires the `offline` event; hidden again on `online`. z-index above dialogs
+ * (1200) so it's never covered. Self-contained hex (no CSS vars) so it also
+ * works if this file loads before base.css. */
+.offline-banner {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 1300;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    padding: 10px 16px; padding-top: calc(10px + env(safe-area-inset-top, 0));
+    background: #1c1c22; color: #fff;
+    font-size: 0.88rem; font-weight: 600; text-align: center; line-height: 1.35;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.25);
+}
+.offline-banner[hidden] { display: none; }
+.offline-banner__dot {
+    flex: 0 0 auto; width: 9px; height: 9px; border-radius: 50%;
+    background: #f59e0b; box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.25);
+}

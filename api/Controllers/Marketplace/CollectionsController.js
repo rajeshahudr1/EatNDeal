@@ -170,7 +170,13 @@ async function featuredProductRows() {
                 section: 'products',
                 companyId: Number(r.company_id),
                 title: r.business_name || 'Restaurant',
-                restaurantSlug: String(r.domain_name || M.slugify(r.business_name || '') || r.company_id),
+                // Slug MUST be run through M.slugify — the /?restaurant=<slug>
+                // resolver (RestaurantsController.detail) matches against
+                // M.slugify(domain_name). Using the raw domain here left dots
+                // in ("eatndeal2.neutroveg.com") so the "View all" link never
+                // resolved; slugify strips them → "eatndeal2neutrovegcom",
+                // identical to every other call site.
+                restaurantSlug: r.domain_name ? M.slugify(r.domain_name) : M.slugify(r.business_name, r.company_id),
                 products: [],
             });
             namesByCompany.set(k, new Set());

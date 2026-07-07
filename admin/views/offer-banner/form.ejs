@@ -1,0 +1,173 @@
+<%#
+  views/offer-banner/form.ejs
+
+  Add / edit an OFFER BANNER: title/subtitle, content type (Text or Image +
+  upload), the RULE that decides which restaurants a click opens (min discount %
+  / coupon code / any offer / category / hand-picked), status, carousel order.
+  `banner` = row to edit (or null); `assigned` = hand-picked restaurants (edit);
+  `categories` = marketplace categories for the CATEGORY rule.
+
+  Used: Controllers/OfferBannerController.form.
+-%>
+<%
+    var p = banner || {};
+    var isEdit = !!(banner && banner.id);
+    var rows = assigned || [];
+    var cats = categories || [];
+    var ctype = isEdit ? Number(p.content_type) : 2;   // default Image
+    var rtype = isEdit ? Number(p.rule_type)    : 1;   // default Min discount
+%>
+<div class="ly">
+
+    <div class="ly__head">
+        <div>
+            <h2 class="ly__title"><%= isEdit ? '✎ Edit Offer Banner' : '➕ New Offer Banner' %></h2>
+            <p class="ly__sub"><%= isEdit ? (p.title || 'Offer banner') : 'A promo card on the marketplace home carousel' %></p>
+        </div>
+        <a href="/offer-banner" class="ly-btn ly-btn--ghost ly-btn--sm">← Back to list</a>
+    </div>
+
+    <% if (load_error) { %>
+        <div class="ly-empty"><span class="ly-empty__ic" aria-hidden="true">🎟️</span><p class="ly-empty__msg"><%= load_error %></p></div>
+    <% } else { %>
+
+    <form method="post" action="/offer-banner/save" enctype="multipart/form-data" class="pr-form col-form" data-ob-form>
+        <% if (isEdit) { %><input type="hidden" name="id" value="<%= p.id %>"><% } %>
+        <%# Sentinel: tells the api the manual picker was submitted (so an emptied list clears the row). %>
+        <input type="hidden" name="company_ids_submitted" value="1">
+
+        <section class="card ly-card">
+            <h3 class="card__title">Details</h3>
+            <div class="ly-grid">
+                <div class="ly-field">
+                    <label for="ob-title">Title <span class="ly-field__hint">(shown on a text banner / your label)</span></label>
+                    <input id="ob-title" type="text" name="title" maxlength="255" value="<%= p.title || '' %>" placeholder="e.g. Save Everyday">
+                </div>
+                <div class="ly-field">
+                    <label for="ob-sub">Subtitle <span class="ly-field__hint">(optional)</span></label>
+                    <input id="ob-sub" type="text" name="subtitle" maxlength="500" value="<%= p.subtitle || '' %>" placeholder="e.g. Daily Vouchers 40% off">
+                </div>
+                <div class="ly-field">
+                    <label for="ob-status">Status</label>
+                    <select id="ob-status" name="status">
+                        <option value="1" <%= (!isEdit || Number(p.status) === 1) ? 'selected' : '' %>>Active</option>
+                        <option value="0" <%= (isEdit && Number(p.status) === 0) ? 'selected' : '' %>>Inactive</option>
+                    </select>
+                </div>
+                <div class="ly-field">
+                    <label for="ob-sort">Carousel order <span class="ly-field__hint">(lower = first)</span></label>
+                    <input id="ob-sort" type="number" name="sort_order" min="0" step="1" value="<%= isEdit ? (p.sort_order || 0) : (typeof next_sort !== 'undefined' ? next_sort : 1) %>">
+                </div>
+            </div>
+        </section>
+
+        <section class="card ly-card">
+            <h3 class="card__title">Banner content</h3>
+            <div class="ly-field">
+                <label for="ob-type">Type</label>
+                <select id="ob-type" name="content_type" data-ob-type>
+                    <option value="2" <%= ctype === 2 ? 'selected' : '' %>>Image</option>
+                    <option value="1" <%= ctype === 1 ? 'selected' : '' %>>Text</option>
+                </select>
+            </div>
+
+            <%# Text mode — the title + subtitle above are the card. %>
+            <div data-ob-section="1">
+                <p class="ly-hint">A text banner shows the <strong>Title</strong> + <strong>Subtitle</strong> above as a styled card (no image needed).</p>
+            </div>
+
+            <%# Image mode — upload the creative. %>
+            <div data-ob-section="2">
+                <div class="pr-imgrow">
+                    <div class="pr-imgprev" data-img-prev>
+                        <% if (isEdit && p.image_url) { %><img src="<%= p.image_url %>" alt="" data-img-thumb><% } else { %><span class="pr-imgprev__ph" data-img-ph>No image</span><% } %>
+                    </div>
+                    <div class="pr-imgupload">
+                        <input type="file" name="image" accept="image/png,image/jpeg,image/webp,image/gif" data-img-input>
+                        <p class="ly-hint">Wide creative (~1200 × 400 px), PNG / JPG / WEBP / GIF, up to 3 MB. <%= isEdit ? 'Leave empty to keep the current image.' : '' %></p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="card ly-card">
+            <h3 class="card__title">On click — which restaurants?</h3>
+            <div class="ly-field">
+                <label for="ob-rule">Rule</label>
+                <select id="ob-rule" name="rule_type" data-ob-rule>
+                    <option value="1" <%= rtype === 1 ? 'selected' : '' %>>% off or more — e.g. "40% off or more"</option>
+                    <option value="2" <%= rtype === 2 ? 'selected' : '' %>>Up to % off — e.g. "up to 20% off"</option>
+                    <option value="3" <%= rtype === 3 ? 'selected' : '' %>>Amount off — e.g. "£5 off or more"</option>
+                    <option value="10" <%= rtype === 10 ? 'selected' : '' %>>Up to amount off — e.g. "up to £10 off"</option>
+                    <option value="4" <%= rtype === 4 ? 'selected' : '' %>>Free delivery — restaurants offering free delivery</option>
+                    <option value="5" <%= rtype === 5 ? 'selected' : '' %>>Free / item deal — restaurants with a free-item / item offer</option>
+                    <option value="6" <%= rtype === 6 ? 'selected' : '' %>>Coupon code — a shared code</option>
+                    <option value="7" <%= rtype === 7 ? 'selected' : '' %>>Any offer — all restaurants with an active offer</option>
+                    <option value="8" <%= rtype === 8 ? 'selected' : '' %>>Category — a cuisine/category</option>
+                    <option value="9" <%= rtype === 9 ? 'selected' : '' %>>Hand-pick — choose the restaurants yourself</option>
+                </select>
+                <p class="ly-hint">The banner auto-resolves to the restaurants that match this rule, from your live discounts &amp; coupons — nothing to maintain by hand (except Hand-pick).</p>
+            </div>
+
+            <%# rules 1/2/3 share ONE value field — % for 1/2, £ for 3.
+                offer-banner.js sets the label to match the chosen rule. %>
+            <div class="ly-field" data-ob-rulefield="1,2,3,10">
+                <label for="ob-val" data-ob-value-label>Value</label>
+                <input id="ob-val" type="number" name="rule_value" min="0" step="1" value="<%= (p.rule_value || p.rule_value === 0) ? p.rule_value : '' %>" placeholder="e.g. 40">
+            </div>
+
+            <%# rule_type = 6 (coupon_code) %>
+            <div class="ly-field" data-ob-rulefield="6">
+                <label for="ob-code">Coupon code</label>
+                <input id="ob-code" type="text" name="rule_code" maxlength="40" value="<%= p.rule_code || '' %>" placeholder="e.g. SAVE40" style="text-transform:uppercase">
+            </div>
+
+            <%# rule_type = 8 (category) %>
+            <div class="ly-field" data-ob-rulefield="8">
+                <label for="ob-cat">Category</label>
+                <select id="ob-cat" name="category_id">
+                    <option value="">— pick a category —</option>
+                    <% cats.forEach(function (c) { %>
+                    <option value="<%= c.id %>" <%= Number(p.category_id) === Number(c.id) ? 'selected' : '' %>><%= c.name %></option>
+                    <% }); %>
+                </select>
+            </div>
+
+            <%# rule_type = 9 (manual_pick) — the restaurant picker. %>
+            <div data-ob-rulefield="9">
+                <label class="ly-field__label">Restaurants <span class="ly-field__hint">(drag ⠿ to order)</span></label>
+                <div class="col-ac" data-ob-ac>
+                    <span class="col-ac__ic" aria-hidden="true">🔍</span>
+                    <input type="text" class="col-ac__input" placeholder="Search restaurants to add…" autocomplete="off" data-ac-input>
+                    <div class="col-ac__panel" data-ac-panel hidden></div>
+                </div>
+                <div class="col-picklist" data-pick-list>
+                    <% rows.forEach(function (r) { %>
+                    <div class="col-pick" data-id="<%= r.id %>" draggable="true">
+                        <span class="col-pick__drag" data-drag-handle title="Drag to reorder" aria-hidden="true">⠿</span>
+                        <span class="col-pick__body">
+                            <span class="col-pick__name"><%= r.name %></span>
+                            <span class="col-pick__detail"><%= r.detail %></span>
+                        </span>
+                        <button type="button" class="col-pick__x" data-action="pick-remove" aria-label="Remove">✕</button>
+                        <input type="hidden" name="company_ids" value="<%= r.id %>">
+                    </div>
+                    <% }); %>
+                </div>
+                <p class="ly-hint col-pick-empty" data-pick-empty<%= rows.length ? ' hidden' : '' %>>No restaurants yet — search above to add.</p>
+            </div>
+
+            <div class="ly-field">
+                <label for="ob-link">Link override <span class="ly-field__hint">(optional — a literal URL instead of the rule)</span></label>
+                <input id="ob-link" type="text" name="link_url" maxlength="500" value="<%= p.link_url || '' %>" placeholder="e.g. /offers or https://…">
+            </div>
+        </section>
+
+        <div class="ly-saveall">
+            <a href="/offer-banner" class="ly-btn ly-btn--ghost">Cancel</a>
+            <button type="submit" class="ly-btn ly-btn--primary ly-btn--lg"><%= isEdit ? 'Save changes' : 'Create banner' %></button>
+        </div>
+    </form>
+
+    <% } %>
+</div>

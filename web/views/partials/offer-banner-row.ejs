@@ -1,0 +1,50 @@
+<%#
+  partials/offer-banner-row.ejs
+
+  The super-admin OFFER BANNER carousel — a horizontal slider of promo cards
+  under the category rail (Keeta "Save Everyday / 40% off" style). Each card
+  links to its own filtered restaurant grid via the api-resolved `href`.
+  `offer_banners` = [ { id, type, title, subtitle, image_url, href } ].
+
+  Reuses the .hv2-head / .rail-wrap arrows (wired by home.js bindRailArrows via
+  data-rail-wrap) so desktop gets prev/next; mobile touch-swipes. The .banner-*
+  classes live in components/promo-carousel.css.
+
+  Used: views/site/index.ejs (when offer_banners is non-empty).
+-%>
+<% if (offer_banners && offer_banners.length) { %>
+<section class="offer-banner-row" data-rail-wrap aria-label="Offers for you">
+    <div class="hv2-head">
+        <h2 class="hv2-head__title">Offers for you</h2>
+        <div class="hv2-head__nav">
+            <button type="button" class="rail-arrow rail-arrow--prev" data-rail-prev aria-label="Scroll left" disabled>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+            </button>
+            <button type="button" class="rail-arrow rail-arrow--next" data-rail-next aria-label="Scroll right" disabled>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+            </button>
+        </div>
+    </div>
+    <div class="rail-wrap home-rail-wrap">
+        <ul class="banner-rail" role="list" data-rail>
+            <% offer_banners.forEach(function (b) { var isImage = Number(b.type) === 2 && b.image_url; %>
+            <li class="banner-card">
+                <a class="banner-card__link<%= isImage ? '' : ' banner-card__link--text' %>" href="<%= b.href || '/' %>" aria-label="<%= (b.title || 'Offer') %>">
+                    <% if (isImage) { %>
+                        <img class="banner-card__img" src="<%= b.image_url %>" alt="<%= b.title || 'Offer' %>" loading="lazy">
+                    <% } else { %>
+                        <span class="banner-card__text">
+                            <span class="banner-card__ic" aria-hidden="true">🏷️</span>
+                            <span class="banner-card__body">
+                                <% if (b.title) { %><span class="banner-card__title"><%= b.title %></span><% } %>
+                                <% if (b.subtitle) { %><span class="banner-card__sub"><%= b.subtitle %></span><% } %>
+                            </span>
+                        </span>
+                    <% } %>
+                </a>
+            </li>
+            <% }); %>
+        </ul>
+    </div>
+</section>
+<% } %>

@@ -294,7 +294,13 @@
         <%# Mobile-only menu trigger. Opens the slide-out drawer
             (handled in /js/app.js). Signed in → show the user's avatar
             (initial) instead of the 3-line hamburger; signed out → the
-            hamburger. Either way it opens the drawer. %>
+            hamburger. Either way it opens the drawer.
+
+            Hidden on the location gate page (is_location_page): the top menu
+            icon should NOT appear until the visitor has picked a location
+            (per the user). Once a location is chosen the page reloads into the
+            feed — no longer the gate page — and the button returns. %>
+        <% if (!(typeof is_location_page !== 'undefined' && is_location_page)) { %>
         <button
             type="button"
             class="site-header__menu-btn <%= user_session ? 'site-header__menu-btn--avatar' : '' %>"
@@ -312,6 +318,7 @@
                 </svg>
             <% } %>
         </button>
+        <% } %>
 
     </div>
 </header>

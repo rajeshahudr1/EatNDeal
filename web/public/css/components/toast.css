@@ -113,4 +113,10 @@
         from { transform: translateY(-16px); opacity: 0; }
         to   { transform: translateY(0);     opacity: 1; }
     }
+    /* C2 — 44px tap target for the close button (PWA-audit fix). */
+    .toast__close {
+        min-width: 44px; min-height: 44px;
+        display: inline-flex; align-items: center; justify-content: center;
+        padding: 0;
+    }
 }

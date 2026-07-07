@@ -179,6 +179,20 @@
     .loc-landmark__btn { width: 100%; }
 }
 
+/* ── PWA-audit mobile fixes (safe-area + 44px tap targets) ──────────── */
+@media (max-width: 767px) {
+    /* C3: sticky top head clears the notch/status bar. */
+    .loc-head { padding-top: calc(var(--space-5) + env(safe-area-inset-top, 0)); }
+    /* C3: sticky bottom action bar clears the home indicator. */
+    .loc-form__foot { padding-bottom: calc(var(--space-3) + env(safe-area-inset-bottom, 0)); }
+    /* C2: close/back reach the 44px min hit area (glyph unchanged). */
+    .loc-head__back, .loc-head__close { min-width: 44px; min-height: 44px; align-items: center; justify-content: center; }
+    /* C2: saved-address action buttons have a fixed 36px size → override to 44px. */
+    .loc-saved__act { width: 44px; height: 44px; }
+    /* C2: search-clear button reaches the 44px min tap target. */
+    .loc-search__clear { min-width: 44px; min-height: 44px; align-items: center; justify-content: center; }
+}
+
 /* ── Address form ───────────────────────────────────────────────────── */
 .loc-form { padding: var(--space-4) var(--space-4) var(--space-6); display: flex; flex-direction: column; gap: var(--space-4); }
 

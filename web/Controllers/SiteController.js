@@ -72,6 +72,16 @@ async function fetchMarketplace(req, lat, lng, cuisine, filters, postcode) {
     if (filters.offer)    rqs.set('offer',    '1');
     if (filters.price)    rqs.set('price',    filters.price);
     if (filters.delivery) rqs.set('delivery', filters.delivery);
+    // Offer-banner landing filters (from a banner click).
+    if (filters.min_discount)  rqs.set('min_discount',  String(filters.min_discount));
+    if (filters.upto_discount) rqs.set('upto_discount', String(filters.upto_discount));
+    if (filters.amount_off)    rqs.set('amount_off',    String(filters.amount_off));
+    if (filters.upto_amount)   rqs.set('upto_amount',   String(filters.upto_amount));
+    if (filters.free_delivery) rqs.set('free_delivery', '1');
+    if (filters.free_item)     rqs.set('free_item',     '1');
+    if (filters.coupon)       rqs.set('coupon',       filters.coupon);
+    if (filters.category)     rqs.set('category',     String(filters.category));
+    if (filters.offer_banner) rqs.set('offer_banner', String(filters.offer_banner));
     // Products: dish-level filters only (veg / offer / price /
     // recommended / featured). Sort + rating + km don't apply here.
     const pqs = baseQs();
@@ -186,6 +196,18 @@ async function index(req, res, next) {
     // their location; that saves + reloads into the feed. Matches the
     // "Step 1 of 3 — where do you want to order from?" mockup.
     if (!userLocation) {
+        // Popular-cities grid — DYNAMIC from the live restaurants (top 6 by
+        // restaurant count) rather than a hard-coded list. Falls back to an
+        // empty array on any API hiccup; the template hides the section when
+        // there are none, so the gate page still renders cleanly.
+        let cities = [];
+        try {
+            const cRes = await callApi(req, 'GET', '/api/v1/marketplace/cities?limit=6');
+            if (cRes && cRes.body && cRes.body.status === 200 && cRes.body.data) {
+                cities = cRes.body.data.cities || [];
+            }
+        } catch (e) { cities = []; }
+
         return res.render('site/location', {
             page_title:        'Choose your location',
             _layoutFile:       '../_layout',
@@ -194,6 +216,13 @@ async function index(req, res, next) {
             user_location:     null,
             show_promo_strip:  false,   // remove the offer row on the gate
             is_location_page:  true,    // layout skips the modal + auto-open
+            // Focused-flow layout (like the auth pages): NO site header / footer
+            // / bottom-nav on the gate. Removes the empty header bar that showed
+            // as a blank strip at the top on mobile (logo hidden there + the
+            // hamburger hidden until a location is picked) — nothing to show, so
+            // drop the whole chrome. The page IS the location picker.
+            bare:              true,
+            cities:            cities,  // dynamic popular-cities grid
         });
     }
 
@@ -281,6 +310,16 @@ async function index(req, res, next) {
         delivery:    /^(15|30|45|60)(,(15|30|45|60))*$/.test(String(q.delivery || '')) ? String(q.delivery) : '',
         recommended: String(q.recommended || '') === '1',
         featured:    String(q.featured    || '') === '1',
+        // ── Offer-banner landing filters (from an OFFER BANNER click) ──
+        min_discount:  q.min_discount  && !isNaN(Number(q.min_discount))  ? Number(q.min_discount)  : '',
+        upto_discount: q.upto_discount && !isNaN(Number(q.upto_discount)) ? Number(q.upto_discount) : '',
+        amount_off:    q.amount_off    && !isNaN(Number(q.amount_off))    ? Number(q.amount_off)    : '',
+        upto_amount:   q.upto_amount   && !isNaN(Number(q.upto_amount))   ? Number(q.upto_amount)   : '',
+        free_delivery: String(q.free_delivery || '') === '1',
+        free_item:     String(q.free_item || '') === '1',
+        coupon:       String(q.coupon || '').trim(),
+        category:     q.category && !isNaN(Number(q.category)) ? Number(q.category) : '',
+        offer_banner: q.offer_banner && !isNaN(Number(q.offer_banner)) ? Number(q.offer_banner) : '',
     };
 
     // "Browse" — the dynamic sidebar filter that narrows the home to ONE
@@ -352,6 +391,16 @@ async function index(req, res, next) {
                 if (filters.offer)    fqs.set('offer',    '1');
                 if (filters.price)    fqs.set('price',    filters.price);
                 if (filters.delivery) fqs.set('delivery', filters.delivery);
+                // Offer-banner landing filters (% / up-to / £ / free-* / coupon / category / hand-pick).
+                if (filters.min_discount)  fqs.set('min_discount',  String(filters.min_discount));
+                if (filters.upto_discount) fqs.set('upto_discount', String(filters.upto_discount));
+                if (filters.amount_off)    fqs.set('amount_off',    String(filters.amount_off));
+                if (filters.upto_amount)   fqs.set('upto_amount',   String(filters.upto_amount));
+                if (filters.free_delivery) fqs.set('free_delivery', '1');
+                if (filters.free_item)     fqs.set('free_item',     '1');
+                if (filters.coupon)       fqs.set('coupon',       filters.coupon);
+                if (filters.category)     fqs.set('category',     String(filters.category));
+                if (filters.offer_banner) fqs.set('offer_banner', String(filters.offer_banner));
                 if (customerId)       fqs.set('customer_id', customerId);
                 const r = await callApi(req, 'GET',
                     '/api/v1/marketplace/restaurants?' + fqs.toString());
@@ -920,6 +969,18 @@ async function index(req, res, next) {
         } catch (e) { welcomeBanner = null; }
     }
 
+    // ── Offer banner carousel (super-admin configured) — the promo slider
+    //    shown under the category rail on the HOME view only. Each banner
+    //    carries a resolved `href` to its filtered restaurant grid (built by
+    //    the api from the banner's rule). Empty = nothing to show. ──
+    let offerBanners = [];
+    if (!viewMode) {
+        try {
+            const obRes = await callApi(req, 'GET', '/api/v1/marketplace/offer-banner');
+            offerBanners = (obRes && obRes.body && obRes.body.status === 200 && obRes.body.data && obRes.body.data.banners) || [];
+        } catch (e) { offerBanners = []; }
+    }
+
     res.render('site/index', {
         page_title:    null,                  // null → use brand.name as the title
         _layoutFile:   '../_layout',          // ejs-locals layout path (relative to this view)
@@ -944,6 +1005,8 @@ async function index(req, res, next) {
         selected_cuisine_label: selectedCuisineLabel,
         // Super-admin welcome strip (under the category rail); null = nothing.
         welcome_banner:   welcomeBanner,
+        // Super-admin offer-banner carousel (under the category rail); [] = nothing.
+        offer_banners:    offerBanners,
         // True when the picked cuisine had no restaurants and we fell
         // back to nearby ones (the view shows a note).
         cuisine_no_match: cuisineNoMatch,

@@ -48,8 +48,22 @@
 .wh-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 14px 16px; border-bottom: 1px solid var(--color-border-soft); }
 .wh-head h2 { font-size: 1.05rem; font-weight: 800; margin: 0; }
 .wh-scope { color: var(--color-primary); }
-.wh-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
-.wh-tab { font-size: 0.82rem; font-weight: 700; color: var(--color-text-muted); text-decoration: none; padding: 6px 12px; border-radius: var(--radius-pill); border: 1px solid var(--color-border); background: var(--color-bg); }
+/* Single-line, horizontally SCROLLABLE tab row (like the cuisine/category
+   rail) — the All / Earned / Redeemed / Expired filters stay on ONE line and
+   scroll sideways on mobile instead of wrapping. Scrollbar hidden. */
+.wh-tabs {
+    display: flex; gap: 6px;
+    flex-wrap: nowrap; overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scroll-snap-type: x proximity;
+    scrollbar-width: none;              /* Firefox */
+    padding-bottom: 2px;                /* room so the pills' ring isn't clipped */
+    /* Cap to the header width so a too-long row scrolls INSIDE the tabs
+       instead of overflowing .wh-head (which wraps this onto its own line). */
+    min-width: 0; max-width: 100%;
+}
+.wh-tabs::-webkit-scrollbar { display: none; }   /* WebKit */
+.wh-tab { flex: 0 0 auto; white-space: nowrap; scroll-snap-align: start; font-size: 0.82rem; font-weight: 700; color: var(--color-text-muted); text-decoration: none; padding: 6px 12px; border-radius: var(--radius-pill); border: 1px solid var(--color-border); background: var(--color-bg); }
 .wh-tab.is-on { background: var(--color-primary-soft); border-color: var(--color-primary); color: var(--color-primary); }
 
 .wh-list { display: flex; flex-direction: column; }
@@ -86,4 +100,13 @@
     .wt-card__val { font-size: 1.2rem; }
     .wallet-cardgrid { grid-template-columns: 1fr; }
     .wh-head { gap: 10px; }
+}
+
+/* PWA-audit fix (C2): give the history tabs + "load more" button a >=44px
+   tap height on mobile without changing their labels. */
+@media (max-width: 767px) {
+    .wh-tab, .wh-more__btn {
+        min-height: 44px;
+        display: inline-flex; align-items: center; justify-content: center;
+    }
 }

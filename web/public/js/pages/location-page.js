@@ -149,6 +149,38 @@
         );
     }
 
+    /**
+     * TEMP demo location — POSTs to the WEB endpoint /location/use-demo (NOT
+     * the api directly). The web server fetches a deliverable restaurant's
+     * coordinates + saves them to the session, then we reload into the feed.
+     * Going through the same-origin web route is what makes this work on a
+     * phone: the browser can't reach the api's localhost, but it CAN reach the
+     * web server it just loaded the page from. Remove with the button.
+     */
+    function useDemoLocation() {
+        setStatus('Loading a demo location…');
+        loaderOn('Loading a demo location…');
+        fetch('/location/use-demo', {
+            method:      'POST',
+            headers:     { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+            credentials: 'same-origin',
+            // Force DELIVERY — this is explicitly a "demo delivery location"
+            // (the picked restaurant is delivery-enabled), so the feed should
+            // open in delivery mode regardless of the Delivery/Pickup tab.
+            body:        JSON.stringify({ mode: 'delivery' }),
+        })
+            .then(function (r) { return r.json().catch(function () { return null; }); })
+            .then(function (env) {
+                if (env && env.status === 200) { window.location.href = '/'; return; }
+                loaderOff();
+                setStatus((env && env.msg) || 'Could not set a demo location. Please try again.');
+            })
+            .catch(function () {
+                loaderOff();
+                setStatus('Network error — please check your connection and try again.');
+            });
+    }
+
     function bind() {
         input  = document.getElementById('location-search-input');
         list   = document.getElementById('location-search-suggestions');
@@ -166,6 +198,8 @@
             if (!t || !t.closest) { return; }
 
             if (t.closest('[data-action="use-current-location"]')) { ev.preventDefault(); useCurrentLocation(); return; }
+
+            if (t.closest('[data-action="use-demo-location"]')) { ev.preventDefault(); useDemoLocation(); return; }
 
             var city = t.closest('[data-city]');
             if (city) {

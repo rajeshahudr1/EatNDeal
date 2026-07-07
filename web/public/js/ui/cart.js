@@ -43,25 +43,31 @@
     // The pulse fires only when the count went UP, so removing items or
     // re-reading a stable cart doesn't trigger animation noise.
     function setCartBadge(qty) {
-        var badge = document.querySelector('[data-cart-count]');
-        if (!badge) { return; }
-        var prev = parseInt(badge.textContent || '0', 10) || 0;
+        // ALL badges — the header cart (desktop) AND the bottom-nav cart
+        // (mobile) both carry [data-cart-count]; querySelectorAll keeps them
+        // both in sync (a single querySelector only updated the header one,
+        // leaving the mobile bottom-nav badge stale).
+        var badges = document.querySelectorAll('[data-cart-count]');
+        if (!badges.length) { return; }
         var n = Number(qty) || 0;
-        if (n > 0) {
-            badge.textContent = n > 99 ? '99+' : String(n);
-            badge.hidden = false;
-            badge.removeAttribute('hidden');
-            if (n > prev) {
-                badge.classList.remove('is-bumping');
-                void badge.offsetWidth;     // restart the animation
-                badge.classList.add('is-bumping');
-                window.setTimeout(function () { badge.classList.remove('is-bumping'); }, 700);
+        Array.prototype.forEach.call(badges, function (badge) {
+            var prev = parseInt(badge.textContent || '0', 10) || 0;
+            if (n > 0) {
+                badge.textContent = n > 99 ? '99+' : String(n);
+                badge.hidden = false;
+                badge.removeAttribute('hidden');
+                if (n > prev) {
+                    badge.classList.remove('is-bumping');
+                    void badge.offsetWidth;     // restart the animation
+                    badge.classList.add('is-bumping');
+                    window.setTimeout(function () { badge.classList.remove('is-bumping'); }, 700);
+                }
+            } else {
+                badge.textContent = '0';
+                badge.hidden = true;
+                badge.setAttribute('hidden', '');
             }
-        } else {
-            badge.textContent = '0';
-            badge.hidden = true;
-            badge.setAttribute('hidden', '');
-        }
+        });
     }
 
     function bumpCartBadge(cart) {
@@ -94,10 +100,26 @@
     // clone uses position:fixed and CSS transitions; on transitionend
     // (or a hard timeout fallback) it's removed from the DOM.
     function getCartTarget() {
-        var el = document.querySelector('.header-quick__cart');
-        if (!el) { return null; }
-        var r = el.getBoundingClientRect();
-        return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+        // Fly to whichever cart entry point is actually ON-SCREEN: the
+        // bottom-nav Cart tab on mobile (fly DOWN — the cart moved there from
+        // the header) or the header cart on desktop (fly UP). A display:none
+        // element returns a zero-size rect, so the size check skips the hidden
+        // one automatically (this is why it used to fly to 0,0 / "up" on mobile
+        // once the header cart was hidden).
+        var candidates = [
+            document.querySelector('.bottom-nav__item--cart .bottom-nav__icon'),
+            document.querySelector('.bottom-nav__item--cart'),
+            document.querySelector('.header-quick__cart'),
+        ];
+        for (var i = 0; i < candidates.length; i++) {
+            var el = candidates[i];
+            if (!el) { continue; }
+            var r = el.getBoundingClientRect();
+            if (r.width > 0 && r.height > 0) {
+                return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+            }
+        }
+        return null;
     }
     function flyToCart(originEl) {
         var target = getCartTarget();

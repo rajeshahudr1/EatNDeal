@@ -23,6 +23,14 @@
     /* Hide the desktop header search slot — on mobile the inline
      * version would collide with the location chip + bell + hamburger. */
     .site-header__search { display: none; }
+
+    /* PWA-audit fix (C1): 16px input font stops iOS Safari from
+     * auto-zooming the page when the search field is focused. */
+    .mobile-search__input { font-size: 16px; }
+
+    /* PWA-audit fix (C2): grow the filter button hit area to the 44px
+     * minimum touch target (was 42px) without changing the icon glyph. */
+    .mobile-search__filter { width: 44px; height: 44px; }
 }
 
 .mobile-search {

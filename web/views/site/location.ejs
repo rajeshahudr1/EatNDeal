@@ -51,6 +51,15 @@
                 <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
                 Use my current location
             </button>
+
+            <%# TEMP demo button — drops into a real deliverable restaurant's
+                own location so testing works without HTTPS geolocation (IP /
+                browser location needs a secure context). Remove this + the
+                /marketplace/demo-location route once real geo is wired. %>
+            <button type="button" class="locpage__locate locpage__locate--demo" data-action="use-demo-location">
+                <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s7-7.5 7-13a7 7 0 0 0-14 0c0 5.5 7 13 7 13z"/><circle cx="12" cy="9" r="2.5"/></svg>
+                Use a demo delivery location
+            </button>
         </div>
 
         <%# ── RIGHT: phone + map illustration (emoji placeholders) ─ %>
@@ -69,30 +78,26 @@
     </div>
 
     <%# ── Popular cities ───────────────────────────────────────── %>
+    <%# DYNAMIC — the controller passes `cities` built from the live
+        restaurants (top 6 by restaurant count). Section hidden when the DB
+        has none, so the page never shows an empty "popular cities" heading. %>
+    <% var __cities = (typeof cities !== 'undefined' && cities) ? cities : []; %>
+    <% if (__cities.length) { %>
     <div class="locpage__cities">
         <h2 class="locpage__cities-title">Or choose from popular cities</h2>
         <ul class="city-grid" role="list">
-            <%
-              var cities = [
-                { name: 'London',     count: '10,000+' },
-                { name: 'Manchester', count: '7,500+'  },
-                { name: 'Birmingham', count: '6,200+'  },
-                { name: 'Leeds',      count: '4,800+'  },
-                { name: 'Glasgow',    count: '4,200+'  },
-                { name: 'Liverpool',  count: '3,900+'  }
-              ];
-            %>
-            <% cities.forEach(function (c) { %>
+            <% __cities.forEach(function (c) { var __n = Number(c.count || 0); %>
                 <li>
                     <button type="button" class="city-card" data-city="<%= c.name %>">
                         <span class="city-card__art" aria-hidden="true">🏛️</span>
                         <span class="city-card__name"><%= c.name %></span>
-                        <span class="city-card__count"><%= c.count %> Restaurants</span>
+                        <span class="city-card__count"><%= __n.toLocaleString('en-GB') %> Restaurant<%= __n === 1 ? '' : 's' %></span>
                     </button>
                 </li>
             <% }); %>
         </ul>
     </div>
+    <% } %>
 
     <%# ── Why love us ──────────────────────────────────────────── %>
     <div class="locpage__why">

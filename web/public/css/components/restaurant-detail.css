@@ -588,3 +588,14 @@ body.rd-infomodal-open { overflow: hidden; }
 .rd-surprise__was { display: block; font-size: .8rem; color: var(--color-text-muted); text-decoration: line-through; }
 .rd-surprise__now { font-size: 1.5rem; font-weight: 800; color: var(--color-primary); }
 @media (max-width: 560px) { .rd-surprise { flex-wrap: wrap; } .rd-surprise__price { text-align: left; width: 100%; } }
+
+/* ── PWA-audit fixes — mobile touch targets (C2) ────────────────────── */
+/* Enlarge tap targets to ≥44×44px without changing the glyph size.
+   Placed at file end so they win over the base sizes defined above. */
+@media (max-width: 767px) {
+    .rd-hero__fav { width: 44px; height: 44px; }
+    .rd-product__add { min-width: 44px; min-height: 44px; }
+    .rd-rinfo__more { width: 44px; height: 44px; }
+    .rd-infomodal__close { width: 44px; height: 44px; display: inline-flex; align-items: center; justify-content: center; }
+    .reviews-modal__close { width: 44px; height: 44px; display: inline-flex; align-items: center; justify-content: center; }
+}

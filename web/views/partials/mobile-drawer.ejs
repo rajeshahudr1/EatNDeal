@@ -70,6 +70,21 @@
             </a>
         </div>
 
+        <%# Help & Chat — the MOBILE entry point to the help assistant. On phones
+            the floating chat bubble is removed (it overlapped filters / sidebars),
+            so it now opens from here (data-action wired in /js/ui/chatbot.js:
+            closes the drawer, opens the chat panel). Hidden on the location gate
+            page — the chatbot partial isn't rendered there. %>
+        <% if (!(typeof is_location_page !== 'undefined' && is_location_page)) { %>
+        <div class="md-tiles">
+            <button type="button" class="md-tile md-tile--full" data-action="open-chat-from-menu">
+                <span class="md-tile__icon" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg></span>
+                <span class="md-tile__body"><span class="md-tile__label">Help &amp; Chat</span></span>
+                <span class="md-row__chev" aria-hidden="true">›</span>
+            </button>
+        </div>
+        <% } %>
+
         <% if (user_session) { %>
         <%# Quick tile — Offers. (Rewards already has its own banner above, so
             no separate "Money" tile here — it would just point to the same
@@ -88,6 +103,11 @@
         <section class="md-sec">
             <h3 class="md-sec__title">Your account</h3>
             <div class="md-card">
+                <a class="md-row" href="/account">
+                    <span class="md-row__icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg></span>
+                    <span class="md-row__label">My Profile</span>
+                    <span class="md-row__chev" aria-hidden="true">›</span>
+                </a>
                 <a class="md-row" href="/account?tab=addresses">
                     <span class="md-row__icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s7-7.5 7-13a7 7 0 0 0-14 0c0 5.5 7 13 7 13z"/><circle cx="12" cy="9" r="2.5"/></svg></span>
                     <span class="md-row__label">Addresses</span>
@@ -108,22 +128,27 @@
                     <span class="md-row__label">Favourites</span>
                     <span class="md-row__chev" aria-hidden="true">›</span>
                 </a>
-            </div>
-        </section>
-        <% } %>
-
-        <%# Preferences — only the row that actually does something (Veg
-            filter). Appearance + personalised-ratings were removed. %>
-        <section class="md-sec">
-            <h3 class="md-sec__title">Preferences</h3>
-            <div class="md-card">
-                <a class="md-row" href="/?veg=1">
-                    <span class="md-row__icon md-row__icon--veg" aria-hidden="true"><span></span></span>
-                    <span class="md-row__label">Veg Mode</span>
+                <%# Rewards / Loyalty Wallet / Earn Cashback — these appear in the
+                    DESKTOP account sidebar but were missing on mobile. Added so
+                    the drawer submenu matches web (per the user). %>
+                <a class="md-row" href="/account?tab=rewards">
+                    <span class="md-row__icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="8" width="18" height="13" rx="1"/><path d="M3 12h18M12 8v13"/></svg></span>
+                    <span class="md-row__label">Rewards</span>
+                    <span class="md-row__chev" aria-hidden="true">›</span>
+                </a>
+                <a class="md-row" href="/wallet">
+                    <span class="md-row__icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M19 7H5a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-3"/><path d="M21 11h-5a2 2 0 0 0 0 4h5v-4z"/><path d="M3 9V7a2 2 0 0 1 2-2h11"/></svg></span>
+                    <span class="md-row__label">Loyalty Wallet</span>
+                    <span class="md-row__chev" aria-hidden="true">›</span>
+                </a>
+                <a class="md-row" href="/earn">
+                    <span class="md-row__icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="8" width="18" height="4" rx="1"/><path d="M5 12v7a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-7"/><path d="M12 8V4M12 8c-1.5 0-4-.5-4-2.5S10.5 4 12 8zM12 8c1.5 0 4-.5 4-2.5S13.5 4 12 8z"/></svg></span>
+                    <span class="md-row__label">Earn Cashback</span>
                     <span class="md-row__chev" aria-hidden="true">›</span>
                 </a>
             </div>
         </section>
+        <% } %>
 
         <%# More — site / help links %>
         <section class="md-sec">

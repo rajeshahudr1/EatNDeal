@@ -185,7 +185,10 @@
     .pickup__map { display: none; }
     .pickup.is-map-only .pickup__list { display: none; }
     .pickup.is-map-only .pickup__map {
-        display: block; position: fixed; left: 0; right: 0; bottom: 0; top: 68px;
-        height: auto; z-index: 60; border-left: 0;
+        /* PWA-audit: pin under the mobile header, clear the safe-area, and sit
+           BELOW the bottom-nav (z-index 55 < nav 60) so the nav stays tappable. */
+        display: block; position: fixed; left: 0; right: 0;
+        top: var(--header-height-mobile); bottom: calc(60px + env(safe-area-inset-bottom, 0));
+        height: auto; z-index: 55; border-left: 0;
     }
 }

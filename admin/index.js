@@ -59,6 +59,7 @@ const FeaturedProductsController = require('./Controllers/FeaturedProductsContro
 const FeedSectionsController      = require('./Controllers/FeedSectionsController');
 const CommunityController         = require('./Controllers/CommunityController');
 const WelcomeBannerController      = require('./Controllers/WelcomeBannerController');
+const OfferBannerController        = require('./Controllers/OfferBannerController');
 
 const app    = express();
 const ENV    = process.env.APP_ENV || 'development';
@@ -700,6 +701,40 @@ function bannerImgMw(req, res, next) {
     });
 }
 
+// ── Offer-banner image uploads (uploads/offer_banner/) — same pattern as the
+//    welcome banner; optional (a missing file must not block a text save).
+let offerBannerUpload = null;
+try {
+    const multer = require('multer');
+    offerBannerUpload = multer({
+        storage: multer.diskStorage({
+            destination: (req, file, cb) => {
+                const dir = path.join(MEDIA_DIR, 'offer_banner');
+                try { fs.mkdirSync(dir, { recursive: true }); } catch (e) { /* ignore */ }
+                cb(null, dir);
+            },
+            filename: (req, file, cb) => {
+                const ext = ({ 'image/png': '.png', 'image/jpeg': '.jpg', 'image/webp': '.webp', 'image/gif': '.gif' })[file.mimetype] || '.img';
+                cb(null, 'offer_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8) + ext);
+            },
+        }),
+        limits: { fileSize: 3 * 1024 * 1024 },
+        fileFilter: (req, file, cb) => cb(null, /^image\/(png|jpe?g|webp|gif)$/.test(file.mimetype)),
+    });
+} catch (e) { /* multer not installed; uploads disabled */ }
+
+function offerBannerImgMw(req, res, next) {
+    if (!offerBannerUpload) { return next(); }
+    offerBannerUpload.single('image')(req, res, (err) => {
+        if (err && err.code === 'LIMIT_FILE_SIZE') {
+            if (req.flash) { req.flash('error', 'Banner image must be under 3 MB.'); }
+            return res.redirect('/offer-banner');
+        }
+        mediaStamp('offer_banner')(req);
+        return next();
+    });
+}
+
 // Community POST photos (GLOBAL — uploads/marketplace/community/, SHARED with
 // the web so an admin's photo shows on both feeds). Optional, like the cover.
 let mpCommPostUpload = null;
@@ -763,6 +798,17 @@ app.post('/community/save',           requireAdmin, companyContext, requireSuper
 app.get ('/welcome-banner',           requireAdmin, companyContext, requireSuper, WelcomeBannerController.form);
 app.post('/welcome-banner/save',      requireAdmin, companyContext, requireSuper, bannerImgMw, WelcomeBannerController.save);
 app.post('/welcome-banner/delete',    requireAdmin, companyContext, requireSuper, WelcomeBannerController.remove);
+
+// ── Offer-banner carousel (super-admin only) ──────────────────────
+app.get ('/offer-banner',             requireAdmin, companyContext, requireSuper, OfferBannerController.list);
+app.get ('/offer-banner/arrange',     requireAdmin, companyContext, requireSuper, OfferBannerController.arrange);
+app.get ('/offer-banner/new',         requireAdmin, companyContext, requireSuper, OfferBannerController.form);
+app.get ('/offer-banner/edit/:id',    requireAdmin, companyContext, requireSuper, OfferBannerController.form);
+app.post('/offer-banner/save',        requireAdmin, companyContext, requireSuper, offerBannerImgMw, OfferBannerController.save);
+app.post('/offer-banner/delete',      requireAdmin, companyContext, requireSuper, OfferBannerController.remove);
+app.post('/offer-banner/status',      requireAdmin, companyContext, requireSuper, OfferBannerController.statusToggle);
+app.post('/offer-banner/reorder',     requireAdmin, companyContext, requireSuper, OfferBannerController.reorder);
+app.get ('/offer-banner/companies',   requireAdmin, companyContext, requireSuper, OfferBannerController.companies);
 app.post('/community/delete',         requireAdmin, companyContext, requireSuper, CommunityController.remove);
 app.post('/community/status',         requireAdmin, companyContext, requireSuper, CommunityController.statusToggle);
 app.get ('/community/feed/:id',       requireAdmin, companyContext, CommunityController.feedPage);

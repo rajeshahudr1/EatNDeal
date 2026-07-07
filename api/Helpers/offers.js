@@ -280,25 +280,33 @@ async function offerSummaries(pairs) {
             .andWhere((qb) => withinWindow(qb, 'start_date', 'end_date')).select('company_id'),
         db('coupons').whereIn('branch_id', branchIds).andWhere('is_active', 1).whereIn('platform', [1, 2])
             .andWhere((qb) => { qb.whereNull('expiry_date').orWhere('expiry_date', '>=', db.raw('CURRENT_DATE')); })
-            .select('branch_id', 'discount_type', 'discount_value', 'free_delivery'),
+            .select('branch_id', 'discount_type', 'discount_value', 'free_delivery', 'for_item'),
         db('discounts').whereIn('company_id', companyIds).andWhere('status', 1)
             .andWhere((qb) => withinWindow(qb, 'start_date', 'end_date')).select('company_id', 'discount_type', 'discount_value'),
     ]);
 
-    const acc = {};   // companyId → { count, pct, amount, freeDelivery }
-    function bump(co) { return (acc[co] = acc[co] || { count: 0, pct: 0, amount: 0, freeDelivery: false }); }
+    // Per company we track BOTH the max and the min positive offer value, per
+    // type. Max drives "X off or more"; min drives "up to X off" (a restaurant
+    // qualifies for "up to 5" if it has ANY offer <= 5 — e.g. offers 1/2/5/50
+    // still match "up to 5" via its min=1, even though its headline is 50).
+    const acc = {};   // companyId → { count, pct, pctMin, amount, amountMin, freeDelivery, hasItem }
+    function bump(co) { return (acc[co] = acc[co] || { count: 0, pct: 0, pctMin: 0, amount: 0, amountMin: 0, freeDelivery: false, hasItem: false }); }
+    function addPct(e, val) { const v = Number(val) || 0; if (v > 0) { e.pct = Math.max(e.pct, v); e.pctMin = e.pctMin === 0 ? v : Math.min(e.pctMin, v); } }
+    function addAmt(e, val) { const v = Number(val) || 0; if (v > 0) { e.amount = Math.max(e.amount, v); e.amountMin = e.amountMin === 0 ? v : Math.min(e.amountMin, v); } }
     banners.forEach((b) => { bump(String(b.company_id)).count += 1; });
     discounts.forEach((d) => {
         const e = bump(String(d.company_id)); e.count += 1;
-        if (Number(d.discount_type) === 1) { e.pct = Math.max(e.pct, Number(d.discount_value) || 0); }
-        else if (Number(d.discount_type) === 2) { e.amount = Math.max(e.amount, Number(d.discount_value) || 0); }
+        if (Number(d.discount_type) === 1) { addPct(e, d.discount_value); }
+        else if (Number(d.discount_type) === 2) { addAmt(e, d.discount_value); }
+        else if (Number(d.discount_type) === 3) { e.hasItem = true; }   // item / free-item deal
     });
     coupons.forEach((c) => {
         const co = br2co[String(c.branch_id)]; if (!co) { return; }
         const e = bump(co); e.count += 1;
         if (Number(c.free_delivery) === 1) { e.freeDelivery = true; }
-        if (Number(c.discount_type) === 1) { e.pct = Math.max(e.pct, Number(c.discount_value) || 0); }
-        else if (Number(c.discount_type) === 2) { e.amount = Math.max(e.amount, Number(c.discount_value) || 0); }
+        if (Number(c.for_item) === 1)       { e.hasItem = true; }       // item / free-item coupon
+        if (Number(c.discount_type) === 1) { addPct(e, c.discount_value); }
+        else if (Number(c.discount_type) === 2) { addAmt(e, c.discount_value); }
     });
 
     Object.keys(acc).forEach((co) => {
@@ -307,7 +315,11 @@ async function offerSummaries(pairs) {
         if (e.pct > 0) { label = Math.round(e.pct) + '% OFF'; }
         else if (e.freeDelivery) { label = 'Free delivery'; }
         else if (e.amount > 0) { label = '£' + Math.round(e.amount) + ' OFF'; }
-        result[co] = { count: e.count, label };
+        // pct/pctMin/amount/amountMin/freeDelivery/hasItem are exposed (additive
+        // — existing callers read only .count/.label) so the offer-banner rules
+        // can match restaurants by their live offer type/value. Max → "X or more",
+        // min → "up to X" (has any offer <= X).
+        result[co] = { count: e.count, label, pct: e.pct, pctMin: e.pctMin, amount: e.amount, amountMin: e.amountMin, freeDelivery: e.freeDelivery, hasItem: e.hasItem };
     });
     return result;
 }

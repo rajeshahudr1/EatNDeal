@@ -141,6 +141,17 @@
     .merchant-detail__grid { grid-template-columns: 1fr; }
     .merchant-detail__summary { position: static; }
 }
+/* ── Mobile (<=767px) — PWA-audit fixes: 44px tap targets ───────── */
+@media (max-width: 767px) {
+    .merchant-btn {
+        min-height: 44px;
+        display: inline-flex; align-items: center; justify-content: center;
+    }
+    .merchant-tabs__tab {
+        min-height: 44px; padding: 10px 8px;
+        display: inline-flex; align-items: center; justify-content: center;
+    }
+}
 @media (max-width: 640px) {
     .merchant { padding: var(--space-4) var(--space-3) var(--space-10); }
     .merchant__title { font-size: 1.35rem; }

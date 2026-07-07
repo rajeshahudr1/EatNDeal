@@ -68,6 +68,7 @@
     <link rel="stylesheet" href="/css/components/location-modal.css?v=<%= ASSET_VERSION %>">
     <link rel="stylesheet" href="/css/components/address-autocomplete.css?v=<%= ASSET_VERSION %>">
     <link rel="stylesheet" href="/css/components/toast.css?v=<%= ASSET_VERSION %>">
+    <link rel="stylesheet" href="/css/components/offline.css?v=<%= ASSET_VERSION %>">
     <link rel="stylesheet" href="/css/components/chatbot.css?v=<%= ASSET_VERSION %>">
     <link rel="stylesheet" href="/css/components/dialog.css?v=<%= ASSET_VERSION %>">
     <link rel="stylesheet" href="/css/components/product-modal.css?v=<%= ASSET_VERSION %>">
@@ -83,6 +84,7 @@
     <link rel="stylesheet" href="/css/components/cookie-consent.css?v=<%= ASSET_VERSION %>">
     <link rel="stylesheet" href="/css/components/filter-sidebar.css?v=<%= ASSET_VERSION %>">
     <link rel="stylesheet" href="/css/components/home-v2.css?v=<%= ASSET_VERSION %>">
+    <link rel="stylesheet" href="/css/components/promo-carousel.css?v=<%= ASSET_VERSION %>">
     <link rel="stylesheet" href="/css/components/pickup.css?v=<%= ASSET_VERSION %>">
     <link rel="stylesheet" href="/css/components/restaurant-detail.css?v=<%= ASSET_VERSION %>">
     <link rel="stylesheet" href="/css/components/product-detail.css?v=<%= ASSET_VERSION %>">
@@ -94,6 +96,7 @@
     <link rel="stylesheet" href="/css/components/merchant.css?v=<%= ASSET_VERSION %>">
     <link rel="stylesheet" href="/css/components/wallet.css?v=<%= ASSET_VERSION %>">
     <link rel="stylesheet" href="/css/components/earn.css?v=<%= ASSET_VERSION %>">
+    <link rel="stylesheet" href="/css/components/loyalty.css?v=<%= ASSET_VERSION %>">
     <link rel="stylesheet" href="/css/components/community.css?v=<%= ASSET_VERSION %>">
 
     <link rel="stylesheet" href="/css/desktop.css?v=<%= ASSET_VERSION %>" media="(min-width: 768px)">
@@ -109,13 +112,16 @@
     data-brand-name="<%= brand.name %>"
     data-currency="<%= brand.currency %>"
     data-currency-symbol="<%= brand.currencySymbol %>"
-    data-api-url="<%= process.env.API_URL || 'http://localhost:4501' %>"
+    <%# Browser API base is SAME-ORIGIN (empty) — client calls hit the web's
+        /api/v1/* proxy, which forwards to the api. This is what makes them work
+        on a phone (the device can't reach the api's localhost directly). %>
+    data-api-url=""
     data-has-location="<%= user_location ? 'true' : 'false' %>"
     data-lat="<%= (user_location && user_location.lat != null) ? user_location.lat : '' %>"
     data-lng="<%= (user_location && user_location.lng != null) ? user_location.lng : '' %>"
     data-gmaps-key="<%= typeof google_maps_key !== 'undefined' ? google_maps_key : '' %>"
     data-active-nav="<%= active_nav %>"
-    class="<%= (user_session && !(typeof bare !== 'undefined' && bare)) ? 'has-bottom-nav' : '' %> <%= (typeof view_mode !== 'undefined' && view_mode) ? ('view-' + view_mode) : '' %>"
+    class="<%= (!(typeof bare !== 'undefined' && bare)) ? 'has-bottom-nav' : '' %> <%= (typeof view_mode !== 'undefined' && view_mode) ? ('view-' + view_mode) : '' %>"
 >
 
     <%#
@@ -183,6 +189,8 @@
     <%- include('partials/toast') -%>
     <%- include('partials/dialog') -%>
     <%- include('partials/loader') -%>
+    <%# Live "you're offline" strip — reveals when the connection drops. %>
+    <%- include('partials/offline-banner') -%>
     <% if (!__bare) { %>
         <%- include('partials/product-modal') -%>
     <% } %>
@@ -201,16 +209,18 @@
         <% if (!(typeof is_location_page !== 'undefined' && is_location_page)) { %>
             <%- include('partials/location-modal') -%>
         <% } %>
-        <%# Bottom-nav is signed-in chrome only — Home / Search / Cart
-            / Orders / Profile only make sense once the user has an
-            account. Logged-out visitors get a clean home page; the
-            hamburger drawer carries the sign-in entry-point. %>
-        <% if (user_session) { %>
-            <%- include('partials/bottom-nav') -%>
-        <% } %>
+        <%# Bottom-nav shown for EVERYONE on mobile (native-app style, per the
+            user — the bottom menu must always be visible). It is guest-aware:
+            Cart / Orders / Profile route to /signin?next=… when logged out, so
+            it stays usable for guest browsing. Desktop hides it via CSS. %>
+        <%- include('partials/bottom-nav') -%>
         <%- include('partials/mobile-drawer') -%>
-        <%# Floating help chatbot — orders / cashback / offers / FAQ. %>
-        <%- include('partials/chatbot') -%>
+        <%# Floating help chatbot — orders / cashback / offers / FAQ. Skipped on
+            the location gate page (per the user: no chat icon while the visitor
+            is still choosing where to order from) — web + mobile alike. %>
+        <% if (!(typeof is_location_page !== 'undefined' && is_location_page)) { %>
+            <%- include('partials/chatbot') -%>
+        <% } %>
     <% } %>
 
     <%#

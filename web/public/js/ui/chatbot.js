@@ -101,6 +101,9 @@
         opened = !opened;
         panel.hidden = !opened;
         root.classList.toggle('is-open', opened);
+        // Lock the page behind the (mobile) full-screen chat so it can't scroll
+        // through; CSS gates the lock to phones.
+        document.body.classList.toggle('is-chat-open', opened);
         if (opened) {
             if (!chipsEl.children.length) { renderChips(DEFAULT_CHIPS); }
             input.focus();
@@ -113,4 +116,18 @@
         if (chip) { send(chip.getAttribute('data-chip')); }
     });
     form.addEventListener('submit', function (e) { e.preventDefault(); send(input.value); });
+
+    // Mobile entry point — the floating FAB is hidden on phones (it overlapped
+    // filters / the sidebar), so the chat opens from the "Help & Chat" row in
+    // the profile drawer instead. Close the drawer first (its close button runs
+    // the app.js teardown), then open the panel. Delegated so it works whenever
+    // the drawer is rendered.
+    document.addEventListener('click', function (e) {
+        var launch = e.target.closest && e.target.closest('[data-action="open-chat-from-menu"]');
+        if (!launch) { return; }
+        e.preventDefault();
+        var drawerClose = document.querySelector('#mobile-drawer [data-action="close-mobile-menu"]');
+        if (drawerClose) { drawerClose.click(); }
+        if (!opened) { toggle(); }
+    });
 })();

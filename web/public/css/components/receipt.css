@@ -40,3 +40,12 @@
     .receipt__paper { border: 0; box-shadow: none; padding: 0; }
     body { background: #fff; }
 }
+
+/* PWA-audit fix (C2): ensure the receipt action controls meet the 44px
+   minimum tap height on mobile. */
+@media (max-width: 767px) {
+    .receipt__print, .receipt__back {
+        min-height: 44px;
+        display: inline-flex; align-items: center; justify-content: center;
+    }
+}

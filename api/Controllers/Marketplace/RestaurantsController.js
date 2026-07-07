@@ -137,6 +137,22 @@ async function list(req, res) {
         const openNow     = String(req.query.open_now || '') === '1';
         const vegOnly     = String(req.query.veg      || '') === '1';
         const hasOffer    = String(req.query.offer    || '') === '1';
+        // ── Offer-banner landing filters (arrive from an OFFER BANNER
+        // click — see Marketplace/OfferBannerController.buildHref). Each
+        // narrows the grid to the restaurants that match the banner's rule.
+        //   min_discount — MIN_DISCOUNT: keep restaurants whose live max % ≥ n
+        //   coupon       — COUPON_CODE:  keep restaurants owning that active code
+        //   category     — CATEGORY:     keep restaurants in that mp category
+        //   offer_banner — MANUAL_PICK:  keep the banner's hand-picked restaurants
+        const minDiscount  = req.query.min_discount  ? Number(req.query.min_discount)  : null;   // pct >= n
+        const uptoDiscount = req.query.upto_discount ? Number(req.query.upto_discount) : null;   // 0 < pct <= n
+        const amountOff    = req.query.amount_off    ? Number(req.query.amount_off)    : null;   // £ amount >= n
+        const uptoAmount   = req.query.upto_amount   ? Number(req.query.upto_amount)   : null;   // 0 < £ amount <= n
+        const freeDelivery = String(req.query.free_delivery || '') === '1';                      // has free delivery
+        const freeItem     = String(req.query.free_item     || '') === '1';                      // has item/free-item deal
+        const coupon       = req.query.coupon       ? String(req.query.coupon).trim().toUpperCase() : null;
+        const category     = req.query.category     ? Number(req.query.category)     : null;
+        const offerBanner  = req.query.offer_banner ? Number(req.query.offer_banner) : null;
         // Price-for-one bucket (low ≤£6 / mid £6-12 / high >£12). A
         // restaurant matches when it has a live marketplace product in
         // that band — see the has_price_* flags below.
@@ -320,6 +336,38 @@ async function list(req, res) {
                     });
                 }
             })
+            // ── Offer-banner rule filters (SQL narrowing) ─────────
+            // CATEGORY — restaurants assigned to that global mp category.
+            .modify(function (qb) {
+                if (!category) { return; }
+                qb.whereExists(function () {
+                    this.select(db.raw('1')).from('mp_marketplace_category_assign as mcat')
+                        .whereRaw('mcat.company_id = c.id').andWhere('mcat.category_id', category);
+                });
+            })
+            // COUPON_CODE — restaurants (branches) owning that active,
+            // in-platform, non-expired coupon code.
+            .modify(function (qb) {
+                if (!coupon) { return; }
+                qb.whereExists(function () {
+                    this.select(db.raw('1')).from('coupons as cpf')
+                        .whereRaw('cpf.branch_id = b.id')
+                        .andWhereRaw('UPPER(cpf.code) = ?', [coupon])
+                        .andWhere('cpf.is_active', 1).whereIn('cpf.platform', [1, 2])
+                        .andWhere(function () {
+                            this.whereNull('cpf.expiry_date').orWhere('cpf.expiry_date', '>=', db.raw('CURRENT_DATE'));
+                        });
+                });
+            })
+            // MANUAL_PICK — the exact restaurants the admin hand-picked
+            // for this banner (mp_offer_banner_assign).
+            .modify(function (qb) {
+                if (!offerBanner) { return; }
+                qb.whereExists(function () {
+                    this.select(db.raw('1')).from('mp_offer_banner_assign as oba')
+                        .whereRaw('oba.company_id = c.id').andWhere('oba.offer_banner_id', offerBanner);
+                });
+            })
             // NOTE: the sidebar filters (open-now / veg / rating /
             // offer / price / delivery-time / distance) are applied
             // application-side further down — NOT here — so we can also
@@ -406,6 +454,14 @@ async function list(req, res) {
             card._priceLow  = !!r.has_price_low;
             card._priceMid  = !!r.has_price_mid;
             card._priceHigh = !!r.has_price_high;
+            // Live offer facets (from offers.js offerSummaries) — used by the
+            // offer-banner landing filters below. All stripped before response.
+            card._offerPct          = Number(summary.pct) || 0;         // max % (for "X% or more")
+            card._offerPctMin       = Number(summary.pctMin) || 0;      // min % (for "up to X%")
+            card._offerAmount       = Number(summary.amount) || 0;      // max £ (for "£X or more")
+            card._offerAmountMin    = Number(summary.amountMin) || 0;   // min £ (for "up to £X")
+            card._offerFreeDelivery = !!summary.freeDelivery;
+            card._offerHasItem      = !!summary.hasItem;
             return card;
         });
 
@@ -450,6 +506,28 @@ async function list(req, res) {
         if (openNow)   { filtered = filtered.filter(r => r.isOpen); }
         if (vegOnly)   { filtered = filtered.filter(r => r.vegType === 'pure-veg'); }
         if (hasOffer)  { filtered = filtered.filter(r => !!r.offer); }
+        // ── Offer-banner landing filters (match the live offer facets) ──
+        // MIN_DISCOUNT — max % >= threshold ("X% off or more").
+        if (Number.isFinite(minDiscount) && minDiscount > 0) {
+            filtered = filtered.filter(r => (r._offerPct || 0) >= minDiscount);
+        }
+        // UPTO_DISCOUNT — restaurant has ANY % offer 0 < v <= threshold. Uses the
+        // MIN % (a restaurant with 1/2/5/40% still matches "up to 5" via min=1).
+        if (Number.isFinite(uptoDiscount) && uptoDiscount > 0) {
+            filtered = filtered.filter(r => (r._offerPctMin || 0) > 0 && (r._offerPctMin || 0) <= uptoDiscount);
+        }
+        // AMOUNT_OFF — max £ amount off >= threshold ("£X off or more").
+        if (Number.isFinite(amountOff) && amountOff > 0) {
+            filtered = filtered.filter(r => (r._offerAmount || 0) >= amountOff);
+        }
+        // UPTO_AMOUNT — restaurant has ANY £ offer 0 < v <= threshold. Uses the
+        // MIN £ (a restaurant with £1/2/5/50 still matches "up to £5" via min=1).
+        if (Number.isFinite(uptoAmount) && uptoAmount > 0) {
+            filtered = filtered.filter(r => (r._offerAmountMin || 0) > 0 && (r._offerAmountMin || 0) <= uptoAmount);
+        }
+        // FREE_DELIVERY / FREE_ITEM — has that offer type.
+        if (freeDelivery) { filtered = filtered.filter(r => r._offerFreeDelivery); }
+        if (freeItem)     { filtered = filtered.filter(r => r._offerHasItem); }
         if (minRating) { filtered = filtered.filter(r => r.rating >= minRating); }
         if (priceBucket === 'low')  { filtered = filtered.filter(r => r._priceLow); }
         if (priceBucket === 'mid')  { filtered = filtered.filter(r => r._priceMid); }
@@ -485,7 +563,7 @@ async function list(req, res) {
         // Strip the internal _-prefixed fields so the public card shape
         // stays clean.
         const sliced = filtered.slice(offset, offset + limit).map(r => {
-            const { _mins, _priceLow, _priceMid, _priceHigh, ...view } = r;
+            const { _mins, _priceLow, _priceMid, _priceHigh, _offerPct, _offerPctMin, _offerAmount, _offerAmountMin, _offerFreeDelivery, _offerHasItem, ...view } = r;
             return view;
         });
         const hasMore = filtered.length > offset + limit;

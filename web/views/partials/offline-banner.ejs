@@ -1,0 +1,18 @@
+<%#
+  views/partials/offline-banner.ejs
+
+  What:  App-wide "you're offline" strip. Hidden by default; /js/app.js
+         (bindOfflineIndicator) reveals it when the browser fires the
+         `offline` event and hides it again on `online`. Complements the
+         service-worker offline.html fallback (which only covers full-page
+         navigations) by giving live, in-app feedback when the connection
+         drops mid-session — so the user sees a friendly message instead of
+         silently-failing actions.
+  Why:   The app is used as a web-app on mobile; a dropped signal must read
+         as "you're offline", not a broken page (per the user).
+  Used:  Included once from views/_layout.ejs (renders in every mode).
+-%>
+<div id="offline-banner" class="offline-banner" role="status" aria-live="polite" hidden>
+    <span class="offline-banner__dot" aria-hidden="true"></span>
+    <span class="offline-banner__text">You’re offline — some features won’t work until you reconnect.</span>
+</div>

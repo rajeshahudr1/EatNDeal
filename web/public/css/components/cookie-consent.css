@@ -96,7 +96,9 @@
     .cookie-consent {
         left:   var(--space-3);
         right:  var(--space-3);
-        bottom: calc(76px + var(--space-3));   /* clear the bottom-nav (~76 px) */
+        /* PWA-audit fix: add safe-area inset so the banner also clears the
+           home indicator on notched phones. */
+        bottom: calc(76px + var(--space-3) + env(safe-area-inset-bottom, 0));   /* clear the bottom-nav (~76 px) */
     }
     .cookie-consent__inner {
         flex-direction: column;

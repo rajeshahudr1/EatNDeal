@@ -130,6 +130,27 @@ const listQuerySchema = Joi.object({
     // discount or a product carrying an offer label.
     offer: Joi.string().valid('1'),
 
+    // ── Offer-banner landing filters (from an OFFER BANNER click) ──
+    // Joi strips unknown query keys, so these MUST be declared or the
+    // banner links would silently drop their filter.
+    //   min_discount  — max % ≥ this ("X% off or more")
+    //   upto_discount — 0 < max % ≤ this ("up to X% off")
+    //   amount_off    — max £ off ≥ this ("£X off or more")
+    //   free_delivery — restaurants offering free delivery
+    //   free_item     — restaurants with an item / free-item deal
+    //   coupon        — restaurants owning this active coupon code
+    //   category      — restaurants in this mp_marketplace_category id
+    //   offer_banner  — this banner's hand-picked restaurants (MANUAL_PICK)
+    min_discount:  Joi.number().min(0).max(100),
+    upto_discount: Joi.number().min(0).max(100),
+    amount_off:    Joi.number().min(0).max(100000),
+    upto_amount:   Joi.number().min(0).max(100000),
+    free_delivery: Joi.string().valid('1'),
+    free_item:     Joi.string().valid('1'),
+    coupon:        Joi.string().trim().max(40),
+    category:      Joi.number().integer().min(1),
+    offer_banner:  Joi.number().integer().min(1),
+
     // Dish price bucket (products endpoint). low ≤ £6, mid £6-12,
     // high > £12. Applies to the marketplace_price chain.
     price: Joi.string().valid('low', 'mid', 'high'),

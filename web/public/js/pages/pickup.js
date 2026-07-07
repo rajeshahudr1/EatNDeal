@@ -46,11 +46,37 @@
     document.addEventListener('eatndeal:filters-changed', function (ev) {
         window.location.href = '/?' + pickupFiltersToQuery(ev.detail || {}).toString();
     });
-    // Sidebar collapse/show toggle (home.js owns this on delivery).
+    // Filter controls (home.js owns these on delivery; replicated here since
+    // home.js isn't loaded on pickup — WITHOUT this the mobile Filters button
+    // did nothing on pickup):
+    //   • open-filters   (mobile search-row button) → open the sidebar overlay
+    //   • toggle-filters → mobile: close the overlay; desktop: collapse column
+    //   • filters-apply  → mobile: close the overlay (the sidebar then
+    //                      broadcasts eatndeal:filters-changed → we reload)
+    function isDesktopFilters() {
+        return window.matchMedia && window.matchMedia('(min-width: 1024px)').matches;
+    }
     document.addEventListener('click', function (ev) {
-        if (ev.target && ev.target.closest && ev.target.closest('[data-action="toggle-filters"]')) {
+        var t = ev.target;
+        if (!t || !t.closest) { return; }
+
+        if (t.closest('[data-action="open-filters"]')) {
+            ev.preventDefault();
+            document.body.classList.add('is-mobile-filters-open');
+            return;
+        }
+        if (t.closest('[data-action="toggle-filters"]')) {
+            ev.preventDefault();
+            if (!isDesktopFilters()) {
+                document.body.classList.remove('is-mobile-filters-open');
+                return;
+            }
             var shell = document.querySelector('.home-shell');
             if (shell) { shell.classList.toggle('is-filters-collapsed'); }
+            return;
+        }
+        if (!isDesktopFilters() && t.closest('[data-action="filters-apply"]')) {
+            document.body.classList.remove('is-mobile-filters-open');
         }
     });
 

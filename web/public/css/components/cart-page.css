@@ -21,19 +21,31 @@
     max-width: 1180px; margin: 0 auto;
     padding: var(--space-4);
     display: flex; flex-direction: column; gap: var(--space-4);
+    /* Safety net: never let the checkout scroll sideways on a phone. The grid
+       fixes below are the real cure; this guarantees it even if some future
+       child is too wide. Doesn't clip the fixed CTA (no transformed ancestor). */
+    overflow-x: hidden;
 }
 .cart-page__grid {
     display: grid; gap: var(--space-4);
     grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
     align-items: start;
 }
-.cart-page__main { display: flex; flex-direction: column; gap: var(--space-3); }
-.cart-page__side { display: flex; flex-direction: column; gap: var(--space-3); position: sticky; top: 96px; }
+/* min-width:0 — grid/flex items default to min-width:auto (content-sized),
+   which stops the columns shrinking and pushes wide cards off-screen. */
+.cart-page__main { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; }
+.cart-page__side { display: flex; flex-direction: column; gap: var(--space-3); position: sticky; top: 96px; min-width: 0; }
 
 @media (max-width: 899px) {
-    .cart-page__grid { grid-template-columns: 1fr; }
+    /* minmax(0, 1fr), NOT a bare 1fr — the single mobile column must be able
+       to shrink to the viewport, else a long address stretches it wider than
+       the screen (the horizontal-scroll bug). */
+    .cart-page__grid { grid-template-columns: minmax(0, 1fr); }
     .cart-page__side { position: static; }
-    .cart-page { padding-bottom: 100px; /* clear the sticky CTA */ }
+    /* Clearance for the FIXED "Continue" bar (below) so it never covers the
+       last content. The bottom-NAV clearance sits separately on #app-main
+       (bottom-nav.css); this only accounts for the CTA bar's own height. */
+    .cart-page { padding-bottom: 60px; }
 }
 
 /* ── Empty state (carried over) ─────────────────────────────────── */
@@ -78,7 +90,10 @@
 
 /* Row inside a card — pin/clock/card icon + body + Edit pill. */
 .ckt-row {
-    display: grid; grid-template-columns: 36px 1fr auto;
+    /* minmax(0, 1fr) — a bare 1fr won't shrink below its content, so a long
+       address forced the whole card wider than the phone (right side cut off).
+       minmax(0,…) lets the middle column shrink so .ckt-row__sub can ellipsis. */
+    display: grid; grid-template-columns: 36px minmax(0, 1fr) auto;
     align-items: center; gap: var(--space-3);
     padding: var(--space-3) var(--space-4);
     border-top: 1px solid var(--color-border-soft);
@@ -111,7 +126,7 @@
 
 /* ── Restaurant chip (right column header) ──────────────────────── */
 .ckt-rest {
-    display: grid; grid-template-columns: 56px 1fr auto;
+    display: grid; grid-template-columns: 56px minmax(0, 1fr) auto;
     align-items: center; gap: 12px;
     background: #fff; border: 1px solid var(--color-border-soft); border-radius: 16px;
     padding: 10px 14px; text-decoration: none; color: inherit;
@@ -159,7 +174,7 @@
 .ckt-basket > summary { list-style: none; cursor: pointer; }
 .ckt-basket > summary::-webkit-details-marker { display: none; }
 .ckt-basket__summary {
-    display: grid; grid-template-columns: 28px 1fr auto 20px;
+    display: grid; grid-template-columns: 28px minmax(0, 1fr) auto 20px;
     align-items: center; gap: 12px;
     padding: var(--space-3) var(--space-4);
 }
@@ -241,22 +256,29 @@
     display: none;
 }
 @media (max-width: 899px) {
+    /* FIXED app-style bar — pinned to the bottom, always visible while the
+       cart scrolls (per the user). Full-width edge-to-edge. The .cart-page
+       padding-bottom (above) reserves room so it never covers content. */
     .ckt-sticky-cta {
         display: flex; align-items: center; justify-content: center;
-        /* IN-FLOW (not fixed) — sits at the bottom of the cart and scrolls
-           WITH the page instead of floating over the content. Full width
-           minus side gutters; the bottom margin clears the safe-area, and
-           #app-main's padding (bottom-nav.css) clears the mobile nav. */
-        margin: 16px 12px calc(16px + env(safe-area-inset-bottom, 0));
+        position: fixed; left: 0; right: 0; bottom: 0; z-index: 59;
+        margin: 0; border: 0; border-radius: 0;
         background: #1a1a1a; color: #fff;
-        border: 0; border-radius: 999px;
-        padding: 16px 20px; font-size: 1rem; font-weight: 800;
+        padding: 15px 20px; font-size: 1rem; font-weight: 800;
         cursor: pointer;
-        box-shadow: 0 6px 18px rgba(0,0,0,0.14);
-        min-height: 52px;
+        box-shadow: 0 -6px 18px rgba(0, 0, 0, 0.14);
+        min-height: 56px;
     }
-    /* Hide the in-flow desktop CTA on mobile — the bottom button takes over. */
+    /* Hide the in-flow desktop CTA on mobile — the bottom bar takes over. */
     .cart-page__side .ckt-cta { display: none; }
+}
+/* Phones: lift the bar to sit directly ABOVE the bottom-nav (shown ≤767px). */
+@media (max-width: 767px) {
+    .ckt-sticky-cta { bottom: 52px; }
+}
+/* Installed PWA — the nav carries the safe-area inset, so sit above it. */
+@media (max-width: 767px) and (display-mode: standalone) {
+    .ckt-sticky-cta { bottom: calc(52px + env(safe-area-inset-bottom, 0)); }
 }
 
 /* ══════════════════════════════════════════════════════════════════
@@ -290,7 +312,7 @@
 @keyframes ckt-rise { from { transform: translateY(40px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 
 .ckt-popup__head {
-    display: grid; grid-template-columns: 36px 1fr auto;
+    display: grid; grid-template-columns: 36px minmax(0, 1fr) auto;
     align-items: center; gap: 10px;
     padding: 12px 14px;
     /* Clear the notch / status bar on the fullscreen mobile variant
@@ -353,6 +375,7 @@
 
 /* Form fields inside popups */
 .ckt-popup__field { display: flex; flex-direction: column; gap: 8px; }
+.ckt-popup__field--mt { margin-top: 16px; }   /* was inline style="margin-top:16px" (CSP #9) */
 .ckt-popup__label { font-size: 0.82rem; font-weight: 700; color: var(--color-text); }
 .ckt-popup__input {
     width: 100%; padding: 12px 14px; border: 1px solid var(--color-border); border-radius: 10px;
@@ -383,7 +406,7 @@
 .ckt-list__row { /* tile */ }
 .ckt-list__btn {
     width: 100%; cursor: pointer; text-align: left;
-    display: grid; grid-template-columns: 36px 1fr 22px;
+    display: grid; grid-template-columns: 36px minmax(0, 1fr) 22px;
     align-items: center; gap: 12px;
     background: #fff; border: 1px solid var(--color-border-soft);
     border-radius: 12px; padding: 12px 14px;
@@ -428,7 +451,7 @@
 .ckt-promo__select.is-applied { background: transparent; color: #b91c1c; }
 .ckt-promo__select.is-applied:hover { background: #fee2e2; color: #b91c1c; }
 .ckt-popup__chip-applied { font-size: 0.72rem; font-weight: 700; color: #15803d; background: rgba(22,163,74,0.12); padding: 1px 8px; border-radius: 999px; vertical-align: middle; margin-left: 4px; }
-.ckt-promo__main { display: grid; grid-template-columns: 36px 1fr; gap: 12px; align-items: start; }
+.ckt-promo__main { display: grid; grid-template-columns: 36px minmax(0, 1fr); gap: 12px; align-items: start; }
 .ckt-promo__icon {
     width: 36px; height: 36px; border-radius: 10px;
     background: var(--color-primary-soft); color: var(--color-primary);
@@ -462,7 +485,7 @@
 /* ── Review / confirm order popup ───────────────────────────────── */
 .ckt-review { list-style: none; margin: 0 0 var(--space-4); padding: 0; display: flex; flex-direction: column; }
 .ckt-review__row {
-    display: grid; grid-template-columns: 96px 1fr; gap: 12px; align-items: start;
+    display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 12px; align-items: start;
     padding: 12px 0; border-bottom: 1px solid var(--color-border-soft);
 }
 .ckt-review__row:first-child { padding-top: 0; }
@@ -718,3 +741,15 @@
 .ckt-paytile__label { font-weight: 700; font-size: 0.95rem; }
 .ckt-paytile__sub { font-size: 0.78rem; color: var(--color-text-soft); }
 @media (max-width: 480px) { .ckt-paychoice { flex-direction: column; } }
+
+/* ── Mobile PWA polish (PWA audit) ────────────────────────────────────
+ * #7 iOS zoom: every checkout input must be >=16px on a phone or Safari
+ *    auto-zooms on focus. #4 touch targets: the qty steppers were 28px. */
+@media (max-width: 767px) {
+    .ckt-popup__input,
+    .ckt-voucher__input,
+    .ckt-loyalty__input,
+    .ckt-charity__input { font-size: 16px; }
+    .cart-stepper__btn { width: 44px; height: 44px; }
+    .cart-stepper__value { min-width: 40px; }
+}

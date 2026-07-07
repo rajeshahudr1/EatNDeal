@@ -268,3 +268,10 @@
  * the page underneath doesn't scroll when the user swipes inside
  * the sheet. */
 body.is-filter-sheet-open { overflow: hidden; }
+
+/* PWA-audit mobile fixes. */
+@media (max-width: 767px) {
+    /* C2: grow the sheet close button hit area to the 44px minimum
+     * touch target (was 36px) without changing the X glyph. */
+    .filter-sheet__close { width: 44px; height: 44px; }
+}

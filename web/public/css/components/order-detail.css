@@ -36,9 +36,21 @@
 .orders-card__pay-status { font-weight: 700; padding: 1px 8px; border-radius: 999px; font-size: 0.72rem; }
 .orders-card__pay-status--paid    { background: #dcfce7; color: #166534; }
 .orders-card__pay-status--pending { background: #fef3c7; color: #92400e; }
-.orders-card__foot { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); margin-top: 2px; }
-.orders-card__num { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.78rem; color: var(--color-text-soft); }
-.orders-card__total { font-weight: 800; font-variant-numeric: tabular-nums; }
+.orders-card__foot {
+    display: flex; align-items: center; justify-content: space-between; gap: var(--space-3);
+    margin-top: 6px; padding-top: 8px;
+    border-top: 1px solid var(--color-border-soft);   /* separate the total row */
+}
+/* The order number is a long internal id (MP_2026…d6050b734e87). Let it
+   TRUNCATE with an ellipsis so it never cramps or pushes out the price. */
+.orders-card__num {
+    min-width: 0; flex: 1 1 auto;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.72rem; color: var(--color-text-soft);
+}
+/* Price is the key number — keep it prominent + never squeezed. */
+.orders-card__total { flex: 0 0 auto; font-weight: 800; font-size: 1.1rem; color: var(--color-text); font-variant-numeric: tabular-nums; }
 
 /* ── Live order tracking timeline ───────────────────────────────── */
 .order-track {
@@ -221,6 +233,18 @@
    list to line up with the "My Orders" title bar. */
 @media (max-width: 767px) {
     .orders-list { padding: 0 var(--space-4); }
+    /* PWA-audit fix (C1): 16px review textarea so iOS doesn't zoom on focus. */
+    .review-form__text { font-size: 16px; }
+    /* PWA-audit fix (C2): enlarge close-button + star hit areas to >=44px
+       without growing the glyph. */
+    .review-modal__close, .issue-modal__close {
+        width: 44px; height: 44px;
+        display: inline-flex; align-items: center; justify-content: center;
+    }
+    .review-star {
+        min-width: 44px; min-height: 44px;
+        display: inline-flex; align-items: center; justify-content: center;
+    }
 }
 
 /* ── Post-order Rate & Review ───────────────────────────────────────── */
@@ -300,7 +324,7 @@
 .issue-modal__title { margin: 0 0 4px; font-size: 1.1rem; font-weight: 800; }
 .issue-modal__sub { margin: 0 0 14px; font-size: 0.88rem; color: var(--color-text-soft); }
 .issue-modal__text {
-    width: 100%; border: 1.5px solid var(--color-border, #e5e7eb); border-radius: 12px;
+    width: 100%; box-sizing: border-box; border: 1.5px solid var(--color-border, #e5e7eb); border-radius: 12px;
     padding: 12px; font: inherit; resize: vertical; min-height: 110px;
 }
 .issue-modal__text:focus { outline: none; border-color: var(--color-primary); }

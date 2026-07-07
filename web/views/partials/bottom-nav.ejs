@@ -44,8 +44,13 @@
         <span class="bottom-nav__label">Offers</span>
     </a>
 
-    <a href="<%= hrefCart %>" class="bottom-nav__item <%= active_nav === 'cart' ? 'is-active' : '' %>">
-        <span class="bottom-nav__icon" aria-hidden="true">🛒</span>
+    <a href="<%= hrefCart %>" class="bottom-nav__item bottom-nav__item--cart <%= active_nav === 'cart' ? 'is-active' : '' %>">
+        <span class="bottom-nav__icon" aria-hidden="true">🛒
+            <%# Cart count badge — moved here from the header on mobile. Shares
+                the data-cart-count hook so /js/ui/cart.js keeps it in sync. %>
+            <% var bnCartCount = (typeof cart_count !== 'undefined' && cart_count) ? cart_count : 0; %>
+            <span class="bottom-nav__badge" data-cart-count<%= bnCartCount > 0 ? '' : ' hidden' %>><%= bnCartCount > 99 ? '99+' : (bnCartCount || 0) %></span>
+        </span>
         <span class="bottom-nav__label">Cart</span>
     </a>
 

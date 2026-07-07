@@ -1,0 +1,78 @@
+/*
+ * components/loyalty.css — the Loyalty / Rewards explainer page
+ * (views/loyalty/program.ejs).
+ *
+ * What:  Styles the "How EatNDeal Rewards work" content page. The view
+ *        shipped with lp-* classes but NO matching stylesheet was ever
+ *        linked, so the page rendered as raw unstyled HTML (found by the
+ *        PWA audit). Mobile-first, uses the shared design tokens from
+ *        base.css :root, respects the 767px breakpoint.
+ * Used:  Linked in views/_layout.ejs alongside the other component CSS.
+ */
+
+.lp-page {
+    max-width: 860px;
+    margin: 0 auto;
+    padding: var(--space-6, 28px) var(--space-4, 16px) var(--space-10, 56px);
+}
+
+/* ── Hero ──────────────────────────────────────────────────────────── */
+.lp-hero {
+    text-align: center;
+    padding: var(--space-6, 28px) var(--space-4, 16px) var(--space-5, 22px);
+    background: linear-gradient(135deg, var(--color-primary-soft, #fde8e8), transparent 70%);
+    border-radius: var(--radius-lg, 18px);
+    margin-bottom: var(--space-6, 28px);
+}
+.lp-hero__title { margin: 0; font-size: 1.75rem; font-weight: 800; color: var(--color-text); }
+.lp-hero__sub   { margin: 10px auto 0; max-width: 560px; color: var(--color-text-soft, #555); line-height: 1.5; }
+
+/* ── Sections ──────────────────────────────────────────────────────── */
+.lp-section { margin: 0 0 var(--space-7, 36px); }
+.lp-section__title { margin: 0 0 var(--space-4, 16px); font-size: 1.2rem; font-weight: 800; color: var(--color-text); }
+
+/* ── Steps (ordered how-it-works list) ─────────────────────────────── */
+.lp-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-3, 12px); }
+.lp-step {
+    display: flex; align-items: flex-start; gap: 12px;
+    background: var(--color-bg, #fff); border: 1px solid var(--color-border-soft, #eef1f5);
+    border-radius: var(--radius-md, 14px); padding: 14px 16px; line-height: 1.5;
+}
+.lp-step__n {
+    flex: 0 0 auto; width: 30px; height: 30px; border-radius: 50%;
+    background: var(--color-primary, #e5252a); color: #fff;
+    display: grid; place-items: center; font-weight: 800; font-size: 0.95rem;
+}
+
+/* ── Earn cards ────────────────────────────────────────────────────── */
+.lp-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: var(--space-4, 16px); }
+.lp-card {
+    background: var(--color-bg, #fff); border: 1px solid var(--color-border-soft, #eef1f5);
+    border-radius: var(--radius-lg, 18px); padding: 18px; box-shadow: var(--shadow-1, 0 1px 3px rgba(0,0,0,.06));
+}
+.lp-card__ic { font-size: 1.8rem; line-height: 1; display: inline-block; margin-bottom: 8px; }
+.lp-card h3   { margin: 0 0 4px; font-size: 1rem; font-weight: 800; color: var(--color-text); }
+.lp-card p    { margin: 0; font-size: 0.9rem; color: var(--color-text-soft, #555); line-height: 1.45; }
+
+/* ── Refer + Why (callout blocks) ──────────────────────────────────── */
+.lp-refer, .lp-why {
+    background: var(--color-bg-alt, #f7f8fa); border: 1px solid var(--color-border-soft, #eef1f5);
+    border-radius: var(--radius-lg, 18px); padding: var(--space-5, 22px);
+}
+.lp-refer p, .lp-why p { margin: 0; color: var(--color-text); line-height: 1.55; }
+
+/* CTA — >=44px tap target (rulebook #4). */
+.lp-cta {
+    display: inline-flex; align-items: center; justify-content: center;
+    min-height: 44px; margin-top: var(--space-4, 16px); padding: 0 22px;
+    background: var(--color-primary, #e5252a); color: #fff;
+    border-radius: 999px; font-weight: 800; text-decoration: none;
+}
+.lp-cta:hover { filter: brightness(1.05); }
+
+/* ── Mobile ────────────────────────────────────────────────────────── */
+@media (max-width: 767px) {
+    .lp-hero__title  { font-size: 1.45rem; }
+    .lp-section__title { font-size: 1.1rem; }
+    .lp-cards        { grid-template-columns: 1fr; }
+}

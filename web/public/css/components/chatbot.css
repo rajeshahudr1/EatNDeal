@@ -3,7 +3,23 @@
  * Bottom-right FAB + chat panel. Mobile: the panel is a full-width bottom sheet.
  */
 
-.chatbot { position: fixed; right: 20px; bottom: 20px; z-index: 1200; }
+/* z-index 1100 keeps the FAB above the bottom-nav (60) but BELOW dialogs
+ * (--z-dialog:1200) so a confirm dialog is never overlapped by the FAB. */
+.chatbot { position: fixed; right: 20px; bottom: 20px; z-index: 1100; }
+
+/* Hide the whole widget while a full-screen overlay / popup / sidebar is open,
+ * so the bubble (or an open panel) never sits on top of a filter sheet, the
+ * search overlay, the profile drawer, an in-page modal, etc. Each class is
+ * toggled on <body> by that overlay's controller. */
+body.is-search-open .chatbot,
+body.is-mobile-menu-open .chatbot,
+body.is-mobile-filters-open .chatbot,
+body.is-filter-sheet-open .chatbot,
+body.ordf-open .chatbot,
+body.appqr-open .chatbot,
+body.earn-modal-open .chatbot,
+body.cmine-open .chatbot,
+body.rd-infomodal-open .chatbot { display: none; }
 
 /* Floating action button. */
 .chatbot__fab {
@@ -32,7 +48,7 @@
     padding: 14px 16px; background: var(--color-primary, #e5252a); color: #fff;
 }
 .chatbot__title { font-weight: 800; font-size: 0.98rem; }
-.chatbot__x { border: none; background: rgba(255, 255, 255, .18); color: #fff; width: 28px; height: 28px; border-radius: 50%; cursor: pointer; font-size: 0.85rem; }
+.chatbot__x { border: none; background: rgba(255, 255, 255, .18); color: #fff; width: 36px; height: 36px; border-radius: 50%; cursor: pointer; font-size: 0.9rem; display: grid; place-items: center; }
 
 .chatbot__body {
     flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 14px;
@@ -63,8 +79,30 @@
 .chatbot__input:focus { border-color: var(--color-primary, #e5252a); }
 .chatbot__send { flex: 0 0 auto; width: 40px; height: 40px; border: none; border-radius: 50%; background: var(--color-primary, #e5252a); color: #fff; cursor: pointer; display: grid; place-items: center; }
 
-/* Mobile — full-width bottom sheet. */
-@media (max-width: 560px) {
-    .chatbot { right: 14px; bottom: 78px; }   /* clear the mobile bottom-nav */
-    .chatbot__panel { position: fixed; right: 0; left: 0; bottom: 0; width: 100%; max-width: 100%; height: 78dvh; max-height: 78dvh; border-radius: 18px 18px 0 0; }
+/* Mobile — full-width bottom sheet + FAB lifted clear of the bottom-nav.
+ * Breakpoint is 767px to MATCH the bottom-nav (which shows up to 767px).
+ * The old 560px cutoff left a 561–767px gap where the FAB sat at the
+ * desktop bottom:20px and overlapped the 5-tab nav. */
+@media (max-width: 767px) {
+    .chatbot { right: 14px; bottom: 20px; }
+    /* Phones: NO floating bubble — it overlapped filters / the sidebar and
+     * "disturbed" the page. The chat now opens from the "Help & Chat" row in
+     * the profile drawer (data-action="open-chat-from-menu"). */
+    .chatbot__fab { display: none; }
+    /* >=16px so iOS doesn't auto-zoom when the chat input is focused. */
+    .chatbot__input { font-size: 16px; }
+    /* Full-SCREEN page on mobile (per the user — reads better than a bottom
+     * sheet). Covers the whole viewport; the panel header carries the ✕ to
+     * close. safe-area padding keeps the title clear of the notch and the
+     * input clear of the home indicator. */
+    .chatbot__panel {
+        position: fixed; inset: 0;
+        width: 100%; max-width: 100%;
+        height: 100dvh; max-height: 100dvh;
+        border: 0; border-radius: 0;
+    }
+    .chatbot__head { padding-top: calc(14px + env(safe-area-inset-top, 0)); }
+    .chatbot__form { padding-bottom: calc(10px + env(safe-area-inset-bottom, 0)); }
+    /* Lock the page behind the full-screen chat so it doesn't scroll through. */
+    body.is-chat-open { overflow: hidden; }
 }

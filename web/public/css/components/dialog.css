@@ -32,6 +32,10 @@
     border-radius: var(--radius-lg);
     padding: var(--space-6);
     box-shadow: var(--shadow-3);
+    /* PWA-audit fix: cap height + scroll so long content never pushes the
+       action buttons off-screen on small viewports. */
+    max-height: 90dvh;
+    overflow-y: auto;
 }
 .dialog__title   { font-size: 1.15rem; font-weight: 700; margin-bottom: var(--space-2); }
 .dialog__message { color: var(--color-text-muted); margin-bottom: var(--space-6); }

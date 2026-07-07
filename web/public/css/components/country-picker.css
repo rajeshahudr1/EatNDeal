@@ -174,4 +174,12 @@
         margin: 0;
         border-radius: 0;
     }
+    /* PWA-audit fix (C1): 16px kills the iOS focus-zoom on the search field. */
+    .country-picker__search { font-size: 16px; }
+    /* PWA-audit fix (C3): the sheet header sits at the very top — pad for the notch. */
+    .country-picker__head {
+        padding-top: calc(var(--space-5) + env(safe-area-inset-top, 0));
+    }
+    /* PWA-audit fix (C2): 44x44 hit area on the close button (glyph unchanged). */
+    .country-picker__close { width: 44px; height: 44px; }
 }

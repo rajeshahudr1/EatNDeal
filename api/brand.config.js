@@ -41,6 +41,10 @@ module.exports = {
     supportEmail: 'bookings@eatsndeals.co.uk',
     supportPhone: '',
     websiteUrl:   'https://eatsndeals.co.uk',
+    // App-store download links for the home "Get the app" card + QR. Empty
+    // until the apps are published (buttons then link nowhere — href="#").
+    appStoreUrl:  '',
+    playStoreUrl: '',
     privacyUrl:   '',
     termsUrl:     '',
     copyright:    '© EatNDeal. All rights reserved.',

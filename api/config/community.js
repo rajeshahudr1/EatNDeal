@@ -16,8 +16,13 @@ module.exports = {
     // How a group's posts/comments are gated.
     MODERATION: { AI: 'ai', OPEN: 'open', MANUAL: 'manual' },
 
-    // A post/comment's moderation outcome.
+    // A post/comment's moderation outcome (the `moderation_status` column).
     STATUS: { APPROVED: 'approved', PENDING: 'pending', REJECTED: 'rejected' },
+
+    // A ROW's lifecycle (the integer `status` column) — legacy convention
+    // (0 = In-Active, 1 = Active, 2 = Deleted). Delete = soft (status = 2);
+    // every read filters status = 1, so deleted rows are kept but hidden.
+    ROW: { INACTIVE: 0, ACTIVE: 1, DELETED: 2 },
 
     // Default coverage radius (km) for a group location when a row leaves it blank.
     DEFAULT_RADIUS_KM: Number(process.env.COMMUNITY_DEFAULT_RADIUS_KM) || 25,

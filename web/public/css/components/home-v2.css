@@ -562,7 +562,39 @@
 .feature-item__title { font-weight: 700; font-size: 0.95rem; }
 .feature-item__sub   { font-size: 0.8rem; color: var(--color-text-muted); }
 
-/* ── App CTA ──────────────────────────────────────────────────────── */
+/* ── Top line: welcome strip (LEFT) + "get the app" card (RIGHT) on ONE row,
+   under the category rail. Mobile: block stack — only the welcome strip shows
+   (the app card is desktop-only; you're already on a phone). ── */
+.home-topline { display: block; }
+.app-mini { display: none; }   /* desktop-only */
+@media (min-width: 768px) {
+    .home-topline { display: flex; align-items: center; gap: var(--space-4); }
+    .home-topline .welcome-strip { flex: 1 1 auto; min-width: 0; }
+    .home-topline .app-mini { flex: 0 0 auto; margin: var(--space-4) 0 var(--space-5) auto; }
+    .app-mini {
+        position: relative; display: flex; align-items: center; gap: 16px; max-width: 100%;
+        padding: 14px 18px; border-radius: 16px;
+        background: var(--color-bg); border: 1px solid var(--color-border); box-shadow: var(--shadow-1);
+    }
+    .app-mini__radio { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+    /* QR area — both platform QRs stacked; only the selected tab's shows. */
+    .app-mini__qr { position: relative; flex: 0 0 auto; width: 96px; height: 96px; border-radius: 10px; background: #fff; border: 1px solid var(--color-border); padding: 5px; overflow: hidden; }
+    .app-mini__img { position: absolute; inset: 5px; width: calc(100% - 10px); height: calc(100% - 10px); object-fit: contain; display: none; }
+    #app-ios:checked ~ .app-mini__qr .app-mini__img--ios         { display: block; }
+    #app-android:checked ~ .app-mini__qr .app-mini__img--android { display: block; }
+    .app-mini__body { min-width: 0; }
+    .app-mini__title { margin: 0; font-weight: 800; font-size: 0.98rem; color: var(--color-text); }
+    .app-mini__sub { margin: 2px 0 9px; font-size: 0.82rem; color: var(--color-text-muted); }
+    /* iOS / Android tabs (replace the old store buttons). */
+    .app-mini__tabs { display: flex; gap: 8px; }
+    .app-mini__tab { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--color-border); background: var(--color-bg-alt, #f7f8fa); color: var(--color-text); font-weight: 700; font-size: 0.82rem; cursor: pointer; user-select: none; }
+    .app-mini__tab:hover { border-color: var(--color-primary); }
+    .app-mini__tab-ic { width: 15px; height: 15px; flex: 0 0 auto; }
+    #app-ios:checked ~ .app-mini__body .app-mini__tab[for="app-ios"],
+    #app-android:checked ~ .app-mini__body .app-mini__tab[for="app-android"] { background: #111; color: #fff; border-color: #111; }
+}
+
+/* ── App CTA (legacy — no longer rendered; the .app-mini card replaced it) ── */
 .appcta {
     background: linear-gradient(120deg, #FFF1EC 0%, #FFE6DE 100%);
     border-radius: 24px; padding: var(--space-8);
@@ -670,3 +702,83 @@ body.appqr-open { overflow: hidden; }
 /* Browse mode (Collections & offers filter) — back-to-home bar above the set. */
 .browse-back { display: inline-flex; align-items: center; gap: 6px; color: var(--color-primary); font-weight: 700; text-decoration: none; margin-bottom: var(--space-3); }
 .browse-back:hover { text-decoration: underline; }
+
+/* ── Welcome strip (super-admin configured) — under the category rail ──
+   Text mode = friendly gradient card (icon + title + subtitle + soft glow);
+   image mode = full-width banner. */
+.welcome-strip { margin: var(--space-4) 0 var(--space-5); border-radius: 20px; overflow: hidden; }
+.welcome-strip--text { box-shadow: 0 10px 30px rgba(229, 37, 42, .18); }
+.welcome-strip__link { display: block; color: inherit; text-decoration: none; }
+
+/* Text mode — gradient card. Flex on whichever element wraps the content
+   (the section, or the link when a click-through is set). */
+.welcome-strip--text { position: relative; background: linear-gradient(120deg, var(--color-primary) 0%, #ff5f83 100%); color: #fff; padding: 24px 28px; }
+.welcome-strip--text,
+.welcome-strip--text .welcome-strip__link { display: flex; align-items: center; gap: 18px; }
+/* Soft decorative glow on the trailing edge. */
+.welcome-strip--text::after { content: ''; position: absolute; right: -50px; top: 50%; transform: translateY(-50%); width: 210px; height: 210px; border-radius: 50%; background: rgba(255, 255, 255, .12); pointer-events: none; }
+/* Leading icon badge. */
+.welcome-strip__ic { flex: 0 0 auto; width: 54px; height: 54px; border-radius: 50%; background: rgba(255, 255, 255, .22); display: grid; place-items: center; font-size: 1.7rem; }
+.welcome-strip__body { position: relative; z-index: 1; min-width: 0; }
+.welcome-strip--text .welcome-strip__title { margin: 0; font-size: 1.5rem; font-weight: 800; line-height: 1.2; }
+.welcome-strip--text .welcome-strip__sub { margin: 5px 0 0; font-size: 1rem; opacity: .95; }
+
+/* Image mode — a FIXED short banner the SAME height as the text banner. ANY
+   uploaded image auto-fits the box (object-fit: cover crops overflow), so a big
+   upload never overflows or breaks the layout — it just resizes into the box. */
+.welcome-strip--image { height: 120px; background: none; }
+.welcome-strip--image .welcome-strip__link { display: block; width: 100%; height: 100%; }
+.welcome-strip__img { display: block; width: 100%; height: 100%; object-fit: cover; }
+
+/* Mobile — matches the home's own 767px breakpoint so the banner switches to
+   the compact card exactly when the rest of the home goes mobile (PWA feel). */
+@media (max-width: 767px) {
+    .welcome-strip { margin: var(--space-3) 0 var(--space-4); border-radius: 16px; }
+    .welcome-strip--text { padding: 16px 18px; }
+    .welcome-strip--text,
+    .welcome-strip--text .welcome-strip__link { gap: 13px; }
+    .welcome-strip__ic { width: 44px; height: 44px; font-size: 1.4rem; }
+    .welcome-strip--text .welcome-strip__title { font-size: 1.2rem; }
+    .welcome-strip--text .welcome-strip__sub { font-size: 0.88rem; }
+    .welcome-strip--text::after { width: 150px; height: 150px; right: -45px; }
+    /* Match the text banner's compact height on mobile. */
+    .welcome-strip--image { height: 100px; }
+}
+/* Very small phones — keep the title on a comfortable size, tighten the icon. */
+@media (max-width: 420px) {
+    .welcome-strip--text { padding: 15px 16px; }
+    .welcome-strip__ic { width: 40px; height: 40px; font-size: 1.25rem; }
+    .welcome-strip--text .welcome-strip__title { font-size: 1.1rem; }
+    .welcome-strip--text .welcome-strip__sub { font-size: 0.85rem; }
+}
+
+/* ============================================================
+   /app download landing — the fallback page shown by
+   AppController.appRedirect on desktop, an unknown device, or
+   while the store URLs are still empty. Works on every device
+   (unlike .app-mini, which is a desktop-only home widget).
+   ============================================================ */
+.app-page { display: grid; place-items: center; padding: var(--space-8, 40px) var(--space-4, 16px); }
+.app-page__card {
+    width: 100%; max-width: 640px; text-align: center;
+    background: var(--color-bg); border: 1px solid var(--color-border);
+    border-radius: 20px; box-shadow: var(--shadow-1); padding: var(--space-6, 28px);
+}
+.app-page__title { margin: 0; font-size: 1.6rem; font-weight: 800; }
+.app-page__sub   { margin: 8px 0 var(--space-5, 22px); color: var(--color-text-muted); }
+.app-page__grid  { display: flex; gap: var(--space-5, 22px); justify-content: center; flex-wrap: wrap; }
+.app-page__col   { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.app-page__plat  { display: inline-flex; align-items: center; gap: 7px; font-weight: 800; }
+.app-page__qr    { width: 160px; height: 160px; background: #fff; border: 1px solid var(--color-border); border-radius: 12px; padding: 8px; }
+.app-page__qr img { width: 100%; height: 100%; display: block; object-fit: contain; }
+.app-page__store {
+    display: inline-flex; align-items: center; height: 40px; padding: 0 20px;
+    border-radius: 8px; background: #111; color: #fff; font-weight: 700; text-decoration: none;
+}
+.app-page__store:hover { background: #000; }
+.app-page__soon  { margin: var(--space-5, 22px) 0 0; color: var(--color-text-muted); font-size: 0.9rem; }
+.app-page__home  { display: inline-block; margin-top: var(--space-4, 16px); color: var(--color-primary); font-weight: 700; text-decoration: none; }
+@media (max-width: 560px) {
+    .app-page__qr { width: 140px; height: 140px; }
+    .app-page__title { font-size: 1.35rem; }
+}

@@ -294,9 +294,12 @@ async function deletePost(req, res) {
         if (!(post.author_type === 'customer' && Number(post.author_id) === cust.id)) {
             return H.errorResponse(res, 'You can only delete your own post.', 403);
         }
-        await db(L).where({ post_id: postId }).del();
-        await db(C).where({ post_id: postId }).del();
-        await db(P).where({ id: postId }).del();
+        // Soft-delete — legacy convention: status = 2 (Deleted). Reads filter
+        // status = 1 (Active), so the post + its comments are HIDDEN but KEPT
+        // (recoverable, no data loss). Likes are left as-is.
+        const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+        await db(C).where({ post_id: postId }).update({ status: CC.ROW.DELETED });
+        await db(P).where({ id: postId }).update({ status: CC.ROW.DELETED, updated_at: now });
         return H.successResponse(res, { deleted: 1 }, 'Post deleted.');
     } catch (err) {
         H.log.error('community.deletePost', err && err.message);
@@ -315,7 +318,7 @@ async function deleteComment(req, res) {
         if (!(c.author_type === 'customer' && Number(c.author_id) === cust.id)) {
             return H.errorResponse(res, 'You can only delete your own comment.', 403);
         }
-        await db(C).where({ id: commentId }).del();
+        await db(C).where({ id: commentId }).update({ status: CC.ROW.DELETED });   // soft-delete (status = 2)
         await db(P).where({ id: c.post_id }).where('comments_count', '>', 0).decrement('comments_count', 1);
         const cntRow = await db(P).where({ id: c.post_id }).first('comments_count');
         return H.successResponse(res, { deleted: 1, comments: Number(cntRow && cntRow.comments_count) || 0 }, 'Comment deleted.');

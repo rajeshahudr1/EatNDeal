@@ -58,6 +58,7 @@ const WalletController      = require('./Controllers/WalletController');
 const EarnController        = require('./Controllers/EarnController');
 const CommunityController   = require('./Controllers/CommunityController');
 const StaticPageController = require('./Controllers/StaticPageController');
+const AppController         = require('./Controllers/AppController');
 
 const app    = express();
 const ENV    = process.env.APP_ENV || 'development';
@@ -817,6 +818,9 @@ app.get('/partner',  StaticPageController.partner);
 app.get('/ride',     StaticPageController.ride);
 app.get('/business', StaticPageController.business);
 app.get('/careers',  StaticPageController.careers);
+// Smart app-download link: device-detect (or ?platform=) → store, else a
+// download page. The home "Get the app" QRs encode <site>/app?platform=…
+app.get('/app',      AppController.appRedirect);
 // Partner / contact lead form submit (AJAX → api emails the enquiry).
 app.post('/partner/apply', StaticPageController.partnerApply);
 // Help chatbot (AJAX → api answers from the customer's real data).

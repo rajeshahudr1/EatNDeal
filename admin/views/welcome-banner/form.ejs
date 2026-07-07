@@ -1,0 +1,106 @@
+<%#
+  views/welcome-banner/form.ejs
+
+  Super-admin config for the ONE home WELCOME strip (mp_welcome_banner):
+  show/hide · when (fix / new-customer) · type (text / image) · content.
+  `banner` = the current config (or null). Used: Controllers/WelcomeBannerController.form.
+-%>
+<%
+    var b = banner || {};
+    var curType = Number(b.content_type) === 2 ? 2 : 1;   // 1 = text, 2 = image
+    var curMode = Number(b.mode) === 2 ? 2 : 1;           // 1 = fix,  2 = new_customer
+    var isOn = Number(b.is_active) === 1;
+%>
+<div class="ly">
+
+    <div class="ly__head">
+        <div>
+            <h2 class="ly__title">🎉 Welcome Banner</h2>
+            <p class="ly__sub">A welcome message or banner on the home page, right under the categories.</p>
+        </div>
+        <a href="/" class="ly-btn ly-btn--ghost ly-btn--sm">← Dashboard</a>
+    </div>
+
+    <% if (typeof load_error !== 'undefined' && load_error) { %>
+        <div class="ly-empty"><span class="ly-empty__ic" aria-hidden="true">🎉</span><p class="ly-empty__msg"><%= load_error %></p></div>
+    <% } else { %>
+
+    <form method="post" action="/welcome-banner/save" enctype="multipart/form-data" class="pr-form col-form" data-wb-form>
+
+        <section class="card ly-card">
+            <h3 class="card__title">Display</h3>
+            <div class="ly-grid">
+                <div class="ly-field">
+                    <label for="wb-active">Show on home</label>
+                    <select id="wb-active" name="is_active">
+                        <option value="1" <%= isOn ? 'selected' : '' %>>Shown</option>
+                        <option value="0" <%= !isOn ? 'selected' : '' %>>Hidden</option>
+                    </select>
+                </div>
+                <div class="ly-field">
+                    <label for="wb-mode">When to show</label>
+                    <select id="wb-mode" name="mode">
+                        <option value="1" <%= curMode === 1 ? 'selected' : '' %>>Always (fixed) — every visit</option>
+                        <option value="2" <%= curMode === 2 ? 'selected' : '' %>>New customer — once, right after signup</option>
+                    </select>
+                </div>
+                <div class="ly-field">
+                    <label for="wb-type">Content type</label>
+                    <select id="wb-type" name="content_type" data-wb-type>
+                        <option value="1" <%= curType === 1 ? 'selected' : '' %>>Text (title + subtitle)</option>
+                        <option value="2" <%= curType === 2 ? 'selected' : '' %>>Image banner</option>
+                    </select>
+                </div>
+                <div class="ly-field">
+                    <label for="wb-link">Link <span class="ly-field__hint">(optional)</span></label>
+                    <input id="wb-link" type="text" name="link_url" maxlength="500" value="<%= b.link_url || '' %>" placeholder="/offers or https://…">
+                </div>
+            </div>
+        </section>
+
+        <%# Text content — shown when type = text. %>
+        <section class="card ly-card" data-wb-section="1"<%= curType !== 1 ? ' hidden' : '' %>>
+            <h3 class="card__title">Text</h3>
+            <div class="ly-grid">
+                <div class="ly-field ly-field--full">
+                    <label for="wb-title">Title <span class="ly-field__hint">(use {name} for the customer's name)</span></label>
+                    <input id="wb-title" type="text" name="title" maxlength="255" value="<%= b.title || '' %>" placeholder="e.g. Good evening {name}">
+                </div>
+                <div class="ly-field ly-field--full">
+                    <label for="wb-sub">Subtitle</label>
+                    <input id="wb-sub" type="text" name="subtitle" maxlength="500" value="<%= b.subtitle || '' %>" placeholder="e.g. Ready for something you'll love?">
+                </div>
+            </div>
+        </section>
+
+        <%# Image banner — shown when type = image. %>
+        <section class="card ly-card" data-wb-section="2"<%= curType !== 2 ? ' hidden' : '' %>>
+            <h3 class="card__title">Banner image</h3>
+            <div class="pr-imgrow">
+                <div class="pr-imgprev" data-img-prev>
+                    <% if (b.image_url) { %><img src="<%= b.image_url %>" alt="" data-img-thumb><% } else { %><span class="pr-imgprev__ph" data-img-ph>No image</span><% } %>
+                </div>
+                <div class="pr-imgupload">
+                    <input type="file" name="image" accept="image/png,image/jpeg,image/webp,image/gif" data-img-input>
+                    <p class="ly-hint">Wide, short strip — recommended <strong>~1200 × 220 px</strong> (same height as the text banner). Any size works: bigger images auto-resize to fit. PNG / JPG / WEBP / GIF, up to 3 MB. <%= b.image_url ? 'Leave empty to keep the current image.' : '' %></p>
+                </div>
+            </div>
+        </section>
+
+        <div class="ly-saveall">
+            <button type="submit" class="ly-btn ly-btn--primary ly-btn--lg">Save welcome banner</button>
+        </div>
+    </form>
+
+    <%# Delete (soft — status = 2) — only when a config exists. Separate form so
+        it doesn't submit the config above. Confirm is wired in welcome-banner.js. %>
+    <% if (banner) { %>
+    <form method="post" action="/welcome-banner/delete" class="pr-form" data-wb-delete-form>
+        <div class="ly-saveall">
+            <button type="submit" class="ly-btn ly-btn--ghost" data-wb-delete>🗑 Delete banner</button>
+        </div>
+    </form>
+    <% } %>
+
+    <% } %>
+</div>

@@ -339,6 +339,9 @@ async function saveProfile(req, res) {
 
     req.session.user        = body.data.customer;
     req.session.pendingAuth = null;
+    // Just signed up → let the home page show the one-time "new customer"
+    // welcome strip on the next load (SiteController clears it after showing).
+    req.session.welcomeOnce = true;
     req.flash('success', 'Welcome to ' + (res.locals.brand && res.locals.brand.name ? res.locals.brand.name : 'EatNDeal') + ', ' + firstname + '.');
     // Save before redirect so the landing page is already signed-in.
     return req.session.save(function () {
@@ -780,6 +783,9 @@ async function oauthCallback(req, res) {
     }
 
     req.session.user = body.data.customer;
+    // A brand-new social signup → show the one-time "new customer" welcome
+    // strip on the next home load (existing social logins don't get it).
+    if (body.data.created) { req.session.welcomeOnce = true; }
 
     // `needs_phone` is true when the customer came in fresh via social
     // and has no contact_no yet. Future: bounce them through a

@@ -1,0 +1,35 @@
+<%#
+  views/app-download.ejs — the /app fallback landing (desktop / unknown device
+  / store not published yet). Both platform QRs + store buttons. Rendered by
+  Controllers/AppController.appRedirect.
+-%>
+<section class="app-page">
+    <div class="app-page__card">
+        <h1 class="app-page__title">Get the <%= brand.name %> app</h1>
+        <p class="app-page__sub">Scan a QR code with your phone, or open your store.</p>
+
+        <div class="app-page__grid">
+            <div class="app-page__col">
+                <span class="app-page__plat">
+                    <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18" aria-hidden="true"><path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z"/></svg>
+                    iOS
+                </span>
+                <div class="app-page__qr"><img src="/img/app-qr-ios.svg?v=<%= ASSET_VERSION %>" alt="Scan to install the <%= brand.name %> app on iOS"></div>
+                <a class="app-page__store" href="<%= brand.appStoreUrl || '#' %>"<%= brand.appStoreUrl ? ' target="_blank" rel="noopener"' : '' %>>App Store</a>
+            </div>
+            <div class="app-page__col">
+                <span class="app-page__plat">
+                    <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18" aria-hidden="true"><path d="M6 18c0 .55.45 1 1 1h1v3.5a1.5 1.5 0 0 0 3 0V19h2v3.5a1.5 1.5 0 0 0 3 0V19h1c.55 0 1-.45 1-1V8H6v10zM3.5 8A1.5 1.5 0 0 0 2 9.5v7a1.5 1.5 0 0 0 3 0v-7A1.5 1.5 0 0 0 3.5 8zm17 0a1.5 1.5 0 0 0-1.5 1.5v7a1.5 1.5 0 0 0 3 0v-7A1.5 1.5 0 0 0 20.5 8zm-4.97-5.84 1.3-1.3a.5.5 0 0 0-.71-.71l-1.48 1.48A6.9 6.9 0 0 0 12 1c-.96 0-1.86.23-2.66.63L7.85.15a.5.5 0 1 0-.71.71l1.31 1.31A6.98 6.98 0 0 0 6 7h12c0-1.99-.97-3.75-2.44-4.84zM10 5H9V4h1v1zm5 0h-1V4h1v1z"/></svg>
+                    Android
+                </span>
+                <div class="app-page__qr"><img src="/img/app-qr-android.svg?v=<%= ASSET_VERSION %>" alt="Scan to install the <%= brand.name %> app on Android"></div>
+                <a class="app-page__store" href="<%= brand.playStoreUrl || '#' %>"<%= brand.playStoreUrl ? ' target="_blank" rel="noopener"' : '' %>>Google Play</a>
+            </div>
+        </div>
+
+        <% if (!brand.appStoreUrl && !brand.playStoreUrl) { %>
+        <p class="app-page__soon">🚀 The app is launching soon — the store buttons go live once it's published.</p>
+        <% } %>
+        <a class="app-page__home" href="/">← Back to home</a>
+    </div>
+</section>

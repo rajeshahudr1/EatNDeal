@@ -111,6 +111,7 @@ async function list(req, res) {
         let page = Number(req.query.page) || 1; if (page < 1) { page = 1; }
 
         const base = () => db(G).modify((qb) => {
+            qb.andWhere(G + '.status', '<>', CC.ROW.DELETED);   // hide soft-deleted groups
             if (q) { qb.andWhereRaw('LOWER(name) LIKE ?', ['%' + q + '%']); }
             if (typeF === 'user' || typeF === 'restaurant') { qb.andWhere('type', typeF); }
         });
@@ -232,13 +233,16 @@ async function remove(req, res) {
     try {
         const ids = (Array.isArray(req.body.ids) ? req.body.ids : [req.body.id]).map((x) => Number(x)).filter((x) => x > 0);
         if (!ids.length) { return H.errorResponse(res, 'Nothing to delete.', 422); }
+        // Soft-delete — legacy convention: status = 2 (Deleted). Every read
+        // filters status = 1, so the group + its posts/comments are HIDDEN but
+        // KEPT (no data loss). Likes are left as-is.
+        const now = nowStr();
         const postIds = await db(P).whereIn('group_id', ids).pluck('id');
         if (postIds.length) {
-            await db(L).whereIn('post_id', postIds).del();
-            await db(C).whereIn('post_id', postIds).del();
-            await db(P).whereIn('id', postIds).del();
+            await db(C).whereIn('post_id', postIds).update({ status: CC.ROW.DELETED });
+            await db(P).whereIn('id', postIds).update({ status: CC.ROW.DELETED, updated_at: now });
         }
-        const n = await db(G).whereIn('id', ids).del();
+        const n = await db(G).whereIn('id', ids).update({ status: CC.ROW.DELETED, updated_at: now });
         return H.successResponse(res, { deleted: n }, n + ' group' + (n === 1 ? '' : 's') + ' deleted.');
     } catch (err) {
         console.error('[admin.community.remove]', err && err.message);
@@ -339,9 +343,9 @@ async function deletePost(req, res) {
     try {
         const postId = Number(req.body.post_id || req.body.id) || 0;
         if (!postId) { return H.errorResponse(res, 'Post is required.', 422); }
-        await db(L).where({ post_id: postId }).del();
-        await db(C).where({ post_id: postId }).del();
-        const n = await db(P).where({ id: postId }).del();
+        // Soft-delete (status = 2 = Deleted) — hide the post + its comments, keep the rows.
+        await db(C).where({ post_id: postId }).update({ status: CC.ROW.DELETED });
+        const n = await db(P).where({ id: postId }).update({ status: CC.ROW.DELETED, updated_at: nowStr() });
         return H.successResponse(res, { deleted: n }, 'Post removed.');
     } catch (err) { console.error('[admin.community.deletePost]', err && err.message); return H.errorResponse(res, 'Could not remove the post.', 500); }
 }
@@ -352,7 +356,7 @@ async function deleteComment(req, res) {
         const commentId = Number(req.body.comment_id || req.body.id) || 0;
         if (!commentId) { return H.errorResponse(res, 'Comment is required.', 422); }
         const c = await db(C).where({ id: commentId }).first('post_id');
-        const n = await db(C).where({ id: commentId }).del();
+        const n = await db(C).where({ id: commentId }).update({ status: CC.ROW.DELETED });   // soft-delete (status = 2)
         if (c && n) { await db(P).where({ id: c.post_id }).where('comments_count', '>', 0).decrement('comments_count', 1); }
         return H.successResponse(res, { deleted: n }, 'Comment removed.');
     } catch (err) { console.error('[admin.community.deleteComment]', err && err.message); return H.errorResponse(res, 'Could not remove the comment.', 500); }

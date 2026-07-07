@@ -595,6 +595,12 @@ const AdminFeedSectionsCtl = require('../Controllers/Admin/FeedSectionsControlle
 router.get ('/admin/feed-sections',         authenticate, requireRole('admin'), AdminFeedSectionsCtl.list);
 router.post('/admin/feed-sections/reorder', authenticate, requireRole('admin'), AdminFeedSectionsCtl.reorder);
 
+// ── Admin: home WELCOME banner (super-admin — single config row) ──
+const AdminWelcomeBannerCtl = require('../Controllers/Admin/WelcomeBannerController');
+router.get ('/admin/welcome-banner/get',    authenticate, requireRole('admin'), AdminWelcomeBannerCtl.getConfig);
+router.post('/admin/welcome-banner/save',   authenticate, requireRole('admin'), AdminWelcomeBannerCtl.save);
+router.post('/admin/welcome-banner/delete', authenticate, requireRole('admin'), AdminWelcomeBannerCtl.remove);
+
 // ── Admin: COMMUNITY groups (Facebook-style; super-admin manages groups) ──
 const AdminCommunityCtl = require('../Controllers/Admin/CommunityController');
 router.get ('/admin/community',        authenticate, requireRole('admin'), AdminCommunityCtl.list);
@@ -973,6 +979,9 @@ router.get('/marketplace/search',
 
 // Active store-offer banners across marketplace restaurants (home rail).
 router.get('/marketplace/offers', RestaurantsCtl.offers);
+
+// Home welcome strip (super-admin configured) — public read for the home page.
+router.get('/marketplace/welcome-banner', require('../Controllers/Marketplace/WelcomeBannerController').get);
 
 // Curated home FEED — Featured row + collection rows (Uber-Eats-style shelves).
 const MarketplaceCollectionsCtl = require('../Controllers/Marketplace/CollectionsController');

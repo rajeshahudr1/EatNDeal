@@ -892,6 +892,34 @@ async function index(req, res, next) {
         selectedCuisineLabel = (match && match.name) || (cuisine.charAt(0).toUpperCase() + cuisine.slice(1));
     }
 
+    // ── Welcome banner (super-admin configured) — shown under the category
+    //    rail on the HOME view only. 'fix' = always; 'new_customer' = once,
+    //    right after signup (the signup handler set req.session.welcomeOnce;
+    //    we clear it after showing so a refresh hides it). {name} → the
+    //    signed-in customer's first name. ──
+    let welcomeBanner = null;
+    if (!viewMode) {
+        try {
+            const wbRes = await callApi(req, 'GET', '/api/v1/marketplace/welcome-banner');
+            const b = (wbRes && wbRes.body && wbRes.body.status === 200 && wbRes.body.data) ? wbRes.body.data.banner : null;
+            if (b) {
+                // mode is an INTEGER enum id: 1 = fix (always), 2 = new_customer.
+                if (Number(b.mode) === 2) {
+                    if (req.session && req.session.welcomeOnce) { welcomeBanner = b; delete req.session.welcomeOnce; }
+                } else {
+                    welcomeBanner = b;   // fix → always
+                }
+            }
+            if (welcomeBanner) {
+                const nm = (req.session && req.session.user && (req.session.user.firstname || '')) || '';
+                welcomeBanner = Object.assign({}, welcomeBanner, {
+                    title:    String(welcomeBanner.title || '').replace(/\{name\}/gi, nm).trim(),
+                    subtitle: String(welcomeBanner.subtitle || '').replace(/\{name\}/gi, nm).trim(),
+                });
+            }
+        } catch (e) { welcomeBanner = null; }
+    }
+
     res.render('site/index', {
         page_title:    null,                  // null → use brand.name as the title
         _layoutFile:   '../_layout',          // ejs-locals layout path (relative to this view)
@@ -914,6 +942,8 @@ async function index(req, res, next) {
         cuisines:         finalCuisines,
         selected_cuisine: cuisine || null,
         selected_cuisine_label: selectedCuisineLabel,
+        // Super-admin welcome strip (under the category rail); null = nothing.
+        welcome_banner:   welcomeBanner,
         // True when the picked cuisine had no restaurants and we fell
         // back to nearby ones (the view shows a note).
         cuisine_no_match: cuisineNoMatch,

@@ -19,6 +19,33 @@
  */
 
 const { randomUUID, randomInt } = require('node:crypto');
+const fs   = require('node:fs');
+const path = require('node:path');
+
+// ───────────────────────────────────────────────────────────────────
+// Error-log file sink
+// ───────────────────────────────────────────────────────────────────
+// Every H.log.error(...) line is ALSO appended to a daily text file so an
+// API function's failures survive even when nobody is watching the console.
+// Dir is <api>/logs (helper.js lives in <api>/Helpers → one level up),
+// overridable via LOG_DIR. One file per day: error-YYYY-MM-DD.log.
+const LOG_DIR = process.env.LOG_DIR || path.join(__dirname, '..', 'logs');
+
+/**
+ * _appendErrorFile (private)
+ * What:   Append one already-formatted line to today's error log file.
+ * Why:    Persist server errors for post-mortem / ops. Best-effort — logging
+ *         must NEVER throw or crash the request, so every fs call is guarded.
+ *         Synchronous append so the line is flushed even if the process is
+ *         about to exit on an uncaught exception (errors are rare → cost nil).
+ */
+function _appendErrorFile(line) {
+    try {
+        fs.mkdirSync(LOG_DIR, { recursive: true });
+        const day  = new Date().toISOString().slice(0, 10);   // YYYY-MM-DD
+        fs.appendFileSync(path.join(LOG_DIR, `error-${day}.log`), line + '\n');
+    } catch (e) { /* never let logging break the app */ }
+}
 
 // ───────────────────────────────────────────────────────────────────
 // Response envelopes
@@ -239,12 +266,18 @@ function _emit(level, tag, msg, meta) {
                : level === 'warn'  ? console.warn
                : console.log;
     const head = `[${ts}] [${level.toUpperCase()}]` + (tag ? ` [${tag}]` : '');
+    let line;
     if (meta !== undefined && meta !== null) {
         const rendered = typeof meta === 'object' ? JSON.stringify(meta) : String(meta);
-        sink(`${head} ${msg} ${rendered}`);
+        line = `${head} ${msg} ${rendered}`;
     } else {
-        sink(`${head} ${msg}`);
+        line = `${head} ${msg}`;
     }
+    sink(line);
+    // Persist ERROR lines to a daily file (every controller catch-block's
+    // H.log.error lands here). info/warn/debug stay console-only to keep the
+    // file small and high-signal.
+    if (level === 'error') { _appendErrorFile(line); }
 }
 
 /**

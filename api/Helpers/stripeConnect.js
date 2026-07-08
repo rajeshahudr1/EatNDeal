@@ -107,7 +107,11 @@ async function paymentCreate({ amount, appFeesCents, currency, account_id, retur
         payment_intent_data: {
             application_fee_amount: appFeesCents,
         },
-        return_url: return_url + '&session_id={CHECKOUT_SESSION_ID}',
+        // Append the session-id template so any redirect-based method returns
+        // to a VALID url. Use ? when the base has no query string, else & — the
+        // base is .../cart today, so it MUST become ?session_id=, not &session_id=
+        // (the latter is a broken path → "page not found" after paying).
+        return_url: return_url + (return_url.indexOf('?') === -1 ? '?' : '&') + 'session_id={CHECKOUT_SESSION_ID}',
     }, {
         stripeAccount: account_id,
     });

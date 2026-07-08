@@ -349,6 +349,28 @@ async function add(req, res) {
             });
         }
 
+        // 6c. Deliverability gate — REFUSE the add up-front when the cart is in
+        // delivery mode and the resolved drop-off postcode isn't in ANY of the
+        // branch's delivery zones. Checked BEFORE the insert so a non-deliverable
+        // restaurant never leaves a phantom line in the cart: the old flow
+        // inserted first, then failed WRITE-validation with the same message,
+        // but the row was already saved (the "message shows yet item still adds"
+        // bug). The customer switches to Pickup or picks a deliverable address.
+        if (!owner.isGuest) {
+            const dCart = await Cart.loadCartById(cart.id);
+            if (dCart && Number(dCart.serve_type) === 3 && dCart.delivery_postcode) {
+                const zoneRows = await db('store_delivery_charge_setup')
+                    .where({ branch_id: cart.branch_id, status: 1 })
+                    .select('postcode');
+                if (!M.matchDeliveryZone(dCart.delivery_postcode, zoneRows)) {
+                    return H.errorResponse(res,
+                        'This restaurant doesn\'t deliver to ' + dCart.delivery_postcode +
+                        '. Switch to Pickup or choose a deliverable address.',
+                        422, { code: 'address.no_zone', field: 'delivery_postcode' });
+                }
+            }
+        }
+
         // 7. Insert line + modifier sub-rows. Unit price is server-side,
         // with the product's own discount applied (legacy webordering
         // actionAdd: discount_type 1 = flat £, 2 = %).

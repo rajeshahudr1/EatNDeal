@@ -1028,14 +1028,15 @@
         var paidIntentPromise = ensurePaymentElement(false).then(function (el) {
             if (!el || !checkoutActions) { throw new Error('Payment form is not ready. Please refresh and try again.'); }
             origLabel.textContent = 'Confirming payment...';
-            // Attach the receipt email to the Checkout Session — REQUIRED before
-            // confirm(), else Stripe throws "An email address is required to
-            // confirm this Checkout Session". updateEmail returns a promise;
-            // wait for it so the address is registered before we confirm.
-            var emailStep = checkoutActions.updateEmail
-                ? Promise.resolve(checkoutActions.updateEmail(checkoutEmail))
-                : Promise.resolve();
-            return emailStep.then(function () { return checkoutActions.confirm(); }).then(function (result) {
+            // Confirm the Checkout Session INLINE. Two critical options:
+            //   • email — REQUIRED by Stripe to confirm (overrides updateEmail);
+            //             phone-OTP customers set it in the receipt field above.
+            //   • redirect:'if_required' — WITHOUT this the SDK ALWAYS redirects
+            //             to the session return_url on success, so the place-order
+            //             step below never runs and the customer lands on a blank
+            //             /cart URL (the "page not found" after paying). This keeps
+            //             card payments inline; only redirect-based methods leave.
+            return checkoutActions.confirm({ email: checkoutEmail, redirect: 'if_required' }).then(function (result) {
                 if (result && result.type === 'error') {
                     var m = (result.error && result.error.message) || 'Payment failed.';
                     setError(m); throw new Error(m);

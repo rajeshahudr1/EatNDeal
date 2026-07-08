@@ -147,9 +147,9 @@
         <% if (show_search) { %>
             <%- include('partials/mobile-search') -%>
         <% } %>
-        <% if (typeof show_promo_strip === 'undefined' || show_promo_strip) { %>
-            <%- include('partials/promo-strip') -%>
-        <% } %>
+        <%# Promo strip (WELCOME50 band) removed per user request — it no longer
+            renders under the header on any page. Re-add the include here if the
+            welcome-offer band is wanted back. %>
     <% } %>
 
     <% if (flash_success || flash_error) { %>

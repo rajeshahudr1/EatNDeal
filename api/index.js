@@ -188,7 +188,12 @@ app.use((req, res) => {
 // debugging; in production we never leak internals.
 // eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {
-    console.error(chalk.red('[error]'), err.stack || err);
+    // Log to console AND the daily error file (H.log.error → Helpers/helper.js
+    // file sink), with the request context so a logged error is traceable to
+    // the exact route that threw.
+    H.log.error('http', (err && err.stack) || String(err), {
+        method: req.method, url: req.originalUrl, rid: req.id || null,
+    });
     const payload = {
         status: 500,
         show:   true,
@@ -349,6 +354,19 @@ async function gracefulShutdown(signal) {
 
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
+
+// ── Last-resort error catch-alls ──────────────────────────────────
+// Anything that escaped a try/catch still lands in the daily error file
+// (H.log.error). A rejected promise is logged and the app keeps serving;
+// an uncaught exception is logged then we fail-fast (the process may be in
+// an undefined state — a process manager should restart it).
+process.on('unhandledRejection', (reason) => {
+    H.log.error('unhandledRejection', (reason && reason.stack) || String(reason));
+});
+process.on('uncaughtException', (err) => {
+    H.log.error('uncaughtException', (err && err.stack) || String(err));
+    process.exit(1);
+});
 
 // Exports for tests + Windows (which can't deliver real signals to Node
 // child processes — tests invoke gracefulShutdown directly).

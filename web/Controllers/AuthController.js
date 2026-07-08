@@ -46,6 +46,12 @@ const path         = require('node:path');
 const { callApi }  = require('../Helpers/apiClient');
 const { requireUser, relay } = require('../Helpers/authProxy');
 const oauth        = require('../Helpers/oauthProviders');
+const appAuthTokens = require('../Helpers/appAuthTokens');
+
+// Mobile app deep-link scheme for the social-sign-in handoff (see appAuthTokens
+// + oauthCallback). The Android app must register an intent-filter for
+// "<scheme>://auth". Sanitised to a valid URI scheme.
+const APP_AUTH_SCHEME = String(process.env.APP_AUTH_SCHEME || 'eatndeal').replace(/[^a-z0-9.+-]/gi, '').toLowerCase() || 'eatndeal';
 
 const OAUTH_PROVIDERS = new Set(['google', 'facebook']);
 
@@ -701,8 +707,13 @@ function oauthRedirect(req, res) {
         return res.redirect('/signin' + (next !== '/' ? '?next=' + encodeURIComponent(next) : ''));
     }
 
+    // `?app=1` marks a sign-in started from the mobile app (opened in a Chrome
+    // Custom Tab). We stash it in the state so the callback knows to hand the
+    // result back to the app via a deep link instead of rendering a web page.
+    const isApp = String((req.query && req.query.app) || '') === '1';
+
     const state = crypto.randomBytes(16).toString('hex');
-    req.session.oauthState = { provider, state, next, ts: Date.now() };
+    req.session.oauthState = { provider, state, next, ts: Date.now(), app: isApp };
 
     const url = oauth.buildAuthUrl(provider, {
         state,
@@ -787,6 +798,22 @@ async function oauthCallback(req, res) {
     // strip on the next home load (existing social logins don't get it).
     if (body.data.created) { req.session.welcomeOnce = true; }
 
+    // ── Mobile-app handoff ────────────────────────────────────────────
+    // This callback ran inside the app's Chrome Custom Tab, so the session
+    // we just set lives THERE, not in the app's WebView. Mint a one-time
+    // token carrying the signed-in customer and deep-link it back to the
+    // app; the app then loads /app-auth?token=… inside the WebView to
+    // establish the session where it's actually needed. (No web session
+    // save needed here — the Custom-Tab session is throwaway.)
+    if (stashed.app) {
+        const handoff = appAuthTokens.issue({
+            user:        body.data.customer,
+            welcomeOnce: !!body.data.created,
+            next:        safeNext(stashed.next),
+        });
+        return res.redirect(APP_AUTH_SCHEME + '://auth?token=' + encodeURIComponent(handoff));
+    }
+
     // `needs_phone` is true when the customer came in fresh via social
     // and has no contact_no yet. Future: bounce them through a
     // mini-form to add a phone (required for checkout). For now we
@@ -798,6 +825,32 @@ async function oauthCallback(req, res) {
     }
 
     return redirectAfterSave(req, res, safeNext(stashed.next));
+}
+
+/**
+ * appAuth — GET /app-auth?token=…
+ *
+ * What:  Second half of the mobile-app social-sign-in handoff. The app, after
+ *        catching the "<scheme>://auth?token=…" deep link from the Custom Tab,
+ *        loads THIS url INSIDE its WebView. We consume the one-time token and
+ *        set req.session.user on the WebView's session — so the WebView is now
+ *        signed in — then redirect to the original `next`.
+ * Why:   OAuth can't run inside a WebView (providers block it); this bridges
+ *        the session from the external tab back into the app. See
+ *        Helpers/appAuthTokens.js for the full rationale.
+ * Type:  WRITE (session).
+ * Used:  GET /app-auth (web/index.js).
+ */
+function appAuth(req, res) {
+    const data = appAuthTokens.consume(req.query && req.query.token);
+    if (!data || !data.user) {
+        req.flash('error', 'Your sign-in link expired. Please try again.');
+        return res.redirect('/signin');
+    }
+    req.session.user = data.user;
+    if (data.welcomeOnce) { req.session.welcomeOnce = true; }
+    req.flash('success', 'Welcome, ' + (data.user.firstname || '').trim() + '.');
+    return redirectAfterSave(req, res, safeNext(data.next));
 }
 
 /**
@@ -969,6 +1022,7 @@ module.exports = {
     uploadAvatar,
     oauthRedirect,
     oauthCallback,
+    appAuth,
     changePhoneSendOtp,
     changePhoneVerify,
     deleteAccount,

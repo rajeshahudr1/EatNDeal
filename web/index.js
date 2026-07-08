@@ -517,6 +517,11 @@ app.use((req, res, next) => {
     res.locals.flash_error      = (req.flash('error')   || [])[0] || null;
     res.locals.user_session     = (req.session && req.session.user) || null;
     res.locals.user_location    = (req.session && req.session.userLocation) || null;
+    // True when the page is loaded inside the mobile app's WebView (the app
+    // sets a custom User-Agent containing "EatNDealApp"). Views use it to
+    // adapt — e.g. the sign-in page routes Google/Facebook through the
+    // Custom-Tab + deep-link handoff (adds ?app=1) instead of a web redirect.
+    res.locals.is_app           = /EatNDealApp/i.test(String(req.headers['user-agent'] || ''));
     res.locals.google_maps_key  = process.env.GOOGLE_MAPS_BROWSER_KEY || '';   // Embed API (browser key)
     res.locals.page_title       = '';
     res.locals.active_nav       = '';
@@ -819,6 +824,10 @@ app.post('/review-cashback', (req, res) => {
 // :provider is constrained to google | facebook inside the handler.
 app.get('/signin/oauth/:provider',          AuthController.oauthRedirect);
 app.get('/signin/oauth/:provider/callback', AuthController.oauthCallback);
+// Mobile-app social-sign-in handoff: the app loads this INSIDE its WebView
+// with the one-time token it caught from the "<scheme>://auth?token=…" deep
+// link, and we establish the session in the WebView. See AuthController.appAuth.
+app.get('/app-auth',                        AuthController.appAuth);
 
 app.post('/logout',              AuthController.signOut);
 

@@ -80,11 +80,14 @@ async function forOrder(orderId, customerId) {
 /**
  * listForCompany
  *
- * What:  Published reviews for a restaurant (company) with sort, star filter
+ * What:  ALL of a restaurant's (company's) reviews with sort, star filter
  *        and offset pagination — backs the restaurant page's reviews panel.
+ *        Shows every review the legacy admin (pos/review-rating) lists, i.e.
+ *        NOT gated on publish_online — per user request the storefront mirrors
+ *        the admin (all active reviews, including admin-added ones). review_rating
+ *        has no soft-delete column, so every row is active.
  *        The header aggregates (average / count / per-star breakdown) are
- *        always computed UNFILTERED so the sort/filter controls show stable
- *        totals.
+ *        computed over the same full set so the totals match the admin.
  * Type:  READ.
  *
  * Opts:   sort   — 'recent' (default) | 'best' (high→low) | 'worst' (low→high)
@@ -105,7 +108,7 @@ async function listForCompany(companyId, opts) {
     const sort   = ['recent', 'best', 'worst'].indexOf(opts.sort) !== -1 ? opts.sort : 'recent';
 
     // Filtered page query.
-    const pageQ = db(TABLE).where({ company_id: companyId, publish_online: 1 });
+    const pageQ = db(TABLE).where({ company_id: companyId });
     if (stars != null) { pageQ.andWhere('rating', stars); }
     const order = sort === 'best'  ? [{ column: 'rating', order: 'desc' }, { column: 'id', order: 'desc' }]
                :  sort === 'worst' ? [{ column: 'rating', order: 'asc'  }, { column: 'id', order: 'desc' }]
@@ -117,10 +120,10 @@ async function listForCompany(companyId, opts) {
 
     // Unfiltered header aggregates + per-star breakdown.
     const agg = await db(TABLE)
-        .where({ company_id: companyId, publish_online: 1 })
+        .where({ company_id: companyId })
         .count({ c: '*' }).avg({ a: 'rating' }).first();
     const brkRows = await db(TABLE)
-        .where({ company_id: companyId, publish_online: 1 })
+        .where({ company_id: companyId })
         .select('rating').count({ n: '*' }).groupBy('rating');
     const breakdown = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
     brkRows.forEach((r) => {

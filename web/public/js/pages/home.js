@@ -1030,6 +1030,48 @@
         document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !modal.hidden) { close(); } });
     }
 
+    /**
+     * bindOfferAutoScroll
+     *
+     * What:   Auto-advances ONLY the "Offers for you" banner carousel
+     *         (.offer-banner-row) every ~2.5s, looping back to the start at
+     *         the end. Runs only when the rail actually OVERFLOWS (i.e. there
+     *         are more offers than fit on screen — otherwise there's nothing
+     *         to cycle, e.g. 0-1 cards or a wide desktop showing them all).
+     * Why:    User request — cycle multiple promos automatically so the 2nd/3rd
+     *         offer is seen without manual swiping.
+     * UX:     Pauses while the pointer is over the rail / the user is touching
+     *         it (autoplay must never fight a manual scroll), skips when the tab
+     *         is hidden, and honours prefers-reduced-motion.
+     */
+    function bindOfferAutoScroll() {
+        var section = document.querySelector('.offer-banner-row');
+        var rail    = section && section.querySelector('[data-rail]');
+        if (!rail) { return; }
+        if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) { return; }
+
+        var paused = false;
+        section.addEventListener('mouseenter', function () { paused = true;  });
+        section.addEventListener('mouseleave', function () { paused = false; });
+        section.addEventListener('touchstart', function () { paused = true;  }, { passive: true });
+        // Resume a few seconds after the finger lifts so a manual swipe settles.
+        section.addEventListener('touchend', function () {
+            window.setTimeout(function () { paused = false; }, 4000);
+        }, { passive: true });
+
+        window.setInterval(function () {
+            if (paused || document.hidden) { return; }
+            var maxScroll = rail.scrollWidth - rail.clientWidth;
+            if (maxScroll <= 4) { return; }   // nothing hidden → nothing to cycle
+            if (rail.scrollLeft >= maxScroll - 4) {
+                rail.scrollTo({ left: 0, behavior: 'smooth' });          // loop to first
+            } else {
+                var step = Math.max(200, Math.round(rail.clientWidth * 0.8));
+                rail.scrollBy({ left: step, behavior: 'smooth' });       // next page
+            }
+        }, 2500);
+    }
+
     function onReady() {
         applyCardTints();
         bindImageFallback();
@@ -1042,6 +1084,7 @@
         bindFilterToggle();
         bindRailArrows();
         bindAppQr();
+        bindOfferAutoScroll();
     }
 
     if (document.readyState === 'loading') {

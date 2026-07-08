@@ -76,14 +76,15 @@
         </section>
         <% } %>
 
-        <%# ── Rating ── (only thresholds with count > 0) %>
-        <% if (anyKeep([rc('4.5'), rc('4.0'), rc('3.5'), rc('3.0')])) { %>
+        <%# ── Rating ── (only thresholds with count > 0). Floor is 3.5 —
+            per user request we only surface 3.5 / 4.0 / 4.5 & above (the
+            "3.0 & above" option was removed). %>
+        <% if (anyKeep([rc('4.5'), rc('4.0'), rc('3.5')])) { %>
         <section class="fsb__group">
             <h3 class="fsb__group-title">Rating</h3>
             <% if (keep(rc('4.5'))) { %><label class="fsb__radio fsb__rating"><input type="radio" name="rating-web" data-filter="rating-4.5"><span class="fsb__stars">★</span><span>4.5 &amp; above</span><%- badge(rc('4.5')) %></label><% } %>
             <% if (keep(rc('4.0'))) { %><label class="fsb__radio fsb__rating"><input type="radio" name="rating-web" data-filter="rating-4.0"><span class="fsb__stars">★</span><span>4.0 &amp; above</span><%- badge(rc('4.0')) %></label><% } %>
             <% if (keep(rc('3.5'))) { %><label class="fsb__radio fsb__rating"><input type="radio" name="rating-web" data-filter="rating-3.5"><span class="fsb__stars">★</span><span>3.5 &amp; above</span><%- badge(rc('3.5')) %></label><% } %>
-            <% if (keep(rc('3.0'))) { %><label class="fsb__radio fsb__rating"><input type="radio" name="rating-web" data-filter="rating-3.0"><span class="fsb__stars">★</span><span>3.0 &amp; above</span><%- badge(rc('3.0')) %></label><% } %>
         </section>
         <% } %>
 

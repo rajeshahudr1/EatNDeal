@@ -243,7 +243,14 @@ function yiiImageUrl(type, companyId, filename) {
     const sub = YII_FOLDERS[type];
     if (!sub || !companyId) { return null; }
     const base = H.getUploadsBaseUrl();
-    return base + '/' + companyId + '/' + sub + '/' + raw;
+    const url  = base + '/' + companyId + '/' + sub + '/' + raw;
+    // Cache-bust: append ?v=<upload-timestamp> pulled from the Yii filename
+    // (e.g. banner_1_1783518678.jpeg → 1783518678). The filename already
+    // changes per upload, so this is belt-and-suspenders — it forces a fresh
+    // fetch through browser / CDN / proxy caches even for a same-name overwrite
+    // the moment the stored value changes. No timestamp in the name → no param.
+    const m = raw.match(/_(\d{9,})(?:\.|_|$)/);
+    return m ? (url + (url.indexOf('?') === -1 ? '?' : '&') + 'v=' + m[1]) : url;
 }
 
 /**

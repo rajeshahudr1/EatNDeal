@@ -155,15 +155,33 @@
     .home-shell.is-filters-collapsed .home-shell__content { position: relative; }
     .home-shell.is-filters-collapsed .filters-show {
         position: absolute;
-        top: var(--space-4);
-        left: var(--space-4);
+        top: 0;
+        left: var(--space-1);
         z-index: 30;
-        width: 42px; height: 42px; padding: 0;
-        border-radius: 50%; justify-content: center;
-        box-shadow: var(--shadow-2);
+        flex-direction: column;              /* icon on top, label below */
+        gap: var(--space-1);
+        width: 72px; height: auto; padding: 0;
+        border: 0; background: transparent; box-shadow: none;
+        color: var(--color-primary);
         margin: 0;
     }
-    .home-shell.is-filters-collapsed .filters-show span { display: none; }  /* icon only */
+    /* The SVG becomes the disc (matches the cuisine tiles) and the "Filters"
+       caption sits beneath it — same shape/label rhythm as Pizza / Sushi. */
+    .home-shell.is-filters-collapsed .filters-show svg {
+        width: 68px; height: 68px; padding: 22px;
+        box-sizing: border-box;
+        background: var(--color-bg-alt);
+        border-radius: var(--radius-md);
+        transition: transform 120ms ease, box-shadow 120ms ease;
+    }
+    .home-shell.is-filters-collapsed .filters-show:hover { background: transparent; }
+    .home-shell.is-filters-collapsed .filters-show:hover svg {
+        transform: translateY(-3px); box-shadow: var(--shadow-2);
+    }
+    /* Show the label (was hidden in the old icon-only pill). */
+    .home-shell.is-filters-collapsed .filters-show span {
+        display: block; font-weight: 700; font-size: 0.82rem;
+    }
     /* The floating Filters icon sits over the top-left of the content.
      * Shift the whole cuisine slider (its scroll viewport + arrows) to
      * the right of the icon with a MARGIN — not padding. With padding the
@@ -171,7 +189,7 @@
      * it as you scroll (the first category gets clipped behind the icon).
      * A margin moves the viewport's left edge past the icon, so overflow
      * clips there and categories always start cleanly after the icon. */
-    .home-shell.is-filters-collapsed .rail-wrap { margin-left: 70px; }
+    .home-shell.is-filters-collapsed .rail-wrap { margin-left: 84px; }
 }
 
 /* Sidebar hide button (chevron in the .fsb header). */

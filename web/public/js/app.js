@@ -40,6 +40,26 @@
         bindDrawerStubs();
         bindReorder();
         bindOfflineIndicator();
+        bindBackButton();
+    }
+
+    /**
+     * bindBackButton
+     *
+     * What:   Handler for the mobile in-page back button (data-action="go-back",
+     *         rendered in the header on non-home pages). The WebView app has no
+     *         browser chrome, so this is the app's "back": go to the previous
+     *         page when there's history, else fall back to the home feed.
+     * Type:   WRITE (navigation).
+     */
+    function bindBackButton() {
+        document.addEventListener('click', function (ev) {
+            var t = ev.target.closest && ev.target.closest('[data-action="go-back"]');
+            if (!t) { return; }
+            ev.preventDefault();
+            if (window.history && window.history.length > 1) { window.history.back(); }
+            else { window.location.href = '/'; }
+        });
     }
 
     /**

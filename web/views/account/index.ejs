@@ -649,12 +649,19 @@
                     </div>
                 </div>
 
-                <%# Email — locked: read-only display, no CHANGE / no input, so it
-                    is never submitted or updated. %>
+                <%# Email — editable via CHANGE (reveals the input; saved on Update).
+                    account.js handles data-action="change-email" (same reveal as the
+                    mobile field). No OTP — email saves directly with the form. The
+                    input is pre-filled + always present, so leaving it untouched
+                    submits the current value (no change). %>
                 <div class="pf-field pf-field--lock" data-lock="email">
                     <label class="pf-field__label">Email Address</label>
                     <div class="pf-field__control">
                         <span class="pf-readonly <%= hasEmail ? '' : 'is-empty' %>" data-readonly><%= hasEmail ? account_user.email : 'No email on file' %></span>
+                        <button type="button" class="pf-change" data-action="change-email"><%= hasEmail ? 'CHANGE' : 'ADD' %></button>
+                        <div class="pf-edit" data-edit hidden>
+                            <input id="pf-email" class="pf-field__input" type="email" name="email" value="<%= account_user.email || '' %>" placeholder="you@example.com" autocomplete="email" maxlength="150" spellcheck="false">
+                        </div>
                     </div>
                 </div>
 

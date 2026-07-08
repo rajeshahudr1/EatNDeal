@@ -400,11 +400,11 @@ async function saveProfile(req, res) {
  */
 async function updateProfile(req, res) {
     try {
-        // Only the NAME is editable here. gender/DOB live on customer_profile
-        // (/auth/update-about); email is locked; and the PHONE can now only be
-        // changed via the OTP-verified /auth/change-phone flow (so a number is
-        // always proven before the customer's loyalty follows it).
-        const { customer_id, firstname, lastname } = req.body;
+        // Editable here: NAME + EMAIL. gender/DOB live on customer_profile
+        // (/auth/update-about); the PHONE can only be changed via the
+        // OTP-verified /auth/change-phone flow (so a number is always proven
+        // before the customer's loyalty follows it).
+        const { customer_id, firstname, lastname, email } = req.body;
 
         const row = await db('customer')
             .where({ id: customer_id })
@@ -433,6 +433,24 @@ async function updateProfile(req, res) {
             updated_at:        db.fn.now(),
             server_updated_at: db.fn.now(),
         };
+
+        // Email — now editable. Only touched when a value is sent (empty =
+        // leave unchanged, so it can't be wiped by an untouched form). Guard
+        // against another marketplace account already using it (the same email
+        // is how social-signin links accounts, so it must stay unique) — mirrors
+        // the phone-taken 409.
+        const emailNew = String(email || '').trim();
+        if (emailNew) {
+            const taken = await db('customer')
+                .whereRaw('LOWER(email) = LOWER(?)', [emailNew])
+                .whereNull('company_id')
+                .andWhere('id', '<>', row.id)
+                .first();
+            if (taken) {
+                return H.errorResponse(res, 'That email is already linked to another account.', 409);
+            }
+            update.email = emailNew;
+        }
 
         await db('customer').where({ id: row.id }).update(update);
 

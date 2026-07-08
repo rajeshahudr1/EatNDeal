@@ -50,6 +50,14 @@
     function open(name) {
         var el = popupRoot(name);
         if (!el) { return; }
+        // Close any OTHER open checkout popup first — they must never stack.
+        // A still-open payment popup (with its mounted Stripe field) sitting
+        // behind the review popup is what leaked the floating "stripe" badge
+        // at the bottom of the screen.
+        if (openName && openName !== name) {
+            var prev = popupRoot(openName);
+            if (prev) { prev.hidden = true; prev.setAttribute('aria-hidden', 'true'); }
+        }
         lastFocused = document.activeElement;
         el.hidden = false;
         el.setAttribute('aria-hidden', 'false');

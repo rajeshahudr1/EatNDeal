@@ -37,12 +37,25 @@ const guestIdRule = Joi.string().trim().max(64).pattern(/^[A-Za-z0-9_]+$/).messa
 });
 const ownerCustomerIdRule = idRule.optional();
 
+// Optional ACTIVE browse/header location — the area the customer picked at the
+// top of the site. The web forwards it (from req.session.userLocation) so the
+// cart's delivery address + the "delivers here?" check FOLLOW the header
+// location, instead of silently falling back to the customer's default saved
+// address. All optional; the controller ignores them when absent.
+const browseLocationFields = {
+    loc_postcode: Joi.string().trim().max(20).allow('', null),
+    loc_label:    Joi.string().trim().max(200).allow('', null),
+    loc_lat:      Joi.number().min(-90).max(90).allow(null, ''),
+    loc_lng:      Joi.number().min(-180).max(180).allow(null, ''),
+};
+
 // ── GET /customer/cart ─────────────────────────────────────────────
 // Read the customer's open marketplace cart (any branch). No filtering
 // other than identity — the helper resolves the cart itself.
 const cartGetSchema = Joi.object({
     customer_id: ownerCustomerIdRule,
     guest_id:    guestIdRule,
+    ...browseLocationFields,
 });
 
 // ── POST /customer/cart/add ────────────────────────────────────────
@@ -71,6 +84,7 @@ const cartAddSchema = Joi.object({
     // closed before the new item is added. The client only sets this
     // after asking the customer to confirm via a dialog.
     replace_cart: Joi.boolean().truthy(1, '1', 'true').falsy(0, '0', 'false', '').default(false),
+    ...browseLocationFields,
 });
 
 // ── POST /customer/cart/update-qty ─────────────────────────────────

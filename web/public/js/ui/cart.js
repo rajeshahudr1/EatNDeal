@@ -858,9 +858,20 @@
                 if (email && checkoutActions.updateEmail) { checkoutActions.updateEmail(email); }
                 setPayLoading(false);   // reveal the card box, then mount into it
                 payElement = checkoutEle.createPaymentElement({ wallets: { applePay: 'auto', googlePay: 'auto' } });
-                payElement.mount(mount);
                 if (payElement.on) { payElement.on('change', function (event) { setError(event && event.error ? event.error.message : ''); }); }
-                return payElement;
+                // Resolve ONLY after the element has mounted AND emitted 'ready'.
+                // Stripe throws "Please ensure that the Payment Element is mounted
+                // and the ready event has been emitted before calling confirm()"
+                // when confirm() runs first (Place Order tapped before the form
+                // finished loading). The timeout is a safety net if 'ready' never
+                // fires (older SDK) so the promise can't hang forever.
+                return new Promise(function (resolve) {
+                    var settled = false;
+                    var finish  = function () { if (!settled) { settled = true; resolve(payElement); } };
+                    if (payElement.on) { payElement.on('ready', finish); }
+                    payElement.mount(mount);
+                    window.setTimeout(finish, 6000);
+                });
             });
         }).catch(function (err) {
             setPayLoading(false);   // drop the spinner; show the error in its place
@@ -966,12 +977,32 @@
         // (unreachable code below kept out — see history)
     }
 
+    // Read + validate the receipt email in the card panel. Stripe's Checkout
+    // Session confirm() REQUIRES an email; phone-OTP customers often have none
+    // on file, so the field lets them add one. Returns the trimmed address, or
+    // '' (with an inline error shown + the field focused) when it's missing or
+    // malformed — the caller aborts BEFORE touching the mounted card form, so a
+    // bad email never wipes the card the user already typed.
+    function readCheckoutEmail() {
+        var el  = document.querySelector('[data-customer-email]');
+        var err = document.querySelector('[data-email-error]');
+        var val = (el && el.value ? el.value : '').trim();
+        var ok  = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val);
+        if (err) { err.hidden = ok; err.textContent = ok ? '' : (val ? 'Enter a valid email address.' : 'Enter an email so we can send your receipt.'); }
+        if (!ok && el) { try { el.focus(); } catch (e) { /* ignore */ } }
+        return ok ? val : '';
+    }
+
     function doCardCheckout(btn, mode) {
         var stripe = ensureStripe();
         if (!stripe) {
             toast('error', 'Card payments aren\'t ready. Please refresh and try again.');
             return;
         }
+        // Validate the receipt email BEFORE any Stripe work — abort cleanly
+        // (no inflight guard, no teardown) so the typed card survives.
+        var checkoutEmail = readCheckoutEmail();
+        if (!checkoutEmail) { return; }
         checkoutInFlight = true;
         btn.disabled = true;
         // The new CTA button is .ckt-cta (also .ckt-sticky-cta on mobile).
@@ -997,7 +1028,14 @@
         var paidIntentPromise = ensurePaymentElement(false).then(function (el) {
             if (!el || !checkoutActions) { throw new Error('Payment form is not ready. Please refresh and try again.'); }
             origLabel.textContent = 'Confirming payment...';
-            return checkoutActions.confirm().then(function (result) {
+            // Attach the receipt email to the Checkout Session — REQUIRED before
+            // confirm(), else Stripe throws "An email address is required to
+            // confirm this Checkout Session". updateEmail returns a promise;
+            // wait for it so the address is registered before we confirm.
+            var emailStep = checkoutActions.updateEmail
+                ? Promise.resolve(checkoutActions.updateEmail(checkoutEmail))
+                : Promise.resolve();
+            return emailStep.then(function () { return checkoutActions.confirm(); }).then(function (result) {
                 if (result && result.type === 'error') {
                     var m = (result.error && result.error.message) || 'Payment failed.';
                     setError(m); throw new Error(m);
@@ -1139,15 +1177,10 @@
         }
     });
 
-    // "Save this card for future orders" toggles setup_future_usage on the
-    // intent — which is set at intent-creation — so rebuild the Payment
-    // Element (fresh intent) when it changes, but only once it's mounted.
-    document.addEventListener('change', function (ev) {
-        var t = ev.target;
-        if (t && t.matches && t.matches('[data-cart-save-card]') && payElement) {
-            ensurePaymentElement(true);
-        }
-    });
+    // (Removed) the "Save this card" toggle used to REBUILD the Payment Element
+    // on every change — a jarring "refresh" — and saved cards don't work on the
+    // Connect direct-charge flow anyway, so the checkbox is gone (see
+    // checkout-popups.ejs). No rebuild handler needed.
 
     // Exposed for sibling UI modules that drive the cart from their own
     // flows (e.g. the product modal posts to /cart/add directly and

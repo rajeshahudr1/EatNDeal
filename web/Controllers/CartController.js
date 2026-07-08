@@ -83,9 +83,36 @@ async function claimGuestCart(req) {
 async function fetchCart(req, owner) {
     // owner = { customer_id } | { guest_id }
     const qs = new URLSearchParams(owner);
+    applyBrowseLoc(req, qs);
     const apiRes = await callApi(req, 'GET', '/api/v1/customer/cart?' + qs.toString());
     if (!apiRes || apiRes.networkError || !apiRes.body) { return null; }
     return apiRes.body;
+}
+
+/**
+ * browseLoc / applyBrowseLoc
+ *
+ * What:  The customer's ACTIVE header location (req.session.userLocation) as
+ *        loc_* fields, forwarded to the api cart endpoints. This makes the
+ *        cart's delivery address + the "delivers here?" check follow the
+ *        location shown at the TOP of the site — instead of the api silently
+ *        falling back to a stale DEFAULT saved address. `browseLoc` returns an
+ *        object (for POST bodies); `applyBrowseLoc` sets them on a query string.
+ * Type:  READ.
+ */
+function browseLoc(req) {
+    const l = (req.session && req.session.userLocation) || null;
+    if (!l) { return {}; }
+    const out = {};
+    if (l.postcode) { out.loc_postcode = String(l.postcode); }
+    if (l.label)    { out.loc_label    = String(l.label); }
+    if (l.lat != null && l.lat !== '') { out.loc_lat = l.lat; }
+    if (l.lng != null && l.lng !== '') { out.loc_lng = l.lng; }
+    return out;
+}
+function applyBrowseLoc(req, qs) {
+    const o = browseLoc(req);
+    Object.keys(o).forEach((k) => qs.set(k, String(o[k])));
 }
 
 /**
@@ -214,6 +241,7 @@ async function data(req, res) {
     const owner = cartOwner(req);
     if (!owner.customer_id && !owner.guest_id) { return needUser(req, res); }
     const qs = new URLSearchParams(owner);
+    applyBrowseLoc(req, qs);
     const apiRes = await callApi(req, 'GET', '/api/v1/customer/cart?' + qs.toString());
     syncSessionCount(req, apiRes);
     return relay(res, apiRes);
@@ -325,7 +353,13 @@ async function forwardGuestWrite(req, res, apiPath) {
 }
 
 // Cart-build actions — guest-allowed (login only at checkout).
-const add        = (req, res) => forwardGuestWrite(req, res, '/api/v1/customer/cart/add');
+// `add` forwards the active header location so the api sets the cart's delivery
+// address to it (the "delivers here?" check then follows the header pick, not a
+// stale default saved address). Only the add schema accepts these loc_* fields.
+const add        = (req, res) => {
+    req.body = Object.assign({}, req.body, browseLoc(req));
+    return forwardGuestWrite(req, res, '/api/v1/customer/cart/add');
+};
 const updateQty  = (req, res) => forwardGuestWrite(req, res, '/api/v1/customer/cart/update-qty');
 const removeItem = (req, res) => forwardGuestWrite(req, res, '/api/v1/customer/cart/remove-item');
 const clear      = (req, res) => forwardGuestWrite(req, res, '/api/v1/customer/cart/clear');

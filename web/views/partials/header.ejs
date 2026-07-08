@@ -48,6 +48,18 @@
 <header class="site-header" role="banner">
     <div class="site-header__inner">
 
+        <%# Mobile-only in-page BACK button — the app runs in a WebView with no
+            browser chrome, so every non-home page needs its own back control
+            (per the user). Calls history.back() with a "/" fallback (app.js).
+            Hidden on desktop + on the home feed (the root — nothing to go back
+            to). Focused-flow pages that hide the site header (account, auth,
+            location gate) carry their own back control. %>
+        <% if (typeof active_nav === 'undefined' || active_nav !== 'home') { %>
+        <button type="button" class="site-header__back" data-action="go-back" aria-label="Go back">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+        </button>
+        <% } %>
+
         <%# Logo (hidden on mobile by CSS — the mockup uses the freed
             space for the two-line location). Cache-busted via
             ?v=ASSET_VERSION so a logo file swap propagates after a

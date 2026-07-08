@@ -741,12 +741,47 @@ async function setAddress(cartId, address, branch) {
  *
  * Type:  WRITE (only writes when an address needs to be applied).
  */
-async function ensureDefaultDeliveryAddress(cartId, customerId, branch) {
-    if (!cartId || !customerId || !branch) { return; }
+async function ensureDefaultDeliveryAddress(cartId, customerId, branch, browse) {
+    if (!cartId || !branch) { return; }
     const cart = await db('cart').where({ id: cartId }).first();
     if (!cart || Number(cart.serve_type) !== 3) { return; }
-    if (cart.delivery_address && String(cart.delivery_address).trim() !== '') { return; }
 
+    const norm = (s) => String(s || '').replace(/\s+/g, '').toUpperCase();
+    const applyBrowse = () => setAddress(cartId, {
+        address:   browse.label || browse.address || '',
+        post_code: String(browse.postcode || browse.post_code || '').trim(),
+        latitude:  browse.latitude != null ? browse.latitude : (browse.lat != null ? browse.lat : null),
+        longitude: browse.longitude != null ? browse.longitude : (browse.lng != null ? browse.lng : null),
+        label:     browse.label || '',
+    }, branch);
+
+    const cur = String(cart.delivery_postcode || '').trim();
+
+    // ── Header / browse location wins ─────────────────────────────────
+    // The location the customer picked at the TOP of the site is the address
+    // they're actually ordering to, so the cart's delivery address + the
+    // "delivers here?" check must follow it — not a stale DEFAULT saved address.
+    const bpc = browse ? String(browse.postcode || browse.post_code || '').trim() : '';
+    if (bpc) {
+        if (!cur) { await applyBrowse(); return; }            // empty → take the header pick
+        if (norm(cur) === norm(bpc)) { return; }              // already the header pick → nothing to do
+        // The cart carries a DIFFERENT postcode. Only override it when it's the
+        // auto-applied DEFAULT saved address (so we don't clobber a delivery
+        // address the customer deliberately chose at checkout). If it matches
+        // their default, it was auto-attached → replace with the header pick.
+        if (customerId) {
+            const def = await db('customer_address')
+                .where({ customer_id: customerId, status: 1, is_default: 1 })
+                .first();
+            if (def && norm(def.post_code) === norm(cur)) { await applyBrowse(); }
+        }
+        return;
+    }
+
+    // No header location supplied → legacy fallback: auto-attach the customer's
+    // DEFAULT saved address, but only when nothing is attached yet.
+    if (!customerId) { return; }
+    if (cur || (cart.delivery_address && String(cart.delivery_address).trim() !== '')) { return; }
     const def = await db('customer_address')
         .where({ customer_id: customerId, status: 1, is_default: 1 })
         .first();

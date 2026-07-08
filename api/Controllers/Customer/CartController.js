@@ -105,7 +105,10 @@ async function get(req, res) {
         // a guest has no saved address book.
         const branch = await M.loadActiveBranch(open.branch_id);
         if (branch && !owner.isGuest) {
-            await Cart.ensureDefaultDeliveryAddress(open.id, owner.customerId, branch);
+            await Cart.ensureDefaultDeliveryAddress(open.id, owner.customerId, branch, {
+                postcode: req.query.loc_postcode, label: req.query.loc_label,
+                latitude: req.query.loc_lat,       longitude: req.query.loc_lng,
+            });
         }
 
         // Auto-reprice any line whose price drifted (admin re-priced the
@@ -340,7 +343,10 @@ async function add(req, res) {
         // delivery address" the moment the customer hits the cart. Customers
         // only — a guest has no saved address book (set at checkout login).
         if (!owner.isGuest) {
-            await Cart.ensureDefaultDeliveryAddress(cart.id, owner.customerId, branch);
+            await Cart.ensureDefaultDeliveryAddress(cart.id, owner.customerId, branch, {
+                postcode: b.loc_postcode, label: b.loc_label,
+                latitude: b.loc_lat,       longitude: b.loc_lng,
+            });
         }
 
         // 7. Insert line + modifier sub-rows. Unit price is server-side,

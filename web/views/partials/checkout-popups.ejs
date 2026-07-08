@@ -441,6 +441,18 @@
                 so /js/ui/cart.js's existing ensureCardElement() targets it. %>
             <% if (stripeOn) { %>
             <div class="ckt-popup__card" data-cart-card-panel hidden>
+                <%# Receipt email — Stripe REQUIRES an email to confirm the
+                    Checkout Session. Phone-OTP customers often have none on
+                    file, so we always show the field, prefilled when known.
+                    Read by /js/ui/cart.js (data-customer-email) before confirm. %>
+                <div class="ckt-popup__field">
+                    <label class="ckt-popup__label" for="ckt-pay-email">Email for receipt</label>
+                    <input type="email" id="ckt-pay-email" class="ckt-popup__input"
+                        data-customer-email inputmode="email" autocomplete="email"
+                        placeholder="you@example.com"
+                        value="<%= (typeof user_session !== 'undefined' && user_session && user_session.email) ? user_session.email : '' %>">
+                    <p class="ckt-popup__err" data-email-error role="alert" hidden></p>
+                </div>
                 <div class="ckt-popup__field">
                     <label class="ckt-popup__label">Payment details</label>
                     <div class="ckt-popup__stripe" data-stripe-mount></div>
@@ -452,10 +464,12 @@
                     </div>
                     <p class="ckt-popup__err" data-stripe-error role="alert" hidden></p>
                 </div>
-                <label class="ckt-popup__check">
-                    <input type="checkbox" data-cart-save-card>
-                    <span>Save this card for future orders</span>
-                </label>
+                <%# "Save this card" is intentionally NOT shown: this checkout uses
+                    a Stripe Connect DIRECT charge (on the restaurant's connected
+                    account), where the platform can't save a card to a reusable
+                    customer — so the option never worked, and toggling it forced a
+                    full re-mount of the payment form (the "refresh"). Re-add only if
+                    the flow moves to a platform customer + SetupIntent. %>
                 <p class="ckt-popup__secure">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
                     Encrypted and processed by Stripe — your card is never stored on our servers.

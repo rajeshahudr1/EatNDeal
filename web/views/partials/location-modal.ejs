@@ -69,8 +69,10 @@
                 <button type="button" class="loc-search__clear" data-action="clear-loc-search" aria-label="Clear search" hidden>
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="#9ca3af"/><path d="M15 9l-6 6M9 9l6 6" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg>
                 </button>
+                <%# Suggestions render as an absolute dropdown INSIDE the search box
+                    so they float over the tiles below instead of being clipped. %>
+                <ul id="location-search-suggestions" class="loc-suglist" role="listbox" hidden></ul>
             </div>
-            <ul id="location-search-suggestions" class="loc-suglist" role="listbox" hidden></ul>
             <p class="loc-search__status" id="location-search-status" hidden></p>
 
             <%# Two action tiles — use current location · add new address. %>

@@ -19,8 +19,14 @@
 
     <div class="receipt__paper">
         <header class="receipt__head">
-            <h1 class="receipt__brand"><%= (brand && brand.name) ? brand.name : 'EatNDeal' %></h1>
+            <% var brandName = (brand && brand.name) ? brand.name : 'EatNDeal'; %>
+            <h1 class="receipt__brand"><%= brandName %></h1>
+            <%# Only show the restaurant name when it differs from the platform
+                brand — otherwise "EatNDeal" (the restaurant) repeats "EatNDeal"
+                (the brand) twice in the header. %>
+            <% if (o.restaurant.name && o.restaurant.name.trim().toLowerCase() !== brandName.trim().toLowerCase()) { %>
             <p class="receipt__rest"><%= o.restaurant.name %></p>
+            <% } %>
             <% if (o.restaurant.address) { %><p class="receipt__line"><%= o.restaurant.address %></p><% } %>
             <% if (o.restaurant.phone) { %><p class="receipt__line"><%= o.restaurant.phone %></p><% } %>
         </header>

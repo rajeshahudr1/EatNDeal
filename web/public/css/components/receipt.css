@@ -17,10 +17,24 @@
 .receipt__rest { margin: 0; font-weight: 700; }
 .receipt__line { margin: 2px 0 0; font-size: 0.82rem; color: #6b7280; }
 
-.receipt__meta { display: grid; gap: 4px; margin-bottom: 16px; font-size: 0.86rem; }
-.receipt__meta div { display: flex; justify-content: space-between; gap: 12px; }
-.receipt__meta span { color: #6b7280; }
-.receipt__meta strong { text-align: right; }
+.receipt__meta { display: grid; gap: 8px; margin-bottom: 16px; font-size: 0.86rem; }
+/* Label left, value right. align-items:flex-start so a value that wraps to a
+   second line keeps its top edge level with the label. */
+.receipt__meta div { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+/* Label never shrinks; value takes the rest and MUST be allowed to shrink
+   (min-width:0) + break long tokens, else the order number / phone / address
+   overflow past the card's right edge and get clipped (the reported bug). */
+.receipt__meta span    { color: #6b7280; flex: 0 0 auto; }
+.receipt__meta strong  {
+    text-align: right; min-width: 0; flex: 1 1 auto; font-weight: 700;
+    overflow-wrap: anywhere; word-break: break-word;
+}
+/* The order number is a long opaque token — render it a touch smaller in a
+   monospace so it wraps neatly inside the card instead of running off-screen. */
+.receipt__meta div:first-child strong {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 0.8rem; letter-spacing: -0.2px; line-height: 1.35;
+}
 
 .receipt__items { width: 100%; border-collapse: collapse; margin-bottom: 14px; }
 .receipt__items td { padding: 6px 0; vertical-align: top; border-bottom: 1px solid #f1f5f9; font-size: 0.9rem; }
@@ -44,8 +58,17 @@
 /* PWA-audit fix (C2): ensure the receipt action controls meet the 44px
    minimum tap height on mobile. */
 @media (max-width: 767px) {
+    .receipt { padding: 0 12px; margin: 12px auto; }
+    /* Tighter paper padding so the narrow phone screen gives the receipt
+       content more usable width (28px each side was eating the layout). */
+    .receipt__paper { padding: 20px 16px; }
     .receipt__print, .receipt__back {
         min-height: 44px;
         display: inline-flex; align-items: center; justify-content: center;
     }
+    /* Keep the top action bar on one line but let the label shrink before the
+       primary Print button rather than pushing it off-screen. */
+    .receipt__bar { gap: 8px; }
+    .receipt__back { min-width: 0; }
+    .receipt__brand { font-size: 1.25rem; }
 }

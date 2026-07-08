@@ -67,23 +67,25 @@ const PAYMENT_STATUS_PENDING = 0;  // 0 = unpaid; cash collected on delivery
 /**
  * generateOrderNumber
  *
- * What:  Generates a marketplace order number in the format
- *           MP_YYYYMMDD_HHMMSS_<12-hex>
- *        12 hex chars = 48 bits of randomness, making a same-second
- *        collision astronomically unlikely even under peak concurrent
- *        checkout. Earlier 3-digit version could collide (1-in-1000).
- *        crypto.randomBytes is CSPRNG-quality.
+ * What:  Generates a marketplace order number in the SAME short shape the
+ *        legacy EatNDeal POS uses:
+ *           <PREFIX>_YYYYMMDD_<unix-seconds>
+ *        e.g. legacy WO_20260624_1782284212 → marketplace MP_20260708_1783600000
+ *        The `MP_` prefix keeps marketplace orders visually distinct from the
+ *        legacy WO_ (web order) / CC_ (counter) ones while matching their
+ *        compact "prefix_date_timestamp" style — the long _HHMMSS_<12-hex>
+ *        suffix was replaced with the legacy look per user request.
+ * Note:  Mirrors legacy PHP `time()` — seconds, not ms. order_number has NO
+ *        unique constraint (verified in DB), so a rare same-second collision is
+ *        harmless (numeric orders.id stays the true PK), exactly as legacy.
  * Type:  READ (pure).
  */
-const crypto = require('crypto');
 function generateOrderNumber(now) {
     const d = now || new Date();
     const pad = (n, w) => String(n).padStart(w || 2, '0');
-    const r = crypto.randomBytes(6).toString('hex');     // 12 hex chars
-    return 'MP_'
-        + d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) + '_'
-        + pad(d.getHours()) + pad(d.getMinutes()) + pad(d.getSeconds()) + '_'
-        + r;
+    const ymd = d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate());
+    const ts  = Math.floor(d.getTime() / 1000);   // unix seconds (legacy `time()`)
+    return 'MP_' + ymd + '_' + ts;
 }
 
 /**

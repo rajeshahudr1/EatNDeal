@@ -143,21 +143,19 @@ function get(req, res) {
 /**
  * useDemo
  *
- * What:   TEMPORARY testing shortcut. Fetches a deliverable restaurant's own
+ * What:   Testing shortcut (the location page's currently-HIDDEN "Use a demo
+ *         delivery location" button). Fetches a deliverable restaurant's own
  *         coordinates from the api (server-side), then saves them to the
  *         session exactly like save() — so the user lands in the feed with a
  *         working delivery location in one tap.
  * Why:    Browser/IP geolocation needs HTTPS + a secure context, unavailable
- *         in the demo setup. Critically, this runs the api call SERVER-SIDE:
- *         on a phone the browser can't reach the api's localhost:4501, but the
- *         web server can — so the demo works on a real device where a direct
- *         client → api call ("We could not reach the server") would fail.
+ *         in the demo setup. Runs the api call SERVER-SIDE so it works on a
+ *         phone (where the browser can't reach the api's localhost).
  * Type:   READ (api) + WRITE (session).
  * Inputs: req.body.mode? — 'delivery' | 'pickup' (defaults delivery).
  * Output: 200 envelope with the saved location, or an error envelope.
- * Used:   POST /location/use-demo (called by /js/pages/location-page.js).
- *
- * REMOVE this (+ the route + the button) once real geolocation is available.
+ * Used:   POST /location/use-demo (called by /js/pages/location-page.js when
+ *         the hidden demo button is re-enabled).
  */
 async function useDemo(req, res) {
     if (!req.session) {

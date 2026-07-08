@@ -150,12 +150,12 @@
     }
 
     /**
-     * TEMP demo location — POSTs to the WEB endpoint /location/use-demo (NOT
-     * the api directly). The web server fetches a deliverable restaurant's
-     * coordinates + saves them to the session, then we reload into the feed.
-     * Going through the same-origin web route is what makes this work on a
-     * phone: the browser can't reach the api's localhost, but it CAN reach the
-     * web server it just loaded the page from. Remove with the button.
+     * Demo location (HIDDEN button, kept for testing) — POSTs to the WEB
+     * endpoint /location/use-demo (NOT the api directly). The web server
+     * fetches a deliverable restaurant's coordinates + saves them to the
+     * session, then we reload into the feed. Going through the same-origin web
+     * route is what makes this work on a phone: the browser can't reach the
+     * api's localhost, but it CAN reach the web server it loaded the page from.
      */
     function useDemoLocation() {
         setStatus('Loading a demo location…');

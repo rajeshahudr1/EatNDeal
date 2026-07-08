@@ -52,11 +52,10 @@
                 Use my current location
             </button>
 
-            <%# TEMP demo button — drops into a real deliverable restaurant's
-                own location so testing works without HTTPS geolocation (IP /
-                browser location needs a secure context). Remove this + the
-                /marketplace/demo-location route once real geo is wired. %>
-            <button type="button" class="locpage__locate locpage__locate--demo" data-action="use-demo-location">
+            <%# Demo delivery location — HIDDEN for now (kept for testing; the
+                backend route + handler stay wired). Delete the `hidden`
+                attribute below to switch it back on. %>
+            <button type="button" class="locpage__locate locpage__locate--demo" data-action="use-demo-location" hidden>
                 <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s7-7.5 7-13a7 7 0 0 0-14 0c0 5.5 7 13 7 13z"/><circle cx="12" cy="9" r="2.5"/></svg>
                 Use a demo delivery location
             </button>

@@ -625,10 +625,10 @@ app.get('/restaurant-reviews', SiteController.restaurantReviews);
 app.post('/location/save',  LocationController.save);
 app.post('/location/clear', LocationController.clear);
 app.get ('/location',       LocationController.get);
-// TEMP demo shortcut — picks a deliverable restaurant's location server-side
-// and saves it to the session. Routed through the web (not the api directly)
-// so it works on a phone, where the browser can't reach the api's localhost.
-// Remove with the demo feature.
+// Demo shortcut (backs the location page's currently-HIDDEN "Use a demo delivery
+// location" button) — picks a deliverable restaurant's location server-side and
+// saves it to the session. Routed through the web (not the api directly) so it
+// works on a phone, where the browser can't reach the api's localhost.
 app.post('/location/use-demo', LocationController.useDemo);
 
 // ── Saved addresses (signed-in customers; proxied to the api) ───

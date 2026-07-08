@@ -43,8 +43,10 @@ module.exports = {
     websiteUrl:   'https://eatsndeals.co.uk',
     // App-store download links for the home "Get the app" card + QR. Empty
     // until the apps are published (buttons then link nowhere — href="#").
+    // Android: the live Play Store listing for the marketplace app
+    // (package com.eatsndeals.marketplace). iOS still pending publish.
     appStoreUrl:  '',
-    playStoreUrl: '',
+    playStoreUrl: 'https://play.google.com/store/apps/details?id=com.eatsndeals.marketplace',
     privacyUrl:   '',
     termsUrl:     '',
     copyright:    '© EatNDeal. All rights reserved.',

@@ -999,8 +999,8 @@ router.get('/marketplace/welcome-banner', require('../Controllers/Marketplace/We
 router.get('/marketplace/offer-banner', require('../Controllers/Marketplace/OfferBannerController').list);
 
 // Location gate helpers — dynamic "popular cities" grid (branches grouped by
-// city, top-N by restaurant count) + a TEMPORARY demo-location button (browser
-// / IP geolocation needs HTTPS, unavailable in the demo setup). Public reads.
+// city, top-N by restaurant count) + demo-location (backs the location page's
+// currently-HIDDEN demo button; browser/IP geolocation needs HTTPS). Public reads.
 const MarketplacePlacesCtl = require('../Controllers/Marketplace/PlacesController');
 router.get('/marketplace/cities',        MarketplacePlacesCtl.cities);
 router.get('/marketplace/demo-location', MarketplacePlacesCtl.demoLocation);

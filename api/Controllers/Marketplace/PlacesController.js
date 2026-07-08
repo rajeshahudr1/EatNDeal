@@ -7,11 +7,11 @@
  *          • GET /api/v1/marketplace/cities        — the "popular cities" grid,
  *            built dynamically from the LIVE restaurants: branch.city grouped +
  *            a DISTINCT-company count per city, top-N by count.
- *          • GET /api/v1/marketplace/demo-location — a TEMPORARY testing helper.
- *            Returns one deliverable restaurant's own coordinates so the tester
- *            can drop into a working delivery area with one tap (IP / browser
- *            geolocation needs HTTPS + a secure context, which isn't available
- *            in the current dev/demo setup). REMOVE once real geo is wired.
+ *          • GET /api/v1/marketplace/demo-location — testing helper backing the
+ *            location page's currently-HIDDEN "Use a demo delivery location"
+ *            button. Returns one deliverable restaurant's own coordinates so a
+ *            tester can drop into a working delivery area with one tap (IP /
+ *            browser geolocation needs HTTPS, unavailable in the dev/demo setup).
  *
  * Why:   The cities list used to be hard-coded in the EJS. The user asked for
  *        it to come from the database ("jitne restaurant return hote hain us ke
@@ -131,16 +131,14 @@ async function cities(req, res) {
 /**
  * demoLocation
  *
- * What:  TEMPORARY. Returns one deliverable restaurant's own coordinates so a
- *        tester can drop straight into a working delivery area (the user asked
- *        for a demo button because browser/IP geolocation needs HTTPS which the
- *        current setup lacks). Prefers a branch with delivery switched on
+ * What:  Returns one deliverable restaurant's own coordinates so a tester can
+ *        drop straight into a working delivery area (backs the location page's
+ *        currently-HIDDEN demo button; browser/IP geolocation needs HTTPS which
+ *        the current setup lacks). Prefers a branch with delivery switched on
  *        (show_delivery_option <> 0); falls back to any eligible branch with
  *        valid coordinates so the button always returns something.
  * Type:  READ.
  * Output: { label, city, postcode, lat, lng }
- *
- * REMOVE this (route + button) once real geolocation is available.
  */
 async function demoLocation(req, res) {
     try {

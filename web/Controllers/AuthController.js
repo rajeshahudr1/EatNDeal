@@ -719,6 +719,15 @@ function oauthRedirect(req, res) {
         state,
         redirectUri: oauth.callbackUrl(provider, req),
     });
+    // SAVE the session (with oauthState) BEFORE redirecting to the provider.
+    // saveUninitialized:false + the async FileStore mean an immediate redirect
+    // races the write — Google bounces back before oauthState is durable, so
+    // the callback sees an empty session and shows "session expired" on the
+    // FIRST attempt (the second works because the cookie/session now exist).
+    // Saving first makes the state durable + sets the cookie up front.
+    if (req.session && typeof req.session.save === 'function') {
+        return req.session.save(function () { res.redirect(url); });
+    }
     return res.redirect(url);
 }
 

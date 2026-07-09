@@ -116,6 +116,20 @@ function applyBrowseLoc(req, qs) {
 }
 
 /**
+ * browseMode — the customer's ACTIVE order mode (header Delivery/Pickup toggle,
+ * stored in session.userLocation.mode) as a serve_type the api understands:
+ * 2 = pickup / collection, 3 = delivery. Forwarded on ADD so a FRESH cart is
+ * created in the mode the customer actually chose — otherwise every new cart
+ * defaulted to delivery and the "doesn't deliver here" gate fired even for a
+ * Collection order. Ignored by the api for an existing cart (mode changes then
+ * go through /cart/set-mode).
+ */
+function browseMode(req) {
+    const l = (req.session && req.session.userLocation) || null;
+    return { serve_type: (l && l.mode === 'pickup') ? 2 : 3 };
+}
+
+/**
  * fetchAddresses — pulls the customer's saved address book for the cart
  * page. Empty array when none / network failure (cart page still works).
  */
@@ -357,7 +371,11 @@ async function forwardGuestWrite(req, res, apiPath) {
 // address to it (the "delivers here?" check then follows the header pick, not a
 // stale default saved address). Only the add schema accepts these loc_* fields.
 const add        = (req, res) => {
-    req.body = Object.assign({}, req.body, browseLoc(req));
+    // Mode precedence: the frontend sends serve_type from the ACTIVE mode
+    // control (restaurant tab / header toggle) → that wins; browseMode (the
+    // session's remembered mode) is only the fallback when the client didn't
+    // send one. browseLoc (header location) is always applied last.
+    req.body = Object.assign({}, browseMode(req), req.body, browseLoc(req));
     return forwardGuestWrite(req, res, '/api/v1/customer/cart/add');
 };
 const updateQty  = (req, res) => forwardGuestWrite(req, res, '/api/v1/customer/cart/update-qty');

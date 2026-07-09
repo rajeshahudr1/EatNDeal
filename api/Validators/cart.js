@@ -84,6 +84,11 @@ const cartAddSchema = Joi.object({
     // closed before the new item is added. The client only sets this
     // after asking the customer to confirm via a dialog.
     replace_cart: Joi.boolean().truthy(1, '1', 'true').falsy(0, '0', 'false', '').default(false),
+    // The customer's active order mode (header Delivery/Pickup toggle), so a
+    // FRESH cart is created in the right mode: 2 = pickup/collection, 3 =
+    // delivery (default). Only honoured when the cart is first created — it
+    // stops the "doesn't deliver here" gate from firing on a Collection order.
+    serve_type: Joi.number().valid(2, 3).default(3),
     ...browseLocationFields,
 });
 

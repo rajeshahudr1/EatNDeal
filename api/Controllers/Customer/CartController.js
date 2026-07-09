@@ -331,10 +331,16 @@ async function add(req, res) {
         }
 
         // 6. Get-or-create cart for THIS branch (customer OR guest owner).
+        // serveType comes from the customer's active mode toggle (2=pickup,
+        // 3=delivery, default 3) so a FRESH cart is created in the mode they
+        // actually chose — a Collection order must NOT be created as delivery,
+        // or the deliverability gate below fires wrongly. Ignored for an
+        // existing cart (mode changes then go through /cart/set-mode).
         const cart = await Cart.getOrCreateCart({
             owner:     owner.scope,
             branchId:  branch.id,
             companyId: product.company_id,
+            serveType: Number(b.serve_type) === 2 ? 2 : 3,
         });
 
         // 6b. First add into a fresh cart sets serve_type=3 (delivery)

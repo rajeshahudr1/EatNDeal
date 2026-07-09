@@ -256,12 +256,28 @@
         return Number.isFinite(n) && n > 0 ? n : 1;
     }
 
+    // Read the customer's ACTIVE order mode as a serve_type (2=pickup,
+    // 3=delivery) from whichever control is on the page — so a fresh cart is
+    // created in the chosen mode and the "doesn't deliver here" gate is skipped
+    // for a Collection/Pickup order. Priority: restaurant fulfilment tab →
+    // cart-page mode tab → header Delivery/Pickup toggle → default delivery.
+    function readOrderMode() {
+        var rd = document.querySelector('.rd-tab.is-active[data-rd-tab]');
+        if (rd) { return rd.getAttribute('data-rd-tab') === 'pickup' ? 2 : 3; }
+        var ck = document.querySelector('.ckt-mode__tab.is-active[data-mode]');
+        if (ck) { return ck.getAttribute('data-mode') === '2' ? 2 : 3; }
+        var hd = document.querySelector('input[name="order-mode"]:checked');
+        if (hd) { return hd.value === 'pickup' ? 2 : 3; }
+        return 3;
+    }
+
     function doAddToCart(productRoot, btn, replace) {
         var body = {
             product_id: productRoot.getAttribute('data-product-id'),
             qty:        readQty(productRoot),
             options:    collectOptions(productRoot),
             remark:     readNote(productRoot),
+            serve_type: readOrderMode(),
         };
         if (replace) { body.replace_cart = true; }
         return postCart('/cart/add', body).then(function (env) {
@@ -319,7 +335,7 @@
     function doQuickAdd(btn, replace) {
         var productId = btn.getAttribute('data-id');
         if (!productId) { return Promise.resolve(); }
-        var body = { product_id: productId, qty: 1, options: [], remark: '' };
+        var body = { product_id: productId, qty: 1, options: [], remark: '', serve_type: readOrderMode() };
         if (replace) { body.replace_cart = true; }
         var name = btn.getAttribute('data-name') || 'Item';
         return postCart('/cart/add', body).then(function (env) {

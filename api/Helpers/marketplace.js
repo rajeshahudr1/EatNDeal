@@ -212,7 +212,7 @@ function isVegProduct(product) {
  *           <company_id>/products/<file>      ← type='product'
  *           <company_id>/category/<file>      ← type='category'  (singular!)
  *           <company_id>/banner_image/<file>  ← type='banner'    (branch banner)
- *           <company_id>/branch_logos/<file>  ← type='logo'      (branch logo / business_image fallback)
+ *           <company_id>/branch/<file>        ← type='logo'      (branch logo = business_image)
  *
  *        Returns null when any required piece (filename, companyId,
  *        unknown type) is missing — the front-end placeholder shows
@@ -231,7 +231,12 @@ const YII_FOLDERS = {
     product:  'products',
     category: 'category',
     banner:   'banner_image',
-    logo:     'branch_logos',
+    // VERIFIED: branch logos (business_image) live in the "<companyId>/branch"
+    // folder on disk, NOT "branch_logos" — the latter 404s and the front-end
+    // falls back to the tinted-initial placeholder. Confirmed against the live
+    // uploads tree (…/uploads/1/branch/branch_1_*.jpg) and cross-checked with
+    // mailer.restaurantLogoUrl + StoreSettingsController's imgUrl('branch', …).
+    logo:     'branch',
 };
 function yiiImageUrl(type, companyId, filename) {
     const raw = String(filename || '').trim();

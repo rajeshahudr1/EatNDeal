@@ -77,6 +77,7 @@ async function getSettings(req, res) {
         const got = await resolveBranch(req, res);
         if (!got) { return; }
         const b = got.branch;
+        
 
         // Build a served URL for a stored image (Yii uploads tree:
         // <companyId>/<subfolder>/<file>). Pass-through full URLs / abs paths.

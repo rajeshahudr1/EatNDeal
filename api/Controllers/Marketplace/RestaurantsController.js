@@ -663,6 +663,8 @@ async function detail(req, res) {
             )
             .orderBy('b.id', 'asc')
             .first();
+
+            console.log("row",row);
         if (!row) { return H.errorResponse(res, 'Restaurant not found.', 404); }
 
         const name = String(row.business_name || '').trim();
@@ -750,6 +752,7 @@ async function detail(req, res) {
             } : null,
         };
 
+        console.log("restaurant",restaurant);
         // ── Menu categories ────────────────────────────────────────
         // Map every displayable category id → its name. The live data
         // has duplicate category rows per name (one per branch), so we

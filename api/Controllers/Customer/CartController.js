@@ -161,8 +161,29 @@ async function get(req, res) {
             if (branch) { availableSlots = await StoreHours.slotsForBranch(branch, v.cart.serve_type); }
         } catch (e) { availableSlots = []; }
 
+        // Which fulfilment modes this restaurant offers (config-level) — so the
+        // cart/checkout can hide the Pickup or Delivery tab for a single-mode
+        // restaurant. Defaults to both when the branch didn't load.
+        const offered = StoreHours.offeredServices(branch);
+
+        // Pre-order applicability (legacy parity) — the "When"/Schedule row only
+        // makes sense when the restaurant is CLOSED right now for this mode AND
+        // it accepts pre-orders (branch.pre_order=1) AND real slots exist. When
+        // it's open, the order is ASAP-only and no schedule card shows (matches
+        // legacy webordering, which surfaces pre-order ONLY while closed).
+        let canSchedule = false;
+        try {
+            if (branch && Number(branch.pre_order) === 1) {
+                const sched = await StoreHours.availabilityForBranch(branch);
+                const svc = sched ? (Number(v.cart.serve_type) === 2 ? sched.services.takeaway : sched.services.delivery) : null;
+                const modeOpen = svc ? svc.status === 'open' : (sched ? sched.isOpen : true);
+                canSchedule = !modeOpen && availableSlots.length > 0;
+            }
+        } catch (e) { canSchedule = false; }
+
         const view  = Cart.publicCartView(v.cart, items, {
             charityTiers, cardServiceCharge, rewardBalance, rewardMax, availableSlots,
+            canDelivery: offered.delivery, canPickup: offered.pickup, canSchedule,
         });
 
         // Surface any auto-reprice as a non-blocking notice so the customer
@@ -633,6 +654,14 @@ async function setMode(req, res) {
         // be confident the chosen mode is still offered.
         const branch = await M.loadActiveBranch(open.branch_id);
         if (!branch) { return H.errorResponse(res, 'This restaurant is no longer available.', 404); }
+
+        // Reject a mode this restaurant doesn't offer (a delivery-only
+        // restaurant can't be switched to Pickup, and vice-versa).
+        if (!StoreHours.offersMode(branch, b.serve_type)) {
+            return H.errorResponse(res,
+                'This restaurant doesn\'t offer ' + (Number(b.serve_type) === 2 ? 'pickup' : 'delivery') + '.',
+                422, { code: 'mode.unavailable' });
+        }
 
         await Cart.setMode(open.id, b.serve_type, branch);
 

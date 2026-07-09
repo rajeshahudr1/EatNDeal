@@ -454,6 +454,11 @@ async function list(req, res) {
             card._priceLow  = !!r.has_price_low;
             card._priceMid  = !!r.has_price_mid;
             card._priceHigh = !!r.has_price_high;
+            // Fulfilment modes the restaurant OFFERS (config-level) — drives the
+            // header Pickup/Delivery filter below. Stripped before the response.
+            const _off = StoreHours.offeredServices(r);
+            card._offersDelivery = _off.delivery;
+            card._offersPickup   = _off.pickup;
             // Live offer facets (from offers.js offerSummaries) — used by the
             // offer-banner landing filters below. All stripped before response.
             card._offerPct          = Number(summary.pct) || 0;         // max % (for "X% or more")
@@ -506,6 +511,15 @@ async function list(req, res) {
         if (openNow)   { filtered = filtered.filter(r => r.isOpen); }
         if (vegOnly)   { filtered = filtered.filter(r => r.vegType === 'pure-veg'); }
         if (hasOffer)  { filtered = filtered.filter(r => !!r.offer); }
+        // ── Fulfilment mode (header Pickup/Delivery toggle) ────────
+        // Keep only restaurants that OFFER the chosen mode. Config-level so a
+        // pickup restaurant that's shut right now still appears under Pickup
+        // (just marked Closed); only a restaurant that DOESN'T do the mode at
+        // all is dropped. Applies on every surface that hits this endpoint
+        // (home, ?view=restaurants, pickup, offer/collection landings).
+        const modeParam = String(req.query.mode || '').toLowerCase();
+        if (modeParam === 'pickup')        { filtered = filtered.filter(r => r._offersPickup); }
+        else if (modeParam === 'delivery') { filtered = filtered.filter(r => r._offersDelivery); }
         // ── Offer-banner landing filters (match the live offer facets) ──
         // MIN_DISCOUNT — max % >= threshold ("X% off or more").
         if (Number.isFinite(minDiscount) && minDiscount > 0) {
@@ -563,7 +577,7 @@ async function list(req, res) {
         // Strip the internal _-prefixed fields so the public card shape
         // stays clean.
         const sliced = filtered.slice(offset, offset + limit).map(r => {
-            const { _mins, _priceLow, _priceMid, _priceHigh, _offerPct, _offerPctMin, _offerAmount, _offerAmountMin, _offerFreeDelivery, _offerHasItem, ...view } = r;
+            const { _mins, _priceLow, _priceMid, _priceHigh, _offerPct, _offerPctMin, _offerAmount, _offerAmountMin, _offerFreeDelivery, _offerHasItem, _offersDelivery, _offersPickup, ...view } = r;
             return view;
         });
         const hasMore = filtered.length > offset + limit;
@@ -664,7 +678,6 @@ async function detail(req, res) {
             .orderBy('b.id', 'asc')
             .first();
 
-            console.log("row",row);
         if (!row) { return H.errorResponse(res, 'Restaurant not found.', 404); }
 
         const name = String(row.business_name || '').trim();
@@ -714,6 +727,11 @@ async function detail(req, res) {
             openStatus:      avail ? avail.status : null,
             deliveryOpen:    avail ? (avail.services.delivery.status === 'open') : null,
             pickupOpen:      avail ? (avail.services.takeaway.status === 'open') : null,
+            // Config-level: does this restaurant OFFER each mode at all (used to
+            // hide the Delivery/Pickup tab + the "doesn't deliver" warning for a
+            // single-mode restaurant, and to pick the default fulfilment tab).
+            offersDelivery:  StoreHours.offeredServices(row).delivery,
+            offersPickup:    StoreHours.offeredServices(row).pickup,
             closedReason:    avail ? avail.closedReason : null,
             closedMessage:   avail ? avail.message : null,
             opensAt:         avail ? avail.reopenAt : null,
@@ -752,7 +770,6 @@ async function detail(req, res) {
             } : null,
         };
 
-        console.log("restaurant",restaurant);
         // ── Menu categories ────────────────────────────────────────
         // Map every displayable category id → its name. The live data
         // has duplicate category rows per name (one per branch), so we

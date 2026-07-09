@@ -148,6 +148,37 @@ async function refundPayment({ payment_transaction_id, account_id, order_id, rea
     return refund;
 }
 
+/* 7. Register a payment-method DOMAIN on a connected account (direct charge) so
+ *    wallets — Google Pay / Apple Pay / Link — can render in the Payment Element.
+ *
+ *    WHY it's per-account: our marketplace serves every restaurant's checkout on
+ *    ONE domain (eatsndeals.co.uk), unlike legacy where each restaurant used its
+ *    own subdomain. For a DIRECT charge Stripe only surfaces wallets when the
+ *    checkout domain is a registered payment-method domain ON that connected
+ *    account (the { stripeAccount } header) — otherwise only the card field shows.
+ *    Legacy did this at onboarding via /stripe/account-retrieve using the
+ *    company's OWN domain; here we register the MARKETPLACE domain instead.
+ *
+ *    Idempotent: reuses an existing registration for the domain, else creates it,
+ *    then validates (activates Apple Pay / Google Pay). Returns the pmd object —
+ *    read pmd.google_pay.status / pmd.apple_pay.status ('active' | 'inactive'). */
+async function registerPaymentMethodDomain({ account_id, domain_name }) {
+    if (!domain_name) { throw new Error('domain_name required'); }
+    const opts = account_id ? { stripeAccount: account_id } : undefined;
+    // Reuse an existing registration for this exact domain if present.
+    const list = await stripe.paymentMethodDomains.list({ domain_name, limit: 1 }, opts);
+    let pmd = (list && list.data && list.data[0]) || null;
+    if (!pmd) {
+        pmd = await stripe.paymentMethodDomains.create({ domain_name }, opts);
+    }
+    // Validate (re)activates the wallets on the domain. Best-effort: Apple Pay
+    // needs the domain to host its verification file (Stripe auto-hosts it when
+    // the page uses Stripe.js), so this can leave apple_pay inactive while
+    // google_pay goes active — the caller reads the returned status.
+    try { pmd = await stripe.paymentMethodDomains.validate(pmd.id, {}, opts); } catch (e) { /* keep pmd + surface status */ }
+    return pmd;
+}
+
 module.exports = {
     connectAccountCreate,
     connectAccountLinkCreate,
@@ -155,4 +186,5 @@ module.exports = {
     paymentCreate,
     checkoutSessionRetrieve,
     refundPayment,
+    registerPaymentMethodDomain,
 };

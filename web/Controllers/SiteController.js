@@ -72,6 +72,7 @@ async function fetchMarketplace(req, lat, lng, cuisine, filters, postcode) {
     if (filters.offer)    rqs.set('offer',    '1');
     if (filters.price)    rqs.set('price',    filters.price);
     if (filters.delivery) rqs.set('delivery', filters.delivery);
+    if (filters.mode)     rqs.set('mode',     filters.mode);
     // Offer-banner landing filters (from a banner click).
     if (filters.min_discount)  rqs.set('min_discount',  String(filters.min_discount));
     if (filters.upto_discount) rqs.set('upto_discount', String(filters.upto_discount));
@@ -130,6 +131,25 @@ async function fetchMarketplace(req, lat, lng, cuisine, filters, postcode) {
     // The admin-configured order of ALL 6 home sections (incl. My Favourites +
     // Top restaurants, which the web renders) — drives the section layout.
     const homeFeedOrder = (feedRes && feedRes.body && feedRes.body.status === 200 && feedRes.body.data && feedRes.body.data.order) || null;
+
+    // ── Mode filter for the curated rows ───────────────────────────────
+    // The main `featured` list is already mode-filtered by the api. The
+    // Sponsored/Featured/collection rows (home_feed) + the offers strip come
+    // from other endpoints, so filter them HERE by the header mode so a
+    // delivery-only restaurant never appears on the Pickup surface (and vice
+    // versa) on ANY home shelf. Cards carry offersDelivery/offersPickup
+    // (M.toRestaurantCard); a missing field means "keep" (default both).
+    const feedMode = filters && filters.mode;
+    const keepMode = (arr) => (!feedMode || !Array.isArray(arr)) ? arr
+        : arr.filter((x) => feedMode === 'pickup' ? (x.offersPickup !== false) : (x.offersDelivery !== false));
+    const homeFeedFiltered = homeFeed
+        .map((row) => (row && Array.isArray(row.restaurants))
+            ? Object.assign({}, row, { restaurants: keepMode(row.restaurants) })
+            : row)
+        // Drop restaurant rows that emptied out after filtering (keep non-
+        // restaurant rows like product shelves untouched).
+        .filter((row) => !row || !Array.isArray(row.restaurants) || row.restaurants.length > 0);
+
     return {
         featured,
         for_you:        forYou,
@@ -138,8 +158,8 @@ async function fetchMarketplace(req, lat, lng, cuisine, filters, postcode) {
         featured_more:  featuredMore,
         for_you_more:   forYouMore,
         facets,
-        home_offers:    homeOffers,
-        home_feed:      homeFeed,
+        home_offers:    keepMode(homeOffers),
+        home_feed:      homeFeedFiltered,
         home_feed_order: homeFeedOrder,
     };
 }
@@ -320,6 +340,11 @@ async function index(req, res, next) {
         coupon:       String(q.coupon || '').trim(),
         category:     q.category && !isNaN(Number(q.category)) ? Number(q.category) : '',
         offer_banner: q.offer_banner && !isNaN(Number(q.offer_banner)) ? Number(q.offer_banner) : '',
+        // Fulfilment mode from the header Delivery/Pickup toggle — forwarded to
+        // the restaurants endpoint so the list only shows restaurants that offer
+        // the chosen mode (across home / restaurants grid / offer+collection
+        // landings). The dedicated Pickup surface sets 'pickup' explicitly.
+        mode:         orderMode === 'pickup' ? 'pickup' : 'delivery',
     };
 
     // "Browse" — the dynamic sidebar filter that narrows the home to ONE
@@ -391,6 +416,7 @@ async function index(req, res, next) {
                 if (filters.offer)    fqs.set('offer',    '1');
                 if (filters.price)    fqs.set('price',    filters.price);
                 if (filters.delivery) fqs.set('delivery', filters.delivery);
+                if (filters.mode)     fqs.set('mode',     filters.mode);
                 // Offer-banner landing filters (% / up-to / £ / free-* / coupon / category / hand-pick).
                 if (filters.min_discount)  fqs.set('min_discount',  String(filters.min_discount));
                 if (filters.upto_discount) fqs.set('upto_discount', String(filters.upto_discount));
@@ -490,6 +516,7 @@ async function index(req, res, next) {
                 if (filters.offer)    pqs.set('offer',    '1');
                 if (filters.price)    pqs.set('price',    filters.price);
                 if (filters.delivery) pqs.set('delivery', filters.delivery);
+                pqs.set('mode', 'pickup');   // Pickup surface → only pickup-capable restaurants
                 if (customerId)           pqs.set('customer_id', customerId);
                 const [rRes, cRes] = await Promise.all([
                     callApi(req, 'GET', '/api/v1/marketplace/restaurants?' + pqs.toString()),

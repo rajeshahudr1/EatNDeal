@@ -100,19 +100,36 @@
 
     <%# ── Info bar — fulfilment tabs + details + mini map ───────────── %>
     <section class="rd-info-bar">
-        <div class="rd-tabs" role="tablist" aria-label="Order type">
-            <button type="button" class="rd-tab is-active" data-rd-tab="delivery" role="tab" aria-selected="true">
+        <%# Fulfilment tabs — only the modes this restaurant OFFERS (config-level,
+            from r.offersDelivery / r.offersPickup). A single-mode restaurant shows
+            just its one tab. The DEFAULT active tab follows the header mode
+            (order_mode) but is constrained to an offered mode — so a pickup-only
+            restaurant opened from a delivery link still starts on Pickup, and
+            add-to-cart goes out as pickup (not delivery → no "doesn't deliver"). %>
+        <% var __offDel  = (typeof r.offersDelivery === 'undefined') ? true : (r.offersDelivery !== false);
+           var __offPick = (typeof r.offersPickup   === 'undefined') ? true : (r.offersPickup   !== false);
+           var __mode = (typeof order_mode !== 'undefined' && order_mode === 'pickup') ? 'pickup' : 'delivery';
+           if (__mode === 'delivery' && !__offDel)  { __mode = 'pickup';   }
+           if (__mode === 'pickup'   && !__offPick) { __mode = 'delivery'; }
+        %>
+        <div class="rd-tabs<%= (__offDel && __offPick) ? '' : ' rd-tabs--single' %>" role="tablist" aria-label="Order type">
+            <% if (__offDel) { %>
+            <button type="button" class="rd-tab<%= __mode === 'delivery' ? ' is-active' : '' %>" data-rd-tab="delivery" role="tab" aria-selected="<%= __mode === 'delivery' ? 'true' : 'false' %>">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="19" r="2"/><circle cx="18" cy="19" r="2"/><path d="M3 5h2l2 10h10l2-7H7"/></svg>
                 Delivery
             </button>
-            <button type="button" class="rd-tab" data-rd-tab="pickup" role="tab" aria-selected="false">
+            <% } %>
+            <% if (__offPick) { %>
+            <button type="button" class="rd-tab<%= __mode === 'pickup' ? ' is-active' : '' %>" data-rd-tab="pickup" role="tab" aria-selected="<%= __mode === 'pickup' ? 'true' : 'false' %>">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
                 Pickup
             </button>
+            <% } %>
         </div>
 
-        <%# Delivery panel — time comes from the merchant/postcode. %>
-        <div class="rd-info" data-rd-panel="delivery">
+        <%# Delivery panel — time comes from the merchant/postcode. Starts
+            hidden unless the effective mode is delivery. %>
+        <div class="rd-info" data-rd-panel="delivery"<%= __mode === 'delivery' ? '' : ' hidden' %>>
             <div class="rd-info__cell">
                 <span class="rd-info__label">Deliver to</span>
                 <span class="rd-info__value"><%= (user_location && user_location.label) ? user_location.label : 'Set your location' %></span>
@@ -155,8 +172,9 @@
         </div>
 
         <%# Pickup panel — collect from the shop; time is a location/
-            distance estimate (how long to reach the shop). %>
-        <div class="rd-info" data-rd-panel="pickup" hidden>
+            distance estimate (how long to reach the shop). Shown when the
+            effective mode is pickup. %>
+        <div class="rd-info" data-rd-panel="pickup"<%= __mode === 'pickup' ? '' : ' hidden' %>>
             <div class="rd-info__cell">
                 <span class="rd-info__label">Collect from</span>
                 <span class="rd-info__value"><%= r.address || r.name %></span>

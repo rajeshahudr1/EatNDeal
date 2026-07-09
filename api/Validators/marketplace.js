@@ -155,6 +155,10 @@ const listQuerySchema = Joi.object({
     // high > £12. Applies to the marketplace_price chain.
     price: Joi.string().valid('low', 'mid', 'high'),
 
+    // Fulfilment mode from the header Delivery/Pickup toggle — filters the
+    // restaurant list to those that OFFER the chosen mode (config-level).
+    mode: Joi.string().valid('pickup', 'delivery'),
+
     // Single-product flags — used by the restaurant detail page.
     recommended: Joi.string().valid('1'),
     featured:    Joi.string().valid('1'),

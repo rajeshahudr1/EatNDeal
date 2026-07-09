@@ -255,8 +255,12 @@ async function validate(cartId, owner, ctx) {
                 const minOrder = Number(zone.minimum_order) || 0;
                 const subTotal = Number(cart.sub_total) || 0;
                 if (minOrder > 0 && subTotal < minOrder) {
+                    // Legacy wording (Commonquery.getDeliveryFees): tells the
+                    // customer exactly how much MORE to add.
+                    const remaining = Math.max(0, minOrder - subTotal);
                     pushErr(out, 'address.below_min',
-                        'Minimum order for delivery is ' + minOrder.toFixed(2) + '. Add more items to continue.',
+                        'Minimum order amount is £' + minOrder.toFixed(2) +
+                        '. Please add £' + remaining.toFixed(2) + ' more to place your order.',
                         'sub_total');
                 }
             }

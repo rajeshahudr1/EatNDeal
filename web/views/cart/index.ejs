@@ -121,9 +121,18 @@
             <section class="ckt-card" aria-label="Delivery details">
                 <header class="ckt-card__head">
                     <h2 class="ckt-card__title"><%= cart.serveType === 2 ? 'Pickup details' : 'Delivery details' %></h2>
-                    <div class="ckt-mode" role="tablist" aria-label="Order type">
+                    <%# Only show the modes THIS restaurant offers (config-level,
+                        from cart.canDelivery / cart.canPickup). A single-mode
+                        restaurant shows just its one tab (no toggle to a mode it
+                        doesn't do). Both default true when unknown. %>
+                    <% var __canDel = cart.canDelivery !== false; var __canPick = cart.canPickup !== false; %>
+                    <div class="ckt-mode<%= (__canDel && __canPick) ? '' : ' ckt-mode--single' %>" role="tablist" aria-label="Order type">
+                        <% if (__canDel) { %>
                         <button type="button" class="ckt-mode__tab<%= cart.serveType === 3 ? ' is-active' : '' %>" data-action="cart-set-mode" data-mode="3" role="tab" aria-selected="<%= cart.serveType === 3 ? 'true' : 'false' %>">Delivery</button>
+                        <% } %>
+                        <% if (__canPick) { %>
                         <button type="button" class="ckt-mode__tab<%= cart.serveType === 2 ? ' is-active' : '' %>" data-action="cart-set-mode" data-mode="2" role="tab" aria-selected="<%= cart.serveType === 2 ? 'true' : 'false' %>">Pickup</button>
+                        <% } %>
                     </div>
                 </header>
 
@@ -164,7 +173,11 @@
                 </div>
                 <% } %>
 
-                <%# Schedule row %>
+                <%# Schedule ("When") row — legacy parity: only shown when the
+                    restaurant is closed-now + accepts pre-orders + has slots
+                    (cart.canSchedule), or when a pre-order time is already set.
+                    An OPEN restaurant is ASAP-only, so this row is hidden. %>
+                <% if (cart.canSchedule || cart.isPreOrder) { %>
                 <div class="ckt-row" data-cart-sched>
                     <span class="ckt-row__icon" aria-hidden="true">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>
@@ -181,6 +194,7 @@
                     </div>
                     <button type="button" class="ckt-row__edit" data-action="ckt-open-schedule">Edit</button>
                 </div>
+                <% } %>
             </section>
 
             <%# ── Payment card ───────────────────────────────────── %>

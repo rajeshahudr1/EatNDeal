@@ -72,6 +72,30 @@ function fmt12(min) {                         // minutes → "h:mm AM/PM"
     let h12 = h % 12; if (h12 === 0) { h12 = 12; }
     return h12 + ':' + String(m).padStart(2, '0') + ' ' + ap;
 }
+function fmt24(min) {                         // minutes-of-day → "HH:MM" (24-hour)
+    if (min == null) { return null; }
+    const h = Math.floor(min / 60) % 24, m = ((min % 60) + 60) % 60;
+    return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
+}
+// A reopen ISO timestamp → human 24-hour label in the STORE timezone.
+// "HH:MM" when the reopen is TODAY (e.g. "18:00"), else "D Mon, HH:MM"
+// (e.g. "10 Jul, 09:00"). Used for the "Currently closed · opens X" card /
+// "Opens at X" hint — never for slot math (buildSlots reads the raw ISO).
+function reopenLabel(iso) {
+    if (!iso) { return null; }
+    const d = new Date(iso);
+    if (!Number.isFinite(d.getTime())) { return iso; }
+    const p = new Intl.DateTimeFormat('en-GB', {
+        timeZone: STORE_TZ, hour12: false,
+        month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+    }).formatToParts(d);
+    const g = (t) => { const f = p.find((x) => x.type === t); return f ? f.value : ''; };
+    const time  = g('hour') + ':' + g('minute');
+    const isoYmd = new Intl.DateTimeFormat('en-CA', {
+        timeZone: STORE_TZ, year: 'numeric', month: '2-digit', day: '2-digit',
+    }).format(d);
+    return isoYmd === todayYmd() ? time : (g('day') + ' ' + g('month') + ', ' + time);
+}
 
 // ── A service's state from today's shifts ────────────────────────────
 // 'open'  — now within an is_open shift   → ASAP orders
@@ -183,6 +207,41 @@ function optionClosed(branch, kind) {
 }
 
 /**
+ * offeredServices — CONFIG-level: does this branch OFFER delivery / pickup at
+ * ALL (independent of whether it's open right now)?
+ *
+ * A service counts as offered UNLESS it has been explicitly, PERMANENTLY turned
+ * off in admin — `show_*_option = 0` AND its `*_tab = 3` ("close permanently",
+ * per legacy StoreSettings). A temporary close (today / until-a-date) or the
+ * default state still counts as offered — the restaurant just renders "Closed"
+ * for that mode while the store is shut.
+ *
+ * Used by the Pickup/Delivery header filter (restaurant list) + the cart mode
+ * tabs so a delivery-only restaurant never shows on the Pickup surface and a
+ * pickup-only one never shows on Delivery. Config-level (NOT open-now) so a
+ * pickup restaurant that's currently closed still appears under Pickup.
+ * Type: READ (pure).
+ */
+function permanentlyOff(branch, kind) {
+    const opt = kind === 'delivery' ? Number(branch.show_delivery_option) : Number(branch.show_pickup_option);
+    const tab = kind === 'delivery' ? Number(branch.show_delivery_option_tab) : Number(branch.show_pickup_option_tab);
+    return opt === 0 && tab === 3;
+}
+function offeredServices(branch) {
+    if (!branch) { return { delivery: true, pickup: true }; }
+    return {
+        delivery: !permanentlyOff(branch, 'delivery'),
+        pickup:   !permanentlyOff(branch, 'pickup'),
+    };
+}
+// True when the branch offers the given fulfilment mode. serveType: 2 = pickup
+// / take-away, 3 = delivery (matches cart.serve_type + the header toggle).
+function offersMode(branch, serveType) {
+    const o = offeredServices(branch);
+    return Number(serveType) === 2 ? o.pickup : o.delivery;
+}
+
+/**
  * compute — pure: branch row + today's shifts + today's holiday → verdict.
  *
  * Output: {
@@ -209,7 +268,9 @@ function compute(branch, shifts, holidayToday, configured) {
         return {
             isOpen: false, status: 'closed',
             services: { delivery: { status: 'closed', window: null }, takeaway: { status: 'closed', window: null } },
-            hours, closedReason: closure.reason, message: closure.message, reopenAt: closure.reopenAt,
+            // reopenAt for DISPLAY is a 24-hour label ("18:00" / "10 Jul, 09:00");
+            // the raw ISO stays inside branchClosure for buildSlots' slot math.
+            hours, closedReason: closure.reason, message: closure.message, reopenAt: reopenLabel(closure.reopenAt),
         };
     }
 
@@ -247,7 +308,7 @@ function compute(branch, shifts, holidayToday, configured) {
     let reopenAt = null;
     if (!anyOpen) {
         const wins = [delivery.window, takeaway.window].filter(w => w && Number.isFinite(w.open));
-        if (wins.length) { reopenAt = fmt12(Math.min(...wins.map(w => w.open))); }
+        if (wins.length) { reopenAt = fmt24(Math.min(...wins.map(w => w.open))); }
     }
 
     return {
@@ -256,7 +317,7 @@ function compute(branch, shifts, holidayToday, configured) {
         hours,
         closedReason: status === 'closed' ? 'hours' : null,
         message: null,
-        reopenAt,                                          // "5:00 PM" string when pre-order/closed-by-hours
+        reopenAt,                                          // "18:00" 24-hour string when pre-order/closed-by-hours
     };
 }
 
@@ -617,6 +678,8 @@ module.exports = {
     SERVICE,
     availabilityForBranch,
     availabilityForBranches,
+    offeredServices,
+    offersMode,
     slotsForBranch,
     scheduleDaysForBranch,
     weekHoursForBranch,

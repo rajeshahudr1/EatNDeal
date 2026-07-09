@@ -179,6 +179,10 @@ async function groupedOffers() {
             'c.id as company_id', 'b.id as branch_id',
             'c.business_name', 'c.domain_name', 'c.business_category',
             'b.banner_image', 'b.business_image',
+            // Per-service option flags → offersDelivery/offersPickup on the card
+            // so the home offers strip can be filtered by the header mode.
+            'b.show_delivery_option', 'b.show_delivery_option_tab',
+            'b.show_pickup_option', 'b.show_pickup_option_tab',
         )
         .orderBy([{ column: 'c.id', order: 'asc' }, { column: 'b.id', order: 'asc' }]);
     const seen = new Set();
@@ -254,6 +258,10 @@ async function groupedOffers() {
             tint:     M.tintFor(r.company_id),
             offers:   { banners: bn, coupons: cp, discounts: dc },
             count,
+            // Fulfilment modes offered (config-level) — lets the home offers
+            // strip be filtered by the header Delivery/Pickup mode.
+            offersDelivery: !(Number(r.show_delivery_option) === 0 && Number(r.show_delivery_option_tab) === 3),
+            offersPickup:   !(Number(r.show_pickup_option)   === 0 && Number(r.show_pickup_option_tab)   === 3),
         });
     });
     return out;

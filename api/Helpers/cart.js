@@ -383,7 +383,22 @@ async function recomputeTotals(cartId) {
     // on what's active. The caller that DOES want to change
     // delivery_fees (set-address) writes its own value, then re-calls
     // recomputeTotals.
-    const deliveryFees = Number(cart.delivery_fees) || 0;
+    let deliveryFees = Number(cart.delivery_fees) || 0;
+
+    // Free-delivery threshold, re-checked on EVERY recompute so a customer who
+    // adds items to cross the zone's free_delivery_above gets free delivery
+    // without re-picking the address (legacy re-runs getDeliveryFees each
+    // change). Only reduces a POSITIVE fee — never resurrects a coupon's £0.
+    if (Number(cart.serve_type) === 3 && deliveryFees > 0 && cart.delivery_postcode) {
+        try {
+            const zrows = await db('store_delivery_charge_setup')
+                .where({ branch_id: cart.branch_id, status: 1 })
+                .select('postcode', 'free_delivery_above');
+            const z = M.matchDeliveryZone(String(cart.delivery_postcode).trim(), zrows);
+            const freeAbove = z ? (Number(z.free_delivery_above) || 0) : 0;
+            if (freeAbove > 0 && subTotal > freeAbove) { deliveryFees = 0; }
+        } catch (e) { /* keep the fee on any lookup hiccup */ }
+    }
 
     // ── Discount resolution ─────────────────────────────────────────
     // Manual promo (coupon / voucher) wins — the apply-coupon handler
@@ -667,7 +682,18 @@ async function resolveDeliveryFee(cart, branch) {
     let freeByTier = false;
     try { freeByTier = await require('./loyalty').getFreeDelivery(branch.company_id, cart.user_id); } catch (e) { freeByTier = false; }
 
-    return { fee: freeByTier ? 0 : (Number(zone.charge) || 0), zone: zone, deliverable: true, freeByTier };
+    // Free-delivery threshold (legacy free_delivery_above) — when the zone
+    // waives delivery above a subtotal and the cart's subtotal exceeds it, the
+    // fee drops to 0 ("🎉 Free delivery applied!"). Legacy: Commonquery
+    // getDeliveryFees (subtotal > free_delivery_above).
+    const freeAbove       = Number(zone.free_delivery_above) || 0;
+    const subForFree      = Number(cart.sub_total) || 0;
+    const freeByThreshold = freeAbove > 0 && subForFree > freeAbove;
+
+    return {
+        fee: (freeByTier || freeByThreshold) ? 0 : (Number(zone.charge) || 0),
+        zone: zone, deliverable: true, freeByTier, freeByThreshold,
+    };
 }
 
 /**
@@ -1154,6 +1180,17 @@ function publicCartView(cart, items, opts) {
         branchId:         cart.branch_id != null ? String(cart.branch_id) : null,
         companyId:        cart.company_id != null ? String(cart.company_id) : null,
         serveType:        Number(cart.serve_type) || 3,
+        // Fulfilment modes THIS restaurant offers (config-level) — lets the
+        // cart/checkout hide the Pickup or Delivery tab when the restaurant
+        // doesn't do that mode. Default true (both) when the caller doesn't
+        // pass the branch (write paths); the page-render path (cart GET) sets
+        // them from StoreHours.offeredServices(branch).
+        canDelivery:      (opts && opts.canDelivery !== undefined) ? !!opts.canDelivery : true,
+        canPickup:        (opts && opts.canPickup   !== undefined) ? !!opts.canPickup   : true,
+        // Pre-order applicable — the "When"/Schedule row shows only when the
+        // restaurant is closed-now + accepts pre-orders + has slots (legacy
+        // parity). Open restaurants are ASAP-only (no schedule card).
+        canSchedule:      !!(opts && opts.canSchedule),
         subTotal:         Number(cart.sub_total)      || 0,
         bagCharge:        Number(cart.bag_charge)     || 0,
         deliveryFees:     Number(cart.delivery_fees)  || 0,

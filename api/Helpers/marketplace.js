@@ -591,6 +591,13 @@ function toRestaurantCard(row, opts) {
         deliveryFee:      zone ? Number(zone.charge) : null,
         minOrder:         zone ? Number(zone.minimum_order) : null,
         freeDeliveryOver: zone ? Number(zone.free_delivery_above) : null,
+        // Fulfilment modes the restaurant OFFERS (config-level) — a mode counts
+        // as offered unless it's been permanently turned off (show_*_option = 0
+        // AND *_tab = 3). Defaults to true when the caller's row didn't select
+        // the option columns. Lets EVERY surface (home curated rows, offers,
+        // collections, favourites…) filter by the header Delivery/Pickup mode.
+        offersDelivery:   !(Number(row.show_delivery_option) === 0 && Number(row.show_delivery_option_tab) === 3),
+        offersPickup:     !(Number(row.show_pickup_option)   === 0 && Number(row.show_pickup_option_tab)   === 3),
     };
 }
 

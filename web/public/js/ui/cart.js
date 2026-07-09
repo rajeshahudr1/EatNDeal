@@ -214,6 +214,23 @@
         return true;
     }
 
+    // ── Closed-restaurant gate ──────────────────────────────────────
+    // On the restaurant detail page the root carries the live open state
+    // (data-rd-open) + whether it takes pre-orders (data-rd-preorder). A
+    // CLOSED restaurant that doesn't take pre-orders should tell the customer
+    // it's closed up front — instead of firing /cart/add and surfacing a
+    // confusing server error. Returns a message to block with, or null to
+    // proceed. On pages without the root (product page / cart) it returns null
+    // and the api's own store-hours guard still enforces the rule.
+    function restaurantClosedMessage() {
+        var root = document.querySelector('[data-restaurant][data-rd-open]');
+        if (!root) { return null; }
+        var isOpen   = root.getAttribute('data-rd-open') === '1';
+        var preOrder = root.getAttribute('data-rd-preorder') === '1';
+        if (isOpen || preOrder) { return null; }
+        return 'This restaurant is currently closed.';
+    }
+
     // ── Product-page → Add to cart ──────────────────────────────────
     function firstInvalidGroup(productRoot) {
         var bad = null;
@@ -304,6 +321,8 @@
 
     function onAddClick(ev, btn) {
         ev.preventDefault();
+        var closed = restaurantClosedMessage();
+        if (closed) { toast('error', closed); return; }
         var productRoot = btn.closest('[data-product]') || document.querySelector('[data-product]');
         if (!productRoot) { return; }
         var bad = firstInvalidGroup(productRoot);
@@ -369,6 +388,8 @@
     function onQuickAdd(ev, btn) {
         ev.preventDefault();
         ev.stopPropagation();   // Don't let bindProductClick navigate to the detail page.
+        var closed = restaurantClosedMessage();
+        if (closed) { toast('error', closed); return; }
         if (btn.disabled) { return; }
         btn.disabled = true;
         // Fly animation is fired by doQuickAdd on a successful response.

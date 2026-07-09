@@ -257,16 +257,44 @@ async function add(req, res) {
         const qty = Number(b.qty) || 1;
 
         // 3. Resolve the canonical branch for this company (lowest live id —
-        // same rule the marketplace listing uses).
+        // same rule the marketplace listing uses). Select the FULL row so the
+        // store-hours gate below has the close-flag / per-service columns it
+        // needs (Helpers/storeHours reads branch.closed, show_*_option, etc.).
         const branch = await db('branch as b')
             .innerJoin('company as c', 'c.id', 'b.company_id')
             .where('b.company_id', product.company_id)
             .modify(M.eligibleCompanyScope, 'c')
             .modify(M.eligibleBranchScope,  'b')
             .orderBy('b.id', 'asc')
-            .first('b.id', 'b.company_id');
+            .first('b.*');
         if (!branch) {
             return H.errorResponse(res, 'This restaurant is no longer available.', 404);
+        }
+
+        // 3b. Store-hours gate — a CLOSED restaurant must give a clear
+        // "currently closed" message, NOT let the add fall through to a
+        // confusing downstream error. We check the REAL per-service hours
+        // (store_business_hours + close-flag precedence, Helpers/storeHours)
+        // for the mode the customer is adding in (2 = pickup, 3 = delivery).
+        //
+        // pre_order restaurants are the exception: they intentionally let a
+        // customer BUILD a cart while closed and schedule it on the cart page,
+        // so we only hard-block when the branch does NOT take pre-orders. This
+        // mirrors the PLACE-level rule in Helpers/cartValidate.
+        const serveType    = Number(b.serve_type) === 2 ? 2 : 3;
+        const availability = await StoreHours.availabilityForBranch(branch);
+        if (availability) {
+            const svc        = serveType === 2 ? availability.services.takeaway : availability.services.delivery;
+            const modeOpen   = svc ? svc.status === 'open' : availability.isOpen;
+            const preOrderOk = Number(branch.pre_order) === 1;
+            if (!modeOpen && !preOrderOk) {
+                // Prefer the branch's own closed wording (blanket closures set
+                // it); fall back to a plain, correctly-worded message for an
+                // out-of-hours close (storeHours leaves message null there).
+                const closedMsg = availability.message
+                    || ((branch.name ? branch.name : 'This restaurant') + ' is currently closed. Please order during its opening hours.');
+                return H.errorResponse(res, closedMsg, 422, { code: 'branch.closed' });
+            }
         }
 
         // 4. Validate modifier options — every option must still be

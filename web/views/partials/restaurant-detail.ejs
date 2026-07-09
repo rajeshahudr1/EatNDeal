@@ -23,7 +23,7 @@
 <% var secs = (typeof menu_sections   !== 'undefined' && menu_sections)   ? menu_sections   : []; %>
 <% var sym  = fmt.currencySymbol(brand); %>
 <% var __rv = (typeof restaurant_reviews !== 'undefined' && restaurant_reviews) ? restaurant_reviews : null; %>
-<div class="rd" data-restaurant data-rslug="<%= r.slug %>">
+<div class="rd" data-restaurant data-rslug="<%= r.slug %>" data-rd-open="<%= r.isOpen ? '1' : '0' %>" data-rd-preorder="<%= r.preOrder ? '1' : '0' %>">
 
     <%# Mobile-only rating bar — sits right under the search box (top of the
         restaurant content) and opens the reviews modal. Desktop uses the

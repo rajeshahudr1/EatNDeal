@@ -344,6 +344,11 @@ async function saveProfile(req, res) {
                 referred_by:          referrerId || null,
                 registered_at:        H.now(),
                 verify_at:            H.now(),
+                // POS app-side identity (legacy OrderController::appid): app_id =
+                // next in the terminalid='500' sequence, localid=0, terminalid=500.
+                app_id:               await customers.nextAppId(),
+                localid:              '0',
+                terminalid:           '500',
             })
             .returning('*');
 
@@ -886,6 +891,11 @@ async function socialSignin(req, res) {
                 referral_code:       customers.generateReferralCode(),
                 registered_at:       H.now(),
                 verify_at:           H.now(),
+                // POS app-side identity (legacy OrderController::appid): app_id =
+                // next in the terminalid='500' sequence, localid=0, terminalid=500.
+                app_id:              await customers.nextAppId(),
+                localid:             '0',
+                terminalid:          '500',
                 // contact_no stays NULL — user will be asked to add a phone
                 // before checkout (signup_source=3 with NULL contact_no is
                 // the marketplace's "social-only, needs phone" state).

@@ -238,6 +238,31 @@ function coerceNum(v) {
     return Number.isFinite(n) ? n : null;
 }
 
+/**
+ * nextAppId
+ *
+ * What:  The next `app_id` to stamp on a NEW customer = MAX(app_id) across the
+ *        customer table + 1 (→ 1 when the table is empty / has no app_id yet).
+ *        Mirrors legacy webordering OrderController::appid(); paired on the same
+ *        row with localid=0 and terminalid=500.
+ * Why:   Keeps new marketplace customers in the app_id sequence the legacy
+ *        POS/webordering references (orders, rewards, etc.).
+ * Safe:  NEVER throws — signup must not fail if this lookup hiccups. On any DB
+ *        error (or a NaN/empty result) it falls back to 1, exactly like the
+ *        legacy appid() catch block.
+ * Type:  READ.
+ */
+async function nextAppId() {
+    try {
+        const row = await db(TABLE).max('app_id as m').first();
+        const m = row && row.m != null ? Number(row.m) : 0;
+        return Number.isFinite(m) && m > 0 ? m + 1 : 1;
+    } catch (e) {
+        try { H.log.error('customer.nextAppId', e && e.message); } catch (_) { /* logging is best-effort */ }
+        return 1;
+    }
+}
+
 module.exports = {
     findByPhone,
     classify,
@@ -247,4 +272,5 @@ module.exports = {
     coerceNum,
     generateReferralCode,
     resolveReferrer,
+    nextAppId,
 };

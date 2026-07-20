@@ -1172,6 +1172,31 @@
             var rmsg = sessionStorage.getItem('reorder.msg');
             if (rmsg) { sessionStorage.removeItem('reorder.msg'); toast('success', rmsg); }
         } catch (e) { /* ignore */ }
+        initBasketState();
+    }
+
+    /**
+     * initBasketState
+     *
+     * What:  Keeps the "Basket summary" disclosure open across the page reload
+     *        that a quantity change / remove triggers.
+     * Why:   The stepper posts and then reloads (handleEnvelope reload:true), and
+     *        <details> renders collapsed by default — so adjusting a quantity
+     *        slammed the panel shut on every tap, exactly while the customer was
+     *        working inside it.
+     *        The state is remembered per TAB (sessionStorage), so it follows the
+     *        reload but a fresh visit still starts collapsed as designed.
+     */
+    function initBasketState() {
+        var box = document.querySelector('.ckt-basket');
+        if (!box) { return; }
+        var KEY = 'cart.basketOpen';
+        try {
+            if (sessionStorage.getItem(KEY) === '1') { box.open = true; }
+        } catch (e) { /* sessionStorage unavailable — just leave it collapsed */ }
+        box.addEventListener('toggle', function () {
+            try { sessionStorage.setItem(KEY, box.open ? '1' : '0'); } catch (e) { /* ignore */ }
+        });
     }
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', onReady);

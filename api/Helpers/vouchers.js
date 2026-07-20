@@ -10,8 +10,12 @@
  *        (a public code anyone can type), a voucher is tied to the
  *        signed-in customer. A voucher and a coupon are mutually exclusive.
  *
- *        Mirrors the legacy common\constants\Vouchers::validate exactly:
- *          • match by code + customer_id + branch_id + company_id
+ *        Mirrors the legacy common\constants\Vouchers::validate:
+ *          • match by code + branch_id + company_id, and the customer — where
+ *            "the customer" is EVERY account sharing their mobile number, not
+ *            just the signed-in row (see validate; legacy matched the single
+ *            customer_id, which hid a person's POS-issued vouchers from their
+ *            marketplace account)
  *          • reject expired (voucher_expiry_date < today)
  *          • reject already-used single-use (used_once=1 AND is_used=1)
  *          • reject inactive (is_used != 0)
@@ -55,10 +59,26 @@ async function validate(rawCode, cart, customerId) {
     if (!customerId)  { return fail('Please sign in to use a voucher.', 'voucher.auth'); }
     if (!cart)        { return fail('Your cart is no longer available.', 'voucher.no_cart'); }
 
+    // ONE PERSON, MANY ACCOUNTS — a voucher issued to any account this person
+    // holds counts as theirs. Somebody who ordered at a restaurant through the
+    // legacy POS has a separate `customer` row there; a voucher issued to that
+    // row was invisible to their marketplace account, so a real voucher of
+    // theirs came back "not assigned to you".
+    // Identity is the mobile number, via the same loyalty.linkedCustomerIds the
+    // wallet uses — so the two features agree on who a person is (mobile AND
+    // country code must match; +44 and +376 are different people).
+    //
+    // The RESTAURANT scope is unchanged: branch_id + company_id still pin the
+    // voucher to the cart's restaurant, exactly as legacy does
+    // (common/constants/Vouchers::validate). A voucher issued by one restaurant
+    // is not spendable at another — the same rule the loyalty redeem follows.
+    const linkedIds = await require('./loyalty').linkedCustomerIds(customerId);
+    const ids = (linkedIds && linkedIds.length) ? linkedIds : [customerId];
+
     const v = await db('customer_voucher')
-        .where({
+        .whereIn('customer_id', ids)
+        .andWhere({
             voucher_code: code,
-            customer_id:  customerId,
             branch_id:    cart.branch_id,
             company_id:   cart.company_id,
         })

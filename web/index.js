@@ -165,15 +165,30 @@ app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 // (otherwise the SW controls only /public/* and skips the rest of the site).
 // We also bust its cache aggressively so SW updates roll out immediately.
 app.use(express.static(path.join(__dirname, 'public'), {
+    // PRODUCTION: cache assets hard. Every CSS/JS URL in the layout carries
+    // ?v=<ASSET_VERSION>, which changes on each deploy (boot-time stamp), so a
+    // new build is fetched under a NEW url — the cached copy of the old one can
+    // never be served by mistake. That is what makes `immutable` safe here.
+    //
+    // Without this express.static defaults to max-age=0, so every navigation
+    // re-validated all ~47 stylesheets: 47 round trips before the browser could
+    // paint anything, which is the blank-white-page-then-content people saw.
+    // Dev keeps maxAge 0 and the no-store header below.
+    maxAge: ENV === 'production' ? '365d' : 0,
+    immutable: ENV === 'production',
     setHeaders: (res, filePath) => {
         if (filePath.endsWith(path.sep + 'service-worker.js')) {
+            // The SW itself must never be cached — it is what ships updates.
             res.setHeader('Service-Worker-Allowed', '/');
             res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+        } else if (filePath.endsWith(path.sep + 'manifest.json')) {
+            // Small, unversioned, and read on install — a day is plenty.
+            res.setHeader('Cache-Control', 'public, max-age=86400');
         } else if (ENV !== 'production') {
             // DEV: never let the browser cache CSS / JS / images. Combined
             // with the SW being disabled on localhost (see app.js), this
             // means a code change shows on a plain refresh — no "clear
-            // cache" dance. In production these get normal caching.
+            // cache" dance.
             res.setHeader('Cache-Control', 'no-store, must-revalidate');
         }
     },

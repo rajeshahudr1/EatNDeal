@@ -65,6 +65,22 @@ const CART_CLOSED          = 0;
 const CREATED_FROM_WEB     = '2';  // legacy enum (1=app-iOS, 2=web, 3=app-Android)
 const PAYMENT_STATUS_PENDING = 0;  // 0 = unpaid; cash collected on delivery
 
+/*
+ * created_via — the ORDER CHANNEL. Legacy's values (they drive the POS
+ * loyalty-commission report, backend/modules/loyalty_commission_report):
+ *     1 = website   2 = ePOS   3, 4 = phone
+ * 5 is OURS: the EatNDeal marketplace. Until now marketplace orders took the
+ * column default (1) and were indistinguishable from legacy website orders.
+ *
+ * The same 5 is written onto the rewards an order earns (Helpers/loyalty), so
+ * an order and its cashback always report as the same channel.
+ *
+ * NB the legacy report buckets only 1 / 2 / 3,4 — a 5 row lands in its
+ * grand total but in none of the per-channel columns until a Marketplace
+ * bucket is added there.
+ */
+const CREATED_VIA_MARKETPLACE = 5;
+
 /**
  * generateOrderNumber
  *
@@ -239,6 +255,7 @@ async function placeOrder({ customer, cart, branch, items, paymentOption, custom
             advanced_order_waiting_time_minute: Number(advancedExtra) || 0,
             created_from:      CREATED_FROM_WEB,
             order_from:        CREATED_FROM_WEB,
+            created_via:       CREATED_VIA_MARKETPLACE,   // 5 — see the constant
             status:            '1',
             created_by:        customer.id,
             updated_by:        customer.id,

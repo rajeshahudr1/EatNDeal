@@ -42,6 +42,21 @@ const { sanitizeCmsHtml, decodeEntities } = require('./cmsSanitize');
 
 const REWARDS     = 'customer_rewards';
 const CONFIG      = 'company_loyalty';
+
+/*
+ * created_via — the CHANNEL a reward was earned through, copied from the order
+ * that earned it. Legacy's values (they drive the POS loyalty-commission
+ * report): 1 = website, 2 = ePOS, 3/4 = phone. 5 is OURS — the EatNDeal
+ * marketplace, matching Helpers/orderPlace CREATED_VIA_MARKETPLACE.
+ *
+ * Hardcoded rather than read back off the order: every reward this API writes
+ * comes from marketplace activity — an order placed here, a claim approved in
+ * our admin, or one of our loyalty jobs — so the channel is always 5, and
+ * re-reading the order per reward would only add a query to say the same thing.
+ * The column used to take its default (1), filing marketplace cashback under
+ * "website".
+ */
+const CREATED_VIA_MARKETPLACE = 5;
 const STREAK_RULE = 'loyalty_order_cashback_rule';
 const STREAK_PROG = 'loyalty_order_cashback_progress';
 
@@ -345,6 +360,7 @@ async function earnForOrder({ customerId, companyId, orderId, subtotal }) {
             is_expired:   0,
             expiry_date:  expiryDate,
             notify_date:  notifyDate,
+            created_via:  CREATED_VIA_MARKETPLACE,   // 5 — marketplace channel
             created_at:   db.fn.now(),
             created_by:   rewardCustomerId,
         }).returning('id');
@@ -391,16 +407,22 @@ async function earnForOrder({ customerId, companyId, orderId, subtotal }) {
 async function linkedCustomerIds(customerId) {
     const id = Number(customerId) || 0;
     if (!id) { return []; }
-    const me = await db('customer').where({ id }).first('id', 'contact_no', 'country_code');
+    const me = await db('customer').where({ id }).first('id', 'contact_no');
     if (!me) { return []; }
     const contact = String(me.contact_no || '').trim();
     if (!contact) { return [id]; }   // no mobile yet → only their own points
 
-    let q = db('customer').where('contact_no', contact);
-    // country_code is INTEGER in the schema; match it too when we have one so
-    // the same local number in a different country stays separate.
-    if (me.country_code != null && me.country_code !== '') { q = q.andWhere('country_code', me.country_code); }
-    const rows = await q.select('id');
+    // MOBILE NUMBER ONLY — country_code is deliberately NOT part of the match.
+    //
+    // It used to be, so that the same local number in two countries stayed two
+    // people. In this database that did more harm than good: the legacy POS
+    // customer form never sets country_code at all (its CustomerController
+    // only handles contact_no, and dedupes on contact_no + company_id), so 85
+    // POS customers carry country_code = 0 while the same person's marketplace
+    // row carries 44. Matching on the code split those accounts apart, and a
+    // customer's POS-issued vouchers and POS-earned cashback stayed invisible
+    // to them — the exact thing this function exists to prevent.
+    const rows = await db('customer').where('contact_no', contact).select('id');
 
     const ids = rows.map((r) => Number(r.id));
     if (!ids.includes(id)) { ids.push(id); }
@@ -1431,6 +1453,7 @@ async function award(opts) {
         uuid:          crypto.randomUUID(),
         company_id:    opts.companyId,
         customer_id:   rewardCustomerId,   // app_id, not our customer.id
+        created_via:   CREATED_VIA_MARKETPLACE,   // 5 — marketplace channel
         entity_type:   opts.entityType,
         entity_id:     opts.entityId != null ? opts.entityId : null,
         related_id:    opts.relatedId != null ? opts.relatedId : null,

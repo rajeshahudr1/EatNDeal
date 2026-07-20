@@ -318,13 +318,55 @@ async function appIdOf(customerId) {
     let appId = null;
     try {
         const row = await db(TABLE).where({ id }).first('app_id');
-        appId = row && row.app_id != null ? Number(row.app_id) : null;
+        if (!row) { return null; }                         // no such customer
+        appId = row.app_id != null ? Number(row.app_id) : null;
+        // Self-heal: a customer row created before sign-up started stamping
+        // app_id has none, and every legacy-keyed write would have to refuse
+        // (that is what broke "submit your review" for such accounts). Give it
+        // one now — the same MAX+1 sequence sign-up and legacy's appid() use.
+        // Safe to do lazily: app_id is write-once and never changes afterwards.
+        if (appId === null) { appId = await assignAppId(id); }
     } catch (e) {
         try { H.log.error('customer.appIdOf', e && e.message); } catch (_) { /* best-effort */ }
         return null;                        // don't cache a lookup failure
     }
     if (appId !== null) { _appIdById.set(id, appId); }
     return appId;
+}
+
+/**
+ * assignAppId
+ *
+ * What:  Stamps the next app_id (+ localid 0 / terminalid 500, as sign-up does)
+ *        on a customer that has none, and returns it.
+ * Why:   See appIdOf. Kept private — callers should go through appIdOf so the
+ *        result is cached and the "already has one" case costs nothing.
+ * Race:  The row is locked FOR UPDATE and re-checked inside the transaction, so
+ *        two concurrent requests for the SAME customer can't both assign. Two
+ *        DIFFERENT customers assigning at once could in principle compute the
+ *        same MAX — the same tiny window legacy's appid() has always had, and
+ *        this only ever runs for pre-existing rows, once each.
+ * Type:  WRITE.
+ */
+async function assignAppId(customerId) {
+    try {
+        return await db.transaction(async (trx) => {
+            const me = await trx(TABLE).where({ id: customerId }).forUpdate().first('id', 'app_id');
+            if (!me) { return null; }
+            if (me.app_id != null) { return Number(me.app_id); }   // someone beat us to it
+            const maxRow = await trx(TABLE).max('app_id as m').first();
+            const next = (Number(maxRow && maxRow.m) || 0) + 1;
+            await trx(TABLE).where({ id: customerId }).update({
+                app_id:     next,
+                localid:    '0',
+                terminalid: '500',
+            });
+            return next;
+        });
+    } catch (e) {
+        try { H.log.error('customer.assignAppId', e && e.message); } catch (_) { /* best-effort */ }
+        return null;
+    }
 }
 
 /**

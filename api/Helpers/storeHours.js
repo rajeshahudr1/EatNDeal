@@ -142,21 +142,35 @@ function reopenTimestamp(datePart, timePart) {
     const ts = Date.parse(d + 'T' + t);
     return Number.isFinite(ts) ? ts : null;
 }
+// Customer-facing dates/times are UK local — the business trades in the UK and
+// the Node process timezone is not something we control on every host.
+const DISPLAY_TZ = process.env.DISPLAY_TIMEZONE || 'Europe/London';
+
 function branchName(branch) { return (branch && (branch.name || branch.branch_name)) ? String(branch.name || branch.branch_name) : ''; }
 function defaultMsg(branch) {
     return (branchName(branch) || 'The restaurant') + ' is currently closed for online orders.';
 }
 function fillMsg(branch, reopenMs) {
     const tpl = branch && branch.clossed_text;
-    if (!tpl) {
-        const when = reopenMs ? (' We reopen ' + new Date(reopenMs).toLocaleString()) : '';
+    // The closure text is free-typed by the restaurant's admin, and plenty of
+    // them just type a word ("closed", "holiday"). Shown on its own that reads
+    // like a glitch, not a message — so anything without at least a couple of
+    // words falls back to a proper sentence. A real notice is used as authored.
+    const usable = String(tpl || '').trim().split(/\s+/).filter(Boolean).length >= 3;
+    if (!usable) {
+        const when = reopenMs
+            ? (' We reopen ' + new Date(reopenMs).toLocaleString('en-GB', {
+                timeZone: DISPLAY_TZ, day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
+            }))
+            : '';
         return defaultMsg(branch) + when;
     }
+    // Rendered in UK time, not the server's — these go straight to a UK
+    // customer, and the process timezone is whatever the host happens to be.
     const dt = reopenMs ? new Date(reopenMs) : null;
-    const pad = (x) => String(x).padStart(2, '0');
-    const date = dt ? `${pad(dt.getDate())}/${pad(dt.getMonth() + 1)}/${dt.getFullYear()}` : '';
-    const time = dt ? `${pad(dt.getHours())}:${pad(dt.getMinutes())}` : '';
-    const day  = dt ? dt.toLocaleDateString('en-GB', { weekday: 'long' }) : '';
+    const date = dt ? dt.toLocaleDateString('en-GB', { timeZone: DISPLAY_TZ, day: '2-digit', month: '2-digit', year: 'numeric' }) : '';
+    const time = dt ? dt.toLocaleTimeString('en-GB', { timeZone: DISPLAY_TZ, hour: '2-digit', minute: '2-digit' }) : '';
+    const day  = dt ? dt.toLocaleDateString('en-GB', { timeZone: DISPLAY_TZ, weekday: 'long' }) : '';
     return String(tpl)
         .replace(/\{branch_name\}/g, branchName(branch))
         .replace(/\{date\}/g, date)

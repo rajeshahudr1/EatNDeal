@@ -141,13 +141,13 @@
         var params  = new URLSearchParams(window.location.search);
         var cuisine = (params.get('cuisine') || '').trim();
 
-        // Mirror the active term into every page-side search input so
-        // the user sees the filter sitting in the box and can either
-        // clear it (back to plain home) or refine it further. Empty
-        // cuisine (back on /) clears the inputs too.
-        var pretty = cuisine ? (cuisine.charAt(0).toUpperCase() + cuisine.slice(1)) : '';
+        // The search box stays EMPTY on a cuisine filter — picking a pill
+        // is not a search, and pre-filling the box made it look like the
+        // user had typed. The active pill + sidebar checkbox already show
+        // what's filtered. We still blank the box so a stale term from a
+        // previous search doesn't linger.
         document.querySelectorAll('[data-search-scope="home"]').forEach(function (inp) {
-            inp.value = pretty;
+            inp.value = '';
         });
 
         // Keep the sidebar's Cuisines checklist in sync with the active

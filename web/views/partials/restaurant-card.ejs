@@ -77,12 +77,7 @@
                         <%= r.deliveryMinutes %>
                     </span>
                 <% } %>
-                <% if (typeof r.distanceKm === 'number' && r.distanceKm >= 0) { %>
-                    <span class="resto-card__dist">
-                        <% if (metaIcons) { %><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s7-7.5 7-13a7 7 0 0 0-14 0c0 5.5 7 13 7 13z"/><circle cx="12" cy="9" r="2.5"/></svg> <% } %>
-                        <%= r.distanceKm.toFixed(1) %> km
-                    </span>
-                <% } %>
+                <%# Distance intentionally not shown — the card carries the time only. %>
             </div>
             <% if (showDelivery) { %>
                 <% if (!r.isOpen) { %>

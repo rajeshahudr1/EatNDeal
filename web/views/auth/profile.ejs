@@ -95,64 +95,14 @@
                 >
             </div>
 
-            <%# Diet preference — Veg / Non-veg. Tap toggles, only one
-                selected at a time. Demo defaults to Veg. %>
-            <div class="profile-field">
-                <p class="profile-field__label">What's your dietary preference?</p>
-                <div class="diet-row" role="group" aria-label="Dietary preference">
-                    <button
-                        type="button"
-                        class="diet-chip is-selected"
-                        data-action="select-diet"
-                        data-value="veg"
-                    >
-                        <span class="diet-chip__icon" aria-hidden="true">🥬</span>
-                        <span>Veg</span>
-                    </button>
-                    <button
-                        type="button"
-                        class="diet-chip"
-                        data-action="select-diet"
-                        data-value="non-veg"
-                    >
-                        <span class="diet-chip__icon" aria-hidden="true">🍗</span>
-                        <span>Non-veg</span>
-                    </button>
-                </div>
-                <input type="hidden" name="diet" id="diet-value" value="veg">
-            </div>
-
-            <%# Show-me filter (shown only when diet=veg — for the demo
-                we show it unconditionally; the toggle JS shows / hides
-                it based on the chip selection). %>
-            <div class="profile-field" id="show-me-field">
-                <p class="profile-field__label">What's your dietary preference?</p>
-                <div class="filter-row" role="group" aria-label="Show me">
-                    <button
-                        type="button"
-                        class="filter-chip"
-                        data-action="select-filter"
-                        data-value="all"
-                    >
-                        Veg dishes from all restaurants
-                    </button>
-                    <button
-                        type="button"
-                        class="filter-chip is-selected"
-                        data-action="select-filter"
-                        data-value="pure-veg"
-                    >
-                        Pure Veg restaurants only
-                    </button>
-                </div>
-                <input type="hidden" name="show_me" id="show-me-value" value="pure-veg">
-            </div>
+            <%# The dietary-preference choosers that used to sit here were
+                demo-only — nothing read `diet` / `show_me` server-side, and the
+                second block even repeated the first one's heading. Removed on
+                request; sign-up now ends at the referral code. %>
 
             <button type="submit" class="btn btn--primary btn--lg btn--block profile-submit">
                 Done
             </button>
-
-            <p class="profile-caption">All details from all restaurants</p>
         </form>
     </div>
 </section>

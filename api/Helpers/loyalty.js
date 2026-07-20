@@ -973,15 +973,20 @@ async function consumeForRedeem(trx, { customerId, companyId, orderId, amount })
     // transaction rolls back (we never want consumed rows without a ledger,
     // because reverseForOrder relies on it to un-spend on cancel).
     if (consumed > 0 && orderId) {
+        // Keyed on app_id (`rcid`), NOT our customer.id — exactly like the
+        // rows in `customer_rewards` this spend draws down (legacy
+        // OrderController.php:922-928 uses identity->app_id for both). Writing
+        // customer.id here put the spend ledger in a different id space from
+        // the reward pool, so redemptions never reconciled against earnings.
         await trx('customer_used_rewards').insert({
             company_id:      companyId,
-            customer_id:     customerId,
+            customer_id:     rcid,
             order_id:        orderId,
             used_amount:     consumed,
             related_json:    JSON.stringify(breakdown),
             order_cancelled: 0,
             created_at:      db.fn.now(),
-            created_by:      customerId,
+            created_by:      rcid,
         });
     }
     return { consumed, breakdown };

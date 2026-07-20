@@ -63,6 +63,12 @@ const STATUS_ACCEPTED_PICKUP    = '5';  // pickup / in-store accept (serve_type 
 const STATUS_CONFIRMED_DELIVERY = '10'; // delivery accept (serve_type = 3)
 const CART_CLOSED          = 0;
 const CREATED_FROM_WEB     = '2';  // legacy enum (1=app-iOS, 2=web, 3=app-Android)
+// What legacy webordering actually writes on the orders row:
+//   created_from = 1   (OrderController.php:540)
+//   created_by / updated_by = 1  — a "web ordering system" sentinel, NOT a user
+//   id (OrderController.php:537-538, sourced from CartController.php:773).
+const CREATED_FROM_LEGACY_WEB = '1';
+const SYSTEM_ACTOR            = 1;
 const PAYMENT_STATUS_PENDING = 0;  // 0 = unpaid; cash collected on delivery
 
 /*
@@ -259,12 +265,17 @@ async function placeOrder({ customer, cart, branch, items, paymentOption, custom
             scheduled_time:    scheduledTime,
             delivery_estimated_time:           deliveryEstimatedTime(branch, cart.serve_type),
             advanced_order_waiting_time_minute: Number(advancedExtra) || 0,
-            created_from:      CREATED_FROM_WEB,
+            created_from:      CREATED_FROM_LEGACY_WEB,
             order_from:        CREATED_FROM_WEB,
             created_via:       CREATED_VIA_MARKETPLACE,   // 5 — see the constant
             status:            '1',
-            created_by:        customer.id,
-            updated_by:        customer.id,
+            // Legacy writes the literal 1 here (OrderController.php:537-538 via
+            // cart_details.created_by, which CartController.php:773 sets to 1).
+            // It is a "placed by the web ordering system" sentinel, NOT a user
+            // id — POS reports join created_by to the STAFF table, so a customer
+            // id resolves to the wrong person there.
+            created_by:        SYSTEM_ACTOR,
+            updated_by:        SYSTEM_ACTOR,
             // created_at / updated_at default to NOW.
         }).returning('*');
 
@@ -309,6 +320,12 @@ async function placeOrder({ customer, cart, branch, items, paymentOption, custom
             const lineTotal = Cart.lineSubtotal(it);
             const [oi] = await trx('orders_items').insert({
                 order_id:          order.id,
+                // `app_id` on the order-family tables is legacy's POS sync key
+                // and holds the PARENT ORDER id — not a customer identity
+                // (webordering OrderController.php:605). The EPOS reads line
+                // items with `WHERE app_id = <order id>` (:1509), so leaving it
+                // null made marketplace orders look like they had no items.
+                app_id:            order.id,
                 branch_id:         cart.branch_id,
                 company_id:        cart.company_id,
                 product_id:        it.product_id,
@@ -335,12 +352,13 @@ async function placeOrder({ customer, cart, branch, items, paymentOption, custom
                 // invisible to that count — the branch oversells its allowance
                 // for good, because nothing ever decrements.
                 is_surprise_item:  Number(it.is_surprise_item) || 0,
-                created_by:        customer.id,
+                created_by:        SYSTEM_ACTOR,   // legacy sentinel — see SYSTEM_ACTOR
             }).returning('id');
 
             const itemId = oi.id || oi;
             for (const m of (it.modifiers || [])) {
                 await trx('orders_items_sub').insert({
+                    app_id:               order.id,   // legacy POS sync key = parent order id
                     orders_items_id:      itemId,
                     company_id:           cart.company_id,
                     product_id:           it.product_id,
@@ -377,6 +395,7 @@ async function placeOrder({ customer, cart, branch, items, paymentOption, custom
         const payOpt   = await PaymentOptions.resolveForCompany(cart.company_id, paymentOption);
         const payOptId = payOpt ? payOpt.id : (Number(paymentOption) || 1);
         await trx('orders_payments').insert({
+            app_id:                 order.id,   // legacy POS sync key = parent order id
             orders_id:              order.id,
             company_id:             cart.company_id,
             invoice_id:             Math.floor(now.getTime() / 1000),
@@ -389,7 +408,7 @@ async function placeOrder({ customer, cart, branch, items, paymentOption, custom
             sub_payment_method:     subMethod,
             company_stripe_detail:  paymentDetail ? JSON.stringify(paymentDetail) : null,
             status:                 '1',
-            created_by:             customer.id,
+            created_by:             SYSTEM_ACTOR,   // legacy sentinel — see SYSTEM_ACTOR
         });
 
         // If card payment succeeded, also stamp the order row's paid_amount
@@ -406,12 +425,13 @@ async function placeOrder({ customer, cart, branch, items, paymentOption, custom
         // customer's delivery address is already on orders.delivery_address.
         if (Number(cart.serve_type) === 3) {
             await trx('order_delivery_details').insert({
+                app_id:        order.id,   // legacy POS sync key = parent order id
                 invoice_id:    Math.floor(now.getTime() / 1000),
                 company_id:    cart.company_id,
                 branch_id:     cart.branch_id,
                 delivery_fees: Number(cart.delivery_fees) || 0,
                 status:        '1',
-                created_by:    customer.id,
+                created_by:    SYSTEM_ACTOR,   // legacy sentinel — see SYSTEM_ACTOR
             });
         }
 

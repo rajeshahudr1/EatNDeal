@@ -114,7 +114,6 @@
                             <% if ((r.cuisines || []).length) { %><p class="pickup-card__cuisines"><%= (r.cuisines || []).slice(0, 3).join(' · ') %></p><% } %>
                             <p class="pickup-card__meta">
                                 <% if (rTime) { %><span><%= rTime %></span><% } %>
-                                <% if (typeof r.distanceKm === 'number' && r.distanceKm >= 0) { %><% if (rTime) { %><span class="pickup-card__dot">·</span><% } %><span><%= r.distanceKm.toFixed(1) %> km</span><% } %>
                             </p>
                         </div>
                     </a>

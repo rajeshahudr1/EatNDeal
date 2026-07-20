@@ -234,10 +234,9 @@
             marker.type = 'button';
             marker.className = 'pickup-marker';
             marker.setAttribute('data-key', d.id);
-            // Show DISTANCE (km from the user), not the rating — the
-            // user wants to see how far each pickup spot is. Falls back
-            // to the time estimate, then a dot, when distance is unknown.
-            var label = d.dist ? (d.dist + ' km') : (d.eta || '·');
+            // Show the TIME estimate. Distance in km is deliberately not
+            // surfaced anywhere in the UI.
+            var label = d.eta || '·';
             marker.innerHTML = '<span class="pickup-marker__pill">' + PIN + escHtml(label) + '</span>';
             marker.addEventListener('click', function (ev) {
                 ev.stopPropagation();
@@ -268,7 +267,6 @@
             : '<span class="pickup-popup__initial" data-tint="' + escHtml(d.tint) + '">' + escHtml(d.initial) + '</span>';
         var meta = [];
         if (d.eta)  { meta.push(escHtml(d.eta)); }
-        if (d.dist) { meta.push(escHtml(d.dist) + ' km'); }
 
         popupEl.innerHTML =
             '<button type="button" class="pickup-popup__close" data-action="pickup-popup-close" aria-label="Close">&times;</button>' +

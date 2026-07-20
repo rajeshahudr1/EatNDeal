@@ -141,12 +141,6 @@
                 <span class="rd-info__value rd-info__value--strong"><%= r.deliveryMinutes %></span>
             </div>
             <% } %>
-            <% if (typeof r.distanceKm === 'number' && r.distanceKm >= 0) { %>
-            <div class="rd-info__cell">
-                <span class="rd-info__label">Distance</span>
-                <span class="rd-info__value rd-info__value--strong"><%= r.distanceKm.toFixed(1) %> km</span>
-            </div>
-            <% } %>
             <% if (typeof r.minOrder === 'number' && r.minOrder > 0) { %>
             <div class="rd-info__cell">
                 <span class="rd-info__label">Min order</span>
@@ -165,8 +159,9 @@
             <div class="rd-map" aria-hidden="true">
                 <span class="rd-map__home"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12 12 3l9 9"/><path d="M5 10v10h14V10"/></svg></span>
                 <span class="rd-map__pin"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C7.6 2 4 5.6 4 10c0 5.5 8 12 8 12s8-6.5 8-12c0-4.4-3.6-8-8-8z"/></svg></span>
-                <% if (typeof r.distanceKm === 'number' && r.distanceKm >= 0) { %>
-                <span class="rd-map__pill"><%= r.distanceKm.toFixed(1) %> km<% if (r.deliveryMinutes) { %> · <%= r.deliveryMinutes %><% } %></span>
+                <%# Time only — distance is deliberately not surfaced. %>
+                <% if (r.deliveryMinutes) { %>
+                <span class="rd-map__pill"><%= r.deliveryMinutes %></span>
                 <% } %>
             </div>
         </div>
@@ -185,12 +180,6 @@
                 <span class="rd-info__value rd-info__value--strong"><%= r.pickupMinutes %></span>
             </div>
             <% } %>
-            <% if (typeof r.distanceKm === 'number' && r.distanceKm >= 0) { %>
-            <div class="rd-info__cell">
-                <span class="rd-info__label">Distance</span>
-                <span class="rd-info__value rd-info__value--strong"><%= r.distanceKm.toFixed(1) %> km</span>
-            </div>
-            <% } %>
             <% if (r.phone) { %>
             <div class="rd-info__cell">
                 <span class="rd-info__label">Call the shop</span>
@@ -200,8 +189,9 @@
             <div class="rd-map" aria-hidden="true">
                 <span class="rd-map__home"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12 12 3l9 9"/><path d="M5 10v10h14V10"/></svg></span>
                 <span class="rd-map__pin"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C7.6 2 4 5.6 4 10c0 5.5 8 12 8 12s8-6.5 8-12c0-4.4-3.6-8-8-8z"/></svg></span>
-                <% if (typeof r.distanceKm === 'number' && r.distanceKm >= 0) { %>
-                <span class="rd-map__pill"><%= r.distanceKm.toFixed(1) %> km<% if (r.pickupMinutes) { %> · <%= r.pickupMinutes %><% } %></span>
+                <%# Time only — distance is deliberately not surfaced. %>
+                <% if (r.pickupMinutes) { %>
+                <span class="rd-map__pill"><%= r.pickupMinutes %></span>
                 <% } %>
             </div>
         </div>

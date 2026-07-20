@@ -516,14 +516,8 @@
         var offer   = r.offer  ? '<span class="restaurant-card__badge">' + escHtml(r.offer) + '</span>' : '';
         var closed  = r.isOpen ? '' : '<span class="restaurant-card__closed-overlay">Closed</span>';
         var time    = r.deliveryMinutes ? '<span class="restaurant-card__time">' + escHtml(r.deliveryMinutes) + '</span>' : '';
-        var dist    = (typeof r.distanceKm === 'number' && r.distanceKm >= 0)
-            ? ('<span class="restaurant-card__distance" aria-label="' + r.distanceKm + ' kilometres away">' +
-                 '<svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">' +
-                   '<path d="M12 22s7-7.5 7-13a7 7 0 0 0-14 0c0 5.5 7 13 7 13z"/>' +
-                   '<circle cx="12" cy="9" r="2.5"/>' +
-                 '</svg> ' + r.distanceKm.toFixed(1) + ' km' +
-               '</span>')
-            : '';
+        // Distance is deliberately not shown — cards carry the time only.
+        var dist    = '';
         var cuisines = (r.cuisines || []).map(escHtml).join(' · ');
 
         return '' +

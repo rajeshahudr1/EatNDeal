@@ -185,6 +185,15 @@ async function validate(cartId, owner, ctx) {
             const p = prodById.get(String(it.product_id));
             const ctxField = 'items.' + it.id;
 
+            // The Surprise Box is a VIRTUAL line (product_id = 0) configured on
+            // the `branch` row — it has no `products` row to look up, so every
+            // check below would read it as a DELETED product and nag the
+            // customer to "remove it" from a cart it's perfectly valid in.
+            // Its own limits (pickup-only, collection window, slots left) are
+            // enforced where it's added and where its qty changes
+            // (Controllers/Customer/CartController), and again at order-place.
+            if (Number(it.is_surprise_item) === 1) { continue; }
+
             // Product missing or marketplace-off.
             if (!p) {
                 pushErr(out, 'item.removed', '"' + (it.product_name || 'An item') + '" is no longer available. Please remove it.', ctxField);

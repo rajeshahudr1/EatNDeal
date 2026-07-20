@@ -18,6 +18,47 @@
     var byId = window.AdminUi.byId;
     function showForm(f) { if (f) { f.hidden = false; f.scrollIntoView({ behavior: 'smooth', block: 'center' }); } }
 
+    // ── Review-claims: Approve confirmation ─────────────────────────
+    // Approving GRANTS REAL CASHBACK and this screen offers no undo, so the
+    // approve form is intercepted and re-submitted only after the admin
+    // confirms. Legacy asks too (#approveModal). pendingApprove = the form that
+    // opened the dialog; approveConfirmed lets its second submit straight
+    // through so we don't re-prompt forever.
+    var pendingApprove = null;
+    var approveConfirmed = false;
+
+    function openApproveConfirm(form) {
+        var box = byId('rc-confirm');
+        if (!box) { return false; }          // no dialog on the page → don't block the submit
+        pendingApprove = form;
+        var rewardEl = box.querySelector('[data-rc-confirm-reward]');
+        var reward = form.getAttribute('data-reward') || '';
+        if (rewardEl) {
+            rewardEl.hidden = !reward;
+            rewardEl.textContent = reward ? ('This will add ' + reward + ' to the customer’s wallet.') : '';
+        }
+        box.hidden = false;
+        var ok = box.querySelector('[data-action="rc-confirm-ok"]');
+        if (ok) { ok.focus(); }
+        return true;
+    }
+    function closeApproveConfirm() {
+        var box = byId('rc-confirm');
+        if (box) { box.hidden = true; }
+        pendingApprove = null;
+    }
+
+    document.addEventListener('submit', function (ev) {
+        var form = ev.target.closest('[data-rc-approve]');
+        if (!form) { return; }
+        if (approveConfirmed) { approveConfirmed = false; return; }   // the confirmed re-submit
+        if (openApproveConfirm(form)) { ev.preventDefault(); }
+    });
+    document.addEventListener('keydown', function (ev) {
+        var box = byId('rc-confirm');
+        if (ev.key === 'Escape' && box && !box.hidden) { closeApproveConfirm(); }
+    });
+
     // BOGO apply-on switch: show the product OR the category multi-select to
     // match the [data-apply-on] select's value (1=Product blocks, 2=Category).
     function syncApplyOn(f) {
@@ -166,6 +207,23 @@
             ev.preventDefault();
             var row = rowDel.closest('[data-erow]');
             if (row) { row.parentNode.removeChild(row); }
+            return;
+        }
+
+        // Review claims — the Approve confirmation's two buttons. `pendingApprove`
+        // holds the form that asked, so OK submits exactly that claim.
+        if (t.closest('[data-action="rc-confirm-cancel"]')) {
+            ev.preventDefault();
+            closeApproveConfirm();
+            return;
+        }
+        if (t.closest('[data-action="rc-confirm-ok"]')) {
+            ev.preventDefault();
+            var form = pendingApprove;
+            closeApproveConfirm();
+            // approveConfirmed lets the submit handler through instead of
+            // re-opening the dialog in a loop.
+            if (form) { approveConfirmed = true; form.submit(); }
             return;
         }
 

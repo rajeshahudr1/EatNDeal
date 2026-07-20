@@ -37,12 +37,24 @@ async function companyContext(req, res, next) {
         const body = r && r.body;
         const companies = (body && body.status === 200 && body.data && body.data.companies) || [];
 
+        // No synthetic "EatNDeal (Marketplace)" option in the switcher.
+        // It was added so a super admin could pick company_id = 0 for the
+        // loyalty screens — but those screens now PIN themselves to scope 0 and
+        // hide the switcher entirely (Controllers/LoyaltyController, topbar).
+        // So the option did nothing except appear on Products / etc, where it
+        // isn't a real company and confused the picture. The api still enforces
+        // scope-0 access server-side, so dropping it here changes nothing but
+        // the noise.
         let selectedCompanyId = null;
         if (isSuper) {
             const sel = (req.session.company_id != null && req.session.company_id !== '')
                 ? Number(req.session.company_id) : null;
-            // Only honour a selection that's still a valid company; else "all".
-            selectedCompanyId = (sel && companies.some((c) => Number(c.id) === sel)) ? sel : null;
+            // Only honour a selection that's still a valid option; else "all".
+            // NB: `sel != null`, NOT `sel` — the marketplace's id is 0, which is
+            // falsy, so a truthiness test would silently turn an explicit
+            // marketplace pick back into "all companies".
+            selectedCompanyId = (sel != null && Number.isFinite(sel)
+                && companies.some((c) => Number(c.id) === sel)) ? sel : null;
         } else {
             selectedCompanyId = Number(admin.company_id) || (companies[0] && Number(companies[0].id)) || null;
         }

@@ -375,12 +375,25 @@ async function accountPage(req, res) {
 
     // Re-hydrate from the DB so the form always shows the latest values
     // (birthdate / gender, etc.) — the stored session.user may predate
-    // those fields being added to the public view. Best-effort: if the
-    // refresh fails we just render the session copy.
+    // those fields being added to the public view. Best-effort on a network
+    // blip: we just render the session copy.
+    //
+    // A 401 is NOT a blip — it means the api could not resolve the customer
+    // this session points at, so every button on the rendered page (save name,
+    // change mobile…) would fail. Drop the dead session and send them to
+    // sign in instead of rendering a screen that can't work.
     try {
         const apiRes = await callApi(req, 'GET', '/api/v1/auth/me?customer_id=' + encodeURIComponent(user.id));
-        if (apiRes.body && apiRes.body.status === 200 && apiRes.body.data && apiRes.body.data.customer) {
-            user = apiRes.body.data.customer;
+        const body   = apiRes && apiRes.body;
+        if (body && body.status === 401) {
+            req.session.user = null;
+            req.flash('error', body.msg || 'Your session has expired. Please sign in again.');
+            return req.session.save(function () {
+                res.redirect('/signin?next=' + encodeURIComponent('/account'));
+            });
+        }
+        if (body && body.status === 200 && body.data && body.data.customer) {
+            user = body.data.customer;
             req.session.user = user;
         }
     } catch (e) { /* keep the session copy */ }

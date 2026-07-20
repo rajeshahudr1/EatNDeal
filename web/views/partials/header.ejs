@@ -274,6 +274,18 @@
                             <svg class="account-menu__item-icon" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="8" width="18" height="4" rx="1"/><path d="M5 12v7a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-7"/><path d="M12 8V4M12 8c-1.5 0-4-.5-4-2.5S10.5 4 12 8zM12 8c1.5 0 4-.5 4-2.5S13.5 4 12 8z"/></svg>
                             <span>Earn Cashback</span>
                         </a>
+                        <%# ══ DISABLED 2026-07-17 (user request) ══════════════
+                            Reviews of EATNDEAL itself. Menu hidden AND the
+                            /reviews routes are commented out in web/index.js,
+                            so the URL 404s too. Restore = uncomment both, plus
+                            the drawer row (partials/mobile-drawer.ejs) and the
+                            "Rate us" button (views/site/index.ejs).
+
+                        <a href="/reviews" class="account-menu__item" role="menuitem">
+                            <svg class="account-menu__item-icon" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                            <span>Review</span>
+                        </a>
+                        ═══════════════════════════════════════════════════ %>
                         <%# Notifications — hidden for now. Remove the if(false) to show it. %>
                         <% if (false) { %>
                         <a href="/account?tab=notifications" class="account-menu__item" role="menuitem">

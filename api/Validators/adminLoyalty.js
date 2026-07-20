@@ -17,7 +17,16 @@
 const Joi = require('joi');
 
 // Optional company id (super-admin selector). Ignored for company logins.
-const companyIdOpt = Joi.number().integer().positive().optional().allow('', null);
+//
+// min(0), NOT positive(): 0 is the MARKETPLACE's own loyalty programme
+// (EatNDeal itself — no restaurant owns it) and is a perfectly valid scope.
+// `positive()` rejected it with '"company_id" must be a positive number', so
+// EVERY loyalty screen 422'd at scope 0 and the console showed a bare
+// "Could not load loyalty configuration" — the page asks ~9 endpoints and only
+// reports failure when all of them fall over, which hid the real reason.
+// Same 0-is-falsy trap as Helpers/adminScope (`companyId > 0`) and
+// Middlewares/companyContext (`sel && …`); this was the third layer.
+const companyIdOpt = Joi.number().integer().min(0).optional().allow('', null);
 
 // Query schema for GET screens — just the optional company_id.
 const scopeQuerySchema = Joi.object({
@@ -143,6 +152,40 @@ const reviewRejectSchema = Joi.object({
     }),
 });
 
+// POST /admin/reviews — the super admin posts a MARKETPLACE review by hand.
+// Same 3 inputs as the legacy POS modal (review-rating/index.php:210-243), but
+// legacy validates customer_name on the CLIENT ONLY and casts rating with (int)
+// and no range check — so a direct POST there banks a nameless review, or a
+// rating of 99 that skews the public average for good. Both are checked here.
+// Messages match the legacy toasts so the wording is unchanged for the user.
+const reviewRatingSaveSchema = Joi.object({
+    customer_name: Joi.string().trim().min(1).max(191).required().messages({
+        'string.empty': 'Please enter customer name',
+        'any.required': 'Please enter customer name',
+    }),
+    review: Joi.string().trim().min(1).max(2000).required().messages({
+        'string.empty': 'Review cannot be empty',
+        'any.required': 'Review cannot be empty',
+    }),
+    rating: Joi.number().integer().min(1).max(5).required().messages({
+        'number.base': 'Please choose a rating between 1 and 5 stars',
+        'number.min':  'Please choose a rating between 1 and 5 stars',
+        'number.max':  'Please choose a rating between 1 and 5 stars',
+        'any.required': 'Please choose a rating between 1 and 5 stars',
+    }),
+});
+
+// POST /admin/reviews/reply — public reply + the Publish Online toggle. Both
+// optional: the page saves either through this one endpoint, like legacy
+// update-reply (which writes exactly these two fields and nothing else).
+const reviewRatingReplySchema = Joi.object({
+    id:             Joi.number().integer().positive().required(),
+    review_reply:   Joi.string().trim().max(2000).optional().allow('', null),
+    publish_online: Joi.alternatives()
+        .try(Joi.boolean(), Joi.number().valid(0, 1), Joi.string().valid('0', '1', 'on'))
+        .optional(),
+});
+
 // POST /admin/loyalty/special-offer  (add / edit one date-based offer)
 const specialOfferSchema = Joi.object({
     company_id: companyIdOpt,
@@ -205,6 +248,8 @@ module.exports = {
     challengesSchema,
     eventsSchema,
     reviewListSchema,
+    reviewRatingSaveSchema,
+    reviewRatingReplySchema,
     reviewApproveSchema,
     reviewRejectSchema,
     specialOfferSchema,

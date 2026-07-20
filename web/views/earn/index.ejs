@@ -40,13 +40,11 @@
         <% } else { %>
         <div class="earn-grid">
             <% e.types.forEach(function (t) { var st = STATUS[t.status]; %>
+            <%# HORIZONTAL card: example screenshot on the LEFT, all the copy on
+                the RIGHT. The body is its own flex column so the long CMS
+                instructions get the full remaining width (they used to be
+                squeezed into a ~280px grid column and clipped). %>
             <article class="ecard" data-type="<%= t.id %>" data-slug="<%= esc(t.slug) %>" data-video="<%= t.video ? '1' : '0' %>" data-name="<%= esc(t.title || t.name) %>" data-reward="<%= esc(rewardText(t)) %>">
-                <header class="ecard__head">
-                    <span class="ecard__icon" aria-hidden="true"><%= t.icon %></span>
-                    <span class="ecard__name"><%= esc(t.title || t.name) %></span>
-                    <span class="ecard__reward"><%= rewardText(t) %></span>
-                </header>
-
                 <% if (t.screenshot_url) { %>
                 <div class="ecard__shot">
                     <img src="<%= t.screenshot_url %>" alt="Example for <%= esc(t.name) %>" loading="lazy" data-earn-zoom>
@@ -54,20 +52,36 @@
                 </div>
                 <% } %>
 
-                <% if (t.description) { %><div class="ecard__desc"><%- t.description %></div><% } %>
+                <div class="ecard__body">
+                    <header class="ecard__head">
+                        <span class="ecard__icon" aria-hidden="true"><%= t.icon %></span>
+                        <span class="ecard__name"><%= esc(t.title || t.name) %></span>
+                        <span class="ecard__reward"><%= rewardText(t) %></span>
+                    </header>
 
-                <footer class="ecard__foot">
-                    <% if (st) { %>
-                    <span class="ecard__status is-<%= t.status %>"><span aria-hidden="true"><%= st[0] %></span> <%= st[1] %><% if (t.status === 'rejected' && t.reject_reason) { %> · <%= esc(t.reject_reason) %><% } %></span>
-                    <% } %>
-                    <% if (t.status === 'approved') { %>
-                    <button type="button" class="ecard__btn is-done" disabled>Submitted</button>
-                    <% } else { %>
-                    <button type="button" class="ecard__btn" data-earn-start>
-                        <%= t.status === 'rejected' ? 'Resubmit' : ('Submit ' + (t.video ? 'video' : 'screenshot')) %>
-                    </button>
-                    <% } %>
-                </footer>
+                    <% if (t.description) { %><div class="ecard__desc"><%- t.description %></div><% } %>
+
+                    <footer class="ecard__foot">
+                        <% if (st) { %>
+                        <span class="ecard__status is-<%= t.status %>"><span aria-hidden="true"><%= st[0] %></span> <%= st[1] %><% if (t.status === 'rejected' && t.reject_reason) { %> · <%= esc(t.reject_reason) %><% } %></span>
+                        <% } %>
+                        <%# ONE claim per review type — legacy parity. Once a claim
+                            exists the button is gone, whatever its status: legacy
+                            hides the whole form on `!empty($review->id)` alone
+                            (webordering/views/site/review-type/index.php:374,490),
+                            so pending AND rejected are both final there.
+                            The status pill to the left already says which. The api
+                            re-checks and answers 409 — the button is the courtesy,
+                            not the control. %>
+                        <% if (!t.status) { %>
+                        <button type="button" class="ecard__btn" data-earn-start>
+                            Submit <%= t.video ? 'video' : 'screenshot' %>
+                        </button>
+                        <% } else { %>
+                        <button type="button" class="ecard__btn is-done" disabled>Submitted</button>
+                        <% } %>
+                    </footer>
+                </div>
             </article>
             <% }); %>
         </div>
@@ -79,7 +93,7 @@
             <form class="earn-modal__panel" method="post" action="/review-cashback" enctype="multipart/form-data" data-earn-form>
                 <input type="hidden" name="company_id" value="<%= e.company.id %>">
                 <input type="hidden" name="review_type" value="" data-earn-typeinput>
-                <input type="hidden" name="redirect" value="/earn?company=<%= encodeURIComponent(e.company.id) %><%= diningQS %>">
+                <input type="hidden" name="redirect" value="/earn?restaurant=<%= encodeURIComponent(e.company.slug || e.company.id) %><%= diningQS %>">
                 <header class="earn-modal__head">
                     <h3 class="earn-modal__title" data-earn-title>Submit</h3>
                     <button type="button" class="earn-modal__x" data-earn-close aria-label="Close">✕</button>
@@ -115,12 +129,22 @@
 
     <% } else { %>
         <%# ── Restaurant picker ─────────────────────────────────────────── %>
-        <% if (!e.restaurants || !e.restaurants.length) { %>
+        <%# ══ DISABLED 2026-07-20 (user request) ══════════════════════════
+            EatNDeal's OWN earn card (the MARKETPLACE, company_id = 0) is not
+            listed — same call as the wallet card in views/wallet/index.ejs.
+            Filtered on the api's `isMarketplace` flag, not on companyId === 0,
+            because company 1 is a real restaurant that is ALSO called
+            "EatNDeal": matching on the name or on the wrong id would hide a
+            genuine restaurant's card.
+            RESTORE: drop this filter and use e.restaurants directly again. %>
+        <% var eRestos = (e.restaurants || []).filter(function (r) { return !r.isMarketplace; }); %>
+
+        <% if (!eRestos.length) { %>
         <div class="earn-empty"><span class="earn-empty__ic" aria-hidden="true">🎁</span><p>No restaurants are offering review cashback right now. Check back soon!</p></div>
         <% } else { %>
         <div class="earn-restos">
-            <% e.restaurants.forEach(function (r) { %>
-            <a class="eresto" href="/earn?company=<%= encodeURIComponent(r.companyId) %><%= diningQS %>">
+            <% eRestos.forEach(function (r) { %>
+            <a class="eresto" href="/earn?restaurant=<%= encodeURIComponent(r.slug || r.companyId) %><%= diningQS %>">
                 <span class="eresto__badge"><%= esc(String(r.name || 'R').charAt(0).toUpperCase()) %></span>
                 <span class="eresto__main">
                     <span class="eresto__name"><%= esc(r.name) %></span>

@@ -65,4 +65,4 @@ function sanitizeCmsHtml(html) {
     return s.trim().slice(0, 20000);
 }
 
-module.exports = { sanitizeCmsHtml };
+module.exports = { sanitizeCmsHtml, decodeEntities };

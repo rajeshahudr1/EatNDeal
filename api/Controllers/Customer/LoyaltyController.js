@@ -22,6 +22,7 @@ const H         = require('../../Helpers/helper');
 const MSG       = require('../../Helpers/messages');
 const customers = require('../../Helpers/customerLookup');
 const loyalty   = require('../../Helpers/loyalty');
+const M         = require('../../Helpers/marketplace');   // companyIdBySlug
 
 /**
  * wallet — GET /customer/loyalty/wallet
@@ -111,12 +112,27 @@ async function history(req, res) {
  */
 async function reviewTypes(req, res) {
     try {
-        const { customer_id, company_id } = req.query;
+        const { customer_id, company_id, slug } = req.query;
         const guard = await customers.loadMarketplaceCustomer(customer_id);
         if (guard.error) { return H.errorResponse(res, guard.error.msg, guard.error.status); }
 
-        if (company_id) {
-            const data = await loyalty.reviewTypesFor(company_id, customer_id);
+        // Prefer the explicit id; else resolve the public slug (the customer URL
+        // carries /earn?restaurant=<slug>, never the raw company id).
+        //
+        // `!= null`, NOT `||` / truthiness: the MARKETPLACE's id is 0, which is
+        // falsy — `company_id || null` turned an explicit 0 into null, and
+        // `if (cid)` then bounced it back to the picker.
+        let cid = (company_id != null && company_id !== '') ? Number(company_id) : null;
+        if (cid == null && slug) {
+            // The marketplace FIRST: company_id 0 has no `company` row, so
+            // companyIdBySlug() can never resolve its slug (it returns null and
+            // the card looked broken).
+            cid = loyalty.scopeFromSlug(slug);
+            if (cid == null) { cid = await M.companyIdBySlug(slug); }
+        }
+
+        if (cid != null) {
+            const data = await loyalty.reviewTypesFor(cid, customer_id);
             return H.successResponse(res, data);
         }
         const restaurants = await loyalty.reviewRestaurants();

@@ -77,8 +77,9 @@ const addressSaveSchema = Joi.object({
     drop_off_option: Joi.string().trim().max(60).allow('', null),
     delivery_instructions: Joi.string().trim().max(500).allow('', null)
         .messages({ 'string.max': 'Instructions are too long.' }),
-    contact_no: Joi.string().trim().pattern(/^[0-9\s\-()+]{4,20}$/).allow('', null)
-        .messages({ 'string.pattern.base': 'Please enter a valid contact number.' }),
+    // Same phone rule as sign-in / profile — legacy's 11-15 digits. Optional
+    // here (an address may carry a different contact number, or none).
+    contact_no: C.mobileRule.allow('', null),
     is_default: Joi.boolean().truthy(1, '1', 'true').falsy(0, '0', 'false', '').allow(null),
 });
 

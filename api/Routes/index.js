@@ -288,8 +288,13 @@ router.post('/admin/auth/change-password',
 // pass ?company_id= (selector); company logins are pinned to their own.
 const { authenticate }          = require('../Middlewares/auth');
 const { requireRole }           = require('../Middlewares/requireRole');
+// Marketplace-level (global) admin screens are super-admin only — requireRole
+// ('admin') admits company logins too, since both carry kind='admin'. 404s
+// everyone else. See Middlewares/requireSuperAdmin.
+const { requireSuperAdmin }     = require('../Middlewares/requireSuperAdmin');
 const AdminCompaniesCtl         = require('../Controllers/Admin/CompaniesController');
 const AdminLoyaltyCtl           = require('../Controllers/Admin/LoyaltyController');
+const AdminReviewsCtl           = require('../Controllers/Admin/ReviewsController');
 
 router.get('/admin/companies',
     authenticate, requireRole('admin'),
@@ -343,6 +348,8 @@ const {
     challengesSchema,
     eventsSchema,
     reviewListSchema,
+    reviewRatingSaveSchema,
+    reviewRatingReplySchema,
     reviewApproveSchema,
     reviewRejectSchema,
     specialOfferSchema,
@@ -353,187 +360,211 @@ const {
 } = require('../Validators/adminLoyalty');
 
 router.get('/admin/loyalty/dashboard',
-    authenticate, requireRole('admin'), validateQuery(scopeQuerySchema),
+    authenticate, requireRole('admin'), requireSuperAdmin, validateQuery(scopeQuerySchema),
     AdminLoyaltyCtl.dashboard);
 
 // Company-level loyalty on/off (gates whether a company sees the Loyalty menu)
 router.post('/admin/loyalty/master-toggle',
-    authenticate, requireRole('admin'), validate(toggleSchema),
+    authenticate, requireRole('admin'), requireSuperAdmin, validate(toggleSchema),
     AdminLoyaltyCtl.masterToggle);
 
 // Company-level loyalty settings (commission % + phone-order toggle)
 router.post('/admin/loyalty/company-config',
-    authenticate, requireRole('admin'), validate(companyConfigSchema),
+    authenticate, requireRole('admin'), requireSuperAdmin, validate(companyConfigSchema),
     AdminLoyaltyCtl.companyConfigSave);
 
 // Save All — the whole config page in one POST (dynamic nested body; the
 // controller coerces every field safely, so no Joi schema is applied).
 router.post('/admin/loyalty/save-all',
-    authenticate, requireRole('admin'),
+    authenticate, requireRole('admin'), requireSuperAdmin,
     AdminLoyaltyCtl.saveAll);
 
 // Cashback Rules
 router.get('/admin/loyalty/cashback',
-    authenticate, requireRole('admin'), validateQuery(scopeQuerySchema),
+    authenticate, requireRole('admin'), requireSuperAdmin, validateQuery(scopeQuerySchema),
     AdminLoyaltyCtl.cashbackGet);
 
 router.post('/admin/loyalty/cashback',
-    authenticate, requireRole('admin'), validate(cashbackRowSchema),
+    authenticate, requireRole('admin'), requireSuperAdmin, validate(cashbackRowSchema),
     AdminLoyaltyCtl.cashbackUpsert);
 
 router.delete('/admin/loyalty/cashback/:id',
-    authenticate, requireRole('admin'),
+    authenticate, requireRole('admin'), requireSuperAdmin,
     AdminLoyaltyCtl.cashbackDelete);
 
 router.post('/admin/loyalty/cashback/toggle',
-    authenticate, requireRole('admin'), validate(toggleSchema),
+    authenticate, requireRole('admin'), requireSuperAdmin, validate(toggleSchema),
     AdminLoyaltyCtl.cashbackToggle);
 
 router.post('/admin/loyalty/config',
-    authenticate, requireRole('admin'), validate(configSchema),
+    authenticate, requireRole('admin'), requireSuperAdmin, validate(configSchema),
     AdminLoyaltyCtl.configSave);
 
 // Tier Config
 router.get('/admin/loyalty/tiers',
-    authenticate, requireRole('admin'), validateQuery(scopeQuerySchema),
+    authenticate, requireRole('admin'), requireSuperAdmin, validateQuery(scopeQuerySchema),
     AdminLoyaltyCtl.tiersGet);
 
 router.post('/admin/loyalty/tiers',
-    authenticate, requireRole('admin'), validate(tiersSchema),
+    authenticate, requireRole('admin'), requireSuperAdmin, validate(tiersSchema),
     AdminLoyaltyCtl.tiersSave);
 
 router.post('/admin/loyalty/tiers/toggle',
-    authenticate, requireRole('admin'), validate(toggleSchema),
+    authenticate, requireRole('admin'), requireSuperAdmin, validate(toggleSchema),
     AdminLoyaltyCtl.tiersToggle);
 
 // Referral & Streak
 router.get('/admin/loyalty/referral-streak',
-    authenticate, requireRole('admin'), validateQuery(scopeQuerySchema),
+    authenticate, requireRole('admin'), requireSuperAdmin, validateQuery(scopeQuerySchema),
     AdminLoyaltyCtl.referralStreakGet);
 
 router.post('/admin/loyalty/referral',
-    authenticate, requireRole('admin'), validate(referralSchema),
+    authenticate, requireRole('admin'), requireSuperAdmin, validate(referralSchema),
     AdminLoyaltyCtl.referralSave);
 
 router.post('/admin/loyalty/referral/toggle',
-    authenticate, requireRole('admin'), validate(toggleSchema),
+    authenticate, requireRole('admin'), requireSuperAdmin, validate(toggleSchema),
     AdminLoyaltyCtl.referralToggle);
 
 router.post('/admin/loyalty/streak',
-    authenticate, requireRole('admin'), validate(streakSchema),
+    authenticate, requireRole('admin'), requireSuperAdmin, validate(streakSchema),
     AdminLoyaltyCtl.streakUpsert);
 
 router.delete('/admin/loyalty/streak/:id',
-    authenticate, requireRole('admin'),
+    authenticate, requireRole('admin'), requireSuperAdmin,
     AdminLoyaltyCtl.streakDelete);
 
 router.post('/admin/loyalty/streak/toggle',
-    authenticate, requireRole('admin'), validate(toggleSchema),
+    authenticate, requireRole('admin'), requireSuperAdmin, validate(toggleSchema),
     AdminLoyaltyCtl.streakToggle);
 
 // Challenges (Smart Campaigns)
 router.get('/admin/loyalty/challenges',
-    authenticate, requireRole('admin'), validateQuery(scopeQuerySchema),
+    authenticate, requireRole('admin'), requireSuperAdmin, validateQuery(scopeQuerySchema),
     AdminLoyaltyCtl.challengesGet);
 
 router.post('/admin/loyalty/challenges',
-    authenticate, requireRole('admin'), validate(challengesSchema),
+    authenticate, requireRole('admin'), requireSuperAdmin, validate(challengesSchema),
     AdminLoyaltyCtl.challengesSave);
 
 router.post('/admin/loyalty/challenges/toggle',
-    authenticate, requireRole('admin'), validate(toggleSchema),
+    authenticate, requireRole('admin'), requireSuperAdmin, validate(toggleSchema),
     AdminLoyaltyCtl.challengesToggle);
 
 // Event Rewards
 router.get('/admin/loyalty/events',
-    authenticate, requireRole('admin'), validateQuery(scopeQuerySchema),
+    authenticate, requireRole('admin'), requireSuperAdmin, validateQuery(scopeQuerySchema),
     AdminLoyaltyCtl.eventsGet);
 
 router.post('/admin/loyalty/events',
-    authenticate, requireRole('admin'), validate(eventsSchema),
+    authenticate, requireRole('admin'), requireSuperAdmin, validate(eventsSchema),
     AdminLoyaltyCtl.eventsSave);
 
 router.post('/admin/loyalty/events/toggle',
-    authenticate, requireRole('admin'), validate(toggleSchema),
+    authenticate, requireRole('admin'), requireSuperAdmin, validate(toggleSchema),
     AdminLoyaltyCtl.eventsToggle);
 
 // Review Claims (approve / reject)
 router.get('/admin/loyalty/review-claims',
-    authenticate, requireRole('admin'), validateQuery(reviewListSchema),
+    authenticate, requireRole('admin'), requireSuperAdmin, validateQuery(reviewListSchema),
     AdminLoyaltyCtl.reviewClaimsGet);
 
 router.post('/admin/loyalty/review-claims/approve',
-    authenticate, requireRole('admin'), validate(reviewApproveSchema),
+    authenticate, requireRole('admin'), requireSuperAdmin, validate(reviewApproveSchema),
     AdminLoyaltyCtl.reviewApprove);
 
 router.post('/admin/loyalty/review-claims/reject',
-    authenticate, requireRole('admin'), validate(reviewRejectSchema),
+    authenticate, requireRole('admin'), requireSuperAdmin, validate(reviewRejectSchema),
     AdminLoyaltyCtl.reviewReject);
+
+// ── Marketplace reviews (super-admin only) ─────────────────────────
+// EatNDeal's OWN public star-reviews (review_rating at company_id = 0) — the
+// marketplace twin of the legacy POS /admin/pos/review-rating/index. A
+// restaurant's reviews stay on that POS page; this is marketplace-scoped only,
+// so it's requireSuperAdmin on top of requireRole('admin') — a company login
+// gets a 404, exactly as if the route didn't exist.
+// ══ DISABLED 2026-07-17 (user request) ═════════════════════════════
+// The admin Reviews screen is switched off (menu commented in
+// admin/views/partials/sidebar.ejs, URLs 404'd by the gate in admin/index.js),
+// so nothing calls these. Off here too so the api can't be reached directly.
+// Controllers/Admin/ReviewsController is untouched — restore = uncomment.
+// router.get('/admin/reviews',
+//     authenticate, requireRole('admin'), requireSuperAdmin,
+//     AdminReviewsCtl.reviewsList);
+//
+// router.post('/admin/reviews',
+//     authenticate, requireRole('admin'), requireSuperAdmin, validate(reviewRatingSaveSchema),
+//     AdminReviewsCtl.reviewsSave);
+//
+// router.post('/admin/reviews/reply',
+//     authenticate, requireRole('admin'), requireSuperAdmin, validate(reviewRatingReplySchema),
+//     AdminReviewsCtl.reviewsReply);
+// ═══════════════════════════════════════════════════════════════════
 
 // Customer Segments (read-only analytics)
 router.get('/admin/loyalty/segments',
-    authenticate, requireRole('admin'), validateQuery(scopeQuerySchema),
+    authenticate, requireRole('admin'), requireSuperAdmin, validateQuery(scopeQuerySchema),
     AdminLoyaltyCtl.segmentsGet);
 
 // Section 8 — Special Offer (date-based cashback rows)
 router.get('/admin/loyalty/special-offer',
-    authenticate, requireRole('admin'), validateQuery(scopeQuerySchema),
+    authenticate, requireRole('admin'), requireSuperAdmin, validateQuery(scopeQuerySchema),
     AdminLoyaltyCtl.specialOfferGet);
 router.post('/admin/loyalty/special-offer',
-    authenticate, requireRole('admin'), validate(specialOfferSchema),
+    authenticate, requireRole('admin'), requireSuperAdmin, validate(specialOfferSchema),
     AdminLoyaltyCtl.specialOfferUpsert);
 router.delete('/admin/loyalty/special-offer/:id',
-    authenticate, requireRole('admin'), validateQuery(scopeQuerySchema),
+    authenticate, requireRole('admin'), requireSuperAdmin, validateQuery(scopeQuerySchema),
     AdminLoyaltyCtl.specialOfferDelete);
 router.post('/admin/loyalty/special-offer/toggle',
-    authenticate, requireRole('admin'), validate(toggleSchema),
+    authenticate, requireRole('admin'), requireSuperAdmin, validate(toggleSchema),
     AdminLoyaltyCtl.specialOfferToggle);
 
 // Section 6 — Review Cashback rewards (8 review/share types)
 router.get('/admin/loyalty/review-rewards',
-    authenticate, requireRole('admin'), validateQuery(scopeQuerySchema),
+    authenticate, requireRole('admin'), requireSuperAdmin, validateQuery(scopeQuerySchema),
     AdminLoyaltyCtl.reviewRewardsGet);
 router.post('/admin/loyalty/review-rewards',
-    authenticate, requireRole('admin'), validate(reviewRewardsSchema),
+    authenticate, requireRole('admin'), requireSuperAdmin, validate(reviewRewardsSchema),
     AdminLoyaltyCtl.reviewRewardsSave);
 router.post('/admin/loyalty/review-rewards/toggle',
-    authenticate, requireRole('admin'), validate(toggleSchema),
+    authenticate, requireRole('admin'), requireSuperAdmin, validate(toggleSchema),
     AdminLoyaltyCtl.reviewRewardsToggle);
 
 // Section 4 — Product Cashback (rule + selected products)
 router.get('/admin/loyalty/product-cashback',
-    authenticate, requireRole('admin'), validateQuery(scopeQuerySchema),
+    authenticate, requireRole('admin'), requireSuperAdmin, validateQuery(scopeQuerySchema),
     AdminLoyaltyCtl.productCashbackGet);
 router.post('/admin/loyalty/product-cashback',
-    authenticate, requireRole('admin'), validate(productCashbackSchema),
+    authenticate, requireRole('admin'), requireSuperAdmin, validate(productCashbackSchema),
     AdminLoyaltyCtl.productCashbackUpsert);
 router.delete('/admin/loyalty/product-cashback/:id',
-    authenticate, requireRole('admin'), validateQuery(scopeQuerySchema),
+    authenticate, requireRole('admin'), requireSuperAdmin, validateQuery(scopeQuerySchema),
     AdminLoyaltyCtl.productCashbackDelete);
 router.post('/admin/loyalty/product-cashback/toggle',
-    authenticate, requireRole('admin'), validate(toggleSchema),
+    authenticate, requireRole('admin'), requireSuperAdmin, validate(toggleSchema),
     AdminLoyaltyCtl.productCashbackToggle);
 
 // Section 7 — Buy X Get Y (BOGO)
 router.get('/admin/loyalty/bogof',
-    authenticate, requireRole('admin'), validateQuery(scopeQuerySchema),
+    authenticate, requireRole('admin'), requireSuperAdmin, validateQuery(scopeQuerySchema),
     AdminLoyaltyCtl.bogofGet);
 router.post('/admin/loyalty/bogof',
-    authenticate, requireRole('admin'), validate(bogofSchema),
+    authenticate, requireRole('admin'), requireSuperAdmin, validate(bogofSchema),
     AdminLoyaltyCtl.bogofUpsert);
 router.delete('/admin/loyalty/bogof/:id',
-    authenticate, requireRole('admin'), validateQuery(scopeQuerySchema),
+    authenticate, requireRole('admin'), requireSuperAdmin, validateQuery(scopeQuerySchema),
     AdminLoyaltyCtl.bogofDelete);
 router.post('/admin/loyalty/bogof/toggle',
-    authenticate, requireRole('admin'), validate(toggleSchema),
+    authenticate, requireRole('admin'), requireSuperAdmin, validate(toggleSchema),
     AdminLoyaltyCtl.bogofToggle);
 
 // Review CMS Pages (loyalty_cms_pages — per review-type instructional content)
 router.get('/admin/loyalty/cms-pages',
-    authenticate, requireRole('admin'), validateQuery(scopeQuerySchema),
+    authenticate, requireRole('admin'), requireSuperAdmin, validateQuery(scopeQuerySchema),
     AdminLoyaltyCtl.cmsPagesGet);
 router.post('/admin/loyalty/cms-pages',
-    authenticate, requireRole('admin'), validate(cmsPageSchema),
+    authenticate, requireRole('admin'), requireSuperAdmin, validate(cmsPageSchema),
     AdminLoyaltyCtl.cmsPageSave);
 
 // ── Products (Menu → Item) — Phase 1: the list page ────────────────
@@ -547,70 +578,70 @@ router.post('/admin/products/save',          authenticate, requireRole('admin'),
 
 // Marketplace categories (GLOBAL master — not company-scoped)
 const AdminMpCatCtl = require('../Controllers/Admin/MarketplaceCategoriesController');
-router.get ('/admin/marketplace-categories',        authenticate, requireRole('admin'), AdminMpCatCtl.list);
-router.get ('/admin/marketplace-categories/get',    authenticate, requireRole('admin'), AdminMpCatCtl.getCategory);
-router.post('/admin/marketplace-categories/save',   authenticate, requireRole('admin'), AdminMpCatCtl.save);
-router.post('/admin/marketplace-categories/delete', authenticate, requireRole('admin'), AdminMpCatCtl.remove);
-router.post('/admin/marketplace-categories/status', authenticate, requireRole('admin'), AdminMpCatCtl.statusToggle);
-router.get ('/admin/marketplace-categories/companies',   authenticate, requireRole('admin'), AdminMpCatCtl.companies);
-router.get ('/admin/marketplace-categories/restaurants', authenticate, requireRole('admin'), AdminMpCatCtl.restaurants);
-router.post('/admin/marketplace-categories/assign',      authenticate, requireRole('admin'), AdminMpCatCtl.assign);
-router.post('/admin/marketplace-categories/reorder',     authenticate, requireRole('admin'), AdminMpCatCtl.reorder);
+router.get ('/admin/marketplace-categories',        authenticate, requireRole('admin'), requireSuperAdmin, AdminMpCatCtl.list);
+router.get ('/admin/marketplace-categories/get',    authenticate, requireRole('admin'), requireSuperAdmin, AdminMpCatCtl.getCategory);
+router.post('/admin/marketplace-categories/save',   authenticate, requireRole('admin'), requireSuperAdmin, AdminMpCatCtl.save);
+router.post('/admin/marketplace-categories/delete', authenticate, requireRole('admin'), requireSuperAdmin, AdminMpCatCtl.remove);
+router.post('/admin/marketplace-categories/status', authenticate, requireRole('admin'), requireSuperAdmin, AdminMpCatCtl.statusToggle);
+router.get ('/admin/marketplace-categories/companies',   authenticate, requireRole('admin'), requireSuperAdmin, AdminMpCatCtl.companies);
+router.get ('/admin/marketplace-categories/restaurants', authenticate, requireRole('admin'), requireSuperAdmin, AdminMpCatCtl.restaurants);
+router.post('/admin/marketplace-categories/assign',      authenticate, requireRole('admin'), requireSuperAdmin, AdminMpCatCtl.assign);
+router.post('/admin/marketplace-categories/reorder',     authenticate, requireRole('admin'), requireSuperAdmin, AdminMpCatCtl.reorder);
 
 // ── Admin: marketplace collections (curated home-feed rows) ─────────
 const AdminCollectionsCtl = require('../Controllers/Admin/CollectionsController');
-router.get ('/admin/collections',             authenticate, requireRole('admin'), AdminCollectionsCtl.list);
-router.get ('/admin/collections/get',         authenticate, requireRole('admin'), AdminCollectionsCtl.getCollection);
-router.post('/admin/collections/save',        authenticate, requireRole('admin'), AdminCollectionsCtl.save);
-router.post('/admin/collections/delete',      authenticate, requireRole('admin'), AdminCollectionsCtl.remove);
-router.post('/admin/collections/status',      authenticate, requireRole('admin'), AdminCollectionsCtl.statusToggle);
-router.get ('/admin/collections/companies',   authenticate, requireRole('admin'), AdminCollectionsCtl.companies);
-router.get ('/admin/collections/restaurants', authenticate, requireRole('admin'), AdminCollectionsCtl.restaurants);
-router.post('/admin/collections/assign',      authenticate, requireRole('admin'), AdminCollectionsCtl.assign);
-router.post('/admin/collections/reorder',     authenticate, requireRole('admin'), AdminCollectionsCtl.reorder);
+router.get ('/admin/collections',             authenticate, requireRole('admin'), requireSuperAdmin, AdminCollectionsCtl.list);
+router.get ('/admin/collections/get',         authenticate, requireRole('admin'), requireSuperAdmin, AdminCollectionsCtl.getCollection);
+router.post('/admin/collections/save',        authenticate, requireRole('admin'), requireSuperAdmin, AdminCollectionsCtl.save);
+router.post('/admin/collections/delete',      authenticate, requireRole('admin'), requireSuperAdmin, AdminCollectionsCtl.remove);
+router.post('/admin/collections/status',      authenticate, requireRole('admin'), requireSuperAdmin, AdminCollectionsCtl.statusToggle);
+router.get ('/admin/collections/companies',   authenticate, requireRole('admin'), requireSuperAdmin, AdminCollectionsCtl.companies);
+router.get ('/admin/collections/restaurants', authenticate, requireRole('admin'), requireSuperAdmin, AdminCollectionsCtl.restaurants);
+router.post('/admin/collections/assign',      authenticate, requireRole('admin'), requireSuperAdmin, AdminCollectionsCtl.assign);
+router.post('/admin/collections/reorder',     authenticate, requireRole('admin'), requireSuperAdmin, AdminCollectionsCtl.reorder);
 
 // ── Admin: featured / sponsored placements (paid home-feed boost) ───
 const AdminFeaturedCtl = require('../Controllers/Admin/FeaturedController');
-router.get ('/admin/featured',           authenticate, requireRole('admin'), AdminFeaturedCtl.list);
-router.get ('/admin/featured/get',       authenticate, requireRole('admin'), AdminFeaturedCtl.getPlacement);
-router.post('/admin/featured/save',      authenticate, requireRole('admin'), AdminFeaturedCtl.save);
-router.post('/admin/featured/delete',    authenticate, requireRole('admin'), AdminFeaturedCtl.remove);
-router.post('/admin/featured/status',    authenticate, requireRole('admin'), AdminFeaturedCtl.statusToggle);
-router.post('/admin/featured/reorder',   authenticate, requireRole('admin'), AdminFeaturedCtl.reorder);
-router.get ('/admin/featured/companies', authenticate, requireRole('admin'), AdminFeaturedCtl.companies);
+router.get ('/admin/featured',           authenticate, requireRole('admin'), requireSuperAdmin, AdminFeaturedCtl.list);
+router.get ('/admin/featured/get',       authenticate, requireRole('admin'), requireSuperAdmin, AdminFeaturedCtl.getPlacement);
+router.post('/admin/featured/save',      authenticate, requireRole('admin'), requireSuperAdmin, AdminFeaturedCtl.save);
+router.post('/admin/featured/delete',    authenticate, requireRole('admin'), requireSuperAdmin, AdminFeaturedCtl.remove);
+router.post('/admin/featured/status',    authenticate, requireRole('admin'), requireSuperAdmin, AdminFeaturedCtl.statusToggle);
+router.post('/admin/featured/reorder',   authenticate, requireRole('admin'), requireSuperAdmin, AdminFeaturedCtl.reorder);
+router.get ('/admin/featured/companies', authenticate, requireRole('admin'), requireSuperAdmin, AdminFeaturedCtl.companies);
 
 // ── Admin: featured PRODUCTS (admin-picked dishes → home product rows) ──
 const AdminFeaturedProductsCtl = require('../Controllers/Admin/FeaturedProductsController');
-router.get ('/admin/featured-products',           authenticate, requireRole('admin'), AdminFeaturedProductsCtl.list);
-router.get ('/admin/featured-products/get',       authenticate, requireRole('admin'), AdminFeaturedProductsCtl.getGroup);
-router.post('/admin/featured-products/save',      authenticate, requireRole('admin'), AdminFeaturedProductsCtl.save);
-router.post('/admin/featured-products/delete',    authenticate, requireRole('admin'), AdminFeaturedProductsCtl.remove);
-router.post('/admin/featured-products/status',    authenticate, requireRole('admin'), AdminFeaturedProductsCtl.statusToggle);
-router.post('/admin/featured-products/reorder',   authenticate, requireRole('admin'), AdminFeaturedProductsCtl.reorder);
-router.get ('/admin/featured-products/companies', authenticate, requireRole('admin'), AdminFeaturedProductsCtl.companies);
-router.get ('/admin/featured-products/products',  authenticate, requireRole('admin'), AdminFeaturedProductsCtl.products);
+router.get ('/admin/featured-products',           authenticate, requireRole('admin'), requireSuperAdmin, AdminFeaturedProductsCtl.list);
+router.get ('/admin/featured-products/get',       authenticate, requireRole('admin'), requireSuperAdmin, AdminFeaturedProductsCtl.getGroup);
+router.post('/admin/featured-products/save',      authenticate, requireRole('admin'), requireSuperAdmin, AdminFeaturedProductsCtl.save);
+router.post('/admin/featured-products/delete',    authenticate, requireRole('admin'), requireSuperAdmin, AdminFeaturedProductsCtl.remove);
+router.post('/admin/featured-products/status',    authenticate, requireRole('admin'), requireSuperAdmin, AdminFeaturedProductsCtl.statusToggle);
+router.post('/admin/featured-products/reorder',   authenticate, requireRole('admin'), requireSuperAdmin, AdminFeaturedProductsCtl.reorder);
+router.get ('/admin/featured-products/companies', authenticate, requireRole('admin'), requireSuperAdmin, AdminFeaturedProductsCtl.companies);
+router.get ('/admin/featured-products/products',  authenticate, requireRole('admin'), requireSuperAdmin, AdminFeaturedProductsCtl.products);
 
 // ── Admin: home-feed SECTION order (one master ordering of the 4 sections) ──
 const AdminFeedSectionsCtl = require('../Controllers/Admin/FeedSectionsController');
-router.get ('/admin/feed-sections',         authenticate, requireRole('admin'), AdminFeedSectionsCtl.list);
-router.post('/admin/feed-sections/reorder', authenticate, requireRole('admin'), AdminFeedSectionsCtl.reorder);
+router.get ('/admin/feed-sections',         authenticate, requireRole('admin'), requireSuperAdmin, AdminFeedSectionsCtl.list);
+router.post('/admin/feed-sections/reorder', authenticate, requireRole('admin'), requireSuperAdmin, AdminFeedSectionsCtl.reorder);
 
 // ── Admin: home WELCOME banner (super-admin — single config row) ──
 const AdminWelcomeBannerCtl = require('../Controllers/Admin/WelcomeBannerController');
-router.get ('/admin/welcome-banner/get',    authenticate, requireRole('admin'), AdminWelcomeBannerCtl.getConfig);
-router.post('/admin/welcome-banner/save',   authenticate, requireRole('admin'), AdminWelcomeBannerCtl.save);
-router.post('/admin/welcome-banner/delete', authenticate, requireRole('admin'), AdminWelcomeBannerCtl.remove);
+router.get ('/admin/welcome-banner/get',    authenticate, requireRole('admin'), requireSuperAdmin, AdminWelcomeBannerCtl.getConfig);
+router.post('/admin/welcome-banner/save',   authenticate, requireRole('admin'), requireSuperAdmin, AdminWelcomeBannerCtl.save);
+router.post('/admin/welcome-banner/delete', authenticate, requireRole('admin'), requireSuperAdmin, AdminWelcomeBannerCtl.remove);
 
 // ── Admin: home OFFER BANNER carousel (super-admin — a list of banners) ──
 const AdminOfferBannerCtl = require('../Controllers/Admin/OfferBannerController');
-router.get ('/admin/offer-banner',             authenticate, requireRole('admin'), AdminOfferBannerCtl.list);
-router.get ('/admin/offer-banner/get',         authenticate, requireRole('admin'), AdminOfferBannerCtl.getBanner);
-router.post('/admin/offer-banner/save',        authenticate, requireRole('admin'), AdminOfferBannerCtl.save);
-router.post('/admin/offer-banner/delete',      authenticate, requireRole('admin'), AdminOfferBannerCtl.remove);
-router.post('/admin/offer-banner/status',      authenticate, requireRole('admin'), AdminOfferBannerCtl.statusToggle);
-router.post('/admin/offer-banner/reorder',     authenticate, requireRole('admin'), AdminOfferBannerCtl.reorder);
-router.get ('/admin/offer-banner/companies',   authenticate, requireRole('admin'), AdminOfferBannerCtl.companies);
-router.get ('/admin/offer-banner/restaurants', authenticate, requireRole('admin'), AdminOfferBannerCtl.restaurants);
+router.get ('/admin/offer-banner',             authenticate, requireRole('admin'), requireSuperAdmin, AdminOfferBannerCtl.list);
+router.get ('/admin/offer-banner/get',         authenticate, requireRole('admin'), requireSuperAdmin, AdminOfferBannerCtl.getBanner);
+router.post('/admin/offer-banner/save',        authenticate, requireRole('admin'), requireSuperAdmin, AdminOfferBannerCtl.save);
+router.post('/admin/offer-banner/delete',      authenticate, requireRole('admin'), requireSuperAdmin, AdminOfferBannerCtl.remove);
+router.post('/admin/offer-banner/status',      authenticate, requireRole('admin'), requireSuperAdmin, AdminOfferBannerCtl.statusToggle);
+router.post('/admin/offer-banner/reorder',     authenticate, requireRole('admin'), requireSuperAdmin, AdminOfferBannerCtl.reorder);
+router.get ('/admin/offer-banner/companies',   authenticate, requireRole('admin'), requireSuperAdmin, AdminOfferBannerCtl.companies);
+router.get ('/admin/offer-banner/restaurants', authenticate, requireRole('admin'), requireSuperAdmin, AdminOfferBannerCtl.restaurants);
 
 // ── Admin: COMMUNITY groups (Facebook-style; super-admin manages groups) ──
 const AdminCommunityCtl = require('../Controllers/Admin/CommunityController');
@@ -716,6 +747,7 @@ const {
     cartGetSchema,
     cartClaimSchema,
     cartAddSchema,
+    cartSurpriseBoxSchema,
     cartUpdateQtySchema,
     cartRemoveItemSchema,
     cartClearSchema,
@@ -747,6 +779,13 @@ router.get('/customer/cart/promotions',
 router.post('/customer/cart/add',
     validate(cartAddSchema),
     CartCtl.add);
+
+// Surprise Box ("Too Good To Go") — its own endpoint because the box is a
+// VIRTUAL product configured on `branch`, with no `products` row for
+// /cart/add to look up. Mirrors legacy's separate ToogoodtogoController.
+router.post('/customer/cart/surprise-box',
+    validate(cartSurpriseBoxSchema),
+    CartCtl.addSurpriseBox);
 
 router.post('/customer/cart/update-qty',
     validate(cartUpdateQtySchema),
@@ -854,7 +893,7 @@ router.get('/customer/order/issue-response',
 // orders (saved to review_rating, one per order). The public list (read by
 // the restaurant page) is registered with the marketplace routes below.
 const ReviewCtl = require('../Controllers/Customer/ReviewController');
-const { submitReviewSchema, listReviewsSchema, cashbackReviewSchema } = require('../Validators/review');
+const { submitReviewSchema, listReviewsSchema, cashbackReviewSchema, siteReviewSchema } = require('../Validators/review');
 
 router.post('/customer/review',
     validate(submitReviewSchema),
@@ -1015,6 +1054,24 @@ router.get('/marketplace/home-feed',
 router.get('/marketplace/reviews',
     validateQuery(listReviewsSchema),
     ReviewCtl.listForRestaurant);
+
+// ── EatNDeal's OWN reviews (marketplace, company_id = 0) ───────────
+// A review OF THE MARKETPLACE, not of a restaurant — the /reviews page.
+// PUBLIC list shows APPROVED ones only; a customer's submit lands PENDING
+// (publish_online = 0) and stays invisible until the super admin publishes it
+// on the admin Reviews screen.
+// ══ DISABLED 2026-07-17 (user request) ═════════════════════════════
+// Switched off end-to-end: the web /reviews routes and the admin Reviews screen
+// are commented out too, so nothing calls these. Off here as well so the api
+// can't be hit directly either. Controllers/Customer/ReviewController keeps
+// siteReviews + submitSiteReview intact — restore = uncomment these.
+// router.get('/marketplace/site-reviews',
+//     ReviewCtl.siteReviews);
+//
+// router.post('/customer/site-review',
+//     validate(siteReviewSchema),
+//     ReviewCtl.submitSiteReview);
+// ═══════════════════════════════════════════════════════════════════
 
 // ── Future namespaces ──────────────────────────────────────────────
 // router.use('/customer',   require('./customer'));

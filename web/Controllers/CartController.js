@@ -378,6 +378,15 @@ const add        = (req, res) => {
     req.body = Object.assign({}, browseMode(req), req.body, browseLoc(req));
     return forwardGuestWrite(req, res, '/api/v1/customer/cart/add');
 };
+// Surprise Box ("Too Good To Go"). Its own api endpoint because the box is a
+// VIRTUAL product on the branch row with no `products` row for /cart/add to
+// look up. serve_type is FORCED to 2 (pickup): the box is collection-only and
+// the api rejects anything else, so we never send the header's Delivery mode
+// and turn a normal add into a confusing error.
+const addSurpriseBox = (req, res) => {
+    req.body = Object.assign({}, req.body, { serve_type: 2 });
+    return forwardGuestWrite(req, res, '/api/v1/customer/cart/surprise-box');
+};
 const updateQty  = (req, res) => forwardGuestWrite(req, res, '/api/v1/customer/cart/update-qty');
 const removeItem = (req, res) => forwardGuestWrite(req, res, '/api/v1/customer/cart/remove-item');
 const clear      = (req, res) => forwardGuestWrite(req, res, '/api/v1/customer/cart/clear');
@@ -395,7 +404,8 @@ const setCharity   = (req, res) => forwardWrite(req, res, '/api/v1/customer/cart
 
 module.exports = {
     page, data, count, promotions,
-    add, updateQty, removeItem, clear,
+    add,
+    addSurpriseBox, updateQty, removeItem, clear,
     setMode, setAddress, setSchedule, setInstructions,
     applyCoupon, removeCoupon, applyVoucher, removeVoucher,
     applyLoyalty, removeLoyalty, setCharity,

@@ -1,0 +1,226 @@
+<%#
+  views/reviews/index.ejs
+
+  The MARKETPLACE's own public star-reviews (review_rating at company_id = 0) —
+  EatNDeal's twin of the legacy POS page /admin/pos/review-rating/index.
+  Structure follows legacy in order: heading + Add Review, the average/bars
+  summary band, then a created_at DESC card list. Each card carries the public
+  reply box + the Publish Online toggle (legacy puts these on a separate
+  details page; one screen is fewer clicks for the same two writes).
+
+  Super-admin only — the route is gated by requireSuperPage (admin/index.js)
+  and the api re-checks with requireSuperAdmin.
+
+  Used: Controllers/ReviewsController.list (shell layout).
+-%>
+<%
+    // Legacy renders whole + half stars from a rounded-to-.5 value
+    // (review-rating/index.php:36-45). Same maths so the two pages agree.
+    function starRow(value) {
+        var v = Math.round((Number(value) || 0) * 2) / 2;
+        var out = '';
+        for (var i = 1; i <= 5; i++) {
+            if (v >= i) { out += '<span class="rv-star is-full">★</span>'; }
+            else if (v >= i - 0.5) { out += '<span class="rv-star is-half">★</span>'; }
+            else { out += '<span class="rv-star">★</span>'; }
+        }
+        return out;
+    }
+    function pct(n, total) { return total ? Math.round((Number(n || 0) / total) * 100) : 0; }
+
+    // Filter options. review_rating has ONE flag — publish_online — so a review
+    // is either live to customers or it isn't; there is no separate "rejected"
+    // state to filter on, and "Not published" is where both a never-approved
+    // and a retracted review land.
+    var STATUS_F = [['', 'Any status'], ['published', 'Published'], ['unpublished', 'Not published']];
+    var RATING_F = [['', 'Any rating'], ['5', '5 ★'], ['4', '4 ★'], ['3', '3 ★'], ['2', '2 ★'], ['1', '1 ★']];
+
+    // Rebuild the query string WITHOUT one key — lets a "clear" control drop its
+    // own filter and leave the rest of them standing.
+    function keepQs(drop) {
+        var cur = { q: search_q, status: cur_status, rating: cur_rating };
+        var out = Object.keys(cur)
+            .filter(function (k) { return k !== drop && cur[k]; })
+            .map(function (k) { return k + '=' + encodeURIComponent(cur[k]); });
+        return out.length ? ('?' + out.join('&')) : '';
+    }
+    // Legacy prints d/m/Y (review-rating/index.php:118). Formatted here rather
+    // than via fmt.* — viewFormat has no date helper (money/num/percent only).
+    function dmy(v) {
+        var d = new Date(v);
+        if (isNaN(d.getTime())) { return ''; }
+        var p = function (n) { return (n < 10 ? '0' : '') + n; };
+        return p(d.getDate()) + '/' + p(d.getMonth() + 1) + '/' + d.getFullYear();
+    }
+%>
+<div class="ly">
+
+    <div class="ly__head">
+        <div>
+            <h2 class="ly__title">⭐ Reviews</h2>
+            <p class="ly__sub">EatNDeal’s own public reviews — shown on the marketplace</p>
+        </div>
+        <button type="button" class="ly-btn ly-btn--primary" data-action="rv-add-open">Add Review</button>
+    </div>
+
+    <% if (load_error) { %>
+        <div class="ly-empty"><span class="ly-empty__ic" aria-hidden="true">⚠️</span><p class="ly-empty__msg"><%= load_error %></p></div>
+    <% } else { %>
+
+        <%# Summary band — average + the 5..1 breakdown, like legacy. %>
+        <div class="rv-summary">
+            <div class="rv-summary__avg">
+                <h1 class="rv-avg"><%= avg_all.toFixed(1) %></h1>
+                <div class="rv-stars"><%- starRow(avg_all) %></div>
+                <p class="rv-count"><%= total %> Review<%= total === 1 ? '' : 's' %></p>
+                <%# Legacy's admin average ignores publish_online while its PUBLIC
+                    page filters on it, so the two silently disagree. Surface the
+                    public number whenever it differs, rather than repeat that. %>
+                <% if (avg_public !== avg_all) { %>
+                <p class="rv-note">Customers see <strong><%= avg_public.toFixed(1) %></strong> — unpublished reviews aren’t counted publicly.</p>
+                <% } %>
+            </div>
+            <div class="rv-summary__bars">
+                <% [5, 4, 3, 2, 1].forEach(function (i) { %>
+                <div class="rv-bar">
+                    <span class="rv-bar__label"><%= i %> ★</span>
+                    <span class="rv-bar__track"><span class="rv-bar__fill" style="width: <%= pct(buckets[i], total) %>%"></span></span>
+                    <span class="rv-bar__n"><%= buckets[i] || 0 %></span>
+                </div>
+                <% }); %>
+            </div>
+        </div>
+
+        <%# ── Filters ────────────────────────────────────────────────────
+            Sits BELOW the summary band on purpose: it narrows the LIST only.
+            The average and the bars above stay global (they describe the
+            business, not the current search), and putting the controls under
+            them is what says so.
+
+            A GET form, like every other admin list — the state lives in the URL
+            so it survives the reload after a reply/publish. Search auto-submits
+            via the shared [data-live-search] handler in app.js; the selects
+            submit on change (pages/reviews.js). The .pr-* classes and the
+            mobile filter sheet come from products.css / app.js, which the
+            layout loads for every page. %>
+        <div class="pr-toolbar">
+            <form method="get" action="/reviews" class="pr-filter" id="pr-filter">
+                <div class="pr-search">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                    <input type="text" name="q" value="<%= search_q %>" placeholder="Search name or review…" autocomplete="off" data-live-search>
+                    <%# Clearing the SEARCH keeps the other filters — dropping them
+                        too would undo a choice the admin didn't ask to undo. %>
+                    <% if (search_q) { %><a href="/reviews<%= keepQs('q') %>" class="pr-search__clear" aria-label="Clear search">✕</a><% } %>
+                </div>
+                <%# Mobile-only: open the filters sheet %>
+                <button type="button" class="pr-filterbtn" data-filter-toggle aria-label="Filters" title="Filters">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+                    <% if (cur_status || cur_rating) { %><span class="pr-filterbtn__dot"></span><% } %>
+                </button>
+                <div class="pr-filters" data-filters>
+                    <div class="pr-filters__head"><span class="pr-filters__ttl">Filters</span><button type="button" class="pr-filters__x" data-filter-close aria-label="Close">✕</button></div>
+                    <select name="status" class="pr-filter-sel" data-filter-submit aria-label="Status">
+                        <% STATUS_F.forEach(function (s) { %><option value="<%= s[0] %>" <%= cur_status === s[0] ? 'selected' : '' %>><%= s[1] %></option><% }); %>
+                    </select>
+                    <select name="rating" class="pr-filter-sel" data-filter-submit aria-label="Rating">
+                        <% RATING_F.forEach(function (s) { %><option value="<%= s[0] %>" <%= cur_rating === s[0] ? 'selected' : '' %>><%= s[1] %></option><% }); %>
+                    </select>
+                    <button type="button" class="ly-btn ly-btn--primary pr-filters__done" data-filter-close>Done</button>
+                </div>
+            </form>
+        </div>
+        <div class="pr-filters__backdrop" data-filter-backdrop hidden></div>
+
+        <%# Only worth saying while a filter is on — otherwise it just repeats
+            the count already in the summary band. %>
+        <% if (filtered && reviews.length) { %>
+        <p class="rv-showing">Showing <strong><%= showing %></strong> of <%= total %> review<%= total === 1 ? '' : 's' %></p>
+        <% } %>
+
+        <% if (!reviews.length) { %>
+            <%# A filtered empty list is a different problem from having no
+                reviews at all — say which, and offer the way out. %>
+            <div class="ly-empty">
+                <span class="ly-empty__ic" aria-hidden="true">⭐</span>
+                <% if (filtered) { %>
+                    <p class="ly-empty__msg">No reviews match these filters</p>
+                    <a href="/reviews" class="ly-btn ly-btn--ghost ly-btn--sm">Clear filters</a>
+                <% } else { %>
+                    <p class="ly-empty__msg">No Reviews Found</p>
+                <% } %>
+            </div>
+        <% } else { %>
+        <div class="rv-list">
+            <% reviews.forEach(function (r) { %>
+            <article class="rv-card<%= r.publish_online ? '' : ' is-hidden' %>">
+                <div class="rv-card__head">
+                    <div>
+                        <h4 class="rv-card__name"><%= r.customer_name %></h4>
+                        <div class="rv-stars rv-stars--sm"><%- starRow(r.rating) %></div>
+                    </div>
+                    <div class="rv-card__meta">
+                        <%# Legacy prints a "Verified" badge unconditionally, never
+                            reading is_verified — so it means nothing there. We show
+                            what's true instead: whether the admin typed this review. %>
+                        <% if (r.is_manual) { %><span class="rv-tag">Added by admin</span><% } %>
+                        <span class="rv-date"><%= dmy(r.created_at) %></span>
+                    </div>
+                </div>
+
+                <% if (r.review) { %><p class="rv-card__text"><%= r.review %></p><% } %>
+
+                <form class="rv-reply" data-rv-reply data-id="<%= r.id %>">
+                    <label class="rv-reply__label" for="rv-reply-<%= r.id %>">Reply</label>
+                    <textarea id="rv-reply-<%= r.id %>" name="review_reply" class="rv-reply__box" rows="2"
+                              maxlength="2000" placeholder="Reply to this Message"><%= r.review_reply %></textarea>
+                    <p class="rv-reply__hint">* This reply is public and appears on the website</p>
+                    <div class="rv-reply__row">
+                        <label class="rv-switch">
+                            <input type="checkbox" name="publish_online" data-rv-publish data-id="<%= r.id %>" <%= r.publish_online ? 'checked' : '' %>>
+                            <span>Publish Online</span>
+                        </label>
+                        <button type="submit" class="ly-btn ly-btn--success ly-btn--sm">Reply</button>
+                    </div>
+                </form>
+            </article>
+            <% }); %>
+        </div>
+        <% } %>
+    <% } %>
+</div>
+
+<%# ── Add Review modal ──────────────────────────────────────────────
+    Same 3 inputs, same order, same placeholders and the same star options as
+    the legacy modal (review-rating/index.php:210-243). Unlike legacy, the api
+    validates all three server-side and clamps the rating to 1..5. %>
+<div class="rv-modal" id="rv-modal" hidden>
+    <div class="rv-modal__box" role="dialog" aria-modal="true" aria-labelledby="rv-modal-title">
+        <div class="rv-modal__head">
+            <h5 class="rv-modal__title" id="rv-modal-title">Review &amp; Rating</h5>
+            <button type="button" class="rv-modal__x" data-action="rv-add-close" aria-label="Close">×</button>
+        </div>
+        <form method="post" action="/reviews/save" class="rv-modal__body" id="rv-add-form">
+            <div class="rv-field">
+                <input type="text" class="rv-input" name="customer_name" id="rv-customer-name"
+                       placeholder="Customer name" maxlength="191" autocomplete="off" required>
+            </div>
+            <div class="rv-field">
+                <textarea class="rv-input" name="review" id="rv-review" rows="3"
+                          placeholder="Enter Review" maxlength="2000" required></textarea>
+            </div>
+            <div class="rv-field">
+                <select class="rv-input" name="rating" id="rv-rating">
+                    <option value="5">5 Star</option>
+                    <option value="4">4 Star</option>
+                    <option value="3">3 Star</option>
+                    <option value="2">2 Star</option>
+                    <option value="1">1 Star</option>
+                </select>
+            </div>
+            <div class="rv-modal__foot">
+                <button type="button" class="ly-btn ly-btn--ghost" data-action="rv-add-close">Cancel</button>
+                <button type="submit" class="ly-btn ly-btn--primary" id="rv-submit">Submit</button>
+            </div>
+        </form>
+    </div>
+</div>

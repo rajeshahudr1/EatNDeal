@@ -27,6 +27,7 @@ const { db } = require('../../config/db');
 const { resolveCompanyScope, requireCompany } = require('../../Helpers/adminScope');
 const LA = require('../../Helpers/loyaltyAdmin');
 const Loyalty = require('../../Helpers/loyalty');
+const imageUpload = require('../../Helpers/imageUpload');
 
 // Scope a query builder to a company when one is selected; leave wide-open
 // (all companies) when a super admin has picked none.
@@ -142,10 +143,16 @@ async function masterToggle(req, res) {
                 .update({ loyalty_status: on ? 1 : 2, updated_at: LA.nowStr(), updated_by: scope.actorId });
         } else {
             await db(LA.T.config).insert({
-                company_id: cid, loyalty_status: on ? 1 : 2, loyalty_commission: '0.00',
+                company_id: cid, ...LA.mpFlag(cid), ...LA.mpFlag(cid), loyalty_status: on ? 1 : 2, loyalty_commission: '0.00',
                 expiry_duration_days: 0, notify_before_days: 0, use_max_cashback: '0.00',
                 cash_king: '0.00', collection_cashback: '0.00',
                 created_at: LA.nowStr(), created_by: scope.actorId,
+                // company_loyalty.updated_by / updated_at are NOT NULL, and this
+                // insert didn't set them — so turning loyalty ON for the FIRST
+                // time (any company with no row yet, marketplace included) always
+                // died on the constraint and surfaced as a bare 500 "Could not
+                // update loyalty."
+                updated_at: LA.nowStr(), updated_by: scope.actorId,
             });
         }
         return H.successResponse(res, { loyaltyOn: on }, on ? 'Loyalty enabled for this company.' : 'Loyalty disabled for this company.');
@@ -178,10 +185,13 @@ async function companyConfigSave(req, res) {
             await db(LA.T.config).where('company_id', cid).update(patch);
         } else {
             await db(LA.T.config).insert({
-                company_id: cid, loyalty_status: 2, ...patch,
+                company_id: cid, ...LA.mpFlag(cid), ...LA.mpFlag(cid), loyalty_status: 2, ...patch,
                 expiry_duration_days: 0, notify_before_days: 0,
                 use_max_cashback: '0.00', cash_king: '0.00', collection_cashback: '0.00',
                 created_at: LA.nowStr(), created_by: scope.actorId,
+                // updated_by / updated_at are NOT NULL on company_loyalty — the
+                // first-ever save for a scope died on the constraint without them.
+                updated_at: LA.nowStr(), updated_by: scope.actorId,
             });
         }
         return H.successResponse(res, { saved: true }, 'Loyalty settings saved.');
@@ -272,7 +282,7 @@ async function cashbackUpsert(req, res) {
                 .update({ ...row, updated_at: LA.nowStr(), updated_by: scope.actorId });
             if (!upd) { return H.errorResponse(res, 'That rule no longer exists.', 404); }
         } else {
-            await db(LA.T.cashback).insert({ ...row, created_at: LA.nowStr(), created_by: scope.actorId });
+            await db(LA.T.cashback).insert({ ...row, created_at: LA.nowStr(), created_by: scope.actorId , updated_at: LA.nowStr(), updated_by: scope.actorId,});
         }
         return H.successResponse(res, { saved: true }, 'Cashback rule saved.');
     } catch (err) {
@@ -344,12 +354,16 @@ async function configSave(req, res) {
             await db(LA.T.config).where('company_id', cid).update(patch);
         } else {
             await db(LA.T.config).insert({
-                company_id: cid,
+                company_id: cid, ...LA.mpFlag(cid), ...LA.mpFlag(cid),
                 loyalty_status: patch.loyalty_status != null ? patch.loyalty_status : 2,
                 loyalty_commission: '0.00',
                 ...patch,
                 created_at: LA.nowStr(),
                 created_by: scope.actorId,
+                // updated_by / updated_at are NOT NULL on company_loyalty — the
+                // first-ever save for a scope died on the constraint without them.
+                updated_at: LA.nowStr(),
+                updated_by: scope.actorId,
             });
         }
         return H.successResponse(res, { saved: true }, 'Settings saved.');
@@ -428,8 +442,8 @@ async function tiersSave(req, res) {
                     .update({ ...patch, updated_at: LA.nowStr(), updated_by: scope.actorId });
             } else {
                 await db(LA.T.tier).insert({
-                    company_id: cid, type, ...patch,
-                    created_at: LA.nowStr(), created_by: scope.actorId,
+                    company_id: cid, ...LA.mpFlag(cid), type, ...patch,
+                    created_at: LA.nowStr(), created_by: scope.actorId, updated_at: LA.nowStr(), updated_by: scope.actorId,
                 });
             }
         }
@@ -523,7 +537,7 @@ async function referralSave(req, res) {
             await db(LA.T.referral).where('id', existing.id)
                 .update({ ...patch, updated_at: LA.nowStr(), updated_by: scope.actorId });
         } else {
-            await db(LA.T.referral).insert({ company_id: cid, ...patch, created_at: LA.nowStr(), created_by: scope.actorId });
+            await db(LA.T.referral).insert({ company_id: cid, ...LA.mpFlag(cid), ...patch, created_at: LA.nowStr(), created_by: scope.actorId , updated_at: LA.nowStr(), updated_by: scope.actorId,});
         }
         return H.successResponse(res, { saved: true }, 'Referral settings saved.');
     } catch (err) {
@@ -556,7 +570,7 @@ async function streakUpsert(req, res) {
                 .update({ ...row, updated_at: LA.nowStr(), updated_by: scope.actorId });
             if (!upd) { return H.errorResponse(res, 'That milestone no longer exists.', 404); }
         } else {
-            await db(LA.T.orderCashback).insert({ ...row, created_at: LA.nowStr(), created_by: scope.actorId });
+            await db(LA.T.orderCashback).insert({ ...row, created_at: LA.nowStr(), created_by: scope.actorId , updated_at: LA.nowStr(), updated_by: scope.actorId,});
         }
         return H.successResponse(res, { saved: true }, 'Streak milestone saved.');
     } catch (err) {
@@ -671,7 +685,7 @@ async function challengesSave(req, res) {
                 await db(LA.T.campaign).where('id', existing.id)
                     .update({ ...patch, updated_at: LA.nowStr(), updated_by: scope.actorId });
             } else {
-                await db(LA.T.campaign).insert({ company_id: cid, type, ...patch, created_at: LA.nowStr(), created_by: scope.actorId });
+                await db(LA.T.campaign).insert({ company_id: cid, ...LA.mpFlag(cid), type, ...patch, created_at: LA.nowStr(), created_by: scope.actorId , updated_at: LA.nowStr(), updated_by: scope.actorId,});
             }
         }
         return H.successResponse(res, { saved: true }, 'Challenges saved.');
@@ -748,7 +762,7 @@ async function eventsSave(req, res) {
                 await db(LA.T.event).where('id', existing.id)
                     .update({ ...patch, updated_at: LA.nowStr(), updated_by: scope.actorId });
             } else {
-                await db(LA.T.event).insert({ company_id: cid, event_type: type, ...patch, created_at: LA.nowStr(), created_by: scope.actorId });
+                await db(LA.T.event).insert({ company_id: cid, ...LA.mpFlag(cid), event_type: type, ...patch, created_at: LA.nowStr(), created_by: scope.actorId , updated_at: LA.nowStr(), updated_by: scope.actorId,});
             }
         }
         return H.successResponse(res, { saved: true }, 'Event rewards saved.');
@@ -774,9 +788,22 @@ async function eventsToggle(req, res) {
 
 // ── Screen 7: Google / Facebook Review Claims ─────────────────────
 
-const REVIEW_TYPE_LABEL = { 1: 'Google', 2: 'Facebook' };
-const REVIEW_STATUS = { pending: 0, approved: 1, rejected: 2 };
-const REVIEW_STATUS_LABEL = { 0: 'Pending', 1: 'Approved', 2: 'Rejected' };
+// All three of these were LOCAL duplicates of Helpers/constants — and the type
+// map had drifted badly: it claimed { 1:'Google', 2:'Facebook' }, but legacy
+// (common/config/params.php $reviewTypeList) defines 2 = 'Website Review' and
+// 4 = 'Facebook Share'. So the claims screen mislabelled type 2 and fell back to
+// a generic 'Review' for the other six — an admin approving a type-specific
+// reward was reading the wrong type. Single source of truth now.
+const REVIEW_TYPE_LABEL = Object.freeze(
+    C.REVIEW_TYPES.reduce((m, t) => { m[t.id] = t.name; return m; }, {}),
+);
+// Which types carry a VIDEO URL rather than a screenshot (legacy renders a
+// "View Video" link for these instead of an image thumbnail).
+const REVIEW_TYPE_IS_VIDEO = Object.freeze(
+    C.REVIEW_TYPES.reduce((m, t) => { m[t.id] = !!t.video; return m; }, {}),
+);
+const REVIEW_STATUS       = C.REVIEW_STATUSES.byName;
+const REVIEW_STATUS_LABEL = C.REVIEW_STATUSES.label;
 
 /**
  * reviewClaimsGet — GET /api/v1/admin/loyalty/review-claims
@@ -790,8 +817,13 @@ async function reviewClaimsGet(req, res) {
         const scope = resolveCompanyScope(req);
         const cid = scope.companyId; // null = all (super)
 
-        let q = db('customer_review as cr')
-            .leftJoin('customer as c', 'c.id', 'cr.customer_id');
+        // Resolve the customer per-row: customer_review.customer_id is a
+        // customer.id for OUR marketplace claims (company_id 0) but an app_id
+        // for legacy ones (company_id > 0). This used to join on c.id for every
+        // row, which silently showed the WRONG PERSON's name + phone against
+        // every legacy claim (id and app_id collide across different real
+        // people) — i.e. the admin approved money while looking at someone else.
+        let q = Loyalty.joinReviewCustomer(db('customer_review as cr'), 'cr', 'c');
         if (cid != null) { q = q.where('cr.company_id', cid); }
 
         const status = req.query.status;
@@ -800,8 +832,14 @@ async function reviewClaimsGet(req, res) {
         if (req.query.date_to)   { q = q.whereRaw('DATE(cr.review_date) <= ?', [req.query.date_to]); }
         if (req.query.q) {
             const s = '%' + String(req.query.q).trim() + '%';
+            // Legacy searches firstname / lastname / the review TEXT
+            // (CashbackReviewController.php:102-107). We keep contact_no too —
+            // an admin looking up a claim by phone is the common case.
             q = q.where((b) => {
-                b.where('c.firstname', 'ilike', s).orWhere('c.lastname', 'ilike', s).orWhere('c.contact_no', 'ilike', s);
+                b.where('c.firstname', 'ilike', s)
+                    .orWhere('c.lastname', 'ilike', s)
+                    .orWhere('c.contact_no', 'ilike', s)
+                    .orWhere('cr.notes', 'ilike', s);
             });
         }
 
@@ -822,19 +860,13 @@ async function reviewClaimsGet(req, res) {
         const ruleMap = {};
         rules.forEach((r) => { ruleMap[r.company_id + ':' + r.type] = { cashback: Number(r.cashback) || 0, value_type: r.value_type || '£' }; });
 
-        // Cashback review screenshots are LEGACY media — they live on the old
-        // Eat-n-Deal server under /uploads/<company>/review/<file>, NOT on our
-        // /upload tree. (Only 4 media types are "ours": community, home feed,
-        // avatar, marketplace category — everything else, incl. these
-        // screenshots, stays on the legacy server.) Build the legacy url from
-        // YII_UPLOADS_URL; pass through anything already absolute or a "/path".
-        const photoUrl = (companyId, p) => {
-            const f = String(p || '').trim();
-            if (!f) { return ''; }
-            if (/^https?:\/\//i.test(f)) { return f; }
-            if (f.charAt(0) === '/') { return H.mediaUrl(f); }
-            return H.getUploadsBaseUrl() + '/' + companyId + '/review/' + f;
-        };
+        // Screenshot URL: one resolver for both worlds (Helpers/imageUpload).
+        //   • marketplace (company 0) → "/upload/reviews/<file>" on OUR server.
+        //   • a restaurant (company > 0) → "<file>" on its legacy server, under
+        //     "<company>/reviews/".
+        // Was an inline builder using the "review" (singular) folder; the upload
+        // API stores under "reviews", so the two must agree.
+        const photoUrl = (companyId, p) => imageUpload.resolveUrl(companyId, 'reviews', p);
         const claims = rows.map((r) => {
             const rule = ruleMap[r.company_id + ':' + r.review_type] || { cashback: 0, value_type: '£' };
             return {
@@ -850,6 +882,10 @@ async function reviewClaimsGet(req, res) {
                 notes:         r.notes || '',
                 review_photo:  r.review_photo || '',
                 review_photo_url: photoUrl(r.company_id, r.review_photo),
+                // Type 7 (Live Video) stores a VIDEO URL in review_photo, not a
+                // screenshot filename — legacy renders a "View Video" link for
+                // it instead of an image (cashback-review/index.php:638-644).
+                is_video:      !!REVIEW_TYPE_IS_VIDEO[r.review_type],
                 reject_reason: r.reject_reason || '',
                 reward:        rule.cashback,
                 reward_vt:     rule.value_type,
@@ -910,10 +946,25 @@ async function reviewApprove(req, res) {
         let granted = 0;
         if (rule && Number(rule.cashback) > 0) {
             const cfg = await Loyalty.loadConfig(review.company_id);
-            if (cfg) {
+            // loadConfig returns null when loyalty is switched OFF for this
+            // scope. This used to skip the award SILENTLY: the claim went green
+            // "Approved", the admin believed the customer had been paid, and no
+            // reward row was ever written. Refuse instead — approving a claim
+            // whose reward can't be granted is worse than not approving it.
+            if (!cfg) {
+                return H.errorResponse(res,
+                    'Loyalty is switched off for this scope, so the reward can’t be granted. Turn it on in Loyalty Configuration first.',
+                    422, { code: 'loyalty.off' });
+            }
+            {
                 await Loyalty.award({
                     companyId:  review.company_id,
-                    customerId: review.customer_id,
+                    // The claim's own customer_id, unchanged — it already matches
+                    // the ledger this reward will be read back from (marketplace
+                    // claim -> customer.id -> our wallet; legacy claim -> app_id
+                    // -> legacy's wallet). Routed through the named resolver so
+                    // this is a decision on the record, not an accident.
+                    customerId: Loyalty.rewardCustomerIdFor(review),
                     entityType: 'review',
                     entityId:   rule.id,
                     relatedId:  review.id,
@@ -1072,7 +1123,7 @@ async function specialOfferUpsert(req, res) {
                 .update({ ...patch, updated_at: LA.nowStr(), updated_by: scope.actorId });
         } else {
             await db(LA.T.specialOffer).insert({
-                company_id: cid, ...patch, created_at: LA.nowStr(), created_by: scope.actorId,
+                company_id: cid, ...LA.mpFlag(cid), ...patch, created_at: LA.nowStr(), created_by: scope.actorId, updated_at: LA.nowStr(), updated_by: scope.actorId,
             });
         }
         return H.successResponse(res, { saved: true }, 'Special offer saved.');
@@ -1163,7 +1214,7 @@ async function reviewRewardsSave(req, res) {
                     .update({ ...patch, updated_at: LA.nowStr(), updated_by: scope.actorId });
             } else {
                 await db(LA.T.review).insert({
-                    company_id: cid, type: t.id, ...patch, created_at: LA.nowStr(), created_by: scope.actorId,
+                    company_id: cid, ...LA.mpFlag(cid), type: t.id, ...patch, created_at: LA.nowStr(), created_by: scope.actorId, updated_at: LA.nowStr(), updated_by: scope.actorId,
                 });
             }
         }
@@ -1309,7 +1360,7 @@ async function productCashbackUpsert(req, res) {
             ruleId = id;
         } else {
             const ins = await db(LA.T.product).insert({
-                company_id: cid, value_type: '£', cashback, created_at: LA.nowStr(), created_by: scope.actorId,
+                company_id: cid, ...LA.mpFlag(cid), value_type: '£', cashback, created_at: LA.nowStr(), created_by: scope.actorId, updated_at: LA.nowStr(), updated_by: scope.actorId,
             }).returning('id');
             ruleId = insertId(ins);
         }
@@ -1325,7 +1376,7 @@ async function productCashbackUpsert(req, res) {
             } else {
                 await db(LA.T.productItems).insert({
                     product_cashback_rule_id: ruleId, product_id: pid,
-                    created_at: LA.nowStr(), created_by: scope.actorId,
+                    created_at: LA.nowStr(), created_by: scope.actorId, updated_at: LA.nowStr(), updated_by: scope.actorId,
                 });
             }
         }
@@ -1447,8 +1498,8 @@ async function bogofUpsert(req, res) {
             ruleId = id;
         } else {
             const ins = await db(LA.T.bogof).insert({
-                company_id: cid, apply_on: applyOn, buy_quantity: buyQty, get_quantity: getQty,
-                created_at: LA.nowStr(), created_by: scope.actorId,
+                company_id: cid, ...LA.mpFlag(cid), apply_on: applyOn, buy_quantity: buyQty, get_quantity: getQty,
+                created_at: LA.nowStr(), created_by: scope.actorId, updated_at: LA.nowStr(), updated_by: scope.actorId,
             }).returning('id');
             ruleId = insertId(ins);
         }
@@ -1597,7 +1648,17 @@ async function cmsPagesGet(req, res) {
                 title: r && r.title ? r.title : t.name,
                 description: r ? sanitizeCmsHtml(r.description || '') : '',
                 screenshot: shot,
-                screenshot_url: shot ? (upBase + '/' + cid + '/loyalty/' + shot) : '',
+                // Two eras of storage live in this column:
+                //  • "/upload/loyalty/x.png" — OUR media tree (what the admin
+                //    writes now; already a root-relative URL, pass it through).
+                //  • "x.png" — a bare filename from the LEGACY uploads server,
+                //    which needs <uploadsBase>/<company>/loyalty/ in front.
+                // Prefixing the first kind produced a doubled, 404-ing path.
+                screenshot_url: !shot
+                    ? ''
+                    : (/^https?:\/\//i.test(shot) || shot.charAt(0) === '/')
+                        ? H.mediaUrl(shot)
+                        : (upBase + '/' + cid + '/loyalty/' + shot),
             };
         });
         return H.successResponse(res, { pages });
@@ -1628,7 +1689,7 @@ async function cmsPageSave(req, res) {
             await db(LA.T.cmsPages).where('id', existing.id).update({ ...patch, updated_at: nowUnix() });
         } else {
             await db(LA.T.cmsPages).insert({
-                company_id: cid, review_type_slug: slug, ...patch,
+                company_id: cid, ...LA.mpFlag(cid), review_type_slug: slug, ...patch,
                 created_at: nowUnix(), updated_at: nowUnix(),
             });
         }
@@ -1659,25 +1720,43 @@ async function saveAll(req, res) {
         const now = LA.nowStr();
 
         // 1) Header config (company_loyalty)
-        const cfgPatch = {
-            expiry_duration_days: Number(b.expiry_duration_days) || 0,
-            notify_before_days:   Number(b.notify_before_days) || 0,
-            use_max_cashback:     money(b.use_max_cashback),
-            cash_king:            money(b.cash_king),
-            collection_cashback:  money(b.collection_cashback),
-            loyalty_commission:   money(b.loyalty_commission),
-            enable_loyalty_phone_order: truthy(b.enable_loyalty_phone_order) ? 1 : 2,
-            updated_at: now, updated_by: actor,
-        };
-        if (scope.isSuper && b.loyalty_status != null && b.loyalty_status !== '') {
-            cfgPatch.loyalty_status = Number(b.loyalty_status) === 1 ? 1 : 2;
+        //
+        // ONLY the fields the form actually SENT are written. This used to patch
+        // every column unconditionally, so a field the page no longer renders
+        // (the top bar is 3 boxes now, not 5) arrived as undefined and was saved
+        // as 0 — silently zeroing cash_king / collection_cashback / commission
+        // on the first save. Absent key => column untouched.
+        const cfgPatch = { updated_at: now, updated_by: actor };
+        const setNum   = (k, v) => { if (v !== undefined && v !== '') { cfgPatch[k] = Number(v) || 0; } };
+        const setMoney = (k, v) => { if (v !== undefined && v !== '') { cfgPatch[k] = money(v); } };
+        setNum('expiry_duration_days', b.expiry_duration_days);
+        setNum('notify_before_days',   b.notify_before_days);
+        setMoney('use_max_cashback',   b.use_max_cashback);
+        setMoney('cash_king',          b.cash_king);
+        setMoney('collection_cashback', b.collection_cashback);
+        setMoney('loyalty_commission', b.loyalty_commission);
+        if (b.enable_loyalty_phone_order !== undefined) {
+            cfgPatch.enable_loyalty_phone_order = truthy(b.enable_loyalty_phone_order) ? 1 : 2;
+        }
+        // The switch is a checkbox: CHECKED posts '1', UNCHECKED posts nothing —
+        // which is indistinguishable from "the form has no such control". The
+        // __present marker tells them apart, so an absent switch leaves the flag
+        // alone instead of silently switching loyalty off.
+        if (scope.isSuper && b.loyalty_status__present !== undefined) {
+            cfgPatch.loyalty_status = truthy(b.loyalty_status) ? 1 : 2;
         }
         const cfgRow = await db(LA.T.config).where('company_id', cid).first();
         if (cfgRow) { await db(LA.T.config).where('company_id', cid).update(cfgPatch); }
         else {
+            // First-ever save for this scope: the columns are NOT NULL, so the
+            // ones the form didn't send still need a starting value.
             await db(LA.T.config).insert({
-                company_id: cid, loyalty_status: cfgPatch.loyalty_status != null ? cfgPatch.loyalty_status : 2,
-                ...cfgPatch, created_at: now, created_by: actor,
+                company_id: cid, ...LA.mpFlag(cid),
+                loyalty_status: cfgPatch.loyalty_status != null ? cfgPatch.loyalty_status : 2,
+                expiry_duration_days: 0, notify_before_days: 0,
+                use_max_cashback: '0.00', cash_king: '0.00',
+                collection_cashback: '0.00', loyalty_commission: '0.00',
+                ...cfgPatch, created_at: now, created_by: actor, updated_at: now, updated_by: actor,
             });
         }
 
@@ -1689,18 +1768,30 @@ async function saveAll(req, res) {
             on_campaign: LA.RULE_TYPES.smartCampaign, on_special: LA.RULE_TYPES.specialOffer,
             on_product: LA.RULE_TYPES.productCashback, on_bogof: LA.RULE_TYPES.bogof,
         };
-        for (const k of Object.keys(toggleMap)) { await LA.setMasterFlag(cid, toggleMap[k], truthy(b[k]), actor); }
+        // An UNCHECKED checkbox posts nothing — and so does a section the page
+        // doesn't render. Those look identical here, so we can't tell "switch it
+        // off" from "that section isn't on this form" by the value alone.
+        // `on_<x>__present` is a hidden marker the form emits for every section
+        // it DOES render; without it we'd switch off every hidden section's rule
+        // on the first save. No marker => leave that rule exactly as it is.
+        for (const k of Object.keys(toggleMap)) {
+            if (b[k + '__present'] === undefined) { continue; }
+            await LA.setMasterFlag(cid, toggleMap[k], truthy(b[k]), actor);
+        }
 
         // 3) Events (Account Setup) — £
+        // Skipped entirely when the form didn't render the section: otherwise
+        // every event rule would be rewritten to £0 on save.
         for (const t of EVENT_TYPES) {
+            if (b['event_' + t + '_cashback'] === undefined) { continue; }
             const patch = { value_type: '£', cashback: money(b['event_' + t + '_cashback']) };
             const ex = await db(LA.T.event).where({ company_id: cid, event_type: t }).whereNull('deleted_at').first();
             if (ex) { await db(LA.T.event).where('id', ex.id).update({ ...patch, updated_at: now, updated_by: actor }); }
-            else { await db(LA.T.event).insert({ company_id: cid, event_type: t, ...patch, created_at: now, created_by: actor }); }
+            else { await db(LA.T.event).insert({ company_id: cid, ...LA.mpFlag(cid), event_type: t, ...patch, created_at: now, created_by: actor , updated_at: now, updated_by: actor,}); }
         }
 
         // 4) Order Cashback rules — % (multi-row)
-        {
+        if (b.cashback !== undefined) {   // section hidden in the form -> leave its rules untouched
             const existing = await db(LA.T.cashback).where('company_id', cid).whereNull('deleted_at').select('id');
             const kept = [];
             for (const r of asRows(b.cashback)) {
@@ -1708,14 +1799,20 @@ async function saveAll(req, res) {
                 const patch = {
                     min_order_amount: money(r.min_order_amount), cashback: money(r.cashback),
                     value_type: '%', tier_type: r.tier_type ? String(r.tier_type) : null,
-                    apply_on: 1, order_count: 5, status: 1,
+                    apply_on: 1,
+                    // order_count was HARDCODED to 5 — whatever the admin typed
+                    // was thrown away and every stamp card silently needed 5
+                    // orders. It's the field the earn engine counts stamps
+                    // against (earnStampCashback), so it has to come from the row.
+                    order_count: Number(r.order_count) > 0 ? Number(r.order_count) : 5,
+                    status: 1,
                 };
                 const id = Number(r.id) || 0;
                 if (id) {
                     const owned = await db(LA.T.cashback).where({ id, company_id: cid }).whereNull('deleted_at').first();
                     if (owned) { await db(LA.T.cashback).where('id', id).update({ ...patch, updated_at: now, updated_by: actor }); kept.push(id); }
                 } else {
-                    const ins = await db(LA.T.cashback).insert({ company_id: cid, ...patch, created_at: now, created_by: actor }).returning('id');
+                    const ins = await db(LA.T.cashback).insert({ company_id: cid, ...LA.mpFlag(cid), ...patch, created_at: now, created_by: actor , updated_at: now, updated_by: actor,}).returning('id');
                     kept.push(insertId(ins));
                 }
             }
@@ -1728,11 +1825,11 @@ async function saveAll(req, res) {
             const patch = { value_type: '£', referrer_cashback: money(b.referrer_cashback), referee_cashback: money(b.referee_cashback), trigger: Number(b.trigger) === 1 ? 1 : 2 };
             const ex = await db(LA.T.referral).where('company_id', cid).whereNull('deleted_at').first();
             if (ex) { await db(LA.T.referral).where('id', ex.id).update({ ...patch, updated_at: now, updated_by: actor }); }
-            else { await db(LA.T.referral).insert({ company_id: cid, ...patch, created_at: now, created_by: actor }); }
+            else { await db(LA.T.referral).insert({ company_id: cid, ...LA.mpFlag(cid), ...patch, created_at: now, created_by: actor , updated_at: now, updated_by: actor,}); }
         }
 
         // 6) Product Cashback — £ (multi-row + items)
-        {
+        if (b.product !== undefined) {   // section hidden in the form -> leave its rules untouched
             const existing = await db(LA.T.product).where('company_id', cid).whereNull('deleted_at').select('id');
             const kept = [];
             for (const r of asRows(b.product)) {
@@ -1746,7 +1843,7 @@ async function saveAll(req, res) {
                     await db(LA.T.product).where('id', id).update({ value_type: '£', cashback: money(r.cashback), updated_at: now, updated_by: actor });
                     ruleId = id;
                 } else {
-                    const ins = await db(LA.T.product).insert({ company_id: cid, value_type: '£', cashback: money(r.cashback), created_at: now, created_by: actor }).returning('id');
+                    const ins = await db(LA.T.product).insert({ company_id: cid, ...LA.mpFlag(cid), value_type: '£', cashback: money(r.cashback), created_at: now, created_by: actor , updated_at: now, updated_by: actor,}).returning('id');
                     ruleId = insertId(ins);
                 }
                 kept.push(ruleId);
@@ -1755,7 +1852,7 @@ async function saveAll(req, res) {
                 for (const pid of pids) {
                     const e = byPid[pid];
                     if (e) { await db(LA.T.productItems).where('id', e.id).update({ deleted_at: null, deleted_by: null, updated_at: now, updated_by: actor }); }
-                    else { await db(LA.T.productItems).insert({ product_cashback_rule_id: ruleId, product_id: pid, created_at: now, created_by: actor }); }
+                    else { await db(LA.T.productItems).insert({ product_cashback_rule_id: ruleId, product_id: pid, created_at: now, created_by: actor , updated_at: now, updated_by: actor,}); }
                 }
                 const keep = new Set(pids);
                 const drop = exItems.filter((e) => !e.deleted_at && !keep.has(Number(e.product_id))).map((e) => e.id);
@@ -1769,7 +1866,7 @@ async function saveAll(req, res) {
         }
 
         // 7) Order Streak — £ (multi-row)
-        {
+        if (b.streak !== undefined) {   // section hidden in the form -> leave its rules untouched
             const existing = await db(LA.T.orderCashback).where('company_id', cid).whereNull('deleted_at').select('id');
             const kept = [];
             for (const r of asRows(b.streak)) {
@@ -1784,7 +1881,7 @@ async function saveAll(req, res) {
                     const owned = await db(LA.T.orderCashback).where({ id, company_id: cid }).whereNull('deleted_at').first();
                     if (owned) { await db(LA.T.orderCashback).where('id', id).update({ ...patch, updated_at: now, updated_by: actor }); kept.push(id); }
                 } else {
-                    const ins = await db(LA.T.orderCashback).insert({ company_id: cid, ...patch, created_at: now, created_by: actor }).returning('id');
+                    const ins = await db(LA.T.orderCashback).insert({ company_id: cid, ...LA.mpFlag(cid), ...patch, created_at: now, created_by: actor , updated_at: now, updated_by: actor,}).returning('id');
                     kept.push(insertId(ins));
                 }
             }
@@ -1801,11 +1898,11 @@ async function saveAll(req, res) {
                 continue;
             }
             if (ex) { await db(LA.T.review).where('id', ex.id).update({ value_type: '£', cashback, updated_at: now, updated_by: actor }); }
-            else { await db(LA.T.review).insert({ company_id: cid, type: t.id, value_type: '£', cashback, created_at: now, created_by: actor }); }
+            else { await db(LA.T.review).insert({ company_id: cid, ...LA.mpFlag(cid), type: t.id, value_type: '£', cashback, created_at: now, created_by: actor , updated_at: now, updated_by: actor,}); }
         }
 
         // 9) BOGO — (multi-row + buy items)
-        {
+        if (b.bogof !== undefined) {   // section hidden in the form -> leave its rules untouched
             const existing = await db(LA.T.bogof).where('company_id', cid).whereNull('deleted_at').select('id');
             const kept = [];
             for (const r of asRows(b.bogof)) {
@@ -1821,7 +1918,7 @@ async function saveAll(req, res) {
                     await db(LA.T.bogof).where('id', id).update({ ...rPatch, updated_at: now, updated_by: actor });
                     ruleId = id;
                 } else {
-                    const ins = await db(LA.T.bogof).insert({ company_id: cid, ...rPatch, created_at: now, created_by: actor }).returning('id');
+                    const ins = await db(LA.T.bogof).insert({ company_id: cid, ...LA.mpFlag(cid), ...rPatch, created_at: now, created_by: actor , updated_at: now, updated_by: actor,}).returning('id');
                     ruleId = insertId(ins);
                 }
                 kept.push(ruleId);
@@ -1850,7 +1947,7 @@ async function saveAll(req, res) {
         }
 
         // 10) Special Offer — (multi-row)
-        {
+        if (b.special !== undefined) {   // section hidden in the form -> leave its rules untouched
             const existing = await db(LA.T.specialOffer).where('company_id', cid).whereNull('deleted_at').select('id');
             const kept = [];
             for (const r of asRows(b.special)) {
@@ -1861,7 +1958,7 @@ async function saveAll(req, res) {
                     const owned = await db(LA.T.specialOffer).where({ id, company_id: cid }).whereNull('deleted_at').first();
                     if (owned) { await db(LA.T.specialOffer).where('id', id).update({ ...patch, updated_at: now, updated_by: actor }); kept.push(id); }
                 } else {
-                    const ins = await db(LA.T.specialOffer).insert({ company_id: cid, ...patch, created_at: now, created_by: actor }).returning('id');
+                    const ins = await db(LA.T.specialOffer).insert({ company_id: cid, ...LA.mpFlag(cid), ...patch, created_at: now, created_by: actor , updated_at: now, updated_by: actor,}).returning('id');
                     kept.push(insertId(ins));
                 }
             }
@@ -1878,7 +1975,7 @@ async function saveAll(req, res) {
             };
             const ex = await db(LA.T.tier).where({ company_id: cid, type }).whereNull('deleted_at').first();
             if (ex) { await db(LA.T.tier).where('id', ex.id).update({ ...patch, updated_at: now, updated_by: actor }); }
-            else { await db(LA.T.tier).insert({ company_id: cid, type, ...patch, created_at: now, created_by: actor }); }
+            else { await db(LA.T.tier).insert({ company_id: cid, ...LA.mpFlag(cid), type, ...patch, created_at: now, created_by: actor , updated_at: now, updated_by: actor,}); }
         }
 
         // 12) Smart Campaign — (5 fixed types; inactive £/%, rest £)
@@ -1890,7 +1987,7 @@ async function saveAll(req, res) {
             };
             const ex = await db(LA.T.campaign).where({ company_id: cid, type }).whereNull('deleted_at').first();
             if (ex) { await db(LA.T.campaign).where('id', ex.id).update({ ...patch, updated_at: now, updated_by: actor }); }
-            else { await db(LA.T.campaign).insert({ company_id: cid, type, ...patch, created_at: now, created_by: actor }); }
+            else { await db(LA.T.campaign).insert({ company_id: cid, ...LA.mpFlag(cid), type, ...patch, created_at: now, created_by: actor , updated_at: now, updated_by: actor,}); }
         }
 
         return H.successResponse(res, { saved: true }, 'Loyalty configuration saved.');

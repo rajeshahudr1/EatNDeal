@@ -31,4 +31,13 @@ const TIER_META = Object.freeze({
     gold:   Object.freeze(['🏅 Gold', '#e7b400']),
 });
 
-module.exports = { PRODUCT_STATUSES, TIER_META };
+// The MARKETPLACE scope. EatNDeal runs its OWN loyalty programme alongside
+// each restaurant's; its rows are stored at company_id = 0 (+ is_marketplace = 1)
+// and there is deliberately NO `company` row for it — so it never appears in
+// /admin/companies and has to be offered as a synthetic option. Mirrors
+// api/Helpers/loyalty.js MARKETPLACE_COMPANY_ID / MARKETPLACE_LABEL; keep in step.
+// 0 is falsy — always compare it with `!= null`, never a truthiness test.
+const MARKETPLACE_COMPANY_ID = 0;
+const MARKETPLACE_LABEL = 'EatNDeal (Marketplace)';
+
+module.exports = { PRODUCT_STATUSES, TIER_META, MARKETPLACE_COMPANY_ID, MARKETPLACE_LABEL };

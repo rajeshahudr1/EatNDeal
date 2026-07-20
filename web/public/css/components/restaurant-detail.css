@@ -589,6 +589,136 @@ body.rd-infomodal-open { overflow: hidden; }
 .rd-surprise__now { font-size: 1.5rem; font-weight: 800; color: var(--color-primary); }
 @media (max-width: 560px) { .rd-surprise { flex-wrap: wrap; } .rd-surprise__price { text-align: left; width: 100%; } }
 
+/* ── Surprise Box: CTA + detail popup ───────────────────────────────
+   The box was display-only; this is the buy path (legacy has both). */
+.rd-surprise__cta {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 8px;
+    padding: 9px 16px;
+    border: 0;
+    border-radius: 999px;
+    background: var(--color-primary);
+    color: #fff;
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+    white-space: nowrap;
+}
+.rd-surprise__cta:hover { filter: brightness(1.06); }
+.rd-surprise__cta:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+
+.sb-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 1200;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    background: rgba(17, 20, 32, .58);
+}
+.sb-modal[hidden] { display: none; }
+.sb-modal__box {
+    position: relative;
+    width: 100%;
+    max-width: 460px;
+    max-height: 92vh;
+    display: flex;
+    flex-direction: column;
+    background: var(--color-surface, #fff);
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, .32);
+}
+.sb-modal__x {
+    position: absolute;
+    top: 10px; right: 10px;
+    z-index: 2;
+    width: 32px; height: 32px;
+    border: 0;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, .92);
+    font-size: 20px;
+    line-height: 1;
+    cursor: pointer;
+}
+.sb-modal__media { position: relative; flex: 0 0 auto; background: #f3f4f6; }
+.sb-modal__media img { display: block; width: 100%; height: 190px; object-fit: cover; }
+.sb-modal__ph { display: flex; align-items: center; justify-content: center; height: 190px; font-size: 56px; }
+.sb-modal__slots {
+    position: absolute;
+    left: 12px; bottom: 12px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: rgba(17, 20, 32, .78);
+    color: #fff;
+    font-size: .78rem;
+    font-weight: 600;
+}
+/* The only scrolling region — the header image and the Add bar stay put. */
+.sb-modal__body { flex: 1 1 auto; overflow-y: auto; padding: 16px; }
+.sb-modal__title { margin: 0; font-size: 1.15rem; font-weight: 800; text-transform: uppercase; }
+.sb-modal__brand { margin: 2px 0 10px; color: var(--color-muted, #6b7280); font-size: .9rem; }
+.sb-modal__price { display: flex; align-items: center; gap: 8px; margin: 0 0 12px; flex-wrap: wrap; }
+.sb-modal__now  { font-size: 1.5rem; font-weight: 800; color: var(--color-primary); }
+.sb-modal__was  { text-decoration: line-through; color: var(--color-muted, #9ca3af); }
+.sb-modal__save { padding: 2px 8px; border-radius: 999px; background: #fee2e2; color: #b91c1c; font-size: .75rem; font-weight: 700; }
+.sb-modal__collect { padding: 10px 12px; border-radius: 10px; background: #f9fafb; }
+.sb-modal__collect-t { margin: 0; font-weight: 600; font-size: .9rem; }
+.sb-modal__collect-s { margin: 2px 0 0; font-size: .8rem; color: var(--color-muted, #6b7280); }
+.sb-modal__note { margin: 10px 0 0; padding: 8px 12px; border-radius: 10px; background: #fff7ed; color: #9a3412; font-size: .82rem; }
+.sb-modal__sec { margin-top: 16px; }
+.sb-modal__sec p { margin: 0; font-size: .875rem; line-height: 1.55; color: var(--color-text, #1b2032); }
+.sb-modal__h {
+    margin: 0 0 4px;
+    font-size: .72rem;
+    font-weight: 700;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: var(--color-muted, #6b7280);
+}
+.sb-modal__addr { font-size: .875rem; line-height: 1.5; }
+.sb-modal__foot {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    border-top: 1px solid var(--color-border, #e6e8ee);
+    background: var(--color-surface, #fff);
+}
+.sb-qty { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--color-border, #e6e8ee); border-radius: 999px; padding: 3px; }
+.sb-qty__b {
+    width: 30px; height: 30px;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    font-size: 17px;
+    line-height: 1;
+    cursor: pointer;
+}
+.sb-qty__b:disabled { opacity: .35; cursor: not-allowed; }
+.sb-qty__n { min-width: 22px; text-align: center; font-weight: 700; }
+.sb-modal__add {
+    flex: 1 1 auto;
+    padding: 12px 16px;
+    border: 0;
+    border-radius: 999px;
+    background: var(--color-primary);
+    color: #fff;
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+}
+.sb-modal__add:disabled { opacity: .6; cursor: progress; }
+
+@media (max-width: 560px) {
+    .sb-modal { padding: 0; align-items: flex-end; }
+    .sb-modal__box { max-width: none; max-height: 94vh; border-radius: 16px 16px 0 0; }
+}
+
 /* ── PWA-audit fixes — mobile touch targets (C2) ────────────────────── */
 /* Enlarge tap targets to ≥44×44px without changing the glyph size.
    Placed at file end so they win over the base sizes defined above. */

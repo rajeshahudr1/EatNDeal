@@ -19,17 +19,16 @@
  */
 
 const Joi = require('joi');
+const C = require('./common');
 
-const emailRule = Joi.string()
-    .trim()
-    .lowercase()
-    .email({ tlds: false })
-    .max(150)
+// The shared email rule (legacy's /^[^\s@]+@[^\s@]+\.[^\s@]+$/) with this
+// screen's own wording — one definition of "valid email" across the project.
+const emailRule = C.emailRule
     .required()
     .messages({
         'string.empty':  'Email is required.',
-        'string.email':  'Enter a valid email address.',
         'any.required':  'Email is required.',
+        'email.invalid': 'Enter a valid email address.',
     });
 
 const passwordRule = Joi.string()
@@ -68,9 +67,10 @@ const adminResetSchema = Joi.object({
 // company.{mobile,pin}; a USER/staff login edits user.{contact_no,address_1,
 // address_2,postcode,city,pin}. All are optional here — the controller stores
 // only the ones that belong to the signed-in account's table.
-const contactRule = Joi.string().trim().pattern(/^[0-9]{0,15}$/).allow('', null).messages({
-    'string.pattern.base': 'Contact number must be digits only (max 15).',
-});
+// Same phone rule as the customer side — legacy's 11-15 digits. Optional on an
+// admin profile, but when given it must be a real number: the old rule here was
+// /^[0-9]{0,15}$/, which accepted a single digit.
+const contactRule = C.mobileRule.allow('', null);
 const adminProfileSchema = Joi.object({
     first_name:    Joi.string().trim().max(80).allow('', null),
     last_name:     Joi.string().trim().max(80).allow('', null),

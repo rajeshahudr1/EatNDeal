@@ -63,6 +63,24 @@ const RULE_ON = 1;
 const RULE_OFF = 2;
 
 /**
+ * mpFlag
+ *
+ * What:  The `is_marketplace` value for a row at this scope — 1 for the
+ *        MARKETPLACE's own programme (company_id = 0), 0 for a restaurant's.
+ * Why:   Every loyalty table carries is_marketplace (migration
+ *        m260715_120000) so the marketplace's rows can be told apart from the
+ *        legacy Eat-n-Deal ones at a glance — that's the whole reason the
+ *        column exists. Nothing in the admin was setting it, so every row the
+ *        super admin created came out is_marketplace = 0, i.e. indistinguishable
+ *        from a restaurant's. Spread this into any loyalty INSERT:
+ *            .insert({ company_id: cid, ...LA.mpFlag(cid), … })
+ * Type:  READ (pure).
+ */
+function mpFlag(companyId) {
+    return { is_marketplace: Number(companyId) === 0 ? 1 : 0 };
+}
+
+/**
  * nowStr — UTC "YYYY-MM-DD HH:mm:ss", matching the legacy Yii write format.
  */
 function nowStr() {
@@ -120,11 +138,14 @@ async function setMasterFlag(companyId, ruleType, on, actorId) {
     }
     const ins = await db(T.rules).insert({
         company_id: companyId,
+        ...mpFlag(companyId),          // 1 at scope 0 — see mpFlag
         rule_type:  ruleType,
         priority:   0,
         status,
         created_at: nowStr(),
         created_by: actorId,
+        updated_at: nowStr(),
+        updated_by: actorId,
     }).returning('id');
     return Array.isArray(ins) ? (ins[0].id || ins[0]) : ins;
 }
@@ -142,6 +163,8 @@ async function softDelete(table, id, companyId, actorId) {
 }
 
 module.exports = {
+    // is_marketplace stamp for loyalty inserts — 1 at company_id 0.
+    mpFlag,
     db, T, RULE_TYPES, RULE_ON, RULE_OFF,
     nowStr, activeRows, getConfig, getMasterFlags, setMasterFlag, softDelete,
 };

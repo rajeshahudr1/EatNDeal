@@ -85,6 +85,68 @@ async function forOrder(orderId, customerId) {
         .first();
 }
 
+/*
+ * ── The order review BEFORE it is published ─────────────────────────
+ *
+ * An order review lives in `customer_review` (the moderation record) until the
+ * restaurant approves it; only then does the POS create the public
+ * `review_rating` row. So the ORDER PAGE reads customer_review — review_rating
+ * would show nothing until approval and the customer would think their review
+ * had vanished.
+ *
+ * Ported from legacy: Orders::getCustomerOrdersReviews()
+ * (common/models/transactions/Orders.php:658-668) — customer_review rows for
+ * the order with admin_status IN (0,1), newest first.
+ */
+const CLAIM_TABLE = 'customer_review';
+const TYPE_ORDER  = 2;                 // review_type 2 = the order review
+const PENDING = 0, APPROVED = 1, REJECTED = 2;   // admin_status
+
+/**
+ * claimForOrder
+ *
+ * What:  The customer's LIVE review for this order — pending or approved — or
+ *        null once it has been rejected (which is what brings the "Add review"
+ *        button back, exactly as in legacy).
+ * Type:  READ.
+ *
+ * NB:    the SECOND argument is the customer's APP_ID, not our customer.id —
+ *        customer_review is keyed the way legacy keys it (see
+ *        Helpers/customerLookup.appIdOf). Callers holding a customer.id must
+ *        translate first.
+ */
+async function claimForOrder(orderId, customerAppId) {
+    if (!orderId || !customerAppId) { return null; }
+    return db(CLAIM_TABLE + ' as cr')
+        // The restaurant's public reply lives on the review_rating row the POS
+        // creates at approval — legacy reads it through the same link
+        // (customer_review.reviewRating->review_reply, order/index.php:852).
+        .leftJoin(TABLE + ' as rr', 'rr.customer_review_id', 'cr.id')
+        .where({ 'cr.order_id': orderId, 'cr.customer_id': customerAppId })
+        .whereIn('cr.admin_status', [PENDING, APPROVED])
+        .orderBy('cr.id', 'desc')
+        .first('cr.id', 'cr.rating', 'cr.notes', 'cr.review_photo',
+               'cr.admin_status', 'cr.created_at', 'rr.review_reply');
+}
+
+/**
+ * claimView — the shape the order page renders.
+ * `pending` drives nothing user-visible on its own; the page shows the review
+ * either way and hides the button, like legacy.
+ */
+function claimView(row) {
+    if (!row) { return null; }
+    return {
+        id:        String(row.id),
+        rating:    Number(row.rating) || 0,
+        review:    row.notes || '',
+        photo:     row.review_photo || '',
+        reply:     row.review_reply || '',
+        pending:   Number(row.admin_status) === PENDING,
+        createdAt: toISODate(row.created_at),
+    };
+}
+
 /**
  * listForCompany
  *
@@ -155,4 +217,9 @@ async function listForCompany(companyId, opts) {
     };
 }
 
-module.exports = { TABLE, hasPhotoCol, publicView, forOrder, listForCompany };
+module.exports = {
+    TABLE, hasPhotoCol, publicView, forOrder, listForCompany,
+    // Order-review moderation (customer_review) — see claimForOrder above.
+    CLAIM_TABLE, TYPE_ORDER, PENDING, APPROVED, REJECTED,
+    claimForOrder, claimView,
+};

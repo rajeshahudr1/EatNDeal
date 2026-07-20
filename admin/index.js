@@ -47,6 +47,8 @@ const chalk       = require('chalk');
 const { fetchBrand } = require('./Helpers/apiClient');
 const { requireAdmin } = require('./Middlewares/auth');
 const { companyContext, requireLoyalty } = require('./Middlewares/companyContext');
+// 0 = the MARKETPLACE's own scope (EatNDeal itself). Never truthiness-test it.
+const { MARKETPLACE_COMPANY_ID } = require('./Helpers/viewConstants');
 const AuthController      = require('./Controllers/AuthController');
 const DashboardController = require('./Controllers/DashboardController');
 const LoyaltyController   = require('./Controllers/LoyaltyController');
@@ -60,6 +62,7 @@ const FeedSectionsController      = require('./Controllers/FeedSectionsControlle
 const CommunityController         = require('./Controllers/CommunityController');
 const WelcomeBannerController      = require('./Controllers/WelcomeBannerController');
 const OfferBannerController        = require('./Controllers/OfferBannerController');
+const ReviewsController            = require('./Controllers/ReviewsController');
 
 const app    = express();
 const ENV    = process.env.APP_ENV || 'development';
@@ -415,23 +418,33 @@ app.post('/store-settings/upload', requireAdmin, companyContext, (req, res) => {
 let loyaltyCmsUpload = null;
 try {
     const multer = require('multer');
-    const cmsCompanyId = (req) => {
-        const a = (req.session && req.session.admin) || {};
-        if (a.role && a.role !== 'super_admin' && Number(a.company_id) > 0) { return Number(a.company_id); }
-        return (req.session && req.session.company_id != null) ? Number(req.session.company_id) : null;
-    };
+    // Which company's uploads folder a CMS screenshot belongs to.
+    // Review CMS Pages is a MARKETPLACE-only screen now (company_id = 0, pinned
+    // in Controllers/LoyaltyController) — so a super admin's screenshot goes to
+    // the marketplace folder, NOT to whatever the company switcher happens to
+    // say. This used to read session.company_id, which is null until a company
+    // is picked; that made destination() cb(new Error('upload_unavailable')),
+    // multer failed, cmsUploadMw redirected, and the editor's fetch got HTML
+    // instead of JSON → the "Bad response." toast. It fired on EVERY save, even
+    // text-only ones with no screenshot attached.
     loyaltyCmsUpload = multer({
         storage: multer.diskStorage({
+            // OUR media tree (MEDIA_DIR → api/public/upload, served at /upload),
+            // exactly like Marketplace Categories / Welcome Banner / Offer
+            // Banners. This wrote into YII_UPLOADS_PATH before — the LEGACY
+            // Eat-n-Deal folder (…/eatndealclean/backend/web/uploads/…), which
+            // is the old app's storage, not ours. Review CMS Pages is a
+            // super-admin MARKETPLACE screen, so its screenshots belong with the
+            // marketplace's own uploads; the legacy tree also isn't ours to
+            // write to (different server in production).
             destination: (req, file, cb) => {
-                const cid = cmsCompanyId(req);
-                if (!cid || !process.env.YII_UPLOADS_PATH) { return cb(new Error('upload_unavailable')); }
-                const dir = path.join(process.env.YII_UPLOADS_PATH, String(cid), 'loyalty');
+                const dir = path.join(MEDIA_DIR, 'loyalty');
                 try { fs.mkdirSync(dir, { recursive: true }); } catch (e) { /* ignore */ }
                 cb(null, dir);
             },
             filename: (req, file, cb) => {
                 const ext = ({ 'image/png': '.png', 'image/jpeg': '.jpg', 'image/webp': '.webp', 'image/gif': '.gif' })[file.mimetype] || '.img';
-                cb(null, Date.now() + '_' + Math.random().toString(36).slice(2, 10) + ext);
+                cb(null, 'lycms_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8) + ext);
             },
         }),
         limits: { fileSize: 4 * 1024 * 1024 },
@@ -440,16 +453,37 @@ try {
 } catch (e) { /* store block already warned about missing multer */ }
 
 function cmsUploadMw(req, res, next) {
-    if (!loyaltyCmsUpload || !process.env.YII_UPLOADS_PATH) {
-        if (req.flash) { req.flash('error', 'Image uploads aren’t configured on this environment yet.'); }
+    // The editor saves each tab with fetch(FormData) and parses JSON. Redirecting
+    // on failure sent it an HTML page, so r.json() threw and EVERY upload problem
+    // surfaced as the same useless "Bad response." toast — with the real reason
+    // nowhere to be seen. Answer AJAX in the shape it actually reads.
+    const isAjax = (req.get('X-Requested-With') === 'fetch')
+        || (req.get('Accept') || '').indexOf('application/json') !== -1;
+    const fail = (msg) => {
+        if (isAjax) { return res.status(200).json({ status: 422, show: true, msg }); }
+        if (req.flash) { req.flash('error', msg); }
         return res.redirect('/loyalty/cms-pages');
+    };
+
+    // No YII_UPLOADS_PATH check any more — these screenshots go to OUR media
+    // tree (MEDIA_DIR), which admin/index.js creates at boot. Gating on the
+    // legacy path meant an env that doesn't even have the old app couldn't save
+    // a text-only CMS page.
+    if (!loyaltyCmsUpload) {
+        return fail('Image uploads aren’t configured on this environment yet.');
     }
     loyaltyCmsUpload.single('screenshot')(req, res, (err) => {
         if (err) {
-            const msg = err.code === 'LIMIT_FILE_SIZE' ? 'Image must be under 4 MB.' : 'Could not upload that image. Use a PNG, JPG, GIF or WEBP.';
-            if (req.flash) { req.flash('error', msg); }
-            return res.redirect('/loyalty/cms-pages');
+            const msg = err.code === 'LIMIT_FILE_SIZE'
+                ? 'Image must be under 4 MB.'
+                : 'Could not upload that image. Use a PNG, JPG, GIF or WEBP.';
+            return fail(msg);
         }
+        // Rewrite the bare filename to the public URL (/upload/loyalty/<file>)
+        // BEFORE the controller forwards it — same as every other marketplace
+        // uploader here. Without this the api stores a bare filename it would
+        // then resolve against the LEGACY uploads host, and the image 404s.
+        mediaStamp('loyalty')(req);
         return next();
     });
 }
@@ -548,17 +582,17 @@ function mpCatImgMw(req, res, next) {
 }
 
 // Marketplace Categories (global master — super admin).
-app.get ('/marketplace-categories',           requireAdmin, companyContext, MpCategoriesController.list);
-app.get ('/marketplace-categories/arrange',   requireAdmin, companyContext, MpCategoriesController.arrange);
-app.get ('/marketplace-categories/new',       requireAdmin, companyContext, MpCategoriesController.form);
-app.get ('/marketplace-categories/edit/:id',  requireAdmin, companyContext, MpCategoriesController.form);
-app.post('/marketplace-categories/save',      requireAdmin, companyContext, mpCatImgMw, MpCategoriesController.save);
-app.post('/marketplace-categories/delete',    requireAdmin, companyContext, MpCategoriesController.remove);
-app.post('/marketplace-categories/status',    requireAdmin, companyContext, MpCategoriesController.statusToggle);
-app.get ('/marketplace-categories/companies', requireAdmin, companyContext, MpCategoriesController.companies);
-app.get ('/marketplace-categories/restaurants', requireAdmin, companyContext, MpCategoriesController.restaurants);
-app.post('/marketplace-categories/assign',    requireAdmin, companyContext, MpCategoriesController.assign);
-app.post('/marketplace-categories/reorder',   requireAdmin, companyContext, MpCategoriesController.reorder);
+app.get ('/marketplace-categories',           requireAdmin, companyContext, requireSuperPage, MpCategoriesController.list);
+app.get ('/marketplace-categories/arrange',   requireAdmin, companyContext, requireSuperPage, MpCategoriesController.arrange);
+app.get ('/marketplace-categories/new',       requireAdmin, companyContext, requireSuperPage, MpCategoriesController.form);
+app.get ('/marketplace-categories/edit/:id',  requireAdmin, companyContext, requireSuperPage, MpCategoriesController.form);
+app.post('/marketplace-categories/save',      requireAdmin, companyContext, requireSuperPage, mpCatImgMw, MpCategoriesController.save);
+app.post('/marketplace-categories/delete',    requireAdmin, companyContext, requireSuperPage, MpCategoriesController.remove);
+app.post('/marketplace-categories/status',    requireAdmin, companyContext, requireSuperPage, MpCategoriesController.statusToggle);
+app.get ('/marketplace-categories/companies', requireAdmin, companyContext, requireSuperPage, MpCategoriesController.companies);
+app.get ('/marketplace-categories/restaurants', requireAdmin, companyContext, requireSuperPage, MpCategoriesController.restaurants);
+app.post('/marketplace-categories/assign',    requireAdmin, companyContext, requireSuperPage, MpCategoriesController.assign);
+app.post('/marketplace-categories/reorder',   requireAdmin, companyContext, requireSuperPage, MpCategoriesController.reorder);
 
 // ── Collection cover-image uploads (GLOBAL — uploads/marketplace/collection/) ──
 let mpColUpload = null;
@@ -597,40 +631,40 @@ function mpColImgMw(req, res, next) {
 }
 
 // Collections (curated home-feed rows — super admin).
-app.get ('/collections',             requireAdmin, companyContext, CollectionsController.list);
-app.get ('/collections/arrange',     requireAdmin, companyContext, CollectionsController.arrange);
-app.get ('/collections/new',         requireAdmin, companyContext, CollectionsController.form);
-app.get ('/collections/edit/:id',    requireAdmin, companyContext, CollectionsController.form);
-app.post('/collections/save',        requireAdmin, companyContext, mpColImgMw, CollectionsController.save);
-app.post('/collections/delete',      requireAdmin, companyContext, CollectionsController.remove);
-app.post('/collections/status',      requireAdmin, companyContext, CollectionsController.statusToggle);
-app.post('/collections/reorder',     requireAdmin, companyContext, CollectionsController.reorder);
-app.get ('/collections/companies',   requireAdmin, companyContext, CollectionsController.companies);
+app.get ('/collections',             requireAdmin, companyContext, requireSuperPage, CollectionsController.list);
+app.get ('/collections/arrange',     requireAdmin, companyContext, requireSuperPage, CollectionsController.arrange);
+app.get ('/collections/new',         requireAdmin, companyContext, requireSuperPage, CollectionsController.form);
+app.get ('/collections/edit/:id',    requireAdmin, companyContext, requireSuperPage, CollectionsController.form);
+app.post('/collections/save',        requireAdmin, companyContext, requireSuperPage, mpColImgMw, CollectionsController.save);
+app.post('/collections/delete',      requireAdmin, companyContext, requireSuperPage, CollectionsController.remove);
+app.post('/collections/status',      requireAdmin, companyContext, requireSuperPage, CollectionsController.statusToggle);
+app.post('/collections/reorder',     requireAdmin, companyContext, requireSuperPage, CollectionsController.reorder);
+app.get ('/collections/companies',   requireAdmin, companyContext, requireSuperPage, CollectionsController.companies);
 
 // Featured / sponsored placements (super admin).
-app.get ('/featured',           requireAdmin, companyContext, FeaturedController.list);
-app.get ('/featured/new',       requireAdmin, companyContext, FeaturedController.form);
-app.get ('/featured/edit/:id',  requireAdmin, companyContext, FeaturedController.form);
-app.post('/featured/save',      requireAdmin, companyContext, FeaturedController.save);
-app.post('/featured/delete',    requireAdmin, companyContext, FeaturedController.remove);
-app.post('/featured/status',    requireAdmin, companyContext, FeaturedController.statusToggle);
-app.post('/featured/reorder',   requireAdmin, companyContext, FeaturedController.reorder);
-app.get ('/featured/companies', requireAdmin, companyContext, FeaturedController.companies);
+app.get ('/featured',           requireAdmin, companyContext, requireSuperPage, FeaturedController.list);
+app.get ('/featured/new',       requireAdmin, companyContext, requireSuperPage, FeaturedController.form);
+app.get ('/featured/edit/:id',  requireAdmin, companyContext, requireSuperPage, FeaturedController.form);
+app.post('/featured/save',      requireAdmin, companyContext, requireSuperPage, FeaturedController.save);
+app.post('/featured/delete',    requireAdmin, companyContext, requireSuperPage, FeaturedController.remove);
+app.post('/featured/status',    requireAdmin, companyContext, requireSuperPage, FeaturedController.statusToggle);
+app.post('/featured/reorder',   requireAdmin, companyContext, requireSuperPage, FeaturedController.reorder);
+app.get ('/featured/companies', requireAdmin, companyContext, requireSuperPage, FeaturedController.companies);
 
 // Featured Products (admin-picked dishes → home product rows — super admin).
-app.get ('/featured-products',                requireAdmin, companyContext, FeaturedProductsController.list);
-app.get ('/featured-products/new',            requireAdmin, companyContext, FeaturedProductsController.form);
-app.get ('/featured-products/edit/:companyId', requireAdmin, companyContext, FeaturedProductsController.form);
-app.post('/featured-products/save',           requireAdmin, companyContext, FeaturedProductsController.save);
-app.post('/featured-products/delete',         requireAdmin, companyContext, FeaturedProductsController.remove);
-app.post('/featured-products/status',         requireAdmin, companyContext, FeaturedProductsController.statusToggle);
-app.post('/featured-products/reorder',        requireAdmin, companyContext, FeaturedProductsController.reorder);
-app.get ('/featured-products/companies',      requireAdmin, companyContext, FeaturedProductsController.companies);
-app.get ('/featured-products/products',       requireAdmin, companyContext, FeaturedProductsController.products);
+app.get ('/featured-products',                requireAdmin, companyContext, requireSuperPage, FeaturedProductsController.list);
+app.get ('/featured-products/new',            requireAdmin, companyContext, requireSuperPage, FeaturedProductsController.form);
+app.get ('/featured-products/edit/:companyId', requireAdmin, companyContext, requireSuperPage, FeaturedProductsController.form);
+app.post('/featured-products/save',           requireAdmin, companyContext, requireSuperPage, FeaturedProductsController.save);
+app.post('/featured-products/delete',         requireAdmin, companyContext, requireSuperPage, FeaturedProductsController.remove);
+app.post('/featured-products/status',         requireAdmin, companyContext, requireSuperPage, FeaturedProductsController.statusToggle);
+app.post('/featured-products/reorder',        requireAdmin, companyContext, requireSuperPage, FeaturedProductsController.reorder);
+app.get ('/featured-products/companies',      requireAdmin, companyContext, requireSuperPage, FeaturedProductsController.companies);
+app.get ('/featured-products/products',       requireAdmin, companyContext, requireSuperPage, FeaturedProductsController.products);
 
 // Feed Order (one master ordering of the 4 home-feed sections — super admin).
-app.get ('/feed-sections',         requireAdmin, companyContext, FeedSectionsController.page);
-app.post('/feed-sections/reorder', requireAdmin, companyContext, FeedSectionsController.reorder);
+app.get ('/feed-sections',         requireAdmin, companyContext, requireSuperPage, FeedSectionsController.page);
+app.post('/feed-sections/reorder', requireAdmin, companyContext, requireSuperPage, FeedSectionsController.reorder);
 
 // ── Community group cover uploads (GLOBAL — uploads/marketplace/community_group/) ──
 // Shared yii-uploads tree so BOTH web + admin serve the cover via /yii-uploads.
@@ -772,6 +806,29 @@ function requireSuper(req, res, next) {
     return res.status(200).json({ status: 403, show: true, msg: 'Only the super-admin can do that.' });
 }
 
+// MARKETPLACE-LEVEL screens (marketplace categories, welcome/offer banners, the
+// whole Home Feed group, and the marketplace's own loyalty programme) are
+// super-admin only — the sidebar already hides them behind `if (scc.isSuper)`.
+// Hiding the MENU isn't a permission though: without this guard a company admin
+// could still reach every one of them by typing the URL, and mutate GLOBAL data
+// that affects every restaurant on the platform.
+//
+// 404, not 403 or a redirect: to a company login these pages simply don't exist,
+// and a 403 would confirm they do. Mirrors api/Middlewares/requireSuperAdmin.
+// MUST be mounted AFTER companyContext (it reads res.locals.company_ctx).
+function requireSuperPage(req, res, next) {
+    if (res.locals.company_ctx && res.locals.company_ctx.isSuper) { return next(); }
+    if (req.method === 'GET') {
+        return res.status(404).render('errors/404', {
+            page_title:  'Page not found',
+            _layoutFile: '../_layout',
+            bare:        true,
+        });
+    }
+    // Non-GET (the pages' fetch/XHR saves) — the admin JS reads this envelope.
+    return res.status(200).json({ status: 404, show: true, msg: 'Page not found.' });
+}
+
 // ── Community ──────────────────────────────────────────────────────
 // List + a group's feed are open to ALL admins (company admins join to post /
 // comment / reply). Group management + moderation (delete) are super-admin.
@@ -795,20 +852,20 @@ app.post('/community/unblock',        requireAdmin, companyContext, requireSuper
 app.post('/community/save',           requireAdmin, companyContext, requireSuper, mpCommImgMw, CommunityController.save);
 
 // ── Welcome Banner (super-admin — single home config) ──
-app.get ('/welcome-banner',           requireAdmin, companyContext, requireSuper, WelcomeBannerController.form);
-app.post('/welcome-banner/save',      requireAdmin, companyContext, requireSuper, bannerImgMw, WelcomeBannerController.save);
-app.post('/welcome-banner/delete',    requireAdmin, companyContext, requireSuper, WelcomeBannerController.remove);
+app.get ('/welcome-banner',           requireAdmin, companyContext, requireSuperPage, requireSuper, WelcomeBannerController.form);
+app.post('/welcome-banner/save',      requireAdmin, companyContext, requireSuperPage, requireSuper, bannerImgMw, WelcomeBannerController.save);
+app.post('/welcome-banner/delete',    requireAdmin, companyContext, requireSuperPage, requireSuper, WelcomeBannerController.remove);
 
 // ── Offer-banner carousel (super-admin only) ──────────────────────
-app.get ('/offer-banner',             requireAdmin, companyContext, requireSuper, OfferBannerController.list);
-app.get ('/offer-banner/arrange',     requireAdmin, companyContext, requireSuper, OfferBannerController.arrange);
-app.get ('/offer-banner/new',         requireAdmin, companyContext, requireSuper, OfferBannerController.form);
-app.get ('/offer-banner/edit/:id',    requireAdmin, companyContext, requireSuper, OfferBannerController.form);
-app.post('/offer-banner/save',        requireAdmin, companyContext, requireSuper, offerBannerImgMw, OfferBannerController.save);
-app.post('/offer-banner/delete',      requireAdmin, companyContext, requireSuper, OfferBannerController.remove);
-app.post('/offer-banner/status',      requireAdmin, companyContext, requireSuper, OfferBannerController.statusToggle);
-app.post('/offer-banner/reorder',     requireAdmin, companyContext, requireSuper, OfferBannerController.reorder);
-app.get ('/offer-banner/companies',   requireAdmin, companyContext, requireSuper, OfferBannerController.companies);
+app.get ('/offer-banner',             requireAdmin, companyContext, requireSuperPage, requireSuper, OfferBannerController.list);
+app.get ('/offer-banner/arrange',     requireAdmin, companyContext, requireSuperPage, requireSuper, OfferBannerController.arrange);
+app.get ('/offer-banner/new',         requireAdmin, companyContext, requireSuperPage, requireSuper, OfferBannerController.form);
+app.get ('/offer-banner/edit/:id',    requireAdmin, companyContext, requireSuperPage, requireSuper, OfferBannerController.form);
+app.post('/offer-banner/save',        requireAdmin, companyContext, requireSuperPage, requireSuper, offerBannerImgMw, OfferBannerController.save);
+app.post('/offer-banner/delete',      requireAdmin, companyContext, requireSuperPage, requireSuper, OfferBannerController.remove);
+app.post('/offer-banner/status',      requireAdmin, companyContext, requireSuperPage, requireSuper, OfferBannerController.statusToggle);
+app.post('/offer-banner/reorder',     requireAdmin, companyContext, requireSuperPage, requireSuper, OfferBannerController.reorder);
+app.get ('/offer-banner/companies',   requireAdmin, companyContext, requireSuperPage, requireSuper, OfferBannerController.companies);
 app.post('/community/delete',         requireAdmin, companyContext, requireSuper, CommunityController.remove);
 app.post('/community/status',         requireAdmin, companyContext, requireSuper, CommunityController.statusToggle);
 app.get ('/community/feed/:id',       requireAdmin, companyContext, CommunityController.feedPage);
@@ -831,7 +888,53 @@ app.post('/store-settings/advance/delete', requireAdmin, companyContext, StoreSe
 // ── Loyalty management screens (gated + company-scoped) ────────────
 // Shared gate: signed-in admin → company context → loyalty availability
 // (a company login only reaches these when its loyalty is switched ON).
-const loyaltyGate = [requireAdmin, companyContext, requireLoyalty];
+// Loyalty in THIS console is the MARKETPLACE's OWN programme (company_id = 0)
+// and is SUPER-ADMIN ONLY — a restaurant configures its loyalty in the legacy
+// POS, never here. So the gate is requireSuperPage (menu hidden AND the URL
+// 404s), not requireLoyalty — which also admitted any company whose loyalty was
+// switched on. Controllers/LoyaltyController pins every call to scope 0, and
+// the api re-checks with requireSuperAdmin: the browser is never the boundary.
+const loyaltyGate = [requireAdmin, companyContext, requireSuperPage];
+
+// ══ DISABLED 2026-07-17 (user request) ═════════════════════════════
+// The whole Loyalty group and the marketplace Reviews screen are switched OFF
+// in this console — menu hidden (views/partials/sidebar.ejs) AND unreachable.
+//
+// This 404 gate is deliberately ONE block rather than ~70 individually
+// commented route lines: every /loyalty* and /reviews* URL below is dead while
+// it stands, so a route that was missed can't quietly stay open — and turning
+// the group back on is deleting this block, not un-commenting 70 lines and
+// hoping none were mangled. The handlers underneath are untouched and still
+// wired, so nothing else has to change either way.
+//
+// RESTORE: delete this app.use + the matching block in sidebar.ejs.
+// NB customer-facing loyalty (web /wallet, /earn, rewards) is NOT affected.
+app.use(['/loyalty', '/reviews'], (req, res) => {
+    // 404, not 403 — a disabled screen should read as absent, not forbidden.
+    // Same shape as the catch-all 404 at the bottom of this file: bare (no
+    // sidebar), because this runs BEFORE companyContext and the nav partial
+    // has no company_ctx to render from.
+    if (req.method !== 'GET') {
+        // The reply/save posts are fetch() calls — answer JSON, not an HTML page.
+        return res.status(404).json({ status: 404, show: true, msg: 'That screen is not available.' });
+    }
+    return res.status(404).render('errors/404', {
+        page_title:  'Page not found',
+        _layoutFile: '../_layout',
+        bare:        true,
+    });
+});
+// ═══════════════════════════════════════════════════════════════════
+
+// ── Marketplace Reviews (super-admin only) ─────────────────────────
+// EatNDeal's OWN public star-reviews (review_rating at company_id = 0) — the
+// marketplace twin of the legacy POS /admin/pos/review-rating/index. A
+// restaurant's reviews stay on that POS page, so this is super-admin only: the
+// menu is hidden AND the URL 404s (requireSuperPage), and the api independently
+// re-checks with requireSuperAdmin — the browser is never the security boundary.
+app.get ('/reviews',       requireAdmin, companyContext, requireSuperPage, ReviewsController.list);
+app.post('/reviews/save',  requireAdmin, companyContext, requireSuperPage, ReviewsController.save);
+app.post('/reviews/reply', requireAdmin, companyContext, requireSuperPage, ReviewsController.reply);
 // Loyalty Dashboard (the Loyalty menu landing / hub).
 app.get ('/loyalty', loyaltyGate, LoyaltyController.loyaltyConfig);
 // Company-level loyalty on/off (super admin enables loyalty for a company).

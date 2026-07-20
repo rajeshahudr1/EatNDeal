@@ -44,8 +44,16 @@ function resolveCompanyScope(req) {
             ? req.query.company_id
             : ((req.body && req.body.company_id) != null && req.body.company_id !== '' ? req.body.company_id : null);
         const companyId = raw != null ? Number(raw) : null;
+        // company_id = 0 is the MARKETPLACE's own loyalty programme (EatNDeal
+        // itself — no restaurant owns it), and it is a VALID selection for a
+        // super admin. Only the ABSENCE of a selector (raw == null) means "all
+        // companies". This used to be `companyId > 0`, which silently collapsed
+        // an explicit marketplace pick into null — so requireCompany() answered
+        // 422 "Select a company first" and the marketplace programme could never
+        // be managed at all. `raw != null` above is what separates "0" from
+        // "not sent"; the range check must therefore allow 0.
         return {
-            companyId: Number.isFinite(companyId) && companyId > 0 ? companyId : null,
+            companyId: Number.isFinite(companyId) && companyId >= 0 ? companyId : null,
             isSuper: true,
             role,
             actorId,

@@ -38,6 +38,7 @@
 const { db }       = require('../config/db');
 const Cart         = require('./cart');
 const OrderTime    = require('./orderTime');
+const PaymentOptions = require('./paymentOptions');   // enum → the restaurant's own paymentoptions row
 
 /**
  * loadItemsForPlace
@@ -251,7 +252,11 @@ async function placeOrder({ customer, cart, branch, items, paymentOption, custom
         // live balance fell short, we roll the whole order back rather than
         // under-charge the customer.
         if (usedCashback > 0) {
-            const { consumed } = await require('./loyalty').consumeForRedeem(trx, {
+            // Spend across BOTH pools — the restaurant's own cashback first,
+            // then the EatNDeal marketplace balance for the remainder. Each pool
+            // gets its own FIFO walk + its own customer_used_rewards ledger row,
+            // so reverseForOrder un-spends each correctly on cancel.
+            const { consumed } = await require('./loyalty').consumeAcrossPools(trx, {
                 customerId: customer.id,
                 companyId:  cart.company_id,
                 orderId:    order.id,
@@ -261,6 +266,18 @@ async function placeOrder({ customer, cart, branch, items, paymentOption, custom
                 throw Object.assign(new Error('place.reward_short'), { code: 'place.reward_short' });
             }
         }
+
+        // ── 2c. Stamp cards are USE-IT-OR-LOSE-IT ───────────────────────
+        // Legacy burns unused stamp rewards on EVERY order (expired_from = 4
+        // "Not Used") — whether the customer redeemed them or not; the checkout
+        // literally tells them "any unused balance will expire automatically".
+        // Runs AFTER the redeem above so whatever was just spent is already
+        // accounted for, and inside this txn so a rolled-back order doesn't
+        // burn anything. Best-effort inside — never fails the order.
+        await require('./loyalty').burnUnusedStamps(trx, {
+            customerId: customer.id,
+            companyId:  cart.company_id,
+        });
 
         // ── 3. orders_items + orders_items_sub ──────────────────────
         // NB: legacy orders_items doesn't carry category_id — we keep
@@ -287,6 +304,14 @@ async function placeOrder({ customer, cart, branch, items, paymentOption, custom
                 discount_type:     it.discount_type != null ? String(it.discount_type) : '0',
                 status:            '1',
                 is_free_item:      Number(it.is_free_item) || 0,
+                // Carry the Surprise Box flag through to the order. This is
+                // load-bearing, not decoration: remaining slots are counted as
+                // branch.qty MINUS orders_items where is_surprise_item = 1
+                // (Helpers/surpriseBox, legacy Branch::getSurpriseRemainingQty).
+                // Drop it and every box sold through the marketplace stays
+                // invisible to that count — the branch oversells its allowance
+                // for good, because nothing ever decrements.
+                is_surprise_item:  Number(it.is_surprise_item) || 0,
                 created_by:        customer.id,
             }).returning('id');
 
@@ -319,16 +344,25 @@ async function placeOrder({ customer, cart, branch, items, paymentOption, custom
         // method, company_stripe_detail = the normalised detail JSON. No
         // schema change; legacy POS just ignores these.
         const subMethod = (paymentDetail && paymentDetail.subMethod) ? String(paymentDetail.subMethod).slice(0, 50) : null;
+        // payment_id / payment_type_id are paymentoptions IDs, and paymentoptions
+        // is PER-COMPANY (company 1's cash is id 1, company 15's cash is id 11…).
+        // Writing our raw 1/2 enum here only happened to be right for company 1 —
+        // for every other restaurant it pointed at ANOTHER company's option, and
+        // the legacy POS reads this to show how the customer paid. Resolve the
+        // restaurant's OWN option (by slug) instead; fall back to the enum when a
+        // restaurant has no paymentoptions configured, so nothing regresses.
+        const payOpt   = await PaymentOptions.resolveForCompany(cart.company_id, paymentOption);
+        const payOptId = payOpt ? payOpt.id : (Number(paymentOption) || 1);
         await trx('orders_payments').insert({
             orders_id:              order.id,
             company_id:             cart.company_id,
             invoice_id:             Math.floor(now.getTime() / 1000),
-            payment_id:             Number(paymentOption) || 1,
+            payment_id:             payOptId,
             payment_amount:         grandTotal,
             payment_status:         paidNow ? '1' : '0',
             payment_transaction_id: paymentIntentId || null,
             payment_type:           Number(paymentOption) === 2 ? 'Card' : 'Cash',
-            payment_type_id:        Number(paymentOption) || 1,
+            payment_type_id:        payOptId,
             sub_payment_method:     subMethod,
             company_stripe_detail:  paymentDetail ? JSON.stringify(paymentDetail) : null,
             status:                 '1',

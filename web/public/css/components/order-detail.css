@@ -250,10 +250,22 @@
 /* ── Post-order Rate & Review ───────────────────────────────────────── */
 
 /* "Your review" stars summary on the order detail (above the CTAs). */
-.order-detail__myreview { display: flex; align-items: center; gap: var(--space-2); margin: 0 0 var(--space-3); }
+/* Label + stars sit on one line; the review text and the restaurant's reply
+   each take a full row underneath (flex-basis 100% on wrap). */
+.order-detail__myreview { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin: 0 0 var(--space-3); }
 .order-detail__myreview-label { font-size: 0.85rem; color: var(--color-text-soft); font-weight: 600; }
 .order-detail__myreview-stars { letter-spacing: 1px; color: var(--color-border); font-size: 1.05rem; }
 .order-detail__myreview-stars .is-on { color: #f5a623; }
+.order-detail__myreview-text { flex: 0 0 100%; margin: 0; font-size: 0.9rem; line-height: 1.5; }
+.order-detail__myreview-reply {
+    flex: 0 0 100%;
+    margin: 0;
+    padding: 8px 12px;
+    border-left: 3px solid var(--color-primary);
+    background: var(--color-bg-alt, #f9fafb);
+    border-radius: 0 8px 8px 0;
+    font-size: 0.85rem;
+}
 
 /* Modal */
 .review-modal { position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center; justify-content: center; padding: var(--space-4); }

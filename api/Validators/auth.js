@@ -38,15 +38,11 @@ const countryCodeRule = Joi.string()
 // many shapes; we accept anything reasonable here and let the helper
 // normalise it before DB writes. ITU-T E.164 caps the subscriber number
 // at 15 digits including country code, so 15 here is a safe upper bound.
-const contactNoRule = Joi.string()
-    .trim()
-    .pattern(/^[0-9\s\-()+]{4,20}$/)
-    .required()
-    .messages({
-        'string.empty':  'Please enter your phone number.',
-        'string.pattern.base': 'Please enter a valid phone number.',
-        'any.required':  'Please enter your phone number.',
-    });
+// Digits-only, 9–15 after separators are stripped — the shared rule, so login,
+// sign-up, profile and every other screen judge a number the same way. Was
+// /^[0-9\s\-()+]{4,20}$/ here, which let "1234" through as a phone number.
+// See Validators/common.js for how this maps onto legacy's /^[0-9]{11,15}$/.
+const contactNoRule = C.mobileRule.required();
 
 // ── /auth/send-otp ────────────────────────────────────────────────
 const sendOtpSchema = Joi.object({
@@ -93,15 +89,8 @@ const saveProfileSchema = Joi.object({
         .messages({
             'string.max':    'Last name is too long.',
         }),
-    email: Joi.string()
-        .trim()
-        .email({ tlds: { allow: false } })
-        .max(180)
-        .allow('', null)
-        .messages({
-            'string.email':  'Please enter a valid email address.',
-            'string.max':    'Email is too long.',
-        }),
+    // Shared rule — same strictness and wording everywhere. Optional here.
+    email: C.emailRule.allow('', null),
     // Optional "Invite & Earn" code a friend shared (legacy "Referred Code").
     referred_code: Joi.string().trim().max(20).allow('', null).optional(),
 });
@@ -133,15 +122,8 @@ const updateProfileSchema = Joi.object({
         .max(120)
         .allow('', null)
         .messages({ 'string.max': 'Last name is too long.' }),
-    email: Joi.string()
-        .trim()
-        .email({ tlds: { allow: false } })
-        .max(180)
-        .allow('', null)
-        .messages({
-            'string.email':  'Please enter a valid email address.',
-            'string.max':    'Email is too long.',
-        }),
+    // Shared rule — same strictness and wording everywhere. Optional here.
+    email: C.emailRule.allow('', null),
     // Optional — only present when the user is editing their phone.
     // The controller refuses a half-filled pair (only country or only
     // number) so we don't enforce "both required" here.

@@ -63,15 +63,29 @@
         </div>
     </section>
 
+    <%# ══ DISABLED 2026-07-17 (user request) ══════════════════════════
+        The MARKETPLACE's own wallet card (company_id = 0, "EatNDeal") is not
+        shown. Only that card is filtered out — the restaurants' cards below are
+        untouched, and so is the data behind it (nothing is deleted, the api
+        still returns it).
+
+        Matched on companyId, NEVER on the name: company 1 is a real restaurant
+        that is ALSO called "EatNDeal", so a name match would hide it too. (The
+        earn page filters the same thing on the api's `isMarketplace` flag; this
+        payload — cardsFor — doesn't carry that flag, only companyId.)
+
+        RESTORE: drop this one filter and render w.cards directly again. %>
+    <% var wCards = (w.cards || []).filter(function (c) { return String(c.companyId) !== '0'; }); %>
+
     <%# Per-restaurant wallet cards (the "multi card") %>
-    <% if (w.cards && w.cards.length) { %>
+    <% if (wCards.length) { %>
     <section class="wallet__cards">
         <div class="wallet__cards-head">
             <h2>Your restaurant wallets</h2>
             <% if (wallet_company) { %><a class="wallet__clear" href="/wallet<%= wallet_filter ? '?filter=' + wallet_filter : '' %>">← All restaurants</a><% } %>
         </div>
         <div class="wallet-cardgrid">
-            <% w.cards.forEach(function (c) { var on = String(wallet_company) === String(c.companyId); %>
+            <% wCards.forEach(function (c) { var on = String(wallet_company) === String(c.companyId); %>
             <a class="rwcard<%= on ? ' is-on' : '' %>" href="/wallet?company=<%= encodeURIComponent(c.companyId) %><%= filterQS %>" style="--tint: <%= c.tint %>">
                 <span class="rwcard__badge"><%= c.initial %></span>
                 <span class="rwcard__name"><%= c.name %></span>
@@ -86,7 +100,9 @@
     <%# Transaction history %>
     <section class="wallet__history">
         <div class="wh-head">
-            <h2>History<% if (wallet_company && w.cards && w.cards.length) { var cc = w.cards.find(function (c) { return String(c.companyId) === String(wallet_company); }); if (cc) { %> · <span class="wh-scope"><%= cc.name %></span><% } } %></h2>
+            <%# wCards, not w.cards — the marketplace card is filtered out above,
+                so its name must not surface as a history scope label either. %>
+            <h2>History<% if (wallet_company && wCards.length) { var cc = wCards.find(function (c) { return String(c.companyId) === String(wallet_company); }); if (cc) { %> · <span class="wh-scope"><%= cc.name %></span><% } } %></h2>
             <div class="wh-tabs" role="tablist">
                 <% FILTERS.forEach(function (f) { %>
                 <a class="wh-tab<%= String(wallet_filter || '') === f[0] ? ' is-on' : '' %>" href="/wallet?filter=<%= f[0] %><%= companyQS %>"><%= f[1] %></a>

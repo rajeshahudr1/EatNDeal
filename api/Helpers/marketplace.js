@@ -237,6 +237,12 @@ const YII_FOLDERS = {
     // uploads tree (…/uploads/1/branch/branch_1_*.jpg) and cross-checked with
     // mailer.restaurantLogoUrl + StoreSettingsController's imgUrl('branch', …).
     logo:     'branch',
+    // Surprise Box ("Too Good To Go") photo. VERIFIED against the admin's own
+    // reader (Admin/StoreSettingsController imgUrl('surprise_image', …)) — the
+    // folder is `surprise_image`, matching the column name, NOT `discount`
+    // (which is what the `discount_<company>_<ts>.jpg` FILENAME suggests, and
+    // which 404s). The sibling discount_icon lives in `discount_logos`.
+    surprise: 'surprise_image',
 };
 function yiiImageUrl(type, companyId, filename) {
     const raw = String(filename || '').trim();
@@ -472,6 +478,28 @@ function eligibleBranchScope(qb, alias) {
 }
 
 /**
+ * companyIdBySlug
+ *
+ * What:  Resolve a public restaurant SLUG (e.g. "eatndeal1neutrovegcom") to its
+ *        company id, using the SAME rule the restaurant detail page uses:
+ *        slugify(domain_name), falling back to slugify(business_name, id).
+ *        Returns null when nothing matches / the company isn't eligible.
+ * Why:   Lets customer-facing URLs carry the slug instead of leaking the raw
+ *        numeric company id (e.g. /earn?restaurant=<slug>).
+ * Type:  READ.
+ */
+async function companyIdBySlug(slug) {
+    const want = String(slug || '').trim().toLowerCase();
+    if (!want) { return null; }
+    const { db } = require('../config/db');
+    const cands = await db('company as c')
+        .modify(eligibleCompanyScope, 'c')
+        .select('c.id', 'c.business_name', 'c.domain_name');
+    const hit = cands.find((c) => (c.domain_name ? slugify(c.domain_name) : slugify(c.business_name, c.id)) === want);
+    return hit ? hit.id : null;
+}
+
+/**
  * avgRatingSubq
  *
  * What:  Correlated subquery that yields a company's average published
@@ -632,6 +660,7 @@ module.exports = {
     normaliseName,
     eligibleCompanyScope,
     eligibleBranchScope,
+    companyIdBySlug,
     avgRatingSubq,
     loadActiveBranch,
     toRestaurantCard,

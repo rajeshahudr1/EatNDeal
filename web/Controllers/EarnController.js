@@ -23,11 +23,13 @@
 const { callApi } = require('../Helpers/apiClient');
 
 // Pull the review-types payload from the api (types when a restaurant is
-// chosen, else the restaurant picker). Never throws — renders empty on error.
-async function fetchReviewTypes(req, user, company) {
+// chosen, else the restaurant picker). `slug` is the PUBLIC restaurant slug —
+// the api resolves it to the company server-side, so the customer URL never
+// carries the numeric company id. Never throws — renders empty on error.
+async function fetchReviewTypes(req, user, slug) {
     try {
         const params = new URLSearchParams({ customer_id: String(user.id) });
-        if (company) { params.set('company_id', String(company)); }
+        if (slug) { params.set('slug', String(slug)); }
         const r = await callApi(req, 'GET', '/api/v1/customer/loyalty/review-types?' + params.toString());
         if (r && r.body && r.body.status === 200 && r.body.data) { return r.body.data; }
     } catch (e) { /* fall through to empty */ }
@@ -37,11 +39,13 @@ async function fetchReviewTypes(req, user, company) {
 // GET /earn — the full page (picker or per-restaurant types).
 async function earnPage(req, res) {
     const user = (req.session && req.session.user) || null;
-    const company = req.query.company ? String(req.query.company).replace(/[^0-9]/g, '') : '';
-    const back = '/earn' + (company ? '?company=' + encodeURIComponent(company) : '');
+    // Public URL carries the restaurant SLUG (/earn?restaurant=<slug>), never
+    // the numeric company id. Slug charset matches M.slugify's output.
+    const slug = req.query.restaurant ? String(req.query.restaurant).trim().toLowerCase().replace(/[^a-z0-9-]/g, '') : '';
+    const back = '/earn' + (slug ? '?restaurant=' + encodeURIComponent(slug) : '');
     if (!user) { return res.redirect('/signin?next=' + encodeURIComponent(back)); }
 
-    const data = await fetchReviewTypes(req, user, company);
+    const data = await fetchReviewTypes(req, user, slug);
 
     return res.render('earn/index', {
         page_title:       'Earn Cashback',
@@ -51,7 +55,8 @@ async function earnPage(req, res) {
         show_promo_strip: false,
         bare:             false,
         earn:             data,
-        earn_company:     company,
+        earn_company:     slug,          // truthy → render the per-restaurant view
+        earn_slug:        slug,
         earn_dining:      req.query.DiningMode ? String(req.query.DiningMode) : '',
     });
 }

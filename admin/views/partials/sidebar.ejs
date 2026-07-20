@@ -28,12 +28,21 @@
         <a class="admin-nav__item <%= nav === 'mp-categories' ? 'is-active' : '' %>" href="/marketplace-categories">
             <span class="admin-nav__ic" aria-hidden="true">🗂️</span><span>Marketplace Categories</span>
         </a>
-        <a class="admin-nav__item <%= nav === 'welcome-banner' ? 'is-active' : '' %>" href="/welcome-banner">
-            <span class="admin-nav__ic" aria-hidden="true">🎉</span><span>Welcome Banner</span>
-        </a>
-        <a class="admin-nav__item <%= nav === 'offer-banner' ? 'is-active' : '' %>" href="/offer-banner">
-            <span class="admin-nav__ic" aria-hidden="true">🎟️</span><span>Offer Banners</span>
-        </a>
+        <%# Banners — both home-page banner screens in one menu. %>
+        <details class="admin-nav__group" <%= ['welcome-banner', 'offer-banner'].includes(nav) ? 'open' : '' %>>
+            <summary class="admin-nav__item admin-nav__sum">
+                <span class="admin-nav__ic" aria-hidden="true">🖼️</span><span>Banners</span>
+                <span class="admin-nav__chev" aria-hidden="true">▸</span>
+            </summary>
+            <div class="admin-nav__sub">
+                <a class="admin-nav__item admin-nav__subitem <%= nav === 'welcome-banner' ? 'is-active' : '' %>" href="/welcome-banner">
+                    <span class="admin-nav__ic" aria-hidden="true">🎉</span><span>Welcome Banner</span>
+                </a>
+                <a class="admin-nav__item admin-nav__subitem <%= nav === 'offer-banner' ? 'is-active' : '' %>" href="/offer-banner">
+                    <span class="admin-nav__ic" aria-hidden="true">🎟️</span><span>Offer Banners</span>
+                </a>
+            </div>
+        </details>
         <%# Home Feed group — all marketplace home-feed merchandising in ONE
             menu (collections, featured restaurants, featured products …).
             Open when any child is active. %>
@@ -81,10 +90,60 @@
             </div>
         </details>
 
-        <%# Settings menu is fully HIDDEN per request — the whole group (incl.
-            Cashback Review, Loyalty Configuration, Review CMS Pages, Store
-            Settings) is removed from the sidebar. Their routes still work by
-            direct URL if needed (e.g. /loyalty/review-claims). %>
+        <%# Loyalty group — SUPER ADMIN ONLY, and it configures the MARKETPLACE's
+            own programme (company_id = 0) exclusively. A restaurant's loyalty is
+            configured in the legacy POS, never here, so a company login must not
+            see this at all: the gate is `isSuper`, NOT loyaltyOn (which is also
+            true for any company whose loyalty is switched on).
+
+            Hiding the menu isn't the permission — the routes are 404'd by
+            requireSuperPage (admin/index.js) and the api re-checks with
+            requireSuperAdmin. The controller pins every call to scope 0, so the
+            company switcher above is ignored on these screens.
+
+            Loyalty Configuration is ONE page: /loyalty/cashback-rules, /tiers,
+            /events, /bogof … all redirect to /loyalty (`toConfig`), where each
+            rule type is a section — so they'd all open the same screen and are
+            deliberately not separate items. Cashback Review + Review CMS Pages
+            are genuinely distinct pages, so they get their own rows. %>
+        <%# ══ DISABLED 2026-07-17 (user request) ═══════════════════════════
+            The whole Loyalty group — Loyalty Configuration, Reviews, Cashback
+            Review, Review CMS Pages — is switched OFF for now.
+
+            Turned off with `if (false)` rather than by wrapping it in an EJS
+            comment: the block contains EJS output tags, and an EJS comment ends
+            at the first closing tag inside it — which silently breaks the file.
+            Same pattern the Notifications item uses in web's header.ejs.
+
+            Hiding the menu is NOT the control: /loyalty* and /reviews* are 404'd
+            by the gate in admin/index.js, so typing the URL gets you nothing.
+            RESTORE: put `scc.isSuper` back below, and delete that gate.
+
+            The customer-facing loyalty (web /wallet, /earn, rewards) is
+            deliberately left running. %>
+        <% if (false) { %>
+        <details class="admin-nav__group" <%= ['loyalty', 'reviews', 'review-claims', 'cms'].includes(nav) ? 'open' : '' %>>
+            <summary class="admin-nav__item admin-nav__sum">
+                <span class="admin-nav__ic" aria-hidden="true">💷</span><span>Loyalty</span>
+                <span class="admin-nav__chev" aria-hidden="true">▸</span>
+            </summary>
+            <div class="admin-nav__sub">
+                <a class="admin-nav__item admin-nav__subitem <%= nav === 'loyalty' ? 'is-active' : '' %>" href="/loyalty">
+                    <span class="admin-nav__ic" aria-hidden="true">⚙️</span><span>Loyalty Configuration</span>
+                </a>
+                <a class="admin-nav__item admin-nav__subitem <%= nav === 'reviews' ? 'is-active' : '' %>" href="/reviews">
+                    <span class="admin-nav__ic" aria-hidden="true">⭐</span><span>Reviews</span>
+                </a>
+                <a class="admin-nav__item admin-nav__subitem <%= nav === 'review-claims' ? 'is-active' : '' %>" href="/loyalty/review-claims">
+                    <span class="admin-nav__ic" aria-hidden="true">💬</span><span>Cashback Review</span>
+                </a>
+                <a class="admin-nav__item admin-nav__subitem <%= nav === 'cms' ? 'is-active' : '' %>" href="/loyalty/cms-pages">
+                    <span class="admin-nav__ic" aria-hidden="true">📝</span><span>Review CMS Pages</span>
+                </a>
+            </div>
+        </details>
+        <% } %>
+        <%# ══ end of the disabled Loyalty group ═════════════════════════ %>
     </nav>
     <%# Sign out lives in the topbar account menu — not duplicated here. %>
 </aside>

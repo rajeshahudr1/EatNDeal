@@ -15,6 +15,7 @@
  */
 
 const Joi = require('joi');
+const C = require('./common');
 
 // Reusable, friendly-message field builders. Every editable column the form
 // posts is validated server-side here; toggles / enums / select-driven fields
@@ -46,11 +47,14 @@ const storeSettingsSchema = Joi.object({
     company_id: Joi.number().integer().positive().optional().allow('', null),
     branch_id:  Joi.number().integer().positive().optional().allow('', null),
     // Contact + identity
-    email: Joi.string().trim().email({ tlds: false }).max(255).optional().allow('', null).messages({
-        'string.email': 'Enter a valid store email address.',
+    // Shared rules — same definition of a valid email / phone as everywhere
+    // else, with this screen's wording. The old phone rule was
+    // /^[0-9+\-() ]{0,15}$/, which accepted "(" as a contact number.
+    email: C.emailRule.optional().allow('', null).messages({
+        'email.invalid': 'Enter a valid store email address.',
     }),
-    contact_number: Joi.string().trim().pattern(/^[0-9+\-() ]{0,15}$/).allow('', null).messages({
-        'string.pattern.base': 'Enter a valid contact number (digits only, max 15).',
+    contact_number: C.mobileRule.allow('', null).messages({
+        'mobile.invalid': 'Enter a valid contact number (11-15 digits).',
     }),
     branch_info:           text(5000, 'Store information'),
     thirdparty_print_text: text(1000, 'Third-party print text'),

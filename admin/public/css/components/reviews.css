@@ -1,0 +1,167 @@
+/*
+ * components/reviews.css — the super-admin marketplace Reviews page.
+ *
+ * Summary band (average + 5..1 bars), the review cards with their reply box +
+ * Publish toggle, and the Add Review modal. Mirrors the legacy POS page's
+ * layout and its orange star/bar accent (#ff7a00), restyled to the admin shell.
+ * Reuses .ly-* (loyalty.css) for buttons and empty states — only review-specific
+ * rules live here.
+ */
+
+/* ── Summary band ─────────────────────────────────────────────────── */
+.rv-summary {
+    display: flex;
+    gap: 24px;
+    align-items: center;
+    padding: 20px;
+    margin-bottom: 18px;
+    background: var(--admin-card, #fff);
+    border: 1px solid var(--admin-line, #e6e8ee);
+    border-radius: 12px;
+}
+.rv-summary__avg  { flex: 0 0 200px; text-align: center; }
+.rv-summary__bars { flex: 1 1 auto; min-width: 0; }
+
+.rv-avg {
+    margin: 0;
+    font-size: 56px;
+    line-height: 1.05;
+    font-weight: 700;
+    color: var(--admin-text, #1b2032);
+}
+.rv-count { margin: 6px 0 0; color: var(--admin-muted, #6b7280); font-size: 13px; }
+.rv-note  { margin: 8px 0 0; font-size: 12px; color: var(--admin-muted, #6b7280); }
+
+.rv-stars { display: inline-flex; gap: 2px; font-size: 20px; line-height: 1; }
+.rv-stars--sm { font-size: 14px; }
+.rv-star { color: #ddd; }
+.rv-star.is-full { color: #ff7a00; }
+/* Half star: an orange left half over the grey glyph. */
+.rv-star.is-half {
+    position: relative;
+    color: #ddd;
+}
+.rv-star.is-half::before {
+    content: '★';
+    position: absolute;
+    left: 0; top: 0;
+    width: 50%;
+    overflow: hidden;
+    color: #ff7a00;
+}
+
+.rv-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+.rv-bar__label { flex: 0 0 34px; font-size: 12px; color: var(--admin-muted, #6b7280); }
+.rv-bar__track {
+    flex: 1 1 auto;
+    height: 8px;
+    background: #eef0f4;
+    border-radius: 99px;
+    overflow: hidden;
+}
+.rv-bar__fill { display: block; height: 100%; background: #ff7a00; border-radius: 99px; }
+.rv-bar__n { flex: 0 0 28px; text-align: right; font-size: 12px; color: var(--admin-muted, #6b7280); }
+
+/* "Showing 1 of 4 reviews" — only rendered while a filter is on. Quiet, since
+   it's a status line and not a heading. */
+.rv-showing { margin: 12px 0 0; font-size: 13px; color: var(--admin-muted, #6b7280); }
+
+/* ── Review cards ─────────────────────────────────────────────────── */
+.rv-list { display: grid; gap: 12px; }
+.rv-card {
+    padding: 16px;
+    background: var(--admin-card, #fff);
+    border: 1px solid var(--admin-line, #e6e8ee);
+    border-radius: 12px;
+}
+/* Unpublished — visibly de-emphasised, since it isn't live to customers. */
+.rv-card.is-hidden { opacity: .62; border-style: dashed; }
+
+.rv-card__head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
+.rv-card__name { margin: 0 0 4px; font-size: 15px; font-weight: 600; }
+.rv-card__meta { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.rv-card__text { margin: 10px 0 0; color: var(--admin-text, #1b2032); line-height: 1.5; }
+.rv-date { font-size: 12px; color: var(--admin-muted, #6b7280); }
+.rv-tag {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 99px;
+    background: #eef2ff;
+    color: #3730a3;
+    white-space: nowrap;
+}
+
+/* ── Reply + publish ──────────────────────────────────────────────── */
+.rv-reply { margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--admin-line, #e6e8ee); }
+.rv-reply__label { display: block; font-size: 12px; font-weight: 600; margin-bottom: 4px; }
+.rv-reply__box {
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid var(--admin-line, #e6e8ee);
+    border-radius: 8px;
+    font: inherit;
+    resize: vertical;
+}
+.rv-reply__hint { margin: 4px 0 8px; font-size: 11px; color: var(--admin-muted, #6b7280); }
+.rv-reply__row { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.rv-switch { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; }
+
+/* ── Add Review modal ─────────────────────────────────────────────── */
+.rv-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    background: rgba(17, 20, 32, .55);
+}
+.rv-modal[hidden] { display: none; }
+.rv-modal__box {
+    width: 100%;
+    max-width: 460px;
+    background: var(--admin-card, #fff);
+    border-radius: 14px;
+    box-shadow: 0 18px 48px rgba(0, 0, 0, .28);
+    overflow: hidden;
+}
+.rv-modal__head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--admin-line, #e6e8ee);
+}
+.rv-modal__title { margin: 0; font-size: 16px; font-weight: 600; }
+.rv-modal__x {
+    border: 0;
+    background: none;
+    font-size: 22px;
+    line-height: 1;
+    cursor: pointer;
+    color: var(--admin-muted, #6b7280);
+}
+.rv-modal__body { padding: 16px; }
+.rv-field { margin-bottom: 12px; }
+.rv-input {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--admin-line, #e6e8ee);
+    border-radius: 8px;
+    font: inherit;
+    background: #fff;
+}
+.rv-input:focus { outline: 2px solid #ff7a00; outline-offset: 1px; }
+textarea.rv-input { resize: vertical; }
+.rv-modal__foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
+
+/* ── Mobile ───────────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+    .rv-summary { flex-direction: column; gap: 16px; align-items: stretch; }
+    .rv-summary__avg { flex: 1 1 auto; }
+    .rv-avg { font-size: 44px; }
+    .rv-card__head { flex-direction: column; }
+    .rv-card__meta { align-self: flex-start; }
+    .rv-reply__row { flex-direction: column; align-items: stretch; gap: 8px; }
+}

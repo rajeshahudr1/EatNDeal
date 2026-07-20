@@ -437,10 +437,14 @@ async function recomputeTotals(cartId) {
     const hasRedeemCol = await hasUsedCashbackCol();
     let usedCashback = hasRedeemCol ? (Number(cart.used_cashback) || 0) : 0;
     if (hasRedeemCol && usedCashback > 0) {
-        const cap = await require('./loyalty').maxRedeemable({
+        // Cap against BOTH pools the customer can spend here — this restaurant's
+        // cashback AND their EatNDeal marketplace cashback (company_id = 0).
+        // Capping on the restaurant pool alone would silently shrink a redeem
+        // that legitimately drew on the marketplace balance too.
+        const pools = await require('./loyalty').redeemPoolsFor({
             customerId: cart.user_id, companyId: cart.company_id, subTotal,
         });
-        usedCashback = round2(Math.max(0, Math.min(usedCashback, cap, Math.max(0, beforeRedeem))));
+        usedCashback = round2(Math.max(0, Math.min(usedCashback, pools.combined, Math.max(0, beforeRedeem))));
     }
 
     const grandtotal = round2(Math.max(0, beforeRedeem - usedCashback));
@@ -550,6 +554,70 @@ function formatScheduledTime(preOrderTime, isPreOrder) {
  *
  * Type:  WRITE.
  */
+/**
+ * addSurpriseItem
+ *
+ * What:  Puts the branch's Surprise Box into the cart as a VIRTUAL line —
+ *        product_id = 0, remark = 'TGTG', is_surprise_item = 1. Ported from
+ *        legacy ToogoodtogoController::actionAddToCart (:250-274).
+ * Why:   The box has no `products` row (it's configured on `branch`), so
+ *        addItem — which starts from a product — can't express it. Kept apart
+ *        from addItem rather than bolted on, because the two share no lookups:
+ *        no category link, no modifier options, no product row.
+ *
+ *        is_surprise_item = 1 is what makes the slot COUNT: remaining is
+ *        branch.qty minus these rows (Helpers/surpriseBox). Never insert a box
+ *        line without it or the branch oversells.
+ * Type:  WRITE.
+ */
+async function addSurpriseItem({ cartId, branch, qty, unitPrice }) {
+    const n    = Math.max(1, Number(qty) || 1);
+    const unit = round2(Number(unitPrice) || 0);
+
+    // product_price / product_net_price hold the UNIT price here, NOT the line
+    // total — that is THIS schema's convention (see addItem below, and
+    // loadLineItems, which multiplies by product_qty to get the line).
+    // Legacy stores `price * quantity` in the same column
+    // (ToogoodtogoController.php:257-259) because its reader treats the column
+    // as a line total. Porting that maths verbatim double-counted: a £2.99 box
+    // × 2 showed £11.96 instead of £5.98 — the customer charged twice over.
+    // Convention differs between the two apps; the VALUE must match the reader.
+
+    // One box line per cart — a second Add tops up the existing row rather
+    // than stacking duplicates the customer then has to remove one by one.
+    const existing = await db('cart_details')
+        .where({ cart_id: cartId, is_surprise_item: 1, is_deleted: 0 })
+        .first('id', 'product_qty');
+
+    if (existing) {
+        const newQty = (Number(existing.product_qty) || 0) + n;
+        await db('cart_details').where({ id: existing.id }).update({
+            product_qty:       newQty,
+            product_price:     unit,
+            product_net_price: unit,
+        });
+        return { id: existing.id, product_qty: newQty };
+    }
+
+    const [item] = await db('cart_details').insert({
+        cart_id:           cartId,
+        product_id:        0,                       // virtual — no products row
+        product_name:      String(branch.product_name || 'Surprise Box'),
+        product_price:     unit,                    // UNIT price — see note above
+        product_qty:       n,
+        product_net_price: unit,
+        category_id:       null,
+        company_id:        branch.company_id,
+        remark:            'TGTG',                  // legacy's marker for these lines
+        is_surprise_item:  1,
+        is_deleted:        0,
+        sync:              0,
+        is_send_kitchen:   0,
+        created_at:        db.fn.now(),
+    }).returning('*');
+    return item;
+}
+
 async function addItem({ cartId, product, qty, options, unitPrice, remark }) {
     // category_id is informational (used by legacy reports). Pick the
     // first active link; null when the product isn't categorised yet.
@@ -791,16 +859,24 @@ async function ensureDefaultDeliveryAddress(cartId, customerId, branch, browse) 
     if (bpc) {
         if (!cur) { await applyBrowse(); return; }            // empty → take the header pick
         if (norm(cur) === norm(bpc)) { return; }              // already the header pick → nothing to do
-        // The cart carries a DIFFERENT postcode. Only override it when it's the
-        // auto-applied DEFAULT saved address (so we don't clobber a delivery
-        // address the customer deliberately chose at checkout). If it matches
-        // their default, it was auto-attached → replace with the header pick.
-        if (customerId) {
-            const def = await db('customer_address')
-                .where({ customer_id: customerId, status: 1, is_default: 1 })
-                .first();
-            if (def && norm(def.post_code) === norm(cur)) { await applyBrowse(); }
-        }
+
+        // The cart carries a DIFFERENT postcode. KEEP it only when it's an
+        // address the customer DELIBERATELY picked at checkout — i.e. one of
+        // their SAVED addresses that isn't merely the auto-attached default.
+        //
+        // Anything else is a LEFTOVER from an earlier header location, and must
+        // follow the location shown at the top of the site. Without this, a
+        // customer who changes their location still gets "doesn't deliver to
+        // <old postcode>" forever, because the stale value never matched their
+        // default and so was never replaced.
+        if (!customerId) { await applyBrowse(); return; }     // guest → no address book to protect
+        const saved = await db('customer_address')
+            .where({ customer_id: customerId, status: 1 })
+            .select('post_code', 'is_default');
+        const hit = saved.find((a) => norm(a.post_code) === norm(cur));
+        // non-default saved address ⇒ an explicit checkout pick ⇒ leave it alone
+        const deliberate = !!hit && Number(hit.is_default) !== 1;
+        if (!deliberate) { await applyBrowse(); }
         return;
     }
 
@@ -969,6 +1045,12 @@ async function setCoupon(cartId, coupon, discount, freeDelivery) {
         free_delivery: freeDelivery ? 1 : 0,
     };
     if (freeDelivery) { patch.delivery_fees = 0; }
+    // ONE discount per order — cashback is the third member of that set, so a
+    // coupon drops it exactly as it drops a voucher. Legacy blocks the pairing
+    // at the checkout screen (checkout.php:2580) but can't clear it, because
+    // there cashback lives on the POST, not the cart; ours does, so it must be
+    // released here or the customer would silently pay both ways.
+    if (await hasUsedCashbackCol()) { patch.used_cashback = 0; }
     await db('cart').where({ id: cartId }).update(patch);
 }
 
@@ -1016,14 +1098,17 @@ async function clearCoupon(cartId, branch) {
  */
 async function setVoucher(cartId, voucher, discount) {
     if (!cartId || !voucher) { return; }
-    await db('cart').where({ id: cartId }).update({
+    const patch = {
         voucher_id:    voucher.id,
         coupon_id:     0,                 // voucher + coupon are mutually exclusive
         discount_id:   0,                 // clears any active auto-discount
         promocode:     voucher.code || null,
         discount:      round2(discount),
         free_delivery: 0,                 // vouchers don't waive delivery
-    });
+    };
+    // …and so is cashback — one discount per order. See setCoupon above.
+    if (await hasUsedCashbackCol()) { patch.used_cashback = 0; }
+    await db('cart').where({ id: cartId }).update(patch);
 }
 
 /**
@@ -1191,6 +1276,11 @@ function publicCartView(cart, items, opts) {
         // restaurant is closed-now + accepts pre-orders + has slots (legacy
         // parity). Open restaurants are ASAP-only (no schedule card).
         canSchedule:      !!(opts && opts.canSchedule),
+        // Where the redeemable reward comes from — this restaurant's own pool vs
+        // the EatNDeal marketplace pool. rewardMax/rewardBalance above are the
+        // COMBINED figures (both are spendable on one order); this is the split
+        // so the UI can show "£X from <restaurant> + £Y from EatNDeal".
+        rewardPools:      (opts && opts.rewardPools) || { restaurant: 0, marketplace: 0, combined: 0 },
         subTotal:         Number(cart.sub_total)      || 0,
         bagCharge:        Number(cart.bag_charge)     || 0,
         deliveryFees:     Number(cart.delivery_fees)  || 0,
@@ -1286,6 +1376,10 @@ module.exports = {
     recomputeTotals,
     repriceCart,
     addItem,
+    // Surprise Box ("Too Good To Go") — a VIRTUAL line (product_id = 0,
+    // is_surprise_item = 1). The flag is what decrements the branch's daily
+    // allowance; see Helpers/surpriseBox.
+    addSurpriseItem,
     closeCart,
     loadOwnedLineItem,
     updateLineQty,

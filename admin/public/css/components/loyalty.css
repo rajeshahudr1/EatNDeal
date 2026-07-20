@@ -152,6 +152,37 @@
 .rc-reason { margin-top: 8px; font-size: 0.84rem; color: #991b1b; }
 .rc-actions { display: flex; gap: 8px; margin-top: 12px; }
 .rc-rejectform { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; align-items: center; }
+/* Reject reason is a labelled textarea (rows=4), like legacy — so it needs the
+   full row rather than sitting inline with the buttons. */
+.rc-rejectform .rc-input { flex: 1 1 100%; resize: vertical; }
+.rc-reject__label { flex: 1 1 100%; font-size: 12px; font-weight: 600; margin-bottom: -2px; }
+
+/* Approve confirmation dialog — asks before granting real cashback. */
+.rc-confirm {
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    background: rgba(17, 20, 32, .55);
+}
+.rc-confirm[hidden] { display: none; }
+.rc-confirm__box {
+    width: 100%;
+    max-width: 400px;
+    padding: 20px;
+    background: #fff;
+    border-radius: 14px;
+    box-shadow: 0 18px 48px rgba(0, 0, 0, .28);
+    text-align: center;
+}
+.rc-confirm__title  { margin: 0 0 8px; font-size: 17px; font-weight: 700; }
+.rc-confirm__msg    { margin: 0; color: var(--color-muted, #6b7280); }
+.rc-confirm__reward { margin: 10px 0 0; font-size: 13px; font-weight: 600; color: #166534; }
+.rc-confirm__reward[hidden] { display: none; }
+.rc-confirm__foot   { display: flex; justify-content: center; gap: 8px; margin-top: 18px; }
 .rc-rejectform .rc-input { flex: 1; min-width: 180px; }
 
 /* ── Segments ───────────────────────────────────────────────────────── */
@@ -319,7 +350,17 @@
 /* Editor shell */
 .cms-editor { border: 1px solid var(--color-border); border-radius: 12px; overflow: hidden; background: #fff; }
 .cms-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 8px; border-bottom: 1px solid var(--color-border); background: var(--color-bg-alt); }
-.cms-tb__sel { height: 32px; border: 1px solid var(--color-border); border-radius: 8px; background: #fff; font: inherit; font-size: 0.82rem; padding: 0 6px; cursor: pointer; }
+/* `.cms-toolbar` prefix, NOT a bare `.cms-tb__sel`: the general `.ly-field
+   select` rule (0,2,0) outranks a single class and forced padding: 11px onto
+   this 32px-tall box, so the selected option's text was clipped to a sliver.
+   Matching that specificity + coming later in the file lets these values win;
+   `height: auto` + line-height then size to the text instead of cropping it. */
+.cms-toolbar .cms-tb__sel {
+    height: auto; min-height: 34px; line-height: 1.4;
+    width: auto; max-width: none; min-width: 130px;
+    border: 1px solid var(--color-border); border-radius: 8px; background: #fff;
+    font: inherit; font-size: 0.82rem; padding: 4px 26px 4px 10px; cursor: pointer;
+}
 .cms-tb__btn { min-width: 32px; height: 32px; padding: 0 8px; border: 1px solid transparent; background: transparent; border-radius: 8px; cursor: pointer; font-size: 0.85rem; color: var(--color-text); display: inline-flex; align-items: center; justify-content: center; }
 .cms-tb__btn:hover { background: #fff; border-color: var(--color-border); }
 .cms-tb__btn.is-on { background: var(--color-primary-soft); border-color: var(--color-primary); color: var(--color-primary); }
@@ -374,3 +415,165 @@
 .rc-shot img { width: 132px; height: 132px; object-fit: cover; display: block; }
 .rc-shot:hover { border-color: var(--color-primary); }
 .rc-shot__zoom { position: absolute; right: 6px; bottom: 6px; background: rgba(0, 0, 0, .6); color: #fff; border-radius: 6px; font-size: 0.78rem; padding: 2px 6px; line-height: 1.3; }
+
+/* Section head: title + sub stacked on the left, toggle/+Add on the right
+   — matches the legacy POS loyalty-configuration layout. */
+.ly-card__headtxt { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ly-card__sub { margin: 0; font-size: .8rem; color: var(--color-muted, #6b7280); font-weight: 400; }
+/* Top bar: the 5 legacy fields in one row, wrapping on small screens. */
+.ly-grid--top { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (max-width: 1100px) { .ly-grid--top { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 700px)  { .ly-grid--top { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* Top-bar info icon + tooltip — mirrors the legacy POS page, which puts a
+   blue (i) beside 4 of the 5 header fields (Notify Before has none there,
+   so it has none here). CSS-only: no tooltip lib in this console. */
+.ly-info {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 15px; height: 15px; margin-left: 2px;
+    border-radius: 50%; background: var(--color-primary, #2563eb); color: #fff;
+    font-size: 10px; font-weight: 700; font-style: italic; line-height: 1;
+    cursor: help; position: relative; vertical-align: middle;
+}
+.ly-info::after {
+    content: attr(data-tip);
+    position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%);
+    width: max-content; max-width: 230px; padding: 8px 10px;
+    background: #1b2032; color: #fff; border-radius: 8px;
+    font: 400 0.78rem/1.35 inherit; font-style: normal; text-align: center;
+    opacity: 0; visibility: hidden; transition: opacity .12s ease; z-index: 30; pointer-events: none;
+}
+/* Little arrow under the bubble. */
+.ly-info::before {
+    content: ""; position: absolute; bottom: calc(100% + 3px); left: 50%; transform: translateX(-50%);
+    border: 5px solid transparent; border-top-color: #1b2032;
+    opacity: 0; visibility: hidden; transition: opacity .12s ease; z-index: 30;
+}
+.ly-info:hover::after, .ly-info:focus::after,
+.ly-info:hover::before, .ly-info:focus::before { opacity: 1; visibility: visible; }
+
+/* Unit shown AFTER the input (legacy puts % / £ on the right). */
+.ly-money--suffix { display: flex; align-items: stretch; }
+.ly-money--suffix input { flex: 1; border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.ly-money--suffix .ly-money__sym {
+    /* MUST reset position + left: the base .ly-money__sym is
+       `position:absolute; left:12px` (a PREFIX sitting inside the input's
+       padding). Without these two lines the suffix box stayed absolutely
+       positioned and rendered ON TOP of the input, hiding the value. */
+    position: static;
+    left: auto;
+    display: inline-flex; align-items: center; padding: 0 12px;
+    border: 1.5px solid var(--color-border); border-left: 0;
+    border-radius: 0 10px 10px 0; background: var(--color-bg-alt, #f8fafc);
+    color: var(--color-text-muted); font-size: .88rem;
+}
+/* The base rule pads the input for the absolute prefix — a suffix needs none. */
+.ly-money--suffix input { padding-left: 12px; }
+
+/* ── Loyalty Configuration: legacy-shaped tables ─────────────────────
+   The legacy POS page renders every section as a <table> with fixed column
+   headers. Two flavours here:
+     .ly-ftbl  — a real <table> for the FIXED sections (1/3/6/9/10).
+     .ly-tbl   — a CSS-grid stand-in for the ADD-ABLE sections (2/4/5/7/8).
+   The grid version exists because loyalty.js clones [data-row-template] with
+   `div.innerHTML = tpl.innerHTML`, and the HTML parser drops a bare <tr>
+   inside a <div> — so those rows can't be real table rows. Both are styled to
+   read as the same table. */
+.ly-ftbl { width: 100%; border-collapse: collapse; margin-top: 14px; }
+/* Legacy prints plain, readable Title-Case headers ("Min Order Amount") in the
+   normal text colour. Ours were 0.76rem UPPERCASE in --color-text-soft, which
+   both shouted and disappeared. Match legacy: same case as authored, full size,
+   normal text colour. */
+.ly-ftbl th {
+    text-align: left; padding: 10px 10px; font-size: 0.95rem; font-weight: 700;
+    color: var(--color-text); border-bottom: 1px solid var(--color-border);
+    white-space: nowrap;
+}
+.ly-ftbl td { padding: 9px 10px; border-bottom: 1px solid var(--color-border); vertical-align: middle; font-size: 0.9rem; }
+/* These tables put inputs straight in a <td>, NOT inside a .ly-field — so they
+   matched no rule and fell back to the BROWSER DEFAULT (a hard black 2px
+   border). Give them the same look every other input on the page has. */
+.ly-ftbl input[type="number"],
+.ly-ftbl input[type="text"],
+.ly-ftbl input[type="date"],
+.ly-ftbl select {
+    box-sizing: border-box;
+    border: 1.5px solid var(--color-border); border-radius: 10px;
+    padding: 11px 12px; font: inherit; font-size: 0.92rem;
+    background: #fff; color: var(--color-text);
+    max-width: 260px; width: 100%;
+}
+.ly-ftbl input:focus, .ly-ftbl select:focus {
+    outline: none; border-color: var(--color-primary);
+    box-shadow: 0 0 0 4px var(--color-primary-soft);
+}
+/* Sized like legacy's — a normal money box, not a control stretched across the
+   whole column. Without a cap the flex `input` filled the full <td> (~700px)
+   and the £/% suffix ended up marooned at the far right. */
+.ly-ftbl .ly-money,
+.ly-ftbl .ly-money--suffix { max-width: 260px; }
+/* The Event / Trigger selects read better a touch wider. */
+.ly-ftbl select { min-width: 180px; }
+.ly-ftbl tr:last-child td { border-bottom: 0; }
+.ly-ftbl input[type="number"], .ly-ftbl input[type="text"], .ly-ftbl select { width: 100%; }
+.ly-ftbl__mid { text-align: center; }
+.ly-ftbl__mid .ly-cbox { width: 18px; height: 18px; accent-color: var(--color-primary); cursor: pointer; }
+
+/* Gold's Max Amount is the bare word "Above" in the legacy table — not the
+   dashed placeholder box the old tier CARDS used, so it's plain here. */
+.ly-ftbl .ly-tier-above { display: inline; padding: 0; border: 0; background: none; color: var(--color-text); }
+
+/* Read-only unit box (legacy's £ column on Referral / event rows). */
+.ly-unitbox { max-width: 70px; background: var(--color-bg-alt, #f8fafc); text-align: center; font-weight: 700; }
+
+/* Grid "table" for the add-able sections. The head row carries the legacy
+   column names; the rows repeat the same tracks so cells line up under them.
+   Row labels stay in the markup (screen readers + the mobile stack) and are
+   hidden on desktop, where the head row already names each column. */
+.ly-tbl { display: flex; flex-direction: column; gap: 10px; margin-top: 14px; }
+/* Same as .ly-ftbl th — the two must read identically, since some sections use
+   a real <table> and the add-able ones use this grid (see the note above). */
+.ly-tbl__head {
+    display: grid; gap: 10px; padding: 0 12px 10px;
+    border-bottom: 1px solid var(--color-border);
+    font-size: 0.95rem; font-weight: 700; color: var(--color-text);
+}
+.ly-tbl .ly-erow { display: grid; gap: 10px; align-items: end; }
+.ly-tbl .ly-erow .ly-field { flex: none; min-width: 0; }
+.ly-tbl .ly-erow .ly-field > label { display: none; }
+.ly-tbl .ly-erow__del { align-self: end; justify-self: start; }
+
+/* Per-section column tracks — same order as the legacy column headers. */
+.ly-tbl--stamp   .ly-tbl__head, .ly-tbl--stamp   .ly-erow { grid-template-columns: 1fr 1fr 150px 130px 56px; }
+.ly-tbl--product .ly-tbl__head, .ly-tbl--product .ly-erow { grid-template-columns: 1fr 200px 56px; }
+.ly-tbl--streak  .ly-tbl__head, .ly-tbl--streak  .ly-erow { grid-template-columns: 130px 150px 180px 1fr 56px; }
+.ly-tbl--bogof   .ly-tbl__head, .ly-tbl--bogof   .ly-erow { grid-template-columns: 100px 100px 160px 1fr 56px; }
+.ly-tbl--special .ly-tbl__head, .ly-tbl--special .ly-erow { grid-template-columns: 220px 1fr 56px; }
+
+/* Number + unit-select pair (legacy Celebration / Inactive cashback cell). */
+.ly-inputpair { display: flex; align-items: stretch; }
+.ly-inputpair input { flex: 1; min-width: 0; border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.ly-inputpair .ly-unitsel { max-width: 70px; border-top-left-radius: 0; border-bottom-left-radius: 0; margin-left: -1px; }
+
+/* BOGO "Buy & Get Items": legacy swaps one list for the other; both are shown
+   here (see the view's note) so each needs its own small caption. */
+.ly-bogo-items__pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.ly-bogo-items__cap { display: block; margin-bottom: 3px; font-size: 0.72rem; font-weight: 700; color: var(--color-text-soft); }
+
+/* Mobile: drop the head row, stack each row's fields and bring their labels
+   back — a 5-column grid is unreadable on a phone. */
+@media (max-width: 900px) {
+    .ly-tbl__head { display: none; }
+    .ly-tbl .ly-erow { display: flex; flex-wrap: wrap; align-items: flex-end; }
+    .ly-tbl .ly-erow .ly-field { flex: 1 1 100%; }
+    .ly-tbl .ly-erow .ly-field > label { display: block; }
+    .ly-bogo-items__pair { grid-template-columns: 1fr; }
+    .ly-ftbl th, .ly-ftbl td { padding: 7px 6px; font-size: 0.84rem; }
+}
+
+/* A plain unit marker (£/%) shown in a table cell where the value_type is
+   fixed — not an input. Replaces a readonly text box that looked empty. */
+.ly-unit { display: inline-flex; align-items: center; justify-content: center;
+    min-width: 40px; height: 40px; padding: 0 12px; border-radius: 10px;
+    background: var(--color-bg-alt, #f8fafc); color: var(--color-text-muted);
+    font-weight: 700; font-size: 0.95rem; }

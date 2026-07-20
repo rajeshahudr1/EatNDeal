@@ -558,9 +558,11 @@
         var contactEl = form.querySelector('[data-af-contact]');
         var dialEl    = form.querySelector('[data-af-dial]');
         var rawNum    = contactEl ? contactEl.value.replace(/\D/g, '') : '';
-        if (rawNum && (rawNum.length < 6 || rawNum.length > 15)) {
-            setFormError('Please enter a valid contact number (6–15 digits).');
-            toast('error', 'Please enter a valid contact number (6–15 digits).');
+        // Legacy's rule, /^[0-9]{11,15}$/ (webordering custom.js:696) — the same
+        // one the api enforces in Validators/common.mobileRule.
+        if (rawNum && !/^[0-9]{11,15}$/.test(rawNum)) {
+            setFormError('Please enter a valid phone number (11-15 digits).');
+            toast('error', 'Please enter a valid phone number (11-15 digits).');
             if (contactEl) { contactEl.focus(); }
             return;
         }
@@ -661,6 +663,12 @@
     // The number can only change once the NEW number is OTP-verified, so a
     // customer's loyalty (which follows their mobile) can never be pointed at
     // someone else's number. Read the current picker + input each time.
+    // A 401 here means the session no longer resolves to a customer, so there
+    // is nothing to retry — send them to sign in rather than toast an error
+    // they can do nothing about.
+    function bounceToSignin() {
+        window.location.href = '/signin?next=' + encodeURIComponent('/account');
+    }
     function readNewPhone() {
         var dialEl = hiddenDial || document.getElementById('account-country-dial');
         var mobEl  = phoneInput || document.getElementById('pf-mobile');
@@ -684,6 +692,7 @@
         }).then(function (r) { return r.json().catch(function () { return null; }); })
           .then(function (env) {
               if (btn) { btn.disabled = false; setBtnLabel(btn, 'Resend code'); }
+              if (env && env.status === 401) { bounceToSignin(); return; }
               if (!env || env.status !== 200) { toast('error', (env && env.msg) || 'Could not send the code.'); return; }
               var row = lock.querySelector('[data-phone-otp-row]');
               if (row) { row.hidden = false; var inp = row.querySelector('[data-phone-otp-input]'); if (inp) { inp.value = ''; inp.focus(); } }
@@ -709,6 +718,7 @@
             body: JSON.stringify({ country_dial: f.country_dial, mobile: f.mobile, otp: otp }),
         }).then(function (r) { return r.json().catch(function () { return null; }); })
           .then(function (env) {
+              if (env && env.status === 401) { bounceToSignin(); return; }
               if (!env || env.status !== 200) {
                   if (btn) { btn.disabled = false; btn.textContent = 'Verify & save'; }
                   toast('error', (env && env.msg) || 'The code is incorrect or has expired.');

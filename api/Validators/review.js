@@ -52,12 +52,40 @@ const listReviewsSchema = Joi.object({
 // Customer submits a screenshot of an external review for cashback.
 const cashbackReviewSchema = Joi.object({
     customer_id: idRule.required().messages({ 'any.required': 'Customer id is required.' }),
-    company_id:  idRule.required().messages({ 'any.required': 'Restaurant id is required.' }),
-    review_type: Joi.number().integer().valid(1, 2).default(1),
+    // min(0), NOT idRule/positive: 0 is the MARKETPLACE's own earn page
+    // (EatNDeal itself), a valid scope with no `company` row. positive()
+    // rejected it, so no claim could ever be submitted from there.
+    company_id: Joi.number().integer().min(0).required()
+        .messages({ 'any.required': 'Restaurant id is required.' }),
+    // All EIGHT types the earn page offers (Helpers/constants REVIEW_TYPES) —
+    // this allowed only 1 and 2, so Transfer Your Loyalty / Facebook / TikTok /
+    // Instagram / Live Video / Whatsapp were rejected at the door even though
+    // the page renders a Submit button for each.
+    review_type: Joi.number().integer().valid(1, 2, 3, 4, 5, 6, 7, 8).default(1),
     notes:       Joi.string().trim().max(1000).allow('', null),
-    photo:       Joi.string().trim().pattern(/^\/[\w./-]{1,200}$/).allow('', null).messages({
-        'string.pattern.base': 'Photo path is not valid.',
+    // `photo` now carries ONLY a Live-Video URL (or empty). Screenshots come as
+    // base64 in image_data and are routed server-side (Helpers/imageUpload).
+    photo:       Joi.string().trim().max(500).allow('', null),
+    image_data:  Joi.string().base64().max(8 * 1024 * 1024).allow('', null),   // ~6 MB image
+    image_name:  Joi.string().trim().max(200).allow('', null),
+});
+
+// ── POST /customer/site-review ─────────────────────────────────────
+// The customer reviews EATNDEAL ITSELF (marketplace, company_id = 0) — not a
+// restaurant, so there's no company_id and no order_id to send. Lands PENDING;
+// the super admin publishes it.
+const siteReviewSchema = Joi.object({
+    customer_id: idRule.required().messages({ 'any.required': 'Customer id is required.' }),
+    rating: Joi.number().integer().min(1).max(5).required().messages({
+        'number.base':  'Please choose a rating between 1 and 5 stars.',
+        'number.min':   'Please choose a rating between 1 and 5 stars.',
+        'number.max':   'Please choose a rating between 1 and 5 stars.',
+        'any.required': 'Please choose a rating between 1 and 5 stars.',
+    }),
+    review: Joi.string().trim().min(1).max(2000).required().messages({
+        'string.empty': 'Please write your review.',
+        'any.required': 'Please write your review.',
     }),
 });
 
-module.exports = { submitReviewSchema, listReviewsSchema, cashbackReviewSchema };
+module.exports = { submitReviewSchema, listReviewsSchema, cashbackReviewSchema, siteReviewSchema };

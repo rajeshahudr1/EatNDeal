@@ -248,8 +248,91 @@
             <div class="rd-surprise__price">
                 <% if (sb.price && sb.price > sb.discountPrice) { %><span class="rd-surprise__was"><%= sym %><%= sb.price.toFixed(2) %></span><% } %>
                 <span class="rd-surprise__now"><%= sym %><%= (sb.discountPrice || 0).toFixed(2) %></span>
+                <%# The box was display-only — no way to actually buy it, unlike
+                    the legacy site. Hidden when today's slots are gone. %>
+                <% if (sb.qty > 0) { %>
+                <button type="button" class="rd-surprise__cta" data-sb-open>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                    View &amp; Add to Cart
+                </button>
+                <% } %>
             </div>
         </section>
+
+        <%# Surprise Box detail popup — opened by the CTA above. Server-rendered
+            (no fetch): every field is already on the page. %>
+        <div class="sb-modal" id="sb-modal" hidden>
+            <div class="sb-modal__box" role="dialog" aria-modal="true" aria-labelledby="sb-modal-title">
+                <button type="button" class="sb-modal__x" data-sb-close aria-label="Close">×</button>
+
+                <div class="sb-modal__media">
+                    <% if (sb.image) { %><img src="<%= sb.image %>" alt="Surprise Box" loading="lazy"><% } else { %><span class="sb-modal__ph" aria-hidden="true">🎁</span><% } %>
+                    <span class="sb-modal__slots"><%= sb.qty %> slot<%= sb.qty === 1 ? '' : 's' %> left</span>
+                </div>
+
+                <div class="sb-modal__body">
+                    <h3 class="sb-modal__title" id="sb-modal-title">Surprise Box</h3>
+                    <p class="sb-modal__brand"><%= r.name %></p>
+
+                    <p class="sb-modal__price">
+                        <span class="sb-modal__now"><%= sym %><%= (sb.discountPrice || 0).toFixed(2) %></span>
+                        <% if (sb.price && sb.price > sb.discountPrice) { %>
+                        <span class="sb-modal__was"><%= sym %><%= sb.price.toFixed(2) %></span>
+                        <% if (sb.savePct > 0) { %><span class="sb-modal__save">Save <%= sb.savePct %>%</span><% } %>
+                        <% } %>
+                    </p>
+
+                    <% if (sb.pickupFrom && sb.pickupTo) { %>
+                    <div class="sb-modal__collect">
+                        <p class="sb-modal__collect-t">⏰ Collect Today: <%= sb.pickupFrom %> – <%= sb.pickupTo %></p>
+                        <p class="sb-modal__collect-s">Show your order to staff at the counter</p>
+                    </div>
+                    <% } %>
+
+                    <%# PICKUP ONLY — said up front, because the customer would
+                        otherwise only discover it when Add fails. %>
+                    <p class="sb-modal__note">🛍️ Collection only — this box can’t be delivered.</p>
+
+                    <% if (r.address) { %>
+                    <section class="sb-modal__sec">
+                        <h4 class="sb-modal__h">Branch Address</h4>
+                        <p class="sb-modal__addr">📍 <strong><%= r.name %></strong><br><%= r.address %></p>
+                    </section>
+                    <% } %>
+
+                    <% if (sb.about) { %>
+                    <section class="sb-modal__sec">
+                        <h4 class="sb-modal__h">About this box</h4>
+                        <p><%= sb.about %></p>
+                    </section>
+                    <% } %>
+
+                    <section class="sb-modal__sec">
+                        <h4 class="sb-modal__h">Ingredients &amp; allergens</h4>
+                        <p>We wish we could tell you what exactly will be in your Surprise Bag — but it’s always a surprise! The store will fill it with a selection of their unsold items. If you have questions about allergens or specific ingredients, please ask the store.</p>
+                    </section>
+
+                    <% if (sb.collection) { %>
+                    <section class="sb-modal__sec">
+                        <h4 class="sb-modal__h">Collection instructions</h4>
+                        <p><%= sb.collection %></p>
+                    </section>
+                    <% } %>
+                </div>
+
+                <form class="sb-modal__foot" data-sb-form
+                      data-company="<%= r.id %>" data-max="<%= sb.qty %>" data-unit="<%= (sb.discountPrice || 0).toFixed(2) %>">
+                    <div class="sb-qty">
+                        <button type="button" class="sb-qty__b" data-sb-dec aria-label="Decrease quantity">−</button>
+                        <span class="sb-qty__n" data-sb-qty>1</span>
+                        <button type="button" class="sb-qty__b" data-sb-inc aria-label="Increase quantity">+</button>
+                    </div>
+                    <button type="submit" class="sb-modal__add" data-sb-add>
+                        🛍️ Add to Cart — <span data-sb-total><%= sym %><%= (sb.discountPrice || 0).toFixed(2) %></span>
+                    </button>
+                </form>
+            </div>
+        </div>
         <% } %>
 
         <%# Active offers (banners + promo codes + auto-discounts) — real
@@ -451,21 +534,10 @@
             </ul>
         </div>
 
-        <%# Review & earn cashback — upload a screenshot of an external
-            (Google/Facebook) review → customer_review (pending POS approval).
-            Distinct from the post-order star reviews below. %>
-        <div class="rd-card rd-revcash">
-            <h3 class="rd-card__subtitle">🎁 Review us &amp; earn cashback</h3>
-            <p class="rd-revcash__sub">Reviewed us on Google or Facebook? Upload a screenshot to earn cashback once the restaurant verifies it.</p>
-            <form class="rd-revcash__form" method="post" action="/review-cashback" enctype="multipart/form-data">
-                <input type="hidden" name="company_id" value="<%= r.id %>">
-                <input type="hidden" name="redirect" value="/?restaurant=<%= encodeURIComponent(r.slug || r.id) %>">
-                <input type="file" name="photo" accept="image/*" class="rd-revcash__file" required>
-                <textarea name="notes" class="rd-revcash__notes" rows="2" maxlength="1000" placeholder="Add a note (optional)"></textarea>
-                <button type="submit" class="rd-revcash__btn">Submit for cashback</button>
-            </form>
-            <a class="rd-revcash__more" href="/earn?company=<%= encodeURIComponent(r.id) %>">See all ways to earn cashback →</a>
-        </div>
+        <%# The "Review us & earn cashback" screenshot-upload widget was removed
+            from here on request — earning cashback for a Google/Facebook review
+            happens on the dedicated /earn page, not scattered on the restaurant
+            page. Only the reviews LIST stays below. %>
 
         <%# Customer reviews — published post-order ratings (stars + text +
             optional food photo), from /api/v1/marketplace/reviews. %>

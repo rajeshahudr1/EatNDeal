@@ -286,14 +286,18 @@
     /**
      * validatePhone
      *
-     * What:  Returns true if the phone input contains 6-15 digits
-     *        (after stripping spaces). Same rule on the api when the
-     *        OTP endpoint lands — keeps client + server in sync.
+     * What:  Returns true if the phone input holds 11-15 digits (after
+     *        stripping separators) — legacy's rule, /^[0-9]{11,15}$/ from
+     *        webordering/web/js/custom.js:696. A UK mobile is typed with its
+     *        trunk zero: 07123456789.
+     * Why:   The api applies the SAME rule (Validators/common.mobileRule), so
+     *        the form can't accept something the server will reject. This used
+     *        to allow 6 digits, which the api now refuses.
      */
     function validatePhone() {
         if (!phoneInput) { return false; }
         var raw = (phoneInput.value || '').replace(/\D/g, '');
-        return raw.length >= 6 && raw.length <= 15;
+        return /^[0-9]{11,15}$/.test(raw);
     }
 
     /**

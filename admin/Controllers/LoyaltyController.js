@@ -19,10 +19,31 @@ const { callApi } = require('../Helpers/apiClient');
 
 // ── Scope helpers (shared — see Helpers/controllerCommon) ────────────
 const CC = require('../Helpers/controllerCommon');
-const activeCompanyId = CC.activeCompanyId;
-const companyQS = CC.companyQS;
-const needsCompanyPick = CC.needsCompanyPick;
 const flashFromApi = CC.flashFromApi;
+const { MARKETPLACE_COMPANY_ID } = require('../Helpers/viewConstants');
+
+/*
+ * SCOPE: this console's Loyalty screens are the MARKETPLACE's OWN programme —
+ * company_id = 0 — and nothing else. A restaurant's loyalty is configured in
+ * the legacy POS (backend/modules/pos/loyalty-configuration), not here.
+ *
+ * So the company SWITCHER at the top of the page is deliberately IGNORED on
+ * these screens: they read and write scope 0 whatever it says. That's why the
+ * shared CC.activeCompanyId / CC.companyQS / CC.needsCompanyPick are re-bound
+ * below instead of being used directly — every one of the 30+ call sites in
+ * this file then hits scope 0 without each one having to remember, and a new
+ * screen added later can't silently pick the switcher's company back up.
+ *
+ * The routes are super-admin only (requireSuperPage in admin/index.js) and the
+ * api re-checks independently (requireSuperAdmin), so a company login can
+ * neither see these pages nor reach the endpoints behind them.
+ */
+const activeCompanyId = () => MARKETPLACE_COMPANY_ID;   // always 0
+// NB the leading '?' — call sites append this straight onto a path
+// ('/admin/loyalty/dashboard' + companyQS(res)), so dropping it silently
+// produces '/dashboardcompany_id=0'. Matches CC.companyQS's contract.
+const companyQS = () => '?company_id=' + MARKETPLACE_COMPANY_ID;
+const needsCompanyPick = () => false;                   // never — 0 always resolves
 
 // ── Loyalty Dashboard (the Loyalty menu landing / hub) ──────────────
 
@@ -411,8 +432,11 @@ async function reviewClaims(req, res) {
     res.render('loyalty/review-claims', {
         page_title:  'Cashback Review',
         _layoutFile: '../_layout',
-        active_nav:  'reviews',
-        active_sub:  'reviews',
+        // 'review-claims', NOT 'reviews' — that key now belongs to the
+        // marketplace star-reviews page (Controllers/ReviewsController), and
+        // sharing it lit up the wrong sidebar item on this screen.
+        active_nav:  'review-claims',
+        active_sub:  'review-claims',
         extra_js:    '/js/pages/loyalty.js',
         rc,
         filters: {

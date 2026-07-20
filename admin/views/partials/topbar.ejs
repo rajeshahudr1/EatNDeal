@@ -16,7 +16,14 @@
         Selecting an option submits the hidden form (/select-company). A native
         <select> in <noscript> keeps it working without JS. Driven by /js/app.js. %>
     <% var cc = (typeof company_ctx !== 'undefined' && company_ctx) ? company_ctx : { companies: [], isSuper: false, selectedCompany: null, selectedCompanyId: null }; %>
-    <% if (cc.isSuper) { %>
+    <%# HIDDEN on the Loyalty + Reviews screens. Those are the MARKETPLACE's own
+        programme (company_id = 0, pinned in the controller) and ignore the
+        switcher entirely — leaving it there showed "All companies" above a page
+        that only ever edits scope 0, which reads as if the settings applied to
+        every restaurant. They don't. %>
+    <% var mpOnlyNav = ['loyalty', 'review-claims', 'cms', 'reviews']; %>
+    <% var hideSwitcher = mpOnlyNav.indexOf(typeof active_nav !== 'undefined' ? (active_nav || '') : '') !== -1; %>
+    <% if (cc.isSuper && !hideSwitcher) { %>
         <div class="admin-company" data-company-switch>
             <button type="button" class="admin-company__btn" data-action="company-open" aria-haspopup="listbox" aria-expanded="false">
                 <span class="admin-company__ic" aria-hidden="true">

@@ -39,6 +39,9 @@ const M              = require('../../Helpers/marketplace');
 const A              = require('../../Helpers/availability');
 const Offers         = require('../../Helpers/offers');
 const OrderTime      = require('../../Helpers/orderTime');
+// Surprise-box availability: branch.qty is the DAILY ALLOWANCE, not what's
+// left — this works out the real remaining slots (legacy-identical maths).
+const SurpriseBox    = require('../../Helpers/surpriseBox');
 const StoreHours     = require('../../Helpers/storeHours');
 const Favourites     = require('../Customer/FavouriteController');
 
@@ -670,6 +673,11 @@ async function detail(req, res) {
                 // Surprise box ("Too Good To Go") — branch-level discounted box.
                 'b.is_toogoodtogo_product', 'b.price', 'b.discount_price', 'b.qty',
                 'b.about_surprise_box', 'b.saving_product_description',
+                // The day's allowance restarts from this date — needed to work
+                // out how many slots are actually LEFT (Helpers/surpriseBox).
+                'b.surprise_qty_updated_date',
+                // Detail-popup content: the box photo + what to do at the counter.
+                'b.surprise_image', 'b.collection_instructions',
                 db.raw(`(SELECT ROUND(AVG(rr.rating)::numeric, 1) FROM review_rating rr
                           WHERE rr.company_id = c.id AND rr.publish_online = 1) AS avg_rating`),
                 db.raw(`(SELECT COUNT(*) FROM review_rating rr
@@ -689,6 +697,17 @@ async function detail(req, res) {
         ].filter(Boolean).join(', ');
         const open = fmtClock(row.start_time);
         const close = fmtClock(row.end_time);
+
+        // Surprise-box slots STILL LEFT (branch.qty is only the daily allowance).
+        // Skipped entirely when the branch runs no box.
+        const sbLeft = Number(row.is_toogoodtogo_product) === 1
+            ? await SurpriseBox.remainingFor({
+                id:         row.branch_id,
+                company_id: row.company_id,
+                qty:        row.qty,
+                surprise_qty_updated_date: row.surprise_qty_updated_date,
+            })
+            : { total: 0, remaining: 0 };
 
         // Real delivery info — match the customer postcode to a zone.
         let zone = null;
@@ -759,14 +778,30 @@ async function detail(req, res) {
             initial:         M.initialFor(name),
             // Surprise box ("Too Good To Go"): a discounted mystery box this
             // branch offers — shown at the top of the detail page when enabled.
+            // `qty` is what's STILL AVAILABLE, not branch.qty: that column is
+            // the DAILY ALLOWANCE, and printing it raw advertised "50 left" on
+            // a branch that had already sold 16 (legacy showed 34). `total`
+            // keeps the allowance for the "x of y" copy.
             surpriseBox:     Number(row.is_toogoodtogo_product) === 1 ? {
                 price:         Number(row.price) || 0,
                 discountPrice: Number(row.discount_price) || 0,
-                qty:           Number(row.qty) || 0,
+                qty:           sbLeft.remaining,
+                total:         sbLeft.total,
                 description:   String(row.saving_product_description || '').trim(),
                 about:         String(row.about_surprise_box || '').trim(),
+                collection:    String(row.collection_instructions || '').trim(),
+                image:         M.yiiImageUrl('surprise', row.company_id, row.surprise_image) || null,
                 pickupFrom:    open || '',
                 pickupTo:      close || '',
+                // % saved vs the full price — the popup's "Save 74%" chip.
+                savePct:       (Number(row.price) > 0 && Number(row.discount_price) > 0)
+                    ? Math.round((1 - (Number(row.discount_price) / Number(row.price))) * 100)
+                    : 0,
+                // PICKUP ONLY — there's no delivery for a surprise bag, the
+                // customer collects it. Sent so the UI can say so up front
+                // rather than let them hit the error at Add (legacy
+                // ToogoodtogoController.php:143-149).
+                pickupOnly:    true,
             } : null,
         };
 

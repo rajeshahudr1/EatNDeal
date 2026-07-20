@@ -34,6 +34,7 @@ const OrderPlace   = require('../../Helpers/orderPlace');
 const Orders       = require('../../Helpers/orders');
 const OrderStatus  = require('../../Helpers/orderStatus');
 const Payments     = require('../../Helpers/payments');
+const PaymentOptions = require('../../Helpers/paymentOptions');  // cash_king gate: resolve slug='cash' per company
 const StripeConnect = require('../../Helpers/stripeConnect');   // legacy StripeController.js port
 const M            = require('../../Helpers/marketplace');
 const A            = require('../../Helpers/availability');
@@ -187,11 +188,16 @@ async function place(req, res) {
             await Loyalty.earnOrderStreak(base);              // 'product_streak' — order-count
             await Loyalty.earnSpecialOffer(base);             // 'special_offer' — dated offer
             await Loyalty.earnSmartCampaign({ ...base, type: 'inactive' }); // 'smart_campaign' — win-back
-            await Loyalty.earnEventCashback(base);            // 'event_cashback' — birthday/anniversary
-            // cash_king LAST — legacy awards it ONLY on cash/COD (the call
-            // site gates on payment slug = 'cash'); card orders earn none.
-            // payment_option 2 = card.
-            if (Number(b.payment_option) !== 2) {
+            // NOTE: event_cashback is NOT an order event. Its types are
+            // 1=signup / 2=profile completion / 3=google review, and legacy
+            // fires it from the PROFILE-SAVE path (webordering SiteController —
+            // only when a customer_profile row is newly created), never here.
+            // See Helpers/customerProfile.js.
+            // cash_king LAST — legacy awards it ONLY when the order's payment
+            // option has slug = 'cash' (Paymentoptions::find(['id'=>…,
+            // 'slug'=>'cash'])->exists()), NEVER by a hardcoded id: paymentoptions
+            // is per-company, so the cash/card ids differ at every restaurant.
+            if (await PaymentOptions.isCashPayment(companyId, b.payment_option)) {
                 await Loyalty.earnForOrder(base);
             }
             // collection_cashback — % on collection/pickup orders (serve_type 2).

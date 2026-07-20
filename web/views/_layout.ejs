@@ -96,6 +96,7 @@
     <link rel="stylesheet" href="/css/components/merchant.css?v=<%= ASSET_VERSION %>">
     <link rel="stylesheet" href="/css/components/wallet.css?v=<%= ASSET_VERSION %>">
     <link rel="stylesheet" href="/css/components/earn.css?v=<%= ASSET_VERSION %>">
+    <link rel="stylesheet" href="/css/components/site-review.css?v=<%= ASSET_VERSION %>">
     <link rel="stylesheet" href="/css/components/loyalty.css?v=<%= ASSET_VERSION %>">
     <link rel="stylesheet" href="/css/components/community.css?v=<%= ASSET_VERSION %>">
 
@@ -249,6 +250,9 @@
     <script defer src="/js/ui/search-overlay.js?v=<%= ASSET_VERSION %>"></script>
     <script defer src="/js/ui/location-modal.js?v=<%= ASSET_VERSION %>"></script>
     <script defer src="/js/ui/account-menu.js?v=<%= ASSET_VERSION %>"></script>
+    <%# Surprise Box popup — self-guarding: returns instantly unless the page
+        has the box (restaurant detail only). %>
+    <script defer src="/js/ui/surprise-box.js?v=<%= ASSET_VERSION %>"></script>
     <script defer src="/js/ui/cookie-consent.js?v=<%= ASSET_VERSION %>"></script>
     <script defer src="/js/ui/filter-sidebar.js?v=<%= ASSET_VERSION %>"></script>
     <script defer src="/js/ui/favourites.js?v=<%= ASSET_VERSION %>"></script>

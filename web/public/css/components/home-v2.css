@@ -618,6 +618,17 @@
     .app-mini__body { min-width: 0; }
     .app-mini__title { margin: 10px 0 0; font-weight: 800; font-size: 0.98rem; color: var(--color-text); }
     .app-mini__sub { margin: 2px 0 0; font-size: 0.82rem; color: var(--color-text-muted); }
+    /* Action row — platform tabs + the "Rate us" link, side by side at the TOP
+     * of the body. Wraps so a narrow card drops "Rate us" to its own line
+     * instead of squeezing the tabs. */
+    .app-mini__actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    /* "Rate us" — a LINK to the reviews page, not a platform tab. Same pill
+     * geometry as the tabs so the row reads as one control group, but outlined
+     * in the brand colour so it never looks like a third platform to pick
+     * (the tabs go solid black when selected; this one never does). */
+    .app-mini__rate { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--color-primary); background: transparent; color: var(--color-primary); font-weight: 700; font-size: 0.82rem; text-decoration: none; white-space: nowrap; }
+    .app-mini__rate:hover { background: var(--color-primary); color: #fff; }
+    .app-mini__rate-ic { width: 15px; height: 15px; flex: 0 0 auto; }
     /* iOS / Android tabs — sit at the TOP of the body (the platform picker). */
     .app-mini__tabs { display: flex; gap: 8px; }
     .app-mini__tab { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--color-border); background: var(--color-bg-alt, #f7f8fa); color: var(--color-text); font-weight: 700; font-size: 0.82rem; cursor: pointer; user-select: none; }

@@ -22,6 +22,10 @@ const balanceSchema = Joi.object({
 const reviewTypesSchema = Joi.object({
     customer_id: idRule.required().messages({ 'any.required': 'Customer id is required.' }),
     company_id:  idRule.optional().allow('', null),                  // omit → restaurant picker
+    // Public restaurant slug — the customer-facing alternative to company_id so
+    // the URL doesn't leak the numeric id (/earn?restaurant=<slug>). Resolved
+    // server-side; ignored when company_id is supplied.
+    slug:        Joi.string().trim().max(120).optional().allow('', null),
 });
 
 const historySchema = Joi.object({

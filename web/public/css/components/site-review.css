@@ -1,0 +1,191 @@
+/*
+ * components/site-review.css — /reviews (reviews of EatNDeal itself).
+ * Summary + write/edit form + the published list.
+ */
+
+/* Full-width page (not a narrow column) — the list + form use the whole shell,
+   like the other account screens. A readable cap only kicks in on very wide
+   monitors so lines don't stretch to 2000px. */
+.sr {
+    width: 100%;
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 20px 16px 48px;
+}
+
+/* One stacked column at EVERY width: summary, then the write box, then the
+   reviews full-bleed underneath.
+   This used to be two columns on desktop (write pinned left, list squeezed into
+   the right ~60%). The list is what people come for, so it now gets the whole
+   width and the write box sits above it — same order the phone always had, so
+   mobile is untouched by the change (it was already the 1fr branch). */
+.sr__cols { display: grid; grid-template-columns: 1fr; gap: 18px; align-items: start; }
+
+.sr__head { margin-bottom: 18px; }
+.sr__title { margin: 0; font-size: 1.6rem; font-weight: 800; }
+.sr__sub { margin: 4px 0 0; color: var(--color-muted, #6b7280); }
+.sr__error, .sr__empty { color: var(--color-muted, #6b7280); padding: 20px 0; }
+
+/* Summary */
+.sr__summary {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 16px;
+    margin-bottom: 18px;
+    background: var(--color-surface, #fff);
+    border: 1px solid var(--color-border, #e6e8ee);
+    border-radius: 14px;
+}
+.sr__avg { font-size: 2.2rem; font-weight: 800; line-height: 1; }
+.sr__count { color: var(--color-muted, #6b7280); font-size: .9rem; }
+
+.sr-stars { display: inline-flex; gap: 2px; font-size: 1.1rem; line-height: 1; }
+.sr-stars--sm { font-size: .95rem; }
+.sr-star { color: #ddd; }
+.sr-star.is-full { color: #ff7a00; }
+.sr-star.is-half { position: relative; color: #ddd; }
+.sr-star.is-half::before {
+    content: '★';
+    position: absolute;
+    left: 0; top: 0;
+    width: 50%;
+    overflow: hidden;
+    color: #ff7a00;
+}
+
+/* Write / edit */
+.sr__write {
+    padding: 16px;
+    margin-bottom: 22px;
+    background: var(--color-surface, #fff);
+    border: 1px solid var(--color-border, #e6e8ee);
+    border-radius: 14px;
+}
+.sr__write-t { margin: 0 0 10px; font-size: 1.05rem; font-weight: 700; }
+/* NB no "awaiting approval" style here on purpose — the author is never shown
+ * that their review is pending; see views/site-review/index.ejs. */
+.sr__signin { margin: 0; color: var(--color-muted, #6b7280); }
+.sr__signin-btn { color: var(--color-primary); font-weight: 700; }
+
+.sr__rate { display: flex; gap: 4px; margin-bottom: 10px; }
+.sr__ratestar {
+    border: 0;
+    background: none;
+    padding: 0 2px;
+    font-size: 1.8rem;
+    line-height: 1;
+    color: #ddd;
+    cursor: pointer;
+}
+.sr__ratestar.is-on { color: #ff7a00; }
+.sr__ratestar:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; border-radius: 4px; }
+
+.sr__text {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--color-border, #e6e8ee);
+    border-radius: 10px;
+    font: inherit;
+    resize: vertical;
+}
+.sr__actions { display: flex; justify-content: flex-end; margin-top: 10px; }
+
+/* Desktop: rating and the submit button share ONE line, with the text box
+   underneath spanning both. Done with grid areas rather than by moving the
+   button in the markup, because the DOM order (rate → box → button) is exactly
+   what mobile stacks — and mobile must not change. Starts at 561px so it can
+   never reach the ≤560px block below. */
+@media (min-width: 561px) {
+    .sr__form {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        grid-template-areas:
+            "rate actions"
+            "text text";
+        align-items: center;
+        column-gap: 12px;
+        row-gap: 10px;
+    }
+    .sr__rate    { grid-area: rate;    margin-bottom: 0; }
+    .sr__actions { grid-area: actions; margin-top: 0; }
+    .sr__text    { grid-area: text; }
+}
+.sr__submit {
+    padding: 10px 20px;
+    border: 0;
+    border-radius: 999px;
+    background: var(--color-primary);
+    color: #fff;
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+}
+.sr__submit:disabled { opacity: .6; cursor: progress; }
+
+/* List */
+.sr__list { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.sr__item {
+    padding: 14px 16px;
+    background: var(--color-surface, #fff);
+    border: 1px solid var(--color-border, #e6e8ee);
+    border-radius: 14px;
+}
+.sr__item-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.sr__name { font-weight: 700; }
+.sr__date { font-size: .78rem; color: var(--color-muted, #6b7280); }
+.sr__body { margin: 8px 0 0; line-height: 1.55; }
+.sr__reply {
+    margin: 10px 0 0;
+    padding: 8px 12px;
+    border-left: 3px solid var(--color-primary);
+    background: #f9fafb;
+    border-radius: 0 8px 8px 0;
+    font-size: .875rem;
+}
+
+/* "View more" — centred under the list, outline pill so it reads as a control
+   and not as another review card. */
+.sr__more { display: flex; justify-content: center; margin-top: 16px; }
+.sr__more-btn {
+    padding: 10px 28px;
+    border: 1px solid var(--color-primary);
+    border-radius: 999px;
+    background: transparent;
+    color: var(--color-primary);
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+}
+.sr__more-btn:hover { background: var(--color-primary); color: #fff; }
+.sr__more-btn:disabled { opacity: .6; cursor: progress; }
+
+/* ── Mobile / PWA ──────────────────────────────────────────────────
+   Standalone PWA has no browser chrome, so the page must own the full
+   viewport and clear the notch + the fixed bottom nav — otherwise the last
+   review and the Submit button sit under it and can't be reached. */
+@media (max-width: 560px) {
+    .sr {
+        padding: 14px 12px calc(96px + env(safe-area-inset-bottom, 0px));
+        padding-left:  calc(12px + env(safe-area-inset-left, 0px));
+        padding-right: calc(12px + env(safe-area-inset-right, 0px));
+    }
+    .sr__title { font-size: 1.35rem; }
+    .sr__summary { flex-wrap: wrap; gap: 8px; padding: 14px; }
+    .sr__avg { font-size: 1.9rem; }
+    .sr__write, .sr__item { padding: 14px 12px; border-radius: 12px; }
+
+    /* Thumb-sized stars — 1.8rem glyphs were too small to tap reliably. */
+    .sr__ratestar { font-size: 2.1rem; padding: 2px 6px; }
+    .sr__rate { gap: 2px; }
+
+    /* Full-width submit — a right-aligned pill is an awkward reach one-handed. */
+    .sr__actions { justify-content: stretch; }
+    .sr__submit { width: 100%; padding: 13px 20px; }
+
+    .sr__item-head { flex-wrap: wrap; gap: 2px; }
+    .sr__date { width: 100%; }
+
+    /* Full-width tap target, same call as .sr__submit above. */
+    .sr__more-btn { width: 100%; padding: 13px 20px; }
+}

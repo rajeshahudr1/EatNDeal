@@ -13,13 +13,24 @@
     var sym = fmt.currencySymbol(brand);
     var STATUSES = [['', 'All'], ['pending', 'Pending'], ['approved', 'Approved'], ['rejected', 'Rejected']];
     function money(n) { return sym + Number(n || 0).toFixed(2); }
+    // Legacy prints the claim date as `dd Mmm yyyy`, en-GB
+    // (cashback-review/index.php:701). toLocaleDateString() with no locale
+    // follows the VIEWER's machine, so the same claim read 07/15/2026 for one
+    // admin and 15/07/2026 for another — pinned to en-GB to match legacy.
+    function claimDate(v) {
+        var d = new Date(v);
+        if (isNaN(d.getTime())) { return ''; }
+        return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+    }
 %>
 <div class="ly">
 
     <div class="ly__head">
         <div>
-            <h2 class="ly__title">⭐ Cashback Review</h2>
-            <p class="ly__sub">Approve or reject external review reward claims</p>
+            <%# Wording matches the legacy POS page (cashback-review/index.php:256,
+                :317, :777) so the two screens read the same. %>
+            <h2 class="ly__title">⭐ Customer Reviews</h2>
+            <p class="ly__sub">Review Listing · Total Reviews : <%= rc ? rc.claims.length : 0 %></p>
         </div>
     </div>
 
@@ -42,7 +53,9 @@
             <div class="rc-searchrow">
                 <div class="rc-searchbox">
                     <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                    <input type="search" name="q" value="<%= filters.q %>" placeholder="Search customer…" maxlength="60" autocomplete="off" data-live-search>
+                    <%# Legacy placeholder (cashback-review/index.php:298). It searches
+                        name + the review TEXT; ours also covers the phone number. %>
+                    <input type="search" name="q" value="<%= filters.q %>" placeholder="Search review…" maxlength="60" autocomplete="off" data-live-search>
                 </div>
                 <button type="button" class="rc-filterbtn<%= (filters.date_from || filters.date_to) ? ' is-on' : '' %>" data-action="rc-filter-open" aria-label="Filters">
                     <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
@@ -51,8 +64,9 @@
 
             <div class="rc-filterpop" data-rc-filterpop hidden>
                 <div class="rc-filterpop__grid">
-                    <label class="rc-filterpop__field"><span>From date</span><input type="date" name="date_from" value="<%= filters.date_from %>"></label>
-                    <label class="rc-filterpop__field"><span>To date</span><input type="date" name="date_to" value="<%= filters.date_to %>"></label>
+                    <%# Legacy labels (cashback-review/index.php:265-275). %>
+                    <label class="rc-filterpop__field"><span>Date From</span><input type="date" name="date_from" value="<%= filters.date_from %>"></label>
+                    <label class="rc-filterpop__field"><span>Date To</span><input type="date" name="date_to" value="<%= filters.date_to %>"></label>
                 </div>
                 <div class="rc-filterpop__foot">
                     <a href="/loyalty/review-claims" class="ly-btn ly-btn--ghost ly-btn--sm">Clear all</a>
@@ -62,7 +76,8 @@
         </form>
 
         <% if (!rc.claims.length) { %>
-            <p class="ly-none">No claims match these filters.</p>
+            <%# Legacy empty state (cashback-review/index.php:568). %>
+            <p class="ly-none">No Reviews Found</p>
         <% } else { %>
             <div class="rc-list">
                 <% rc.claims.forEach(function (c) { %>
@@ -78,11 +93,19 @@
                     <div class="rc-card__body">
                         <span class="ly-tier ly-tier--<%= c.review_type === 1 ? 'gold' : 'silver' %>"><%= c.type_label %></span>
                         <% if (c.reward > 0) { %><span class="rc-reward">Reward <strong><%= money(c.reward) %></strong></span><% } %>
-                        <span class="rc-date"><%= new Date(c.review_date).toLocaleDateString() %></span>
+                        <span class="rc-date"><%= claimDate(c.review_date) %></span>
                     </div>
 
                     <% if (c.notes) { %><p class="rc-notes">“<%= c.notes %>”</p><% } %>
-                    <% if (c.review_photo_url) { %>
+                    <%# Proof column. A "Live Video" claim (type 7) stores a VIDEO
+                        URL in review_photo, not a screenshot filename — legacy
+                        renders a link for it rather than an <img> that could
+                        never load (cashback-review/index.php:638-644). %>
+                    <% if (c.is_video && c.review_photo) { %>
+                    <p class="rc-photo">
+                        <a class="ly-btn ly-btn--primary ly-btn--sm" href="<%= c.review_photo %>" target="_blank" rel="noopener noreferrer">View Video</a>
+                    </p>
+                    <% } else if (c.review_photo_url) { %>
                     <div class="rc-shotwrap">
                         <button type="button" class="rc-shot" data-lightbox data-lightbox-src="<%= c.review_photo_url %>" title="View screenshot">
                             <img src="<%= c.review_photo_url %>" alt="Review screenshot" loading="lazy">
@@ -94,7 +117,13 @@
 
                     <% if (c.admin_status === 0) { %>
                         <div class="rc-actions">
-                            <form method="post" action="/loyalty/review-claims/approve">
+                            <%# Approving PAYS REAL MONEY into the customer's wallet and
+                                can't be undone from this screen, so it asks first —
+                                legacy does too (#approveModal, cashback-review/
+                                index.php:336-394). We had no confirmation at all: one
+                                stray click granted the reward. %>
+                            <form method="post" action="/loyalty/review-claims/approve"
+                                  data-rc-approve data-reward="<%= c.reward > 0 ? money(c.reward) : '' %>">
                                 <input type="hidden" name="id" value="<%= c.id %>">
                                 <button type="submit" class="ly-btn ly-btn--success ly-btn--sm">✓ Approve<% if (c.reward > 0) { %> · <%= money(c.reward) %><% } %></button>
                             </form>
@@ -102,7 +131,10 @@
                         </div>
                         <form method="post" action="/loyalty/review-claims/reject" id="rc-reject-<%= c.id %>" class="rc-rejectform" hidden>
                             <input type="hidden" name="id" value="<%= c.id %>">
-                            <input type="text" name="reject_reason" class="rc-input" placeholder="Reason for rejection (required)" maxlength="500" required>
+                            <%# Legacy label + placeholder (cashback-review/index.php:405-418). %>
+                            <label class="rc-reject__label" for="rc-reason-<%= c.id %>">Reject Reason</label>
+                            <textarea id="rc-reason-<%= c.id %>" name="reject_reason" class="rc-input" rows="4"
+                                      placeholder="Enter reject reason" maxlength="500" required></textarea>
                             <button type="submit" class="ly-btn ly-btn--danger ly-btn--sm">Confirm reject</button>
                             <button type="button" class="ly-btn ly-btn--ghost ly-btn--sm" data-action="rc-reject-cancel" data-claim="<%= c.id %>">Cancel</button>
                         </form>
@@ -113,4 +145,22 @@
         <% } %>
 
     <% } %>
+</div>
+
+<%# Approve confirmation. Approving pays real money into a customer's wallet and
+    this screen can't undo it, so it asks first — legacy does the same
+    (#approveModal, cashback-review/index.php:336-394) with this exact wording.
+    A custom dialog rather than window.confirm(), per project convention.
+    Lives OUTSIDE the load_error / rc branches so it exists whenever a claim
+    card can be on the page. %>
+<div class="rc-confirm" id="rc-confirm" hidden>
+    <div class="rc-confirm__box" role="dialog" aria-modal="true" aria-labelledby="rc-confirm-title">
+        <h5 class="rc-confirm__title" id="rc-confirm-title">Approve Review ?</h5>
+        <p class="rc-confirm__msg">Are you sure you want to approve this review?</p>
+        <p class="rc-confirm__reward" data-rc-confirm-reward hidden></p>
+        <div class="rc-confirm__foot">
+            <button type="button" class="ly-btn ly-btn--ghost ly-btn--sm" data-action="rc-confirm-cancel">Cancel</button>
+            <button type="button" class="ly-btn ly-btn--success ly-btn--sm" data-action="rc-confirm-ok">Approve</button>
+        </div>
+    </div>
 </div>

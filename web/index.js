@@ -56,6 +56,8 @@ const MerchantController    = require('./Controllers/MerchantController');
 const AuthController       = require('./Controllers/AuthController');
 const WalletController      = require('./Controllers/WalletController');
 const EarnController        = require('./Controllers/EarnController');
+// Reviews of EATNDEAL itself (marketplace, company_id = 0) — moderated.
+const SiteReviewController  = require('./Controllers/SiteReviewController');
 const CommunityController   = require('./Controllers/CommunityController');
 const StaticPageController = require('./Controllers/StaticPageController');
 const AppController         = require('./Controllers/AppController');
@@ -272,12 +274,17 @@ const reviewUpload = multer({
         destination: (req, file, cb) => cb(null, REVIEW_IMG_DIR),
         filename: (req, file, cb) => {
             const uid = (req.session && req.session.user && req.session.user.id) || 'anon';
-            const ext = ({ 'image/png': '.png', 'image/jpeg': '.jpg', 'image/webp': '.webp', 'image/gif': '.gif' })[file.mimetype] || '.img';
+            const ext = ({ 'image/png': '.png', 'image/jpeg': '.jpg' })[file.mimetype] || '.png';
             cb(null, 'rv-' + uid + '-' + Date.now() + ext);
         },
     }),
     limits: { fileSize: 4 * 1024 * 1024 },   // 4 MB
-    fileFilter: (req, file, cb) => cb(null, /^image\/(png|jpe?g|webp|gif)$/.test(file.mimetype)),
+    // JPG / JPEG / PNG only — the legacy upload API (a restaurant's server)
+    // rejects webp/gif with "Only JPG, JPEG, and PNG files are allowed"
+    // (backend/controllers/api/DefaultController::actionUploadFile). Restricting
+    // here keeps both flows (marketplace + restaurant) consistent and fails at
+    // pick-time instead of after a confusing round trip.
+    fileFilter: (req, file, cb) => cb(null, /^image\/(png|jpe?g)$/.test(file.mimetype)),
 });
 
 // ── Community post photos ──────────────────────────────────────
@@ -664,6 +671,9 @@ app.get ('/cart/data',         CartController.data);
 app.get ('/cart/count',        CartController.count);
 app.get ('/cart/promotions',   CartController.promotions);
 app.post('/cart/add',          CartController.add);
+// Surprise Box ("Too Good To Go") — separate endpoint: the box is a virtual
+// product on the branch row, with no products row for /cart/add to resolve.
+app.post('/cart/surprise-box', CartController.addSurpriseBox);
 app.post('/cart/update-qty',   CartController.updateQty);
 app.post('/cart/remove-item',  CartController.removeItem);
 app.post('/cart/clear',        CartController.clear);
@@ -741,6 +751,21 @@ app.get ('/wallet/json',         WalletController.walletJson);
 // Earn Cashback — review/share a restaurant to earn its cashback (picker +
 // per-restaurant types). Submitting posts to POST /review-cashback below.
 app.get ('/earn',                EarnController.earnPage);
+// Reviews of EatNDeal itself. The PAGE is public (anyone can read); the submit
+// requires a sign-in and lands PENDING until the super admin approves it.
+// ══ DISABLED 2026-07-17 (user request) ═════════════════════════════
+// EatNDeal's own reviews page is switched off — menu items are commented out
+// in partials/header.ejs + partials/mobile-drawer.ejs and the "Rate us" button
+// in views/site/index.ejs, and these routes are off so the URL 404s too (the
+// catch-all at the bottom of this file answers). The controller, view, CSS and
+// JS are all left in place; restore = uncomment these three lines + the three
+// view blocks. The api endpoints are commented out in api/Routes/index.js.
+// NB this is EatNDeal's OWN reviews — a RESTAURANT's star-reviews
+// (/restaurant-reviews, review_rating scoped to that company) are untouched.
+// app.get ('/reviews',             SiteReviewController.page);
+// app.get ('/reviews/more',        SiteReviewController.more);
+// app.post('/reviews/submit',      SiteReviewController.submit);
+// ═══════════════════════════════════════════════════════════════════
 // Loyalty Program — "how rewards work" explainer (legacy loyalty_program.php).
 app.get ('/loyalty-program', function (req, res) {
     res.render('loyalty/program', {

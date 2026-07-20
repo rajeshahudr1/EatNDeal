@@ -26,6 +26,8 @@ const { db } = require('../config/db');
 const M      = require('./marketplace');
 const OrderStatus = require('./orderStatus');
 const reviews     = require('./reviews');
+// customer.id -> customer.app_id, the identity the legacy-shared tables use.
+const customers   = require('./customerLookup');
 
 // Status label/class come from the SINGLE source of truth in
 // orderStatus.js (getStatusMeta). They are thin delegates so the
@@ -192,14 +194,22 @@ async function loadDetail(orderId, customerId) {
 
     const restName = String(order.business_name || '').trim();
 
-    // The customer's own review for this order (null until they leave one).
+    // The customer's own review for this order — read from customer_review
+    // (the moderation record), NOT review_rating: an order review is only
+    // published once the restaurant approves it, so review_rating is empty
+    // while it's pending and the customer would think it had vanished.
+    // Null once REJECTED, which is what brings the button back — legacy parity
+    // (Orders::getCustomerOrdersReviews, admin_status IN (0,1)).
+    // claimForOrder wants the APP_ID — customer_review is keyed the legacy way.
+    const reviewRow  = await reviews.claimForOrder(orderId, await customers.appIdOf(customerId));
     // `reviewable` gates the "Rate & Review" CTA — any non-cancelled order.
-    const reviewRow  = await reviews.forOrder(orderId, customerId);
+    // The CTA is hidden outright once a review exists (see `review` below):
+    // one per order, and legacy offers no edit.
     const reviewable = ['0', '1', '2', '9'].indexOf(String(order.order_status || '')) === -1;
 
     return {
         id:               String(order.id),
-        review:           reviews.publicView(reviewRow),
+        review:           reviews.claimView(reviewRow),
         reviewable:       reviewable,
         number:           order.order_number || '',
         status:           String(order.order_status || ''),

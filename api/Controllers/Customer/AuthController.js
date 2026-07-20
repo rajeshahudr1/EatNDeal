@@ -31,6 +31,7 @@ const otp          = require('../../Helpers/otpSender');
 const customers    = require('../../Helpers/customerLookup');
 const profile      = require('../../Helpers/customerProfile');
 const social       = require('../../Helpers/socialAuth');
+const Loyalty      = require('../../Helpers/loyalty');   // event_cashback on first profile save
 const { db }       = require('../../config/db');
 
 // Whether customer.gender exists yet (added by m260529_140000). Checked
@@ -400,7 +401,7 @@ async function saveProfile(req, res) {
  *
  * Output:
  *   200 success — { status:200, data:{ customer:{...} } }
- *   200 failure — 404 (no such row) | 403 (blocked) | 409 (phone taken)
+ *   200 failure — 401 (dead session) | 403 (blocked) | 409 (phone taken)
  *                 | 422 (state mismatch / partial phone)
  */
 async function updateProfile(req, res) {
@@ -416,8 +417,10 @@ async function updateProfile(req, res) {
             .whereNull('company_id')
             .first();
 
+        // 401, not 404 — customer_id is the session's own id, so a missing row
+        // means a dead session (sign in again), not a missing record.
         if (!row) {
-            return H.errorResponse(res, MSG.resource.notFound, 404);
+            return H.errorResponse(res, MSG.auth.sessionExpired, 401);
         }
 
         const state = customers.classify(row);
@@ -487,7 +490,7 @@ async function updateProfile(req, res) {
  * Type:  WRITE.
  *
  * Inputs:  customer_id, country_code, contact_no, otp
- * Output:  200 { customer } | 403 blocked | 404 no row | 409 number taken |
+ * Output:  200 { customer } | 401 dead session | 403 blocked | 409 number taken |
  *          422 bad OTP
  */
 async function changePhone(req, res) {
@@ -495,7 +498,7 @@ async function changePhone(req, res) {
         const { customer_id, country_code, contact_no, otp: code } = req.body;
 
         const row = await db('customer').where({ id: customer_id }).whereNull('company_id').first();
-        if (!row) { return H.errorResponse(res, MSG.resource.notFound, 404); }
+        if (!row) { return H.errorResponse(res, MSG.auth.sessionExpired, 401); }
         const state = customers.classify(row);
         if (state === 'deleted' || state === 'disabled') { return H.errorResponse(res, MSG.auth.accountDisabled, 403); }
         if (state === 'banned') { return H.errorResponse(res, MSG.auth.accountBanned, 403); }
@@ -544,13 +547,13 @@ async function changePhone(req, res) {
  * Type:  WRITE.
  *
  * Inputs:  customer_id
- * Output:  200 { deleted:1 } | 404 no row
+ * Output:  200 { deleted:1 } | 401 dead session
  */
 async function deleteAccount(req, res) {
     try {
         const { customer_id } = req.body;
         const row = await db('customer').where({ id: customer_id }).whereNull('company_id').first('id');
-        if (!row) { return H.errorResponse(res, MSG.resource.notFound, 404); }
+        if (!row) { return H.errorResponse(res, MSG.auth.sessionExpired, 401); }
         await db('customer').where({ id: row.id }).update({
             status:            '2',
             updated_at:        db.fn.now(),
@@ -595,7 +598,7 @@ async function updateAvatar(req, res) {
             return H.errorResponse(res, 'Photo upload is not enabled yet — run the customer.image migration.', 422);
         }
         const row = await db('customer').where({ id: customer_id }).whereNull('company_id').first();
-        if (!row) { return H.errorResponse(res, MSG.resource.notFound, 404); }
+        if (!row) { return H.errorResponse(res, MSG.auth.sessionExpired, 401); }
         const state = customers.classify(row);
         if (state === 'deleted' || state === 'disabled') { return H.errorResponse(res, MSG.auth.accountDisabled, 403); }
         if (state === 'banned') { return H.errorResponse(res, MSG.auth.accountBanned, 403); }
@@ -631,7 +634,7 @@ async function me(req, res) {
     try {
         const { customer_id } = req.query;
         const row = await db('customer').where({ id: customer_id }).whereNull('company_id').first();
-        if (!row) { return H.errorResponse(res, MSG.resource.notFound, 404); }
+        if (!row) { return H.errorResponse(res, MSG.auth.sessionExpired, 401); }
         const state = customers.classify(row);
         if (state === 'deleted' || state === 'disabled') { return H.errorResponse(res, MSG.auth.accountDisabled, 403); }
         if (state === 'banned') { return H.errorResponse(res, MSG.auth.accountBanned, 403); }
@@ -721,19 +724,31 @@ async function updateAbout(req, res) {
                     updated_at: db.fn.now(),
                 }));
         } else {
-            await db(profile.TABLE).insert(Object.assign({}, write, {
+            const [created] = await db(profile.TABLE).insert(Object.assign({}, write, {
                 uuid:        crypto.randomUUID(),
                 company_id:  profile.MARKETPLACE_COMPANY_ID, // NOT NULL col; 0 = marketplace (no tenant)
                 customer_id: customer_id,
                 created_by:  customer_id,
                 created_at:  db.fn.now(),
                 updated_at:  db.fn.now(),
-            }));
-            // FIRST-TIME profile completion. The legacy system fires an
-            // event_cashback reward here (event_type=2 "profile_complete").
-            // The Node loyalty engine isn't built yet — when it lands, award
-            // the reward at THIS point. Left as a deliberate marker.
-            // TODO(loyalty): CustomerRewards.event({ customerId, event: 'profile_complete' })
+            })).returning('id');
+
+            // FIRST-TIME profile completion → event_cashback (event_type = 2).
+            // This is the ONE place legacy fires it (webordering SiteController:
+            // only when the customer_profile row is NEWLY created, passing
+            // related_id = profile.id) — never at order-place.
+            // Scope is the MARKETPLACE's own programme (company_id = 0): a
+            // marketplace profile isn't owned by any restaurant, and the profile
+            // row itself is written at company_id = 0 right above.
+            // Best-effort: a loyalty hiccup must never fail the profile save.
+            try {
+                await Loyalty.earnEventCashback({
+                    customerId: customer_id,
+                    companyId:  Loyalty.MARKETPLACE_COMPANY_ID,
+                    eventType:  2,                                   // profile completion
+                    relatedId:  created && (created.id || created),
+                });
+            } catch (e) { H.log.warn('auth.updateAbout.eventCashback', e && e.message); }
         }
 
         const fresh = await db(profile.TABLE)

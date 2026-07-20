@@ -53,6 +53,13 @@ function requireUser(req, res, message) {
  * What:  Forwards the api envelope to the browser unchanged so the client
  *        has a single parser. Network errors / non-JSON failures become a
  *        consistent 502 envelope.
+ *
+ *        Note on 404: relay does NOT touch it. A 404 here is a genuine
+ *        "that order / address / post doesn't exist" and must reach the
+ *        client as-is — an order or payment call must never be turned into a
+ *        sign-out. The "your customer row is gone" case is signalled by the
+ *        api as 401 instead (see api Helpers/customerLookup), which the
+ *        client already bounces to /signin on.
  * Type:  WRITE.
  */
 function relay(res, apiRes) {

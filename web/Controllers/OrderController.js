@@ -275,21 +275,42 @@ async function submitCashbackReview(req, res) {
     const back = String((req.body && req.body.redirect) || req.get('referer') || '/');
     if (!user) { return res.redirect('/signin?next=' + encodeURIComponent(back)); }
 
-    // Most types upload a screenshot; the Live Video type sends a video URL
-    // instead (stored as-is in review_photo, like the legacy flow).
-    const photoPath = req.file ? '/review-images/' + req.file.filename : String((req.body && req.body.video_url) || '').trim();
+    // company_id must survive being ZERO — 0 is the MARKETPLACE (EatNDeal's own
+    // earn page), not "missing". `(x || '')` turned it into an empty string, so
+    // the api answered "Restaurant is required." and no marketplace claim could
+    // ever be submitted, whatever the page showed.
+    const rawCompany = (req.body && req.body.company_id);
+    const companyId  = (rawCompany == null || rawCompany === '')
+        ? ''
+        : String(rawCompany).replace(/[^0-9]/g, '');
+
+    // The screenshot no longer lives on the web disk. We read the uploaded file,
+    // base64 it, and hand it to the api, which decides WHERE it goes:
+    //   • marketplace (company 0) → our server
+    //   • a restaurant (company > 0) → that restaurant's legacy server
+    // (Helpers/imageUpload). The web temp file was only a staging area — delete
+    // it once read. The Live Video type has no file, just a video URL.
+    let imageData = '';
+    let imageName = '';
+    if (req.file) {
+        const tmp = path.join(__dirname, '..', 'runtime', 'review-images', req.file.filename);
+        try { imageData = fs.readFileSync(tmp).toString('base64'); imageName = req.file.filename; }
+        catch (e) { imageData = ''; }
+        try { fs.unlinkSync(tmp); } catch (e) { /* best-effort */ }
+    }
+    const videoUrl = String((req.body && req.body.video_url) || '').trim();
+
     const payload = {
         customer_id: user.id,
-        company_id:  String((req.body && req.body.company_id) || '').replace(/[^0-9]/g, ''),
+        company_id:  companyId,
         review_type: Number((req.body && req.body.review_type) || 1),
         notes:       String((req.body && req.body.notes) || '').trim(),
-        photo:       photoPath,
+        image_data:  imageData,   // base64 (empty for the video type)
+        image_name:  imageName,
+        photo:       videoUrl,    // video URL only; screenshots go via image_data
     };
     const apiRes = await callApi(req, 'POST', '/api/v1/customer/review-cashback', payload);
     const body   = apiRes.body || {};
-    if (body.status !== 200 && req.file) {
-        try { fs.unlinkSync(path.join(__dirname, '..', 'runtime', 'review-images', req.file.filename)); } catch (e) { /* ignore */ }
-    }
     if (req.flash) {
         req.flash(body.status === 200 ? 'success' : 'error', body.msg || (body.status === 200 ? 'Review submitted.' : 'Could not submit your review.'));
     }

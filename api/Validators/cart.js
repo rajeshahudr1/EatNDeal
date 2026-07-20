@@ -92,6 +92,27 @@ const cartAddSchema = Joi.object({
     ...browseLocationFields,
 });
 
+// ── POST /customer/cart/surprise-box ───────────────────────────────
+// The "Too Good To Go" box. Keyed by COMPANY, not product_id: the box is
+// configured on the `branch` row and has no `products` row at all, so
+// /cart/add's product lookup can't reach it. serve_type is accepted (not
+// forced to 2) so the pickup-only rule answers with legacy's real message
+// instead of a bare schema rejection.
+const cartSurpriseBoxSchema = Joi.object({
+    customer_id: ownerCustomerIdRule,
+    guest_id:    guestIdRule,
+    company_id:  idRule.required().messages({
+        'any.required': 'A restaurant is required.',
+    }),
+    qty: Joi.number().integer().min(1).max(99).default(1)
+        .messages({
+            'number.min': 'Quantity must be at least 1.',
+            'number.max': 'Quantity cannot exceed 99.',
+        }),
+    serve_type: Joi.number().valid(2, 3).optional(),   // 2 = pickup, 3 = delivery
+    local_id:   Joi.string().trim().max(64).optional().allow('', null),
+});
+
 // ── POST /customer/cart/update-qty ─────────────────────────────────
 // Set a line item's quantity to a specific value. qty=0 is rejected
 // (clients should call /remove-item to delete a line instead).
@@ -263,6 +284,7 @@ module.exports = {
     cartGetSchema,
     cartClaimSchema,
     cartAddSchema,
+    cartSurpriseBoxSchema,
     cartUpdateQtySchema,
     cartRemoveItemSchema,
     cartClearSchema,

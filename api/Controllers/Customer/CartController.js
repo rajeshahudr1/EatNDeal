@@ -33,6 +33,9 @@ const CartCheck = require('../../Helpers/cartValidate');
 const Coupons   = require('../../Helpers/coupons');
 const Vouchers  = require('../../Helpers/vouchers');
 const M         = require('../../Helpers/marketplace');
+// Surprise Box ("Too Good To Go") — remaining-slot maths + the collection
+// window. branch.qty is the DAILY ALLOWANCE, never what's left.
+const SurpriseBox = require('../../Helpers/surpriseBox');
 const A         = require('../../Helpers/availability');
 const StoreHours = require('../../Helpers/storeHours');
 const { db }    = require('../../config/db');
@@ -137,20 +140,42 @@ async function get(req, res) {
         // by card) — the page shows it + bumps the total when card picked.
         const cardServiceCharge = await Cart.cardServiceCharge(open.company_id);
 
-        // Loyalty redeem — this restaurant's usable reward balance for this
-        // customer + the most they may spend on this cart (balance / cap /
-        // sub-total). Feeds the checkout "Use £X reward" row. Best-effort:
-        // any loyalty hiccup just hides the redeem option.
+        // Loyalty redeem — ONLY this restaurant's own cashback is spendable on
+        // the order (see the disabled marketplace pool in Helpers/loyalty
+        // redeemPoolsFor). rewardMax is `combined`, which now collapses to the
+        // restaurant pool, and rewardBalance is that restaurant's balance —
+        // the two must agree, or the cart advertises an "available" figure the
+        // customer can never actually spend. Best-effort: any loyalty hiccup
+        // just hides the redeem option.
         let rewardBalance = 0;
         let rewardMax = 0;
+        let rewardPools = { restaurant: 0, marketplace: 0, combined: 0 };
         if (!owner.isGuest) {
             try {
                 const Loyalty = require('../../Helpers/loyalty');
-                rewardBalance = await Loyalty.balanceFor(owner.customerId, open.company_id);
-                rewardMax     = await Loyalty.maxRedeemable({
-                    customerId: owner.customerId, companyId: open.company_id, subTotal: Number(v.cart.sub_total) || 0,
+                const sub = Number(v.cart.sub_total) || 0;
+                rewardPools = await Loyalty.redeemPoolsFor({
+                    customerId: owner.customerId, companyId: open.company_id, subTotal: sub,
                 });
-            } catch (e) { rewardBalance = 0; rewardMax = 0; }
+                rewardMax = rewardPools.combined;
+                // ══ MARKETPLACE BALANCE EXCLUDED 2026-07-20 (user request) ══
+                // Was balRest + balMp (this restaurant + the EatNDeal
+                // marketplace pool). The marketplace pool is no longer
+                // spendable, so adding it here only inflated the "£X available"
+                // line in the cart — money the customer could not use.
+                // RESTORE: bring back the Promise.all below and re-enable the
+                // pool in Helpers/loyalty (redeemPoolsFor + consumeAcrossPools).
+                //
+                // const [balRest, balMp] = await Promise.all([
+                //     Loyalty.balanceFor(owner.customerId, open.company_id),
+                //     Loyalty.balanceFor(owner.customerId, Loyalty.MARKETPLACE_COMPANY_ID),
+                // ]);
+                // rewardBalance = Cart.round2(balRest + balMp);
+                rewardBalance = Cart.round2(
+                    await Loyalty.balanceFor(owner.customerId, open.company_id),
+                );
+                // ═══════════════════════════════════════════════════════════
+            } catch (e) { rewardBalance = 0; rewardMax = 0; rewardPools = { restaurant: 0, marketplace: 0, combined: 0 }; }
         }
 
         // Pre-order slots — valid 15-min times today for this restaurant +
@@ -184,6 +209,7 @@ async function get(req, res) {
         const view  = Cart.publicCartView(v.cart, items, {
             charityTiers, cardServiceCharge, rewardBalance, rewardMax, availableSlots,
             canDelivery: offered.delivery, canPickup: offered.pickup, canSchedule,
+            rewardPools,
         });
 
         // Surface any auto-reprice as a non-blocking notice so the customer
@@ -533,6 +559,31 @@ async function updateQty(req, res) {
 
         const line = await Cart.loadOwnedLineItem(open.id, b.item_id);
         if (!line) { return H.errorResponse(res, 'That item is not in your cart.', 404); }
+
+        // The Surprise Box is a VIRTUAL line (product_id = 0) — it has no
+        // `products` row, so the availability lookup below can never match it
+        // and every qty change came back "That item is no longer available."
+        // It has its own limit anyway: the branch's remaining slots.
+        if (Number(line.is_surprise_item) === 1) {
+            const sbBranch = await db('branch')
+                .where({ id: open.branch_id, is_toogoodtogo_product: 1 })
+                .first();
+            if (!sbBranch) { return H.errorResponse(res, 'That item is no longer available.', 422); }
+
+            // Count what's left EXCLUDING this line, else the customer's own
+            // held slots make their existing box look unavailable to them.
+            const left = await SurpriseBox.remainingFor(sbBranch);
+            const allowed = left.remaining + (Number(line.product_qty) || 0);
+            if (newQty > allowed) {
+                return H.errorResponse(res,
+                    allowed > 0
+                        ? ('Only ' + allowed + ' slot(s) left for this product.')
+                        : 'Surprise box max slot limit reached',
+                    422, { code: 'surprise.no_slots', remaining: allowed });
+            }
+            await Cart.updateLineQty(line.id, newQty);
+            return respondWithCart(res, open.id, owner.scope, 'Quantity updated.');
+        }
 
         // Availability re-check — re-read live (not the snapshot on the
         // row). Status-driven (no stock count): block raising the qty of a
@@ -983,12 +1034,34 @@ async function applyLoyalty(req, res) {
             return H.errorResponse(res, 'Rewards aren\'t available right now.', 422);
         }
 
+        // ONE discount per order: a coupon, a voucher, OR cashback — never two.
+        // Legacy's rule (webordering/views/cart/checkout.php:2571-2597,
+        // "Cashback not allowed with coupon/voucher"), enforced HERE rather than
+        // in the browser as legacy does — a JS check is a hint, not a control,
+        // and this one decides how much money comes off an order.
+        // Coupon vs voucher already exclude each other in Cart.setCoupon /
+        // setVoucher, so testing both covers all three combinations.
+        if (Number(open.coupon_id) > 0) {
+            return H.errorResponse(res,
+                'Cashback can’t be used with a coupon. Remove the coupon to use your reward.', 422);
+        }
+        if (Number(open.voucher_id) > 0) {
+            return H.errorResponse(res,
+                'Cashback can’t be used with a voucher. Remove the voucher to use your reward.', 422);
+        }
+
+        // Cap = THIS restaurant's pool only (its balance, its use_max_cashback,
+        // the sub-total — see maxRedeemable). The EatNDeal marketplace pool is
+        // disabled in Helpers/loyalty redeemPoolsFor, so `combined` is the
+        // restaurant pool; this stays written in terms of `combined` so
+        // re-enabling that pool needs no change here.
         const Loyalty = require('../../Helpers/loyalty');
-        const max = await Loyalty.maxRedeemable({
+        const pools = await Loyalty.redeemPoolsFor({
             customerId, companyId: open.company_id, subTotal: Number(open.sub_total) || 0,
         });
+        const max = pools.combined;
         if (max <= 0) {
-            return H.errorResponse(res, 'You have no reward to use at this restaurant yet.', 422);
+            return H.errorResponse(res, 'You have no reward to use on this order yet.', 422);
         }
 
         const apply = Math.min(Math.max(0, amount), max);
@@ -1164,4 +1237,114 @@ async function promotions(req, res) {
     }
 }
 
-module.exports = { get, count, claim, promotions, add, updateQty, removeItem, clear, setMode, setAddress, setSchedule, setInstructions, applyCoupon, removeCoupon, applyVoucher, removeVoucher, applyLoyalty, removeLoyalty, setCharity };
+/**
+ * addSurpriseBox — POST /customer/cart/surprise-box  { company_id, qty }
+ *
+ * What:  Adds the branch's Surprise Box ("Too Good To Go") to the cart.
+ * Why:   The box is a VIRTUAL product — it lives on the `branch` row, not in
+ *        `products`, so `add` (which starts from a products lookup) can't serve
+ *        it. Legacy has a separate endpoint for the same reason
+ *        (webordering ToogoodtogoController::actionAddToCart).
+ *
+ * The three guards are legacy's, in legacy's order — each is load-bearing:
+ *   1. PICKUP ONLY. There is no delivery for a surprise bag; the customer
+ *      collects it at the counter.
+ *   2. TIME WINDOW. Only inside the branch's collection hours.
+ *   3. REMAINING SLOTS. The real stopper against overselling the day's
+ *      allowance — the page's count can be stale by the time Add is pressed.
+ *
+ * Type:  WRITE.
+ */
+async function addSurpriseBox(req, res) {
+    try {
+        const b = req.body || {};
+        const owner = resolveOwner(b);
+        if (!owner) { return H.errorResponse(res, 'Please sign in to use the cart.', 401); }
+        if (!owner.isGuest) {
+            const { error } = await customers.loadMarketplaceCustomer(owner.customerId);
+            if (error) { return H.errorResponse(res, error.msg, error.status); }
+        }
+
+        const qty = Math.max(1, Number(b.qty) || 1);
+
+        // The branch that runs the box — marketplace-scoped like every other
+        // cart read, so a hidden/ineligible restaurant can't be ordered from.
+        const branch = await db('branch as b')
+            .innerJoin('company as c', 'c.id', 'b.company_id')
+            .where('b.company_id', b.company_id)
+            .andWhere('b.is_toogoodtogo_product', 1)
+            .modify(M.eligibleCompanyScope, 'c')
+            .modify(M.eligibleBranchScope,  'b')
+            .orderBy('b.id', 'asc')
+            .select('b.*', 'c.business_name')
+            .first();
+        if (!branch) { return H.errorResponse(res, 'This Surprise Box is no longer available.', 404); }
+
+        // 1. Pickup only (legacy ToogoodtogoController.php:143-149).
+        const serveType = Number(b.serve_type) === 2 ? 2 : 3;      // 2 = pickup, 3 = delivery
+        if (serveType !== 2) {
+            return H.errorResponse(res,
+                'Surprise Box items are available for Pickup only. Delivery is not available for this item.',
+                422, { code: 'surprise.pickup_only' });
+        }
+
+        // 2. Collection window (legacy :159-168).
+        const win = SurpriseBox.isInWindow(branch.start_time, branch.end_time);
+        if (!win.open) {
+            return H.errorResponse(res,
+                'This product is only available between ' + win.from + ' and ' + win.to,
+                422, { code: 'surprise.closed' });
+        }
+
+        // 3. Slots left (legacy :171-180) — the authoritative check. Recomputed
+        // here rather than trusting whatever the page rendered.
+        const left = await SurpriseBox.remainingFor(branch);
+        if (qty > left.remaining) {
+            return H.errorResponse(res,
+                left.remaining > 0
+                    ? ('Only ' + left.remaining + ' slot(s) left for this product.')
+                    : 'Surprise box max slot limit reached',
+                422, { code: 'surprise.no_slots', remaining: left.remaining });
+        }
+
+        // A cart belongs to ONE restaurant — switching restaurants closes the
+        // old one, same rule as `add`.
+        const existing = await Cart.findOpenCart(owner.scope);
+        if (existing && Number(existing.branch_id) !== Number(branch.id)) {
+            await Cart.closeCart(existing.id);
+        }
+        const cart = await Cart.getOrCreateCart({
+            owner:     owner.scope,
+            customerId: owner.isGuest ? 0 : owner.customerId,
+            branchId:  branch.id,
+            companyId: branch.company_id,
+            serveType: 2,                                  // pickup — enforced above
+            localId:   b.local_id || null,
+        });
+
+        // discount_price wins when set, else the full price (legacy :251-254).
+        const unit = Number(branch.discount_price) > 0
+            ? Number(branch.discount_price)
+            : Number(branch.price) || 0;
+
+        await Cart.addSurpriseItem({
+            cartId:    cart.id,
+            branch,
+            qty,
+            unitPrice: unit,
+        });
+        await Cart.recomputeTotals(cart.id);
+
+        const items = await Cart.loadLineItems(cart.id);
+        return H.successResponse(res, {
+            cart_id:   cart.id,
+            count:     items.reduce((n, i) => n + (Number(i.product_qty) || 0), 0),
+            remaining: Math.max(0, left.remaining - qty),
+        }, 'Surprise Box added to your cart.');
+    } catch (err) {
+        H.log.error('cart.addSurpriseBox', err && err.message);
+        return H.errorResponse(res, 'Could not add the Surprise Box.', 500);
+    }
+}
+
+module.exports = { get, count, claim, promotions, add, addSurpriseBox, updateQty, removeItem, clear, setMode, setAddress, setSchedule, setInstructions, applyCoupon, removeCoupon, applyVoucher, removeVoucher, applyLoyalty, removeLoyalty, setCharity };

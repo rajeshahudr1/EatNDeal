@@ -35,12 +35,199 @@ const H = require('./helper');
 const { db } = require('../config/db');
 const crypto = require('node:crypto');
 const M      = require('./marketplace');
-const { sanitizeCmsHtml } = require('./cmsSanitize');
+// customer.id <-> customer.app_id. The reward tables key on app_id (legacy
+// semantics) — see linkedRewardIds and customerLookup.appIdOf.
+const customers = require('./customerLookup');
+const { sanitizeCmsHtml, decodeEntities } = require('./cmsSanitize');
 
 const REWARDS     = 'customer_rewards';
 const CONFIG      = 'company_loyalty';
 const STREAK_RULE = 'loyalty_order_cashback_rule';
 const STREAK_PROG = 'loyalty_order_cashback_progress';
+
+// ── Loyalty scope (company_id) ──────────────────────────────────────
+// Every loyalty row is partitioned by company_id. TWO kinds of owner:
+//   • company_id > 0 → a restaurant's own programme
+//   • company_id = 0 → the MARKETPLACE's own programme (EatNDeal super admin),
+//                      flagged is_marketplace = 1 on the row
+// 0 is a VALID scope but it's FALSY in JS, so a plain `!hasScope(companyId)` guard would
+// silently treat the whole marketplace programme as "no company" and no-op.
+// hasScope() is the ONE place that decides what a real scope is — always use it
+// instead of a truthiness check on a company id.
+const MARKETPLACE_COMPANY_ID = 0;
+// Display name for the marketplace's own reward card (company_id = 0 has no
+// company row to read a business_name from).
+const MARKETPLACE_LABEL = process.env.BRAND_NAME || 'EatNDeal';
+
+/*
+ * The marketplace's public slug — what /earn?restaurant=<slug> carries for
+ * EatNDeal's OWN earn page.
+ *
+ * RESERVED and deliberately not just the brand name: company_id 0 has no
+ * `company` row, so M.companyIdBySlug() can never resolve it (it looks the slug
+ * up in `company`). Callers must therefore check THIS first and only fall back
+ * to the company lookup. A plain "eatndeal" would also be ambiguous here —
+ * company_id 1 is a RESTAURANT literally named "EatNDeal".
+ */
+const MARKETPLACE_SLUG = 'eatndeal-marketplace';
+
+/**
+ * scopeFromSlug — MARKETPLACE_COMPANY_ID for the marketplace slug, else null
+ * (meaning "not the marketplace — resolve it as a normal company").
+ */
+function scopeFromSlug(slug) {
+    return String(slug || '').trim().toLowerCase() === MARKETPLACE_SLUG ? MARKETPLACE_COMPANY_ID : null;
+}
+
+/**
+ * resolveReferrerId
+ *
+ * What:  The referrer's REAL customer.id for a referred customer — the id our
+ *        ledger is keyed by.
+ *
+ * Why:   `customer.referred_by` has TWO meanings, like customer_review.customer_id:
+ *          • our signup      -> customer.id  (Helpers/customerLookup resolveReferrer
+ *                               stores row.id)
+ *          • legacy signup   -> app_id       (webordering SiteController.php:676
+ *                               `$model->referred_by = $referralCustomer->app_id`)
+ *        and the two collide across DIFFERENT real people (id 131 = "David",
+ *        app_id 131 = "Asad"). earnReferral awarded `referred_by` straight as a
+ *        customer.id, so a legacy-referred customer's friend-bonus landed in a
+ *        STRANGER's wallet.
+ *
+ *        The referred customer's OWN origin says which it is: a marketplace
+ *        customer (company_id NULL) was signed up by us, so their referred_by is
+ *        a customer.id; anyone else came through legacy, so it's an app_id.
+ *
+ * Type:  READ.
+ * Output: customer.id (number) or null when it can't be resolved — never a guess.
+ */
+async function resolveReferrerId(cust) {
+    const raw = cust && cust.referred_by;
+    if (raw == null || String(raw).trim() === '') { return null; }
+
+    // Ours: marketplace customers have a NULL company_id (Helpers/customerLookup).
+    if (cust.company_id == null) {
+        const byId = await db('customer').where({ id: raw }).first('id');
+        return byId ? Number(byId.id) : null;
+    }
+    // Legacy: referred_by is an app_id — map it back to the real row.
+    const byApp = await db('customer').where({ app_id: raw }).first('id');
+    return byApp ? Number(byApp.id) : null;
+}
+
+/*
+ * customer_review.customer_id has TWO DIFFERENT MEANINGS — read this before
+ * touching any query that joins it.
+ *
+ *   company_id = 0  (MARKETPLACE — written by our Node submit,
+ *                    Controllers/Customer/ReviewController)      -> customer.id
+ *   company_id > 0  (LEGACY — written by Yii webordering/POS)    -> customer.app_id
+ *
+ * Legacy keys its whole loyalty world by `app_id` (webordering
+ * OrderController.php:239 `$cart->user_id = $customer->app_id`, :1344
+ * `$customerId = Yii::$app->user->identity->app_id`), and CashbackReviewController.php:86
+ * joins `c.app_id = cr.customer_id`. Our marketplace keys by `customer.id`,
+ * because customers created by OUR signup have NO app_id at all (it comes from a
+ * legacy POS counter, SiteController.php:1003-1012).
+ *
+ * The two are NOT interchangeable: id and app_id collide across different real
+ * people (customer.id 6 = "Robert", app_id 6 = "Ravi"), so joining on the wrong
+ * one silently shows — and pays — the WRONG CUSTOMER. Joining everything on
+ * `c.id` was doing exactly that for the 13 legacy claims.
+ *
+ * Deliberately NOT "fixed" by migrating data to one key: our marketplace
+ * customers have app_id = NULL, so converting would orphan their money. The
+ * scope tells us the semantics deterministically, so we resolve per row instead.
+ *
+ * NB: `review_rating.customer_id` is a REAL customer.id even in legacy — legacy
+ * resolves app_id -> customer.id before inserting (CashbackReviewController.php:168-174).
+ * Do not apply this rule there.
+ */
+function joinReviewCustomer(q, reviewAlias, customerAlias) {
+    const cr = reviewAlias || 'cr';
+    const c  = customerAlias || 'c';
+    return q.leftJoin(`customer as ${c}`, function () {
+        this.on(function () {
+            this.on(`${cr}.company_id`, '=', db.raw('?', [MARKETPLACE_COMPANY_ID]))
+                .andOn(`${c}.id`, '=', `${cr}.customer_id`);
+        }).orOn(function () {
+            this.on(`${cr}.company_id`, '<>', db.raw('?', [MARKETPLACE_COMPANY_ID]))
+                .andOn(`${c}.app_id`, '=', `${cr}.customer_id`);
+        });
+    });
+}
+
+/*
+ * rewardCustomerIdFor — which id to CREDIT when approving a claim.
+ *
+ * Deliberately the row's own customer_id, unchanged: it already matches the
+ * ledger that will be read back.
+ *   • marketplace claim -> customer.id -> our wallet reads customer.id  ✅
+ *   • legacy claim      -> app_id      -> legacy wallet reads app_id    ✅
+ * Exists so this reasoning is written down rather than looking like an oversight.
+ */
+function rewardCustomerIdFor(review) {
+    return review.customer_id;
+}
+
+// loyalty_event_cashback_rule.event_type — the SAME meanings the admin writes
+// (Controllers/Admin/LoyaltyController EVENT_TYPES) and legacy reads:
+//   1 = signup, 2 = profile completion, 3 = google review
+// NOT birthday/anniversary — legacy has no such concept. The TRIGGER passes the
+// type in; earnEventCashback never derives it.
+const EVENT_SIGNUP = 1, EVENT_PROFILE_COMPLETE = 2, EVENT_GOOGLE_REVIEW = 3;
+const EVENT_TYPES  = [EVENT_SIGNUP, EVENT_PROFILE_COMPLETE, EVENT_GOOGLE_REVIEW];
+function hasScope(companyId) {
+    return companyId !== null && companyId !== undefined && companyId !== '' && !Number.isNaN(Number(companyId));
+}
+// True when this scope is the marketplace's own programme (company_id = 0).
+function isMarketplaceScope(companyId) {
+    return hasScope(companyId) && Number(companyId) === MARKETPLACE_COMPANY_ID;
+}
+
+/*
+ * ══ MARKETPLACE LOYALTY DISABLED 2026-07-20 (user request) ══════════════
+ *
+ * ONE switch for EatNDeal's own (company_id = 0) reward programme. While it is
+ * false, company 0 is left out of every customer-facing figure:
+ *     • wallet cards        (cardsFor)
+ *     • wallet totals + history rows (historyFor)
+ *     • checkout cap        (redeemPoolsFor)
+ *     • checkout spend      (consumeAcrossPools)
+ * so the totals, the cards, the history and the redeem cap all agree — an
+ * "available" figure that can't be spent is worse than no figure at all.
+ *
+ * NOTHING is deleted: rows keep accruing in customer_rewards, and every
+ * function still knows how to price the marketplace pool.
+ * RESTORE: set this to true. That is the whole change — the call sites all
+ * read it, so nothing else has to be touched.
+ */
+const MARKETPLACE_LOYALTY_ENABLED = false;
+
+/*
+ * rewardScopeWhere
+ *
+ * The scope filter shared by cardsFor + historyFor (totals AND rows) — kept in
+ * one place so those three can never drift apart.
+ *
+ * Enabled : marketplace rows (company_id = 0, which has NO company row) pass
+ *           through explicitly, plus any LIVE marketplace restaurant.
+ * Disabled: eligible restaurants only. company 0 needs no explicit exclusion —
+ *           eligibleCompanyScope tests c.is_marketplace / c.is_active, and the
+ *           LEFT JOIN leaves those NULL for a row with no company, so it drops
+ *           out on its own.
+ *
+ * `qb` is the query builder (call it with the builder, not via `this`).
+ */
+function rewardScopeWhere(qb) {
+    if (MARKETPLACE_LOYALTY_ENABLED) {
+        qb.where('cr.company_id', MARKETPLACE_COMPANY_ID)
+            .orWhere(function () { M.eligibleCompanyScope(this, 'c'); });
+        return;
+    }
+    M.eligibleCompanyScope(qb, 'c');
+}
 
 function round2(n) { return F.round2(n); }
 
@@ -71,7 +258,7 @@ async function isReady() {
  * Type:  READ.
  */
 async function loadConfig(companyId) {
-    if (!companyId || !(await isReady())) { return null; }
+    if (!hasScope(companyId) || !(await isReady())) { return null; }
     const row = await db(CONFIG).where({ company_id: companyId }).first();
     if (!row || Number(row.loyalty_status) !== 1) { return null; }
     return row;
@@ -89,7 +276,7 @@ async function loadConfig(companyId) {
  * Type:  READ.
  */
 async function ruleEnabled(companyId, ruleType) {
-    if (!companyId || !ruleType) { return false; }
+    if (!hasScope(companyId) || !ruleType) { return false; }
     try {
         const row = await db('loyalty_rules')
             .where({ company_id: companyId, rule_type: ruleType, status: 1 })
@@ -134,10 +321,20 @@ async function earnForOrder({ customerId, companyId, orderId, subtotal }) {
         const expiryDate = days > 0 ? new Date(Date.now() + days * 86400000) : null;
         const notifyDate = (days > 0 && notify > 0) ? new Date(Date.now() + (days - notify) * 86400000) : null;
 
+        // customer_rewards keys on app_id (legacy: customer_id = orders.user_id
+        // = app_id), NOT our customer.id — see customerLookup.appIdOf. Without
+        // an app_id the row could not be matched by the POS, and might collide
+        // with another customer's, so skip rather than write a wrong identity.
+        const rewardCustomerId = await customers.appIdOf(customerId);
+        if (rewardCustomerId === null) {
+            H.log.error('loyalty.earnForOrder', 'customer ' + customerId + ' has no app_id — cashback skipped');
+            return;
+        }
+
         const inserted = await db(REWARDS).insert({
             uuid:         crypto.randomUUID(),
             company_id:   companyId,
-            customer_id:  customerId,
+            customer_id:  rewardCustomerId,
             entity_type:  'cash_king',
             entity_id:    cfg.id,
             related_id:   orderId,
@@ -149,7 +346,7 @@ async function earnForOrder({ customerId, companyId, orderId, subtotal }) {
             expiry_date:  expiryDate,
             notify_date:  notifyDate,
             created_at:   db.fn.now(),
-            created_by:   customerId,
+            created_by:   rewardCustomerId,
         }).returning('id');
 
         const rewardId = inserted && inserted[0] && (inserted[0].id || inserted[0]);
@@ -158,7 +355,7 @@ async function earnForOrder({ customerId, companyId, orderId, subtotal }) {
                 await db('admin_reward_commissions').insert({
                     customer_reward_id: rewardId,
                     company_id:         companyId,
-                    customer_id:        customerId,
+                    customer_id:        rewardCustomerId,   // app_id, as above
                     reward_amount:      gross,
                     commission_percent: commPct,
                     commission_amount:  commission,
@@ -211,6 +408,26 @@ async function linkedCustomerIds(customerId) {
 }
 
 /**
+ * linkedRewardIds
+ *
+ * What:  linkedCustomerIds translated into the identity the REWARD tables
+ *        actually key on — customer.app_id, which is what legacy writes into
+ *        customer_rewards.customer_id (= orders.user_id = app_id).
+ * Why:   Every reward read below aggregates a person's accounts. Feeding it
+ *        customer.id values matched nothing legacy had written (a customer's
+ *        POS-earned cashback simply never appeared in the wallet) and could
+ *        match a DIFFERENT person's rows whenever their app_id happened to
+ *        equal one of our ids. This is the single choke point for all of them.
+ * NB:    An account with no app_id contributes nothing rather than falling back
+ *        to its customer.id — see customerLookup.appIdOf. Run
+ *        scripts/backfill-app-id.js if a customer is missing one.
+ * Type:  READ.
+ */
+async function linkedRewardIds(customerId) {
+    return customers.appIdsOf(await linkedCustomerIds(customerId));
+}
+
+/**
  * balanceFor
  *
  * What:  The usable balance on ONE restaurant's card (not expired, not
@@ -219,8 +436,8 @@ async function linkedCustomerIds(customerId) {
  * Type:  READ.
  */
 async function balanceFor(customerId, companyId) {
-    if (!customerId || !companyId || !(await isReady())) { return 0; }
-    const ids = await linkedCustomerIds(customerId);
+    if (!customerId || !hasScope(companyId) || !(await isReady())) { return 0; }
+    const ids = await linkedRewardIds(customerId);   // app_ids — reward tables key on app_id
     if (!ids.length) { return 0; }
     const row = await db(REWARDS)
         // is_redeemable = 1 only — LOCKED stamp rewards (is_redeemable = 0)
@@ -248,16 +465,18 @@ async function balanceFor(customerId, companyId) {
  */
 async function cardsFor(customerId) {
     if (!customerId || !(await isReady())) { return []; }
-    const ids = await linkedCustomerIds(customerId);
+    const ids = await linkedRewardIds(customerId);   // app_ids — reward tables key on app_id
     if (!ids.length) { return []; }
     const rows = await db(REWARDS + ' as cr')
-        // INNER join + eligibility → only restaurants that are LIVE on the
-        // marketplace (active, not deleted, not in maintenance) show a card.
-        // Points at a restaurant that isn't on the marketplace are hidden
-        // (the customer can't order there to redeem them anyway).
-        .innerJoin('company as c', 'c.id', 'cr.company_id')
+        // LEFT join: a RESTAURANT card must be a LIVE marketplace company
+        // (active, not deleted, not in maintenance) — points at a restaurant
+        // that isn't on the marketplace are hidden (the customer can't order
+        // there to redeem them anyway). Whether the MARKETPLACE's own card
+        // (company_id = 0) is included is rewardScopeWhere's call — see
+        // MARKETPLACE_LOYALTY_ENABLED.
+        .leftJoin('company as c', 'c.id', 'cr.company_id')
         .whereIn('cr.customer_id', ids)
-        .modify((qb) => M.eligibleCompanyScope(qb, 'c'))
+        .where(function () { rewardScopeWhere(this); })
         .groupBy('cr.company_id', 'c.business_name', 'c.domain_name')
         .havingRaw('SUM(cr.amount) > 0')
         .select(
@@ -273,11 +492,15 @@ async function cardsFor(customerId) {
         .orderBy('last_at', 'desc');
 
     return rows.map((r) => {
-        const name = String(r.business_name || '').trim() || 'Restaurant';
+        // company_id 0 = the marketplace's OWN card — no company row, so the
+        // brand name/slug stand in for business_name/domain_name.
+        const isMp = isMarketplaceScope(r.company_id);
+        const name = isMp ? MARKETPLACE_LABEL : (String(r.business_name || '').trim() || 'Restaurant');
         return {
             companyId: String(r.company_id),
             name,
-            slug:      r.domain_name ? M.slugify(r.domain_name) : M.slugify(name, r.company_id),
+            isMarketplace: isMp,
+            slug:      isMp ? '' : (r.domain_name ? M.slugify(r.domain_name) : M.slugify(name, r.company_id)),
             initial:   name.charAt(0).toUpperCase(),
             tint:      tintFor(r.company_id),
             balance:   round2(r.balance),
@@ -326,22 +549,28 @@ function rewardStatus(r) {
  */
 async function historyFor(customerId, opts) {
     const o = opts || {};
-    const companyId = Number(o.companyId) || 0;
+    // NOTE: `Number(x) || 0` would collapse "no filter" into 0 — and 0 now MEANS
+    // the marketplace's own programme, so that would silently show ONLY
+    // marketplace rows. Keep absent as null (→ no filter, every scope).
+    const companyId = hasScope(o.companyId) ? Number(o.companyId) : null;
     const filter = String(o.filter || '').trim().toLowerCase();
     const limit = Math.min(100, Math.max(1, Number(o.limit) || 50));
     const offset = Math.max(0, Number(o.offset) || 0);
     if (!customerId || !(await isReady())) { return { totals: { available: 0, earned: 0, used: 0, expired: 0 }, transactions: [], total_count: 0 }; }
-    const ids = await linkedCustomerIds(customerId);
+    const ids = await linkedRewardIds(customerId);   // app_ids — reward tables key on app_id
     if (!ids.length) { return { totals: { available: 0, earned: 0, used: 0, expired: 0 }, transactions: [], total_count: 0 }; }
 
     // Wallet totals for the scope (unaffected by the status filter / paging).
     // Aggregated across the person's mobile-linked accounts, and only for
-    // restaurants that are LIVE on the marketplace.
+    // restaurants that are LIVE on the marketplace. Whether the MARKETPLACE's
+    // own rows count towards the totals is rewardScopeWhere's call — the SAME
+    // clause the cards and the history rows use, so the headline figure can
+    // never include money the cards below it don't show.
     let tq = db(REWARDS + ' as cr')
-        .innerJoin('company as c', 'c.id', 'cr.company_id')
+        .leftJoin('company as c', 'c.id', 'cr.company_id')
         .whereIn('cr.customer_id', ids)
-        .modify((qb) => M.eligibleCompanyScope(qb, 'c'));
-    if (companyId) { tq = tq.where('cr.company_id', companyId); }
+        .where(function () { rewardScopeWhere(this); });
+    if (hasScope(companyId)) { tq = tq.where('cr.company_id', companyId); }
     const t = await tq.select(
         db.raw('COALESCE(SUM(cr.amount), 0) as earned'),
         db.raw('COALESCE(SUM(COALESCE(cr.used_amount,0)), 0) as used'),
@@ -358,10 +587,10 @@ async function historyFor(customerId, opts) {
     // Filtered, paginated history rows.
     const base = () => {
         let q = db(REWARDS + ' as cr')
-            .innerJoin('company as c', 'c.id', 'cr.company_id')
+            .leftJoin('company as c', 'c.id', 'cr.company_id')
             .whereIn('cr.customer_id', ids)
-            .modify((qb) => M.eligibleCompanyScope(qb, 'c'));
-        if (companyId) { q = q.where('cr.company_id', companyId); }
+            .where(function () { rewardScopeWhere(this); });
+        if (hasScope(companyId)) { q = q.where('cr.company_id', companyId); }
         if (filter === 'earned')   { q = q.where('cr.is_expired', 0).where('cr.expired_from', 0); }
         else if (filter === 'redeemed') { q = q.where('cr.expired_from', 3); }
         else if (filter === 'expired')  { q = q.where('cr.is_expired', 1).whereIn('cr.expired_from', [1, 4]); }
@@ -376,11 +605,15 @@ async function historyFor(customerId, opts) {
         .orderBy('cr.id', 'desc').limit(limit).offset(offset);
 
     const transactions = rows.map((r) => {
-        const name = String(r.business_name || '').trim() || 'Restaurant';
+        // company_id 0 = the marketplace's own programme — no company row, so
+        // show the brand instead of the generic "Restaurant" fallback.
+        const isMp = isMarketplaceScope(r.company_id);
+        const name = isMp ? MARKETPLACE_LABEL : (String(r.business_name || '').trim() || 'Restaurant');
         return {
             id:          Number(r.id),
             date:        r.created_at,
             companyId:   String(r.company_id),
+            isMarketplace: isMp,
             restaurant:  name,
             entity_type: r.entity_type || '',
             type_label:  REWARD_TYPE_LABELS[r.entity_type] || 'Cashback',
@@ -400,12 +633,18 @@ const REVIEW_STATUS_LBL = C.REVIEW_STATUSES.byCode;
 function cmsShotUrl(companyId, file) {
     const f = String(file || '').trim();
     if (!f) { return ''; }
-    if (/^https?:\/\//i.test(f) || f.charAt(0) === '/') { return f; }
-    const base = H.getUploadsBaseUrl();
-    return base + '/' + companyId + '/loyalty/' + f;
+    // OUR uploads (admin CMS) are stored as "/upload/loyalty/<file>" and live on
+    // the api server. Return them through H.mediaUrl, which makes them ABSOLUTE
+    // (http://<api>/upload/…) — the customer web app (4502) does NOT serve
+    // /upload, so a bare relative path 404'd and the example screenshot showed
+    // broken. This is exactly what marketplace category / restaurant images do.
+    // A bare filename is LEGACY media on the old Eat-n-Deal server, resolved
+    // against its uploads base with the <company>/loyalty/ path.
+    if (/^https?:\/\//i.test(f) || f.charAt(0) === '/') { return H.mediaUrl(f); }
+    return H.getUploadsBaseUrl() + '/' + companyId + '/loyalty/' + f;
 }
 async function reviewMasterOn(companyId) {
-    if (!companyId) { return false; }
+    if (!hasScope(companyId)) { return false; }
     const r = await db('loyalty_rules').where({ company_id: companyId, rule_type: 'review' }).whereNull('deleted_at').first('status');
     return !!(r && Number(r.status) === 1);
 }
@@ -420,9 +659,21 @@ async function reviewMasterOn(companyId) {
  *        only when the restaurant's review-rewards master is ON). Type: READ.
  */
 async function reviewTypesFor(companyId, customerId) {
-    const cid = Number(companyId) || 0;
-    if (!cid) { return { company: null, masterOn: false, types: [] }; }
-    const co = await db('company').where('id', cid).first('id', 'business_name', 'domain_name');
+    // company_id 0 (the marketplace's own programme) is a VALID scope — check
+    // the scope BEFORE coercing, or `Number(0) || 0` would read as "missing".
+    if (!hasScope(companyId)) { return { company: null, masterOn: false, types: [] }; }
+    // These tables key on app_id (legacy), not our customer.id — see
+    // customerLookup.appIdOf. award() translates on its own, so it still
+    // takes customerId; only the direct queries below use rcid.
+    const rcid = await customers.appIdOf(customerId);
+    if (rcid === null) { return { company: null, masterOn: false, types: [] }; }
+    const cid = Number(companyId);
+    // The MARKETPLACE has no `company` row (company_id 0 by design), so this
+    // lookup returns undefined and the page rendered a nameless card. Stand the
+    // brand in for it, exactly like the wallet card and the /earn picker do.
+    const co = isMarketplaceScope(cid)
+        ? { id: cid, business_name: MARKETPLACE_LABEL, domain_name: MARKETPLACE_SLUG }
+        : await db('company').where('id', cid).first('id', 'business_name', 'domain_name');
     const masterOn = await reviewMasterOn(cid);
     const rules = await db('loyalty_review_cashback_rule').where('company_id', cid).whereNull('deleted_at').andWhere('cashback', '>', 0).select('type', 'value_type', 'cashback');
     const ruleBy = {}; rules.forEach((r) => { ruleBy[Number(r.type)] = { cashback: round2(r.cashback), value_type: r.value_type || '£' }; });
@@ -440,7 +691,11 @@ async function reviewTypesFor(companyId, customerId) {
         return {
             id: t.id, slug: t.slug, name: t.name, icon: t.icon, video: t.video,
             reward: rule.cashback, value_type: rule.value_type,
-            title: cmsRow.title || t.name,
+            // The admin editor stores the title HTML-ENCODED (e.g. &quot;…&quot;,
+            // Switch &amp; …). It's rendered as PLAIN TEXT (the view escapes it),
+            // so decode the entities here — otherwise the view escapes the '&'
+            // again and the customer literally sees "&quot;" / "&amp;".
+            title: decodeEntities(cmsRow.title || t.name),
             description: cmsRow.description ? sanitizeCmsHtml(cmsRow.description) : '',
             screenshot_url: cmsShotUrl(cid, cmsRow.screenshot),
             status: claim ? (REVIEW_STATUS_LBL[Number(claim.admin_status)] || 'pending') : '',
@@ -460,23 +715,46 @@ async function reviewTypesFor(companyId, customerId) {
  * the /earn picker when no restaurant is chosen yet. Type: READ.
  */
 async function reviewRestaurants() {
+    // LEFT join + an explicit scope-0 pass-through. This was an INNER join on
+    // `company`, and the MARKETPLACE has no company row (company_id = 0 by
+    // design) — so EatNDeal's OWN review rewards could never appear in the
+    // picker no matter how they were configured. NB the "EatNDeal" card already
+    // in this list is company_id = 1, a RESTAURANT that happens to be named
+    // EatNDeal; the marketplace is a separate, additional card.
     const rows = await db('loyalty_review_cashback_rule as r')
-        .join('company as c', 'c.id', 'r.company_id')
+        .leftJoin('company as c', 'c.id', 'r.company_id')
         .whereNull('r.deleted_at').andWhere('r.cashback', '>', 0)
         // Count only the customer-facing (menu) review types, so the picker's
         // "up to £X / N ways" matches what the customer can actually claim.
         .whereIn('r.type', C.REVIEW_TYPES.filter((t) => t.menu).map((t) => t.id))
-        .andWhere('c.is_marketplace', 1).andWhere('c.is_active', 1).whereNull('c.deleted_at')
+        .andWhere(function () {
+            // marketplace (0) OR a live, marketplace-visible restaurant
+            this.where('r.company_id', MARKETPLACE_COMPANY_ID)
+                .orWhere(function () {
+                    this.where('c.is_marketplace', 1).andWhere('c.is_active', 1).whereNull('c.deleted_at');
+                });
+        })
         .whereExists(function () {
             this.select(db.raw('1')).from('loyalty_rules as lr')
                 .whereRaw('lr.company_id = r.company_id').andWhere('lr.rule_type', 'review').andWhere('lr.status', 1).whereNull('lr.deleted_at');
         })
-        .groupBy('c.id', 'c.business_name', 'c.domain_name')
-        .select('c.id', 'c.business_name', 'c.domain_name', db.raw('MAX(r.cashback) as max_reward'), db.raw('COUNT(DISTINCT r.type) as type_count'))
+        .groupBy('r.company_id', 'c.id', 'c.business_name', 'c.domain_name')
+        .select('r.company_id', 'c.business_name', 'c.domain_name', db.raw('MAX(r.cashback) as max_reward'), db.raw('COUNT(DISTINCT r.type) as type_count'))
         .orderBy('c.business_name', 'asc').limit(100);
     return rows.map((r) => {
-        const name = r.business_name || 'Restaurant';
-        return { companyId: String(r.id), name, slug: r.domain_name ? M.slugify(r.domain_name) : M.slugify(name, r.id), maxReward: round2(r.max_reward), typeCount: Number(r.type_count) || 0 };
+        const cid = Number(r.company_id);
+        // company_id 0 has no company row, so business_name comes back NULL —
+        // label it with the brand, exactly like the wallet card does.
+        const isMp = isMarketplaceScope(cid);
+        const name = isMp ? MARKETPLACE_LABEL : (r.business_name || 'Restaurant');
+        return {
+            companyId: String(cid),
+            name,
+            slug: isMp ? MARKETPLACE_SLUG : (r.domain_name ? M.slugify(r.domain_name) : M.slugify(name, cid)),
+            maxReward: round2(r.max_reward),
+            typeCount: Number(r.type_count) || 0,
+            isMarketplace: isMp,
+        };
     });
 }
 
@@ -493,7 +771,7 @@ async function reviewRestaurants() {
  * Inputs: { customerId, companyId, subTotal }
  */
 async function maxRedeemable({ customerId, companyId, subTotal }) {
-    if (!customerId || !companyId) { return 0; }
+    if (!customerId || !hasScope(companyId)) { return 0; }
     const cfg = await loadConfig(companyId);        // null ⇒ loyalty off
     if (!cfg) { return 0; }
     const sub = Number(subTotal) || 0;
@@ -505,6 +783,97 @@ async function maxRedeemable({ customerId, companyId, subTotal }) {
     const flatCap = Number(cfg.use_max_cashback) || 0;   // 0 = no cap (legacy)
     if (flatCap > 0) { max = Math.min(max, flatCap); }
     return round2(Math.max(0, max));
+}
+
+/**
+ * redeemPoolsFor
+ *
+ * What:  The TWO reward pools a customer can spend on one order:
+ *           • restaurant  — their cashback AT this restaurant (company_id > 0)
+ *           • marketplace — their cashback with EatNDeal itself (company_id = 0)
+ *
+ *        Each pool is capped INDEPENDENTLY by its own programme's rules
+ *        (balance / use_max_cashback / sub-total — see maxRedeemable), because
+ *        the two are funded by different parties. The COMBINED spend is then
+ *        clamped to the order sub-total, so the two together can never take the
+ *        order below zero.
+ *
+ * Why:   A customer holds a card per restaurant AND the marketplace card, and
+ *        can use both on the same order.
+ * Type:  READ.
+ *
+ * Inputs:  { customerId, companyId (the cart's restaurant), subTotal }
+ * Output:  { restaurant, marketplace, combined }
+ */
+async function redeemPoolsFor({ customerId, companyId, subTotal }) {
+    const sub = Number(subTotal) || 0;
+    const restaurant = await maxRedeemable({ customerId, companyId, subTotal: sub });
+
+    // Only the cashback earned AT THE RESTAURANT BEING ORDERED FROM is
+    // spendable while MARKETPLACE_LOYALTY_ENABLED is false — the same switch
+    // that hides the marketplace card and keeps it out of the wallet totals.
+    // Gated HERE, in the one place that computes the cap, so every caller
+    // follows: the cart summary, the "Up to £X" hint, the redeem validator and
+    // the order-place path all read this. `combined` then collapses to the
+    // restaurant pool.
+    // The second lookup is also skipped when the cart IS the marketplace scope
+    // (can't happen today — a cart always belongs to a restaurant — but it
+    // keeps the maths honest).
+    const marketplace = (!MARKETPLACE_LOYALTY_ENABLED || isMarketplaceScope(companyId))
+        ? 0
+        : await maxRedeemable({ customerId, companyId: MARKETPLACE_COMPANY_ID, subTotal: sub });
+
+    const combined = round2(Math.min(sub, round2(restaurant + marketplace)));
+    return { restaurant, marketplace, combined };
+}
+
+/**
+ * consumeAcrossPools
+ *
+ * What:  Spends `amount` across BOTH pools in one order — the restaurant's own
+ *        cashback FIRST, then the marketplace's for whatever is left.
+ *
+ *        Restaurant-first is deliberate: that balance is only usable AT this
+ *        restaurant, while the marketplace balance can be spent anywhere. Always
+ *        burn the narrower pool first so the customer keeps the flexible one.
+ *
+ *        Each leg is a normal consumeForRedeem, so each pool gets its own FIFO
+ *        walk, its own customer_used_rewards ledger row, and reverseForOrder
+ *        already un-spends per company on cancel — no schema change needed.
+ *
+ * Type:  WRITE (transactional — caller's trx).
+ * Inputs: trx, { customerId, companyId, orderId, amount }
+ * Output: { consumed, byPool: { [companyId]: consumed } }
+ */
+async function consumeAcrossPools(trx, { customerId, companyId, orderId, amount }) {
+    let remaining = round2(amount);
+    const out = { consumed: 0, byPool: {} };
+    if (!trx || !customerId || remaining <= 0) { return out; }
+
+    // Restaurant pool, then the marketplace's. Deduped so a marketplace-scoped
+    // cart could never be consumed twice.
+    // While MARKETPLACE_LOYALTY_ENABLED is false the marketplace leg is skipped:
+    // redeemPoolsFor already caps the amount to the restaurant pool, so nothing
+    // should reach it anyway — but this is the code that actually MOVES money,
+    // and a caller passing a larger amount must never quietly burn EatNDeal's
+    // cashback. Belt and braces on purpose.
+    const scopes = [];
+    if (hasScope(companyId)) { scopes.push(Number(companyId)); }
+    if (MARKETPLACE_LOYALTY_ENABLED && !scopes.includes(MARKETPLACE_COMPANY_ID)) {
+        scopes.push(MARKETPLACE_COMPANY_ID);
+    }
+
+    for (const scope of scopes) {
+        if (remaining <= 0) { break; }
+        const r = await consumeForRedeem(trx, { customerId, companyId: scope, orderId, amount: remaining });
+        const took = round2(r.consumed);
+        if (took > 0) {
+            out.consumed    = round2(out.consumed + took);
+            out.byPool[scope] = took;
+            remaining       = round2(remaining - took);
+        }
+    }
+    return out;
 }
 
 /**
@@ -529,12 +898,17 @@ async function maxRedeemable({ customerId, companyId, subTotal }) {
  */
 async function consumeForRedeem(trx, { customerId, companyId, orderId, amount }) {
     const want = round2(amount);
-    if (!trx || !customerId || !companyId || want <= 0) { return { consumed: 0, breakdown: [] }; }
+    if (!trx || !customerId || !hasScope(companyId) || want <= 0) { return { consumed: 0, breakdown: [] }; }
+    // These tables key on app_id (legacy), not our customer.id — see
+    // customerLookup.appIdOf. award() translates on its own, so it still
+    // takes customerId; only the direct queries below use rcid.
+    const rcid = await customers.appIdOf(customerId);
+    if (rcid === null) { return { consumed: 0, breakdown: [] }; }
 
     // Spend across ALL of the person's mobile-linked accounts at this
     // restaurant (same person, one number). FIFO by reward id (oldest first),
     // only live + redeemable + with remaining balance.
-    const ids = await linkedCustomerIds(customerId);
+    const ids = await linkedRewardIds(customerId);   // app_ids — reward tables key on app_id
     if (!ids.length) { return { consumed: 0, breakdown: [] }; }
     const rows = await trx(REWARDS)
         .whereIn('customer_id', ids)
@@ -589,6 +963,55 @@ async function consumeForRedeem(trx, { customerId, companyId, orderId, amount })
         });
     }
     return { consumed, breakdown };
+}
+
+/**
+ * burnUnusedStamps
+ *
+ * What:  Expires the customer's UNUSED stamp-card rewards at this restaurant —
+ *        the "use it or lose it" rule the legacy checkout advertises:
+ *          "Stamp reward must be fully used in this order. Any unused balance
+ *           will expire automatically."
+ *
+ *        A STAMP reward is identified exactly like legacy: tier_type IS NOT
+ *        NULL (only entity_type='cashback' rows carry it). Anything still live
+ *        with a remaining balance is flipped to:
+ *            is_expired = 1, expired_from = 4 ("Not Used"), expiry_date = now
+ *
+ *        Legacy runs this on EVERY order (webordering OrderController): after a
+ *        redeem it burns what's left of the stamp set, and when the customer
+ *        redeemed NOTHING it burns every live stamp. Both branches mean the
+ *        same thing — an order either uses the stamp balance or loses it.
+ *
+ *        Without this the marketplace's stamp balances would accumulate for
+ *        ever (we already READ expired_from=4 as "expired" in the history
+ *        filter — the reader existed, this is the missing writer).
+ *
+ * Type:  WRITE (transactional — caller's trx, inside the order-place txn).
+ * Inputs: trx, { customerId, companyId }
+ * Output: { burned } — how many stamp rows were expired.
+ */
+async function burnUnusedStamps(trx, { customerId, companyId }) {
+    if (!trx || !customerId || !hasScope(companyId)) { return { burned: 0 }; }
+    try {
+        // Same person across mobile-linked accounts, same restaurant scope.
+        const ids = await linkedRewardIds(customerId);   // app_ids — reward tables key on app_id
+        if (!ids.length) { return { burned: 0 }; }
+        const burned = await trx(REWARDS)
+            .whereIn('customer_id', ids)
+            .andWhere({ company_id: companyId, is_expired: 0, is_redeemable: 1 })
+            .whereNotNull('tier_type')                       // ⇒ a stamp reward
+            .andWhereRaw('amount > COALESCE(used_amount, 0)') // still has balance
+            .andWhere(function () {                           // not already lapsed
+                this.whereNull('expiry_date').orWhere('expiry_date', '>=', db.fn.now());
+            })
+            .update({ is_expired: 1, expired_from: 4, expiry_date: db.fn.now() });
+        return { burned: Number(burned) || 0 };
+    } catch (e) {
+        // Best-effort: never fail an order over the stamp sweep.
+        try { H.log.warn('loyalty.burnUnusedStamps', e && e.message); } catch (_) { /* noop */ }
+        return { burned: 0 };
+    }
 }
 
 /**
@@ -663,10 +1086,6 @@ function firstOfMonth() {
     const n = new Date();
     return fmtDate(new Date(n.getFullYear(), n.getMonth(), 1));
 }
-function lastOfMonth() {
-    const n = new Date();
-    return fmtDate(new Date(n.getFullYear(), n.getMonth() + 1, 0));
-}
 function dayDiffStr(aStr, bStr) {   // a − b in whole days
     return Math.floor((Date.parse(aStr + 'T00:00:00Z') - Date.parse(bStr + 'T00:00:00Z')) / 86400000);
 }
@@ -719,7 +1138,12 @@ async function saveStreakProgress(prog, isNew, userId) {
  */
 async function earnOrderStreak({ customerId, companyId, orderId, subtotal }) {
     try {
-        if (!customerId || !companyId || !(await isReady())) { return; }
+        if (!customerId || !hasScope(companyId) || !(await isReady())) { return; }
+        // These tables key on app_id (legacy), not our customer.id — see
+        // customerLookup.appIdOf. award() translates on its own, so it still
+        // takes customerId; only the direct queries below use rcid.
+        const rcid = await customers.appIdOf(customerId);
+        if (rcid === null) { return; }
         // Master gate — product_streak must be switched on in loyalty_rules
         // (exactly like legacy customerCashback). Off ⇒ no award.
         if (!(await ruleEnabled(companyId, 'product_streak'))) { return; }
@@ -737,31 +1161,26 @@ async function earnOrderStreak({ customerId, companyId, orderId, subtotal }) {
         let matchedRule = null;
 
         for (const row of rules) {
+            // duration_type: 1 = weekly cycle, 2 = monthly cycle. Anything else
+            // is an unusable rule → skip. The cycle itself is enforced by the
+            // window reset inside each type below (against last_order_date) —
+            // both types now count via the stored progress row, so there's no
+            // date-window order re-count any more.
             const durType = Number(row.duration_type);
-            let startDate;
-            if (durType === 1)      { startDate = fmtDate(new Date(Date.now() - 7 * 86400000)) + ' 00:00:00'; }
-            else if (durType === 2) { startDate = firstOfMonth() + ' 00:00:00'; }
-            else { continue; }
-
-            // Below the rule's minimum → this order doesn't count; zero progress.
-            if (orderAmount < (Number(row.min_order_amount) || 0)) {
-                await db(STREAK_PROG)
-                    .where({ company_id: companyId, customer_id: customerId, rule_id: row.id })
-                    .update({ current_streak: 0, reward_ready: 0 });
-                continue;
-            }
+            if (durType !== 1 && durType !== 2) { continue; }
 
             const target = parseInt(row.order_count, 10) || 0;
+            const minAmt = Number(row.min_order_amount) || 0;
 
             // ── type 1: STREAK ──────────────────────────────────────
             if (Number(row.type) === 1) {
                 let prog = await db(STREAK_PROG)
-                    .where({ company_id: companyId, customer_id: customerId, rule_id: row.id })
+                    .where({ company_id: companyId, customer_id: rcid, rule_id: row.id })
                     .first();
                 const isNew = !prog;
                 if (!prog) {
                     prog = {
-                        company_id: companyId, customer_id: customerId, rule_id: row.id,
+                        company_id: companyId, customer_id: rcid, rule_id: row.id,
                         current_streak: 0, reward_ready: 0, last_order_date: null,
                     };
                 }
@@ -773,21 +1192,50 @@ async function earnOrderStreak({ customerId, companyId, orderId, subtotal }) {
                     if (durType === 2 && last < firstOfMonth())   { prog.current_streak = 0; prog.reward_ready = 0; }
                 }
 
-                // Previous streak completed → award on THIS order, restart at 1.
+                // Previous streak already COMPLETED → pay it out on this order
+                // REGARDLESS of the current order's amount. Legacy comment:
+                // "Reward already earned. Give cashback regardless of current
+                // order amount." This MUST be checked before the min-amount
+                // guard below — otherwise a customer who earned the reward and
+                // then places a small order silently loses it.
                 if (Number(prog.reward_ready) === 1) {
                     matchedRule = row;
                     prog.reward_ready = 0;
-                    prog.current_streak = 1;
+                    // Start the NEXT streak only if THIS order itself qualifies.
+                    prog.current_streak = (orderAmount >= minAmt) ? 1 : 0;
                     prog.last_order_date = today;
                     await saveStreakProgress(prog, isNew, customerId);
                     break;
                 }
 
-                // Otherwise advance the counter.
-                if (!last) {
+                // Below the rule's minimum → this order doesn't advance the
+                // streak (and can't have completed one, handled above).
+                if (orderAmount < minAmt) {
+                    if (!isNew) {
+                        await db(STREAK_PROG)
+                            .where({ company_id: companyId, customer_id: rcid, rule_id: row.id })
+                            .update({ current_streak: 0, reward_ready: 0 });
+                    }
+                    continue;
+                }
+
+                // Advance the counter. The day-gap is measured against the last
+                // QUALIFYING order (sub_total >= min, placed BEFORE this one) —
+                // legacy reads the real Orders table, not progress.last_order_date,
+                // so an in-between order UNDER the minimum neither extends nor
+                // breaks the streak.
+                const lastQualifying = await db('orders')
+                    .where({ company_id: companyId, user_id: customerId, status: '1', order_status: '' })
+                    .andWhere('sub_total', '>=', minAmt)
+                    .andWhere('id', '<', orderId)
+                    .orderBy('id', 'desc')
+                    .first('created_at');
+
+                if (!lastQualifying) {
                     prog.current_streak = 1;
                 } else {
-                    const dd = dayDiffStr(today, last);
+                    const dd = dayDiffStr(today, fmtDate(lastQualifying.created_at));
+                    // Same or consecutive day → continue the streak; a gap resets it.
                     if (dd === 0 || dd === 1) { prog.current_streak = (Number(prog.current_streak) || 0) + 1; }
                     else { prog.current_streak = 1; }
                 }
@@ -797,15 +1245,54 @@ async function earnOrderStreak({ customerId, companyId, orderId, subtotal }) {
             }
 
             // ── type 2: MILESTONE ───────────────────────────────────
+            // Same progress-counter + reward_ready pattern as type 1, but with
+            // NO day-gap rule: a milestone just counts QUALIFYING orders, and
+            // legacy pays the reward on the NEXT order after the count is hit
+            // ("Milestone completed / Cashback on NEXT order").
+            //
+            // This used to re-COUNT orders in a month window and award on
+            // `cnt > target && (cnt-1) % target === 0`, which awards at
+            // different times than legacy and ignores the stored counter (so a
+            // window reset or a cycle restart was never honoured).
             if (Number(row.type) === 2) {
-                const endDate = lastOfMonth() + ' 23:59:59';
-                const cntRow = await db('orders')
-                    .where({ company_id: companyId, user_id: customerId, status: '1', order_status: '' })
-                    .andWhereBetween('created_at', [startDate, endDate])
-                    .andWhere('sub_total', '>=', Number(row.min_order_amount) || 0)
-                    .count({ c: '*' }).first();
-                const cnt = Number(cntRow && cntRow.c) || 0;
-                if (cnt > target && ((cnt - 1) % target === 0)) { matchedRule = row; break; }
+                let prog = await db(STREAK_PROG)
+                    .where({ company_id: companyId, customer_id: rcid, rule_id: row.id })
+                    .first();
+                const isNew = !prog;
+                if (!prog) {
+                    prog = {
+                        company_id: companyId, customer_id: rcid, rule_id: row.id,
+                        current_streak: 0, reward_ready: 0, last_order_date: null,
+                    };
+                }
+
+                // Weekly / monthly window elapsed → reset the cycle.
+                const last = fmtDate(prog.last_order_date);
+                if (last) {
+                    if (durType === 1 && last < mondayThisWeek()) { prog.current_streak = 0; prog.reward_ready = 0; }
+                    if (durType === 2 && last < firstOfMonth())   { prog.current_streak = 0; prog.reward_ready = 0; }
+                }
+
+                // Milestone hit on an EARLIER order → pay out now, regardless of
+                // this order's amount (same rule as type 1).
+                if (Number(prog.reward_ready) === 1) {
+                    matchedRule = row;
+                    prog.reward_ready = 0;
+                    // Start the next cycle only if THIS order qualifies.
+                    prog.current_streak = (orderAmount >= minAmt) ? 1 : 0;
+                    prog.last_order_date = today;
+                    await saveStreakProgress(prog, isNew, customerId);
+                    break;
+                }
+
+                // Count ONLY qualifying orders; hitting the target arms the
+                // reward for the next order.
+                if (orderAmount >= minAmt) {
+                    prog.current_streak = (Number(prog.current_streak) || 0) + 1;
+                    if ((Number(prog.current_streak) || 0) >= target) { prog.reward_ready = 1; }
+                }
+                prog.last_order_date = today;
+                await saveStreakProgress(prog, isNew, customerId);
             }
         }
 
@@ -813,7 +1300,7 @@ async function earnOrderStreak({ customerId, companyId, orderId, subtotal }) {
 
         // Idempotency — never reward the same (rule, order) twice.
         const already = await db(REWARDS).where({
-            company_id: companyId, customer_id: customerId,
+            company_id: companyId, customer_id: rcid,
             entity_type: 'product_streak', entity_id: matchedRule.id, related_id: orderId,
         }).first();
         if (already) { return; }
@@ -825,48 +1312,22 @@ async function earnOrderStreak({ customerId, companyId, orderId, subtotal }) {
         amount = round2(amount);
         if (amount <= 0) { return; }
 
-        // Commission skim (mirrors legacy saveReward).
-        const commPct    = Number(cfg.loyalty_commission) || 0;
-        const commission = commPct > 0 ? round2(amount * commPct / 100) : 0;
-        const net        = round2(amount - commission);
-        if (net <= 0) { return; }
-
-        const days       = Number(cfg.expiry_duration_days) || 0;
-        const expiryDate = days > 0 ? new Date(Date.now() + days * 86400000) : null;
-
-        const inserted = await db(REWARDS).insert({
-            uuid:         crypto.randomUUID(),
-            company_id:   companyId,
-            customer_id:  customerId,
-            entity_type:  'product_streak',
-            entity_id:    matchedRule.id,
-            related_id:   orderId,
-            amount:       net,
-            used_amount:  0,
-            tier_type:    null,
-            is_redeemable: 1,   // spendable balance (our redeem gates on is_redeemable=1)
-            is_expired:   0,
-            expiry_date:  expiryDate,
-            notify_date:  null,
-            json_data:    JSON.stringify(matchedRule),
-            created_at:   db.fn.now(),
-            created_by:   customerId,
-        }).returning('id');
-
-        const rewardId = inserted && inserted[0] && (inserted[0].id || inserted[0]);
-        if (commission > 0 && rewardId) {
-            try {
-                await db('admin_reward_commissions').insert({
-                    customer_reward_id: rewardId,
-                    company_id:         companyId,
-                    customer_id:        customerId,
-                    reward_amount:      amount,
-                    commission_percent: commPct,
-                    commission_amount:  commission,
-                    created_at:         db.fn.now(),
-                });
-            } catch (e) { /* commission audit is optional */ }
-        }
+        // Granted through the SHARED award() path — same as every other rule.
+        // This used to hand-roll its own ledger insert + commission skim, which
+        // drifted in one important way: it hardcoded notify_date = null, so a
+        // streak reward could never be picked up by the expiry job's "expires
+        // soon" notify pass (it matches DATE(notify_date) = today) and would
+        // silently expire on the customer. award() derives notify_date from
+        // cfg.notify_before_days like legacy saveReward does.
+        await award({
+            companyId, customerId,
+            entityType: 'product_streak',
+            entityId:   matchedRule.id,
+            relatedId:  orderId,
+            amount,                  // GROSS — award() does the commission skim
+            jsonData:   matchedRule,
+            cfg,
+        });
     } catch (e) {
         // Best-effort — loyalty must never block an order.
     }
@@ -884,7 +1345,12 @@ async function earnOrderStreak({ customerId, companyId, orderId, subtotal }) {
  */
 async function streakProgressFor(customerId, companyId) {
     try {
-        if (!customerId || !companyId || !(await isReady())) { return null; }
+        if (!customerId || !hasScope(companyId) || !(await isReady())) { return null; }
+        // These tables key on app_id (legacy), not our customer.id — see
+        // customerLookup.appIdOf. award() translates on its own, so it still
+        // takes customerId; only the direct queries below use rcid.
+        const rcid = await customers.appIdOf(customerId);
+        if (rcid === null) { return null; }
         if (!(await ruleEnabled(companyId, 'product_streak'))) { return null; }
         const cfg = await loadConfig(companyId);
         if (!cfg) { return null; }
@@ -894,7 +1360,7 @@ async function streakProgressFor(customerId, companyId) {
         if (!rule) { return null; }
 
         const prog = await db(STREAK_PROG)
-            .where({ company_id: companyId, customer_id: customerId, rule_id: rule.id }).first();
+            .where({ company_id: companyId, customer_id: rcid, rule_id: rule.id }).first();
         const target  = parseInt(rule.order_count, 10) || 0;
         const current = prog ? (Number(prog.current_streak) || 0) : 0;
         const ready   = prog ? Number(prog.reward_ready) === 1 : false;
@@ -931,6 +1397,17 @@ async function award(opts) {
     const gross = round2(opts.amount);
     if (gross <= 0) { return false; }
 
+    // Callers pass our customer.id; customer_rewards keys on app_id (legacy
+    // semantics — see customerLookup.appIdOf). Translate ONCE here so every
+    // caller — event, review, streak, product, special_offer, smart_campaign,
+    // referral — writes the identity the POS and the legacy wallet can match.
+    // No app_id ⇒ don't invent one: a wrong id credits the wrong person.
+    const rewardCustomerId = await customers.appIdOf(opts.customerId);
+    if (rewardCustomerId === null) {
+        H.log.error('loyalty.award', 'customer ' + opts.customerId + ' has no app_id — reward skipped');
+        return false;
+    }
+
     const commPct    = Number(cfg.loyalty_commission) || 0;
     const commission = commPct > 0 ? round2(gross * commPct / 100) : 0;
     const net        = round2(gross - commission);
@@ -940,11 +1417,20 @@ async function award(opts) {
         ? Number(opts.expiryDays)
         : (Number(cfg.expiry_duration_days) || 0);
     const expiryDate = days > 0 ? new Date(Date.now() + days * 86400000) : null;
+    // notify_date = expiry − notify_before_days, exactly like legacy saveReward
+    // (and like earnForOrder above). This was hardcoded null, so every reward
+    // granted through award() — event, review, streak, product, special_offer,
+    // smart_campaign, referral — could NEVER be picked up by the expiry job's
+    // "expires soon" notify pass. Only cash_king was setting it.
+    const notifyDays = Number(cfg.notify_before_days) || 0;
+    const notifyDate = (days > 0 && notifyDays > 0)
+        ? new Date(Date.now() + (days - notifyDays) * 86400000)
+        : null;
 
     const inserted = await db(REWARDS).insert({
         uuid:          crypto.randomUUID(),
         company_id:    opts.companyId,
-        customer_id:   opts.customerId,
+        customer_id:   rewardCustomerId,   // app_id, not our customer.id
         entity_type:   opts.entityType,
         entity_id:     opts.entityId != null ? opts.entityId : null,
         related_id:    opts.relatedId != null ? opts.relatedId : null,
@@ -954,7 +1440,7 @@ async function award(opts) {
         is_redeemable: opts.isRedeemable != null ? opts.isRedeemable : 1,
         is_expired:    0,
         expiry_date:   expiryDate,
-        notify_date:   null,
+        notify_date:   notifyDate,
         json_data:     opts.jsonData != null ? JSON.stringify(opts.jsonData) : null,
         created_at:    db.fn.now(),
         created_by:    opts.customerId,
@@ -966,7 +1452,7 @@ async function award(opts) {
             await db('admin_reward_commissions').insert({
                 customer_reward_id: rewardId,
                 company_id:         opts.companyId,
-                customer_id:        opts.customerId,
+                customer_id:        rewardCustomerId,   // app_id, as above
                 reward_amount:      gross,
                 commission_percent: commPct,
                 commission_amount:  commission,
@@ -1012,7 +1498,12 @@ async function getCustomerTier(companyId, customerId, excludeOrderId) {
  */
 async function earnStampCashback({ customerId, companyId, orderId, subtotal }) {
     try {
-        if (!customerId || !companyId || !(await isReady())) { return; }
+        if (!customerId || !hasScope(companyId) || !(await isReady())) { return; }
+        // These tables key on app_id (legacy), not our customer.id — see
+        // customerLookup.appIdOf. award() translates on its own, so it still
+        // takes customerId; only the direct queries below use rcid.
+        const rcid = await customers.appIdOf(customerId);
+        if (rcid === null) { return; }
         if (!(await ruleEnabled(companyId, 'cashback'))) { return; }
         const cfg = await loadConfig(companyId);
         if (!cfg) { return; }
@@ -1043,12 +1534,12 @@ async function earnStampCashback({ customerId, companyId, orderId, subtotal }) {
         const requiredCount = parseInt(rule.order_count, 10) || 0;
         if (requiredCount > 0) {
             const cntRow = await db(REWARDS)
-                .where({ customer_id: customerId, company_id: companyId })
+                .where({ customer_id: rcid, company_id: companyId })
                 .whereNotNull('tier_type').count({ c: '*' }).first();
             const total = Number(cntRow && cntRow.c) || 0;
             if (total > 0 && total % requiredCount === 0) {
                 const locked = await db(REWARDS)
-                    .where({ customer_id: customerId, company_id: companyId, is_expired: 0, is_redeemable: 0 })
+                    .where({ customer_id: rcid, company_id: companyId, is_expired: 0, is_redeemable: 0 })
                     .whereNotNull('tier_type').orderBy('id', 'asc').limit(requiredCount);
                 for (const lr of locked) {
                     await db(REWARDS).where({ id: lr.id }).update({ is_redeemable: 1 });
@@ -1068,7 +1559,7 @@ async function earnStampCashback({ customerId, companyId, orderId, subtotal }) {
  */
 async function earnProductCashback({ customerId, companyId, orderId, productId, qty }) {
     try {
-        if (!customerId || !companyId || !productId || !(await isReady())) { return; }
+        if (!customerId || !hasScope(companyId) || !productId || !(await isReady())) { return; }
         if (!(await ruleEnabled(companyId, 'product_cashback'))) { return; }
         const cfg = await loadConfig(companyId);
         if (!cfg) { return; }
@@ -1102,7 +1593,12 @@ async function earnProductCashback({ customerId, companyId, orderId, productId, 
  */
 async function earnSpecialOffer({ customerId, companyId, orderId, subtotal }) {
     try {
-        if (!customerId || !companyId || !(await isReady())) { return; }
+        if (!customerId || !hasScope(companyId) || !(await isReady())) { return; }
+        // These tables key on app_id (legacy), not our customer.id — see
+        // customerLookup.appIdOf. award() translates on its own, so it still
+        // takes customerId; only the direct queries below use rcid.
+        const rcid = await customers.appIdOf(customerId);
+        if (rcid === null) { return; }
         if (!(await ruleEnabled(companyId, 'special_offer'))) { return; }
         const cfg = await loadConfig(companyId);
         if (!cfg) { return; }
@@ -1115,7 +1611,7 @@ async function earnSpecialOffer({ customerId, companyId, orderId, subtotal }) {
 
         // One per offer per day.
         const already = await db(REWARDS)
-            .where({ company_id: companyId, customer_id: customerId, entity_type: 'special_offer', entity_id: rule.id })
+            .where({ company_id: companyId, customer_id: rcid, entity_type: 'special_offer', entity_id: rule.id })
             .whereRaw('DATE(created_at) = CURRENT_DATE').first();
         if (already) { return; }
 
@@ -1142,7 +1638,12 @@ async function earnSpecialOffer({ customerId, companyId, orderId, subtotal }) {
  */
 async function earnReferral({ customerId, companyId, orderId }) {
     try {
-        if (!customerId || !companyId || !(await isReady())) { return; }
+        if (!customerId || !hasScope(companyId) || !(await isReady())) { return; }
+        // These tables key on app_id (legacy), not our customer.id — see
+        // customerLookup.appIdOf. award() translates on its own, so it still
+        // takes customerId; only the direct queries below use rcid.
+        const rcid = await customers.appIdOf(customerId);
+        if (rcid === null) { return; }
         if (!(await ruleEnabled(companyId, 'referral'))) { return; }
         const cfg = await loadConfig(companyId);
         if (!cfg) { return; }
@@ -1153,9 +1654,9 @@ async function earnReferral({ customerId, companyId, orderId }) {
             .andWhere('id', '!=', orderId).first('id');
         if (prior) { return; }
 
-        const cust = await db('customer').where({ id: customerId }).first('referred_by');
-        const referredBy = cust && cust.referred_by;
-        if (!referredBy) { return; }
+        const cust = await db('customer').where({ id: customerId }).first('referred_by', 'company_id');
+        const referredBy = await resolveReferrerId(cust);
+        if (referredBy == null) { return; }
 
         const rule = await db('loyalty_referral_cashback_rule')
             .where({ company_id: companyId, trigger: 2 }).whereNull('deleted_at').first();
@@ -1165,7 +1666,7 @@ async function earnReferral({ customerId, companyId, orderId }) {
         if (referrerCb <= 0 && refereeCb <= 0) { return; }
 
         const already = await db(REWARDS)
-            .where({ company_id: companyId, customer_id: customerId, entity_type: 'referral', entity_id: rule.id }).first();
+            .where({ company_id: companyId, customer_id: rcid, entity_type: 'referral', entity_id: rule.id }).first();
         if (already) { return; }
 
         if (referrerCb > 0) {
@@ -1180,40 +1681,49 @@ async function earnReferral({ customerId, companyId, orderId }) {
 /**
  * earnEventCashback
  *
- * What:  Legacy 'event_cashback' — birthday (event_type 1) / anniversary
- *        (event_type 2) bonus from loyalty_event_cashback_rule, awarded when
- *        today matches the customer's dob / anniversary_date
- *        (customer_profile). Idempotent per rule. Master-gated.
+ * What:  Legacy 'event_cashback' — a one-off bonus from
+ *        loyalty_event_cashback_rule for a customer LIFECYCLE event:
+ *          1 = signup, 2 = profile completion, 3 = google review
+ *        (the SAME meanings the admin console writes — see
+ *        Controllers/Admin/LoyaltyController EVENT_TYPES).
+ *
+ *        The TRIGGER passes `eventType` in; this function never derives it.
+ *        Legacy fires exactly one of these today: type 2, from the profile-save
+ *        path when a customer_profile row is newly CREATED (webordering
+ *        SiteController) — NOT at order-place.
+ *
+ *        Idempotent per (customer, rule). Master-gated.
  * Type:  WRITE. Best-effort.
+ *
+ * Inputs: { customerId, companyId, eventType (1|2|3), relatedId }
  */
-async function earnEventCashback({ customerId, companyId, orderId }) {
+async function earnEventCashback({ customerId, companyId, eventType, relatedId }) {
     try {
-        if (!customerId || !companyId || !(await isReady())) { return; }
+        if (!customerId || !hasScope(companyId) || !(await isReady())) { return; }
+        // These tables key on app_id (legacy), not our customer.id — see
+        // customerLookup.appIdOf. award() translates on its own, so it still
+        // takes customerId; only the direct queries below use rcid.
+        const rcid = await customers.appIdOf(customerId);
+        if (rcid === null) { return; }
+        // eventType is passed IN by the trigger — never derived here. Legacy
+        // (CustomerRewards::customerCashback) looks the rule up by the caller's
+        // eventType exactly like this.
+        const type = Number(eventType) || 0;
+        if (!EVENT_TYPES.includes(type)) { return; }
         if (!(await ruleEnabled(companyId, 'event_cashback'))) { return; }
         const cfg = await loadConfig(companyId);
         if (!cfg) { return; }
 
-        let prof = null;
-        try { prof = await db('customer_profile').where({ customer_id: customerId }).first('dob', 'anniversary_date'); } catch (e) { prof = null; }
-        if (!prof) { return; }
-
-        const now = new Date();
-        const md = (d) => { const x = new Date(d); return (x.getMonth() + 1) + '-' + x.getDate(); };
-        const today = (now.getMonth() + 1) + '-' + now.getDate();
-        let eventType = null;
-        if (prof.dob && md(prof.dob) === today) { eventType = 1; }
-        else if (prof.anniversary_date && md(prof.anniversary_date) === today) { eventType = 2; }
-        if (!eventType) { return; }
-
         const rule = await db('loyalty_event_cashback_rule')
-            .where({ company_id: companyId, event_type: eventType }).whereNull('deleted_at').first();
+            .where({ company_id: companyId, event_type: type }).whereNull('deleted_at').first();
         if (!rule || Number(rule.cashback) <= 0) { return; }
 
+        // Once per customer per rule (legacy `$alreadyGiven`).
         const already = await db(REWARDS)
-            .where({ company_id: companyId, customer_id: customerId, entity_type: 'event_cashback', entity_id: rule.id }).first();
+            .where({ company_id: companyId, customer_id: rcid, entity_type: 'event_cashback', entity_id: rule.id }).first();
         if (already) { return; }
 
-        await award({ companyId, customerId, entityType: 'event_cashback', entityId: rule.id, relatedId: orderId, amount: Number(rule.cashback) || 0, jsonData: rule, cfg });
+        await award({ companyId, customerId, entityType: 'event_cashback', entityId: rule.id, relatedId, amount: Number(rule.cashback) || 0, jsonData: rule, cfg });
     } catch (e) { /* best-effort */ }
 }
 
@@ -1230,7 +1740,7 @@ async function earnEventCashback({ customerId, companyId, orderId }) {
  */
 async function earnSmartCampaign({ customerId, companyId, orderId, type }) {
     try {
-        if (!customerId || !companyId || !(await isReady())) { return; }
+        if (!customerId || !hasScope(companyId) || !(await isReady())) { return; }
         if (!(await ruleEnabled(companyId, 'smart_campaign'))) { return; }
         const cfg = await loadConfig(companyId);
         if (!cfg) { return; }
@@ -1267,7 +1777,7 @@ async function earnSmartCampaign({ customerId, companyId, orderId, type }) {
  */
 async function getFreeDelivery(companyId, customerId) {
     try {
-        if (!companyId || !customerId || !(await isReady())) { return false; }
+        if (!hasScope(companyId) || !customerId || !(await isReady())) { return false; }
         const cfg = await loadConfig(companyId);
         if (!cfg) { return false; }
         const row = await db('orders')
@@ -1297,7 +1807,7 @@ async function getFreeDelivery(companyId, customerId) {
  */
 async function earnCollectionCashback({ customerId, companyId, orderId, subtotal, serveType }) {
     try {
-        if (!customerId || !companyId || !(await isReady())) { return; }
+        if (!customerId || !hasScope(companyId) || !(await isReady())) { return; }
         if (Number(serveType) !== 2) { return; }                 // collection / pickup only
         if (!(await ruleEnabled(companyId, 'collection_cashback'))) { return; }
         const cfg = await loadConfig(companyId);
@@ -1326,7 +1836,7 @@ async function earnCollectionCashback({ customerId, companyId, orderId, subtotal
  */
 async function bogoForProduct(productId, companyId) {
     try {
-        if (!productId || !companyId || !(await isReady())) { return null; }
+        if (!productId || !hasScope(companyId) || !(await isReady())) { return null; }
         if (!(await ruleEnabled(companyId, 'bogof'))) { return null; }
         if (!(await loadConfig(companyId))) { return null; }
 
@@ -1384,7 +1894,7 @@ function payableQtyFor(bogo, qty) {
 async function bogoMapFor(companyId) {
     const map = new Map();
     try {
-        if (!companyId || !(await isReady())) { return map; }
+        if (!hasScope(companyId) || !(await isReady())) { return map; }
         if (!(await ruleEnabled(companyId, 'bogof'))) { return map; }
         if (!(await loadConfig(companyId))) { return map; }
         const rules = await db('loyalty_bogof_rule').where({ company_id: companyId }).whereNull('deleted_at');
@@ -1417,10 +1927,29 @@ module.exports = {
     earnForOrder, earnOrderStreak, earnStampCashback, earnProductCashback, earnSpecialOffer,
     earnReferral, earnEventCashback, earnSmartCampaign, earnCollectionCashback,
     bogoForProduct, payableQtyFor, bogoMapFor,
-    balanceFor, cardsFor, historyFor, reviewTypesFor, reviewRestaurants, maxRedeemable, consumeForRedeem, reverseForOrder, streakProgressFor,
+    balanceFor, cardsFor, historyFor, reviewTypesFor, reviewRestaurants, maxRedeemable, consumeForRedeem, burnUnusedStamps, reverseForOrder, streakProgressFor,
+    // Dual redeem — the restaurant's pool + the marketplace's, on one order.
+    redeemPoolsFor, consumeAcrossPools,
     linkedCustomerIds,
     // Shared reward-write (commission skim + expiry + ledger + audit row).
     // Exposed so the admin Review-Claims approval can grant a review reward
     // through the SAME path the earn rules use — keeping the ledger consistent.
     award,
+    // Loyalty scope helpers — company_id 0 is the MARKETPLACE's own programme
+    // (super-admin owned, is_marketplace=1 on the row). Exported so the cart /
+    // order-place / admin can reason about the two pools without re-deriving
+    // the rule (and without a `!companyId` check, which 0 would fail).
+    MARKETPLACE_COMPANY_ID, MARKETPLACE_LABEL, hasScope, isMarketplaceScope,
+    // customer_review identity resolvers. customer_id means customer.id at
+    // company_id 0 (our marketplace) but app_id at company_id > 0 (legacy) —
+    // and the two collide across DIFFERENT real people, so joining on the wrong
+    // one shows and pays the WRONG customer. See the block comment above
+    // joinReviewCustomer for the full rule + why we don't migrate the data.
+    joinReviewCustomer, rewardCustomerIdFor,
+    // The marketplace's reserved public slug + its resolver. company_id 0 has no
+    // company row, so companyIdBySlug() can NEVER resolve it — check this first.
+    MARKETPLACE_SLUG, scopeFromSlug,
+    // customer.referred_by is a customer.id for OUR signups but an app_id for
+    // legacy ones — this resolves either to the real customer.id.
+    resolveReferrerId,
 };

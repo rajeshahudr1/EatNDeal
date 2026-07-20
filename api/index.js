@@ -219,6 +219,28 @@ scheduler.register('heartbeat', '0 * * * * *', async () => {
     H.log.info('heartbeat', `tick ts=${new Date().toISOString()} db=${dbOk ? 'ok' : 'down'}`);
 });
 
+// Loyalty expiry — daily at 02:00. Ports the legacy console command
+// CronController::actionNotifyRewardExpiry: flips rewards past their
+// expiry_date to is_expired=1 / expired_from=1. Without it the wallet's
+// "expired" total + the `expired` history filter under-report, because the
+// read queries hide lapsed rewards but nothing ever MARKS them.
+// Idempotent + never reduces a spendable balance — safe to re-run.
+// Manual one-shot: node scripts/loyalty-expiry.js [--dry-run]
+scheduler.register('loyalty-expiry', '0 2 * * *', async () => {
+    await require('./Services/jobs/loyaltyExpiry').run();
+});
+
+// Loyalty smart campaigns — 1st of each month at 03:00. Ports the legacy
+// console commands CronController::actionTopSpendersCashback +
+// ::actionMostReferralsCashback, which reward LAST MONTH's top spenders /
+// top referrers. Monthly because the window is "last calendar month"; the
+// job is idempotent per rule/customer/day, so an extra run can't double-pay.
+// Marketplace scope only (company_id = 0) — restaurants' campaigns belong to
+// the legacy POS cron. Manual: node scripts/loyalty-campaigns.js [--dry-run]
+scheduler.register('loyalty-campaigns', '0 3 1 * *', async () => {
+    await require('./Services/jobs/loyaltyCampaigns').run();
+});
+
 // ── Listen ────────────────────────────────────────────────────────
 const server = app.listen(PORT, '0.0.0.0', async () => {
     console.log(chalk.greenBright(`\n  🍽️  EatNDeal API running`));

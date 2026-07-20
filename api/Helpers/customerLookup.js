@@ -206,6 +206,14 @@ async function resolveReferrer(referredCode) {
  *        Was previously duplicated in AddressController + FavouriteController.
  *        Single source of truth means a future status rule (e.g. "soft-
  *        suspended" pending KYC) auto-applies everywhere.
+ *
+ *        No row → 401, NOT 404. customerId always comes from the caller's
+ *        session, so "no such row" means the session is pointing at a customer
+ *        that no longer exists — a dead session, not a missing record. 401 is
+ *        the code the web clients already bounce to /signin on, and it keeps
+ *        the "record not found" wording (which means nothing to a customer)
+ *        off the screen. Reserve 404 for a real record the caller asked for by
+ *        id — an order, an address — so those never turn into a sign-out.
  * Type:  READ.
  */
 async function loadMarketplaceCustomer(customerId) {
@@ -213,7 +221,7 @@ async function loadMarketplaceCustomer(customerId) {
         .where({ id: customerId })
         .whereNull('company_id')
         .first();
-    if (!row) { return { error: { msg: MSG.resource.notFound, status: 404 } }; }
+    if (!row) { return { error: { msg: MSG.auth.sessionExpired, status: 401 } }; }
 
     const state = classify(row);
     if (state === 'deleted' || state === 'disabled') {
@@ -263,6 +271,79 @@ async function nextAppId() {
     }
 }
 
+/*
+ * ── customer.id  <->  customer.app_id ───────────────────────────────
+ *
+ * TWO identities exist in this database and they are NOT interchangeable:
+ *
+ *   customer.id      our own primary key. Used inside this API, and it is what
+ *                    review_rating.customer_id holds (legacy resolves app_id ->
+ *                    id before writing that one — CashbackReviewController).
+ *
+ *   customer.app_id  the identity LEGACY writes into every company-scoped
+ *                    table: cart.user_id, orders.user_id,
+ *                    customer_rewards.customer_id, customer_review.customer_id,
+ *                    customer_used_rewards, loyalty_order_cashback_progress,
+ *                    admin_reward_commissions.
+ *                    (legacy webordering: $cart->user_id = $customer->app_id;
+ *                     $orders->user_id = $cartDetails->user_id.)
+ *
+ * Writing our customer.id into a column legacy reads as an app_id is silently
+ * wrong: at best the row belongs to nobody, at worst it belongs to a DIFFERENT
+ * customer whose app_id happens to equal our id. Both directions were observed
+ * in this database before these helpers existed.
+ *
+ * app_id is GLOBALLY unique (not per company), so the mapping is a clean 1:1
+ * and safe to cache for the life of the process — an app_id is stamped once at
+ * signup and never changes.
+ */
+const _appIdById = new Map();   // customer.id -> app_id
+
+/**
+ * appIdOf
+ *
+ * What:  The app_id for one of OUR customer ids — the value to store in, or
+ *        match against, any legacy-shared column listed above.
+ * Type:  READ (cached).
+ * Output: number, or null when the customer has no app_id yet (a row created
+ *        before signup started stamping one — run scripts/backfill-app-id.js).
+ *        Callers must treat null as "cannot address this customer in legacy
+ *        terms" rather than substituting the customer.id, which is the exact
+ *        mistake this helper exists to prevent.
+ */
+async function appIdOf(customerId) {
+    const id = Number(customerId) || 0;
+    if (!id) { return null; }
+    if (_appIdById.has(id)) { return _appIdById.get(id); }
+    let appId = null;
+    try {
+        const row = await db(TABLE).where({ id }).first('app_id');
+        appId = row && row.app_id != null ? Number(row.app_id) : null;
+    } catch (e) {
+        try { H.log.error('customer.appIdOf', e && e.message); } catch (_) { /* best-effort */ }
+        return null;                        // don't cache a lookup failure
+    }
+    if (appId !== null) { _appIdById.set(id, appId); }
+    return appId;
+}
+
+/**
+ * appIdsOf
+ *
+ * What:  appIdOf for a LIST of customer ids, with the ones that have no app_id
+ *        dropped. Used by the loyalty reads, which aggregate every account a
+ *        person has (see loyalty.linkedCustomerIds) — a `whereIn` over these.
+ * Type:  READ (cached per id).
+ */
+async function appIdsOf(customerIds) {
+    const out = [];
+    for (const cid of (customerIds || [])) {
+        const a = await appIdOf(cid);
+        if (a !== null && !out.includes(a)) { out.push(a); }
+    }
+    return out;
+}
+
 module.exports = {
     findByPhone,
     classify,
@@ -273,4 +354,6 @@ module.exports = {
     generateReferralCode,
     resolveReferrer,
     nextAppId,
+    appIdOf,
+    appIdsOf,
 };

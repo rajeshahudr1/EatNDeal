@@ -50,6 +50,24 @@ function fmtDate(d) {
     return dt.getDate() + ' ' + MONTHS[dt.getMonth()] + ' ' + dt.getFullYear();
 }
 
+/**
+ * fmtSchedule — a pre-order's day + time as one readable string:
+ * 'Today, 17:30' / 'Tomorrow, 05:45' / 'Fri 24 Jul, 05:45'.
+ * `date` is 'YYYY-MM-DD' (orders.scheduled_date), `time` is 'HH:MM(:SS)'.
+ * Falls back to the bare time for older orders that carry no date.
+ */
+function fmtSchedule(date, time) {
+    const t = String(time || '').slice(0, 5);
+    if (!date) { return t; }
+    const dt = new Date(String(date).slice(0, 10) + 'T00:00:00');
+    if (isNaN(dt.getTime())) { return t; }
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const days = Math.round((dt - today) / 86400000);
+    if (days <= 0)  { return 'Today, ' + t; }
+    if (days === 1) { return 'Tomorrow, ' + t; }
+    return dt.getDate() + ' ' + MONTHS[dt.getMonth()] + ', ' + t;
+}
+
 // First character of a name, uppercased; `fallback` (default '?') when empty.
 function getInitial(name, fallback) {
     const fb = (fallback == null) ? '?' : fallback;
@@ -57,4 +75,4 @@ function getInitial(name, fallback) {
     return s ? s.charAt(0).toUpperCase() : fb;
 }
 
-module.exports = { CURRENCY_SYMBOL, currencySymbol, money, esc, fmtDate, getInitial };
+module.exports = { CURRENCY_SYMBOL, currencySymbol, money, esc, fmtDate, fmtSchedule, getInitial };

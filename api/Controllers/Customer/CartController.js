@@ -418,6 +418,37 @@ async function add(req, res) {
             serveType: Number(b.serve_type) === 2 ? 2 : 3,
         });
 
+        // 6a. Keep an EXISTING cart in step with the mode the customer is
+        // actually browsing in. getOrCreateCart only applies `serveType` when
+        // it creates the cart, so a cart opened in Delivery stayed serve_type=3
+        // even after the customer flipped the header toggle to Pickup — and
+        // the deliverability gate below then told a Pickup customer to
+        // "Switch to Pickup". Sync it here, honouring the Pickup-only rule for
+        // Surprise Boxes (same guard as /cart/set-mode).
+        const wantServe = Number(b.serve_type) === 2 ? 2 : 3;
+        if (Number(cart.serve_type) !== wantServe) {
+            let blocked = false;
+            if (wantServe === 3) {
+                const boxes = await db('cart_details')
+                    .where({ cart_id: cart.id, is_surprise_item: 1, is_deleted: 0 })
+                    .first('id');
+                blocked = !!boxes;      // a box in the cart pins it to Pickup
+            }
+            if (!blocked) {
+                await Cart.setMode(cart.id, wantServe, branch);
+                if (wantServe === 3 && !owner.isGuest) {
+                    await Cart.ensureDefaultDeliveryAddress(cart.id, owner.customerId, branch);
+                }
+                // A coupon can be tied to one fulfilment type, so drop it if
+                // the new mode no longer qualifies (as /cart/set-mode does).
+                const afterMode = await Cart.loadActiveCart(cart.id, owner.scope);
+                if (afterMode && Number(afterMode.coupon_id) > 0 && afterMode.promocode) {
+                    const chk = await Coupons.validate(afterMode.promocode, afterMode);
+                    if (!chk.ok) { await Cart.clearCoupon(cart.id, branch); }
+                }
+            }
+        }
+
         // 6b. First add into a fresh cart sets serve_type=3 (delivery)
         // — auto-attach the customer's default address now so the cart
         // page shows the address card filled in instead of "Pick a

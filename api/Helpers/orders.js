@@ -234,6 +234,9 @@ async function loadDetail(orderId, customerId) {
         totalQty:         Number(order.total_qty)   || 0,
         deliveryAddress:  order.delivery_address || '',
         scheduledTime:    order.scheduled_time || null,
+        // The DAY the pre-order is for — without it "05:45" is ambiguous
+        // between today and tomorrow. Normalised to YYYY-MM-DD.
+        scheduledDate:    order.scheduled_date ? String(order.scheduled_date).slice(0, 10) : null,
         isPreOrder:       Number(order.is_pre_order) === 1,
         deliveryEstimatedTime:         order.delivery_estimated_time || null,
         advancedOrderWaitingTimeMin:   Number(order.advanced_order_waiting_time_minute) || 0,

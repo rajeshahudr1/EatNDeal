@@ -195,14 +195,19 @@ async function placeOrder({ customer, cart, branch, items, paymentOption, custom
         const orderNumber = generateOrderNumber(now);
         const orderStatus = resolveOrderStatus(branch, cart.serve_type);
 
-        // Pre-order time → legacy stores time-of-day on scheduled_time.
-        // We extract HH:MM:SS from cart.pre_order_time when present.
+        // Pre-order schedule → legacy splits it across TWO columns:
+        // `scheduled_date` (DATE) + `scheduled_time` (TIME). Both exist on
+        // `orders` already. Writing only the time (as we used to) threw the
+        // day away, so a 05:45 next-day order was indistinguishable from
+        // 05:45 today for the customer, the merchant and EPOS.
         let scheduledTime = null;
+        let scheduledDate = null;
         if (Number(cart.is_pre_order) === 1 && cart.pre_order_time) {
             const d = new Date(cart.pre_order_time);
             if (Number.isFinite(d.getTime())) {
                 const pad = (n) => String(n).padStart(2, '0');
                 scheduledTime = pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+                scheduledDate = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
             }
         }
 
@@ -250,6 +255,7 @@ async function placeOrder({ customer, cart, branch, items, paymentOption, custom
                                    .map((s) => String(s || '').trim()).filter(Boolean)
                                    .join('  |  ') || null,
             is_pre_order:      Number(cart.is_pre_order) || 0,
+            scheduled_date:    scheduledDate,
             scheduled_time:    scheduledTime,
             delivery_estimated_time:           deliveryEstimatedTime(branch, cart.serve_type),
             advanced_order_waiting_time_minute: Number(advancedExtra) || 0,

@@ -94,6 +94,7 @@ async function list(req, res) {
                 'customer_last_name', 'customer_number', 'remark',
                 'delivery_address', 'delivery_estimated_time',
                 'advanced_order_waiting_time_minute', 'is_pre_order', 'scheduled_time',
+                'scheduled_date',
             );
         if (codes) { qb.whereIn('order_status', codes); }
 
@@ -115,6 +116,9 @@ async function list(req, res) {
             remark:       r.remark || '',
             isPreOrder:   Number(r.is_pre_order) === 1,
             scheduledTime: r.scheduled_time || null,
+            // Day the pre-order is for — the kitchen needs it to tell a
+            // 05:45 tomorrow apart from a 05:45 today.
+            scheduledDate: r.scheduled_date ? String(r.scheduled_date).slice(0, 10) : null,
             etaMinutes:   OrderStatus.etaMinutesFromNow(r),
             nextActions:  OrderAdvance.nextActions(r),
         }));

@@ -131,7 +131,7 @@
                         <p class="merchant-detail__line"><strong>Deliver to:</strong> <%= order.deliveryAddress || '—' %></p>
                     <% } %>
                     <% if (order.isPreOrder && order.scheduledTime) { %>
-                        <p class="merchant-detail__line"><strong>Pre-order time:</strong> <%= order.scheduledTime %></p>
+                        <p class="merchant-detail__line"><strong>Pre-order time:</strong> <%= fmt.fmtSchedule(order.scheduledDate, order.scheduledTime) %></p>
                     <% } %>
                     <% if (order.deliveryEstimatedTime) { %>
                         <p class="merchant-detail__line"><strong>Quote:</strong> <%= order.deliveryEstimatedTime %><% if (order.advancedOrderWaitingTimeMin) { %> (+<%= order.advancedOrderWaitingTimeMin %> min queue)<% } %></p>

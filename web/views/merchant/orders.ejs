@@ -51,7 +51,7 @@
                     <header class="merchant-order__head">
                         <div class="merchant-order__name">
                             <a class="merchant-order__number" href="/merchant/order/<%= encodeURIComponent(o.id) %>"><%= o.number || ('#' + o.id) %></a>
-                            <% if (o.isPreOrder) { %><span class="merchant-order__chip merchant-order__chip--pre">PRE-ORDER<% if (o.scheduledTime) { %> · <%= o.scheduledTime %><% } %></span><% } %>
+                            <% if (o.isPreOrder) { %><span class="merchant-order__chip merchant-order__chip--pre">PRE-ORDER<% if (o.scheduledTime) { %> · <%= fmt.fmtSchedule(o.scheduledDate, o.scheduledTime) %><% } %></span><% } %>
                         </div>
                         <span class="merchant-order__status merchant-order__status--<%= o.statusClass %>" data-status-pill><%= o.statusLabel %></span>
                     </header>

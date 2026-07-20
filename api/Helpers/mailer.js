@@ -225,14 +225,33 @@ function paymentLabel(paymentOption, order) {
 function metaTable(order, cart, paymentLbl) {
     const o = order || {}, c = cart || {};
     const num = esc((o.order_number || o.id) || '');
+    /**
+     * scheduleLabel — "Today, 17:30" / "Tomorrow, 05:45" / "Fri 24 Jul, 05:45".
+     * Legacy only ever printed the literal word "Tomorrow" for ANY future
+     * date, which is wrong here: the marketplace picker offers up to 7 days,
+     * so we name the real day once it's further out than tomorrow.
+     */
+    const scheduleLabel = function (ymd, time) {
+        if (!ymd) { return time; }
+        const d = new Date(ymd + 'T00:00:00');
+        if (!Number.isFinite(d.getTime())) { return time; }
+        const today = new Date(); today.setHours(0, 0, 0, 0);
+        const days  = Math.round((d - today) / 86400000);
+        if (days <= 0) { return 'Today, ' + time; }
+        if (days === 1) { return 'Tomorrow, ' + time; }
+        return d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }) + ', ' + time;
+    };
     const mrow = function (lbl, val, strong) {
         return '<tr><td style="color:#6b6b6b;padding:3px 0;">' + esc(lbl) + '</td><td align="right" style="padding:3px 0;' + (strong ? 'font-weight:700;' : '') + 'color:#1c1c1c;">' + val + '</td></tr>';
     };
     const arr = [mrow('Order number', '#' + num, true), mrow('Type', modeLabel(o, c))];
     if (paymentLbl) { arr.push(mrow('Payment', esc(paymentLbl))); }
     if (Number(o.is_pre_order != null ? o.is_pre_order : c.is_pre_order) === 1) {
+        // Show the DAY as well as the time — a bare "05:45" leaves both the
+        // customer and the kitchen guessing which morning it's for.
         const when = String(o.scheduled_time || c.scheduled_time || '').trim();
-        arr.push(mrow('When', when ? esc(when) : 'Scheduled for later'));
+        const day  = String(o.scheduled_date || c.scheduled_date || '').slice(0, 10);
+        arr.push(mrow('When', when ? esc(scheduleLabel(day, when)) : 'Scheduled for later'));
     }
     return infoBox('<table width="100%" cellpadding="0" cellspacing="0">' + arr.join('') + '</table>');
 }

@@ -119,16 +119,23 @@ async function validate(cartId, owner, ctx) {
     const closedMsg = (avail && avail.message)
         ? avail.message
         : 'The restaurant is currently closed. Schedule a pre-order or come back later.';
+    // Can this branch be pre-ordered from at all? TWO conditions, both
+    // required — legacy checks the admin toggle (branch.pre_order, see
+    // Branch.php::getWebsiteStatus) and we additionally require a real
+    // bookable slot, so a branch with no upcoming shifts never offers it.
+    let canPreOrder = false;
+    if (!isOpen && Number(branch.pre_order) === 1) {
+        const days = await StoreHours.scheduleDaysForBranch(branch, Number(cart.serve_type) === 2 ? 2 : 3);
+        canPreOrder = days.some(d => d.slots && d.slots.length);
+    }
     if (!isOpen && level === LEVEL.PLACE) {
-        if (!(Number(cart.is_pre_order) === 1 && cart.pre_order_time)) {
+        // A stored schedule only rescues the order when pre-ordering is
+        // actually on; otherwise a stale pre_order_time on the cart would
+        // let an order through against a closed / toggle-off branch.
+        if (!(canPreOrder && Number(cart.is_pre_order) === 1 && cart.pre_order_time)) {
             pushErr(out, 'branch.closed', closedMsg);
         }
     } else if (!isOpen) {
-        // Only offer pre-ordering when there IS a future slot to book — a
-        // branch with no upcoming shifts (permanently closed / both services
-        // off) must not be told "you can still pre-order".
-        const days = await StoreHours.scheduleDaysForBranch(branch, Number(cart.serve_type) === 2 ? 2 : 3);
-        const canPreOrder = days.some(d => d.slots && d.slots.length);
         pushWarn(out, 'branch.closed', canPreOrder
             ? 'The restaurant is closed right now — you can still pre-order.'
             : 'The restaurant is closed right now.');

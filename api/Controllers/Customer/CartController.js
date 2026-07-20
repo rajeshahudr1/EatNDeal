@@ -714,6 +714,27 @@ async function setMode(req, res) {
                 422, { code: 'mode.unavailable' });
         }
 
+        // A Surprise Box is PICKUP ONLY — the customer collects it at the
+        // counter (addSurpriseBox enforces this, mirroring legacy
+        // ToogoodtogoController::actionAddToCart:142-147).
+        // That guard only covers ADDING one, so switching the cart to Delivery
+        // afterwards walked straight past it and the box would have been sent
+        // out for delivery. Legacy never hits this because its dining mode is
+        // fixed before the box is added; ours can be changed at any time, so
+        // the rule has to hold here too. Refuse the switch and say why — the
+        // customer keeps their box and can remove it if they'd rather have
+        // delivery.
+        if (Number(b.serve_type) === 3) {
+            const boxes = await db('cart_details')
+                .where({ cart_id: open.id, is_surprise_item: 1, is_deleted: 0 })
+                .first('id');
+            if (boxes) {
+                return H.errorResponse(res,
+                    'Surprise Box items are available for Pickup only. Remove the Surprise Box to switch to Delivery.',
+                    422, { code: 'surprise.pickup_only' });
+            }
+        }
+
         await Cart.setMode(open.id, b.serve_type, branch);
 
         // Switching to Delivery — re-attach the default saved address if

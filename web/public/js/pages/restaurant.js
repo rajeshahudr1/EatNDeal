@@ -75,6 +75,28 @@
     /**
      * bindTabs — Delivery / Pickup / Group Order visual toggle.
      */
+    /**
+     * syncSurpriseBox
+     *
+     * What:  Shows the Surprise Box "View & Add to Cart" button on the PICKUP
+     *        tab and the "Pickup only" line on the DELIVERY tab.
+     * Why:   A surprise box is collected at the counter — the api refuses to put
+     *        one in a delivery cart (CartController.addSurpriseBox, legacy's
+     *        rule). The button used to show in both, so on delivery the customer
+     *        tapped Add and only then got the error.
+     *        The tabs switch without a page load, so the server-rendered state
+     *        has to be re-applied here on every change.
+     */
+    function syncSurpriseBox(mode) {
+        var isDelivery = mode === 'delivery';
+        var cta  = document.querySelector('[data-sb-open]');
+        var note = document.querySelector('[data-sb-pickuponly]');
+        // Only the CTA carries the sold-out rule; if it wasn't rendered at all
+        // (no slots left today) there is nothing to toggle either way.
+        if (cta)  { cta.hidden  = isDelivery; }
+        if (note) { note.hidden = !isDelivery; }
+    }
+
     function bindTabs() {
         document.addEventListener('click', function (ev) {
             var t = ev.target.closest && ev.target.closest('[data-rd-tab]');
@@ -89,6 +111,7 @@
             qa('[data-rd-panel]').forEach(function (p) {
                 p.hidden = p.getAttribute('data-rd-panel') !== mode;
             });
+            syncSurpriseBox(mode);
             if (mode === 'group') { toast('info', 'Group ordering is coming soon.'); }
         });
     }

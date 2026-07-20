@@ -584,6 +584,9 @@ body.rd-infomodal-open { overflow: hidden; }
 .rd-surprise__meta { display: flex; flex-wrap: wrap; gap: 12px; margin: 6px 0 0; font-size: .82rem; color: var(--color-text-muted); }
 .rd-surprise__left { font-weight: 700; color: #047857; }
 .rd-surprise__left--out { color: var(--color-primary); }
+/* Shown instead of the Add button on the delivery tab — a surprise box is
+   collection only. Quiet, not alarming: it's a "how", not an error. */
+.rd-surprise__pickuponly { margin: 6px 0 0; font-size: .82rem; font-weight: 600; color: var(--color-primary); }
 .rd-surprise__price { flex: 0 0 auto; text-align: right; }
 .rd-surprise__was { display: block; font-size: .8rem; color: var(--color-text-muted); text-decoration: line-through; }
 .rd-surprise__now { font-size: 1.5rem; font-weight: 800; color: var(--color-primary); }

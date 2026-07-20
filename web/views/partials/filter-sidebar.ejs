@@ -98,8 +98,17 @@
         </section>
         <% } %>
 
-        <%# ── Cuisines ── (dynamic list from the api categories) %>
-        <% if (typeof cuisines !== 'undefined' && cuisines && cuisines.length) { %>
+        <%# ══ CUISINES FILTER REMOVED 2026-07-20 (user request) ═══════════
+            The cuisine rail at the TOP of the page already does this — tapping
+            Pizza / Sushi there filters the feed and sets ?cuisine=. Having it
+            twice let the two drift out of sync (the rail chip stayed lit while
+            the sidebar checkbox said otherwise).
+
+            Turned off with `if (false)` rather than an EJS comment: the block
+            contains EJS output tags, and an EJS comment ends at the first
+            closing tag inside it, which silently breaks the file.
+            RESTORE: put the original condition back on the `if` below. %>
+        <% if (false && typeof cuisines !== 'undefined' && cuisines && cuisines.length) { %>
         <section class="fsb__group">
             <h3 class="fsb__group-title">Cuisines</h3>
             <div class="fsb__search">

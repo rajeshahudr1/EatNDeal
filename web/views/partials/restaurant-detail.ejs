@@ -244,14 +244,28 @@
                     <% if (sb.pickupFrom && sb.pickupTo) { %><span>⏰ Collect <%= sb.pickupFrom %> – <%= sb.pickupTo %></span><% } %>
                     <% if (sb.qty > 0) { %><span class="rd-surprise__left"><%= sb.qty %> left</span><% } else { %><span class="rd-surprise__left rd-surprise__left--out">Sold out today</span><% } %>
                 </p>
+                <%# PICKUP ONLY. The api refuses to add a box to a delivery cart
+                    (CartController.addSurpriseBox, legacy's rule), so on the
+                    delivery tab the CTA is swapped for this line — the button
+                    was being offered and the customer only found out after
+                    tapping it. It SAYS what to do rather than just vanishing,
+                    so the box stays discoverable.
+                    Rendered always and toggled by /js/pages/restaurant.js,
+                    because the fulfilment tabs switch client-side (no reload) —
+                    a server-only check would go stale the moment the customer
+                    changed tab. %>
+                <p class="rd-surprise__pickuponly" data-sb-pickuponly<%= __mode === 'delivery' ? '' : ' hidden' %>>Pickup only — switch to Pickup to add this box.</p>
             </div>
             <div class="rd-surprise__price">
                 <% if (sb.price && sb.price > sb.discountPrice) { %><span class="rd-surprise__was"><%= sym %><%= sb.price.toFixed(2) %></span><% } %>
                 <span class="rd-surprise__now"><%= sym %><%= (sb.discountPrice || 0).toFixed(2) %></span>
-                <%# The box was display-only — no way to actually buy it, unlike
-                    the legacy site. Hidden when today's slots are gone. %>
+                <%# Hidden when today's slots are gone, and on the DELIVERY tab —
+                    a surprise box is collected at the counter, never delivered
+                    (see the pickup-only note above). The delivery case is a
+                    `hidden` attribute rather than a skipped render so the tab
+                    script can bring it back without a page load. %>
                 <% if (sb.qty > 0) { %>
-                <button type="button" class="rd-surprise__cta" data-sb-open>
+                <button type="button" class="rd-surprise__cta" data-sb-open<%= __mode === 'delivery' ? ' hidden' : '' %>>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                     View &amp; Add to Cart
                 </button>

@@ -23,7 +23,10 @@
 <%# Pickup now shares the delivery home's filter rail: sidebar on the left,
     the split list + map on the right. Applying a filter full-reloads to
     /?mode=pickup&<filters> (pickup.js handles it — home.js isn't loaded here). %>
-<div class="home-shell">
+<%# home-shell--pickup: this page puts a heading ABOVE the cuisine rail, unlike
+    home. The collapsed Filters tile is pinned to the top of the content, so
+    without the modifier it sits on top of that heading — see home-v2.css. %>
+<div class="home-shell home-shell--pickup">
 
     <%- include('filter-sidebar') -%>
 

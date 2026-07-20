@@ -60,16 +60,45 @@ function normaliseCode(s) {
 /**
  * findActiveByCode
  *
- * What:  Case-insensitive lookup that also filters out soft-deleted /
- *        inactive rows. Returns the row or null. Single round trip.
+ * What:  Case-insensitive lookup, scoped to the cart's restaurant.
+ *        `scope` is the cart ({ company_id, branch_id }); the same code
+ *        may exist for several companies, so we return the row THIS
+ *        restaurant can use. Returns the row or null. Single round trip.
  * Type:  READ.
  */
-async function findActiveByCode(code) {
+async function findActiveByCode(code, scope) {
     const c = normaliseCode(code);
     if (!c) { return null; }
-    return db('coupons')
-        .whereRaw('LOWER(code) = ?', [c.toLowerCase()])
-        .first();
+    const rows = await db('coupons').whereRaw('LOWER(code) = ?', [c.toLowerCase()]);
+    if (!rows.length) { return null; }
+    if (rows.length === 1) { return rows[0]; }
+
+    // `code` has NO unique index — the same code can exist for several
+    // restaurants (e.g. an old END5 on company 1 and a live one on
+    // company 7). Picking blindly makes the customer's own coupon fail
+    // on the OTHER row's expiry, so rank by how well each row matches
+    // the cart: exact branch > company > global, then latest expiry.
+    const co = Number(scope && scope.company_id) || 0;
+    const br = Number(scope && scope.branch_id) || 0;
+    // Only rows this cart's restaurant can actually use — anything
+    // belonging to another company/branch is ignored outright.
+    const mine = rows.filter((r) => {
+        const rc = Number(r.company_id) || 0;
+        const rb = Number(r.branch_id) || 0;
+        if (rc && rc !== co) { return false; }          // other restaurant
+        if (rb && rb !== br) { return false; }          // other branch
+        return true;                                    // this branch, this company, or global
+    });
+    if (!mine.length) { return rows[0]; }               // let validate() report the scope error
+
+    // Among the usable ones prefer the most specific, then the one that
+    // lasts longest, so a live coupon never loses to a stale duplicate.
+    const rank = (r) => (Number(r.branch_id) ? 3 : (Number(r.company_id) ? 2 : 1));
+    const expOf = (r) => {
+        const t = r.expiry_date ? new Date(r.expiry_date).getTime() : Infinity;
+        return Number.isFinite(t) ? t : Infinity;       // no expiry = never ends
+    };
+    return mine.slice().sort((a, b) => (rank(b) - rank(a)) || (expOf(b) - expOf(a)))[0];
 }
 
 /**
@@ -88,7 +117,7 @@ async function validate(rawCode, cart) {
     if (!cart) {
         return { ok: false, code: 'cart.missing', error: 'Your cart is no longer available.' };
     }
-    const coupon = await findActiveByCode(rawCode);
+    const coupon = await findActiveByCode(rawCode, cart);
     if (!coupon) {
         return { ok: false, code: 'coupon.invalid', error: 'That coupon code isn\'t valid.' };
     }

@@ -601,6 +601,9 @@ async function updateQty(req, res) {
         }
 
         await Cart.updateLineQty(line.id, newQty);
+        // Stepping the last item down to zero empties the cart just as surely
+        // as Remove does — same rule, same place. See removeItem.
+        await Cart.wipeDiscountsIfEmpty(open.id);
         return respondWithCart(res, open.id, owner.scope, 'Quantity updated.');
     } catch (err) {
         H.log.error('cart.updateQty', err && err.message);
@@ -636,6 +639,11 @@ async function removeItem(req, res) {
         if (!line) { return H.errorResponse(res, 'That item is not in your cart.', 404); }
 
         await Cart.removeLineItem(line.id);
+        // Emptying the cart is the same thing as clearing it, so it gets the
+        // same treatment — every applied discount comes off. Otherwise the
+        // coupon/voucher/cashback sat on an empty basket and reappeared, still
+        // "applied", against whatever the customer added next.
+        await Cart.wipeDiscountsIfEmpty(open.id);
         return respondWithCart(res, open.id, owner.scope, 'Item removed.');
     } catch (err) {
         H.log.error('cart.removeItem', err && err.message);
@@ -665,7 +673,18 @@ async function clear(req, res) {
         }
 
         const open = await Cart.findOpenCart(owner.scope);
-        if (open) { await Cart.closeCart(open.id); }
+        if (open) {
+            // Clearing means CLEARING: strip every applied discount off the row
+            // before closing it, so nothing can follow the customer into their
+            // next cart. Closing alone left coupon_id / promocode / voucher_id /
+            // used_cashback sitting on the row, and a promo kept reappearing on
+            // a fresh basket — showing as applied while contributing nothing,
+            // because the discount is never recomputed against the new items.
+            // The customer re-applies what they want; that is the whole point
+            // of Clear.
+            await Cart.wipeDiscounts(open.id);
+            await Cart.closeCart(open.id);
+        }
 
         return H.successResponse(res, { cart: null, warnings: [] }, 'Cart cleared.');
     } catch (err) {
@@ -737,13 +756,30 @@ async function setMode(req, res) {
 
         await Cart.setMode(open.id, b.serve_type, branch);
 
+        // A coupon can be tied to ONE fulfilment type (coupons.order_type:
+        // 1 = all, 2 = delivery, 3 = pickup — see Helpers/coupons.validate).
+        // Switching mode can therefore invalidate whatever is applied, so
+        // re-check it against the NEW mode and drop it the moment it no longer
+        // qualifies. Without this a pickup-only coupon survived a switch to
+        // delivery and kept discounting an order it was never valid for.
+        // Re-read the cart first — setMode has just changed serve_type on it.
+        let modeMsg = '';
+        const fresh = await Cart.loadActiveCart(open.id, owner.scope);
+        if (fresh && Number(fresh.coupon_id) > 0 && fresh.promocode) {
+            const check = await Coupons.validate(fresh.promocode, fresh);
+            if (!check.ok) {
+                await Cart.clearCoupon(open.id, branch);
+                modeMsg = ' Your promo code was removed — it isn’t valid for this option.';
+            }
+        }
+
         // Switching to Delivery — re-attach the default saved address if
         // none is set yet (customers only — a guest has no address book).
         if (Number(b.serve_type) === 3 && !owner.isGuest) {
             await Cart.ensureDefaultDeliveryAddress(open.id, owner.customerId, branch);
         }
         return respondWithCart(res, open.id, owner.scope,
-            b.serve_type === 2 ? 'Switched to Pickup.' : 'Switched to Delivery.');
+            (Number(b.serve_type) === 2 ? 'Switched to Pickup.' : 'Switched to Delivery.') + modeMsg);
     } catch (err) {
         H.log.error('cart.setMode', err && err.message);
         return H.errorResponse(res, MSG.server.oops, 500);

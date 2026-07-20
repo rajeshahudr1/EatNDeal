@@ -190,6 +190,20 @@
      * A margin moves the viewport's left edge past the icon, so overflow
      * clips there and categories always start cleanly after the icon. */
     .home-shell.is-filters-collapsed .rail-wrap { margin-left: 84px; }
+
+    /* PICKUP PAGE — the content does NOT start with the cuisine rail here: the
+     * "Pickup nearby" heading comes first, so the tile (pinned to top:0 of the
+     * content) landed ON TOP of the heading and covered it.
+     *
+     * Push the tile down past the heading so it lines up with the cuisine tiles
+     * beside it, exactly as it does on home. Keyed off a modifier class the
+     * pickup view sets (home-shell--pickup) rather than :has() — the button is
+     * a PRECEDING sibling of .pickup, so no sibling combinator can reach it,
+     * and :has() isn't safe to rely on here. */
+    .home-shell--pickup.is-filters-collapsed .filters-show { top: 62px; }
+    /* The rail lives inside .pickup__list on this page, so it needs the same
+     * clear-the-icon margin the home rail gets above. */
+    .home-shell--pickup.is-filters-collapsed .rail-wrap { margin-left: 84px; }
 }
 
 /* Sidebar hide button (chevron in the .fsb header). */
@@ -603,6 +617,10 @@
     .home-topline { display: flex; align-items: center; gap: var(--space-4); margin-top: calc(-1 * var(--space-4)); }
     .home-topline .welcome-strip { flex: 1 1 auto; min-width: 0; margin: 0; }
     .home-topline .app-mini { flex: 0 0 auto; margin: 0 0 0 auto; }
+    /* Solo row (welcome banner switched off): the card is the only thing on
+     * the line, so let it fill the width and gain a bit of height instead of
+     * leaving a wide gap where the strip used to be. */
+    .home-topline--solo .app-mini { flex: 1 1 auto; width: 100%; max-width: none; padding: 20px 24px; }
     .offer-banner-row { margin-top: calc(-1 * var(--space-4)); }
     .app-mini {
         position: relative; display: flex; align-items: center; gap: 16px; max-width: 100%;

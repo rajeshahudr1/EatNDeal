@@ -80,13 +80,23 @@
     function fillConfirmPayment() {
         var row = $('[data-cart-pay]');
         var out = $('[data-ckt-confirm-pay]');
-        var titleEl = row && row.querySelector('[data-ckt-pay-title]');
-        if (out) { out.textContent = titleEl ? titleEl.textContent : 'Cash'; }
+        // The chosen method is data-ckt-pay-mode, NOT the card tile's label.
+        // [data-ckt-pay-title] lives on the CARD tile only (Cash has its own
+        // static tile), so reading it blindly reported "Card" even when Cash
+        // was selected — the review screen contradicted the cart behind it.
+        var mode   = row && row.getAttribute('data-ckt-pay-mode');
+        var isCard = !!mode && mode !== 'cash';            // new-card | card:<id>
+        if (out) {
+            if (!isCard) {
+                out.textContent = 'Cash';
+            } else {
+                var titleEl = row.querySelector('[data-ckt-pay-title]');
+                out.textContent = (titleEl && titleEl.textContent.trim()) || 'Card';
+            }
+        }
 
         var totalEl = $('[data-ckt-confirm-total]');
         if (!totalEl) { return; }
-        var mode   = row && row.getAttribute('data-ckt-pay-mode');
-        var isCard = !!mode && mode !== 'cash';            // new-card | card:<id>
         var base   = parseFloat(totalEl.getAttribute('data-ckt-base-grand')) || 0;
         var charge = parseFloat(totalEl.getAttribute('data-ckt-card-charge')) || 0;
         var sym    = (document.body && document.body.getAttribute('data-currency-symbol')) || '£';
@@ -98,6 +108,14 @@
         totalEl.textContent = sym + total.toFixed(2);
         var cta = $('[data-ckt-confirm-cta-total]');
         if (cta) { cta.textContent = ' · ' + sym + total.toFixed(2); }
+    }
+
+    // True when the bill comes to £0 (a discount/voucher/reward covers it
+    // all). Reads the cart's base grand — the same figure the API guards on.
+    function zeroTotal() {
+        var el = document.querySelector('[data-cart-grandtotal]');
+        if (!el) { return false; }
+        return (parseFloat(el.getAttribute('data-base-grand')) || 0) <= 0;
     }
 
     function close() {
@@ -147,6 +165,13 @@
 
     function onPickPay(btn) {
         var mode = btn.getAttribute('data-pay-mode') || 'cash';
+        // £0 bill — nothing for Stripe to charge, so refuse the card choice
+        // right here rather than letting them fill a card form that can't be
+        // used. Cash still places the order normally.
+        if (mode !== 'cash' && zeroTotal()) {
+            showPayError('Your total is £0.00 — please select Cash to place this order.');
+            return;
+        }
         pendingPayMode = mode;
         paintPayTiles(mode);
         revealNewCardPanel(mode === 'new-card');
@@ -157,9 +182,36 @@
         }
     }
 
+    /**
+     * showPayError
+     *
+     * Puts a message in the payment sheet's error box — the same
+     * [data-stripe-error] element Stripe's own field errors use, so the
+     * customer sees one error area, not two. Falls back to a toast if the box
+     * isn't on the page.
+     */
+    function showPayError(msg) {
+        var box = document.querySelector('[data-stripe-error]');
+        if (box) {
+            box.textContent = msg;
+            box.hidden = false;
+            if (box.scrollIntoView) { box.scrollIntoView({ block: 'nearest' }); }
+            return;
+        }
+        if (window.EatNDealUi && window.EatNDealUi.showToast) {
+            window.EatNDealUi.showToast('error', msg);
+        }
+    }
+
     function applyPay() {
         var row = $('[data-cart-pay]');
-        if (!row || pendingPayMode == null) { close(); return; }
+        if (!row) { close(); return; }
+        // Nothing picked yet — the sheet used to just close, which read as
+        // "saved" while the cart kept whatever it had before. Ask instead.
+        if (pendingPayMode == null) {
+            showPayError('Please select a payment method.');
+            return;
+        }
 
         // ── New card / other method path ───────────────────────────
         // The card or wallet is collected in the Stripe Payment Element and
@@ -167,6 +219,18 @@
         // intent's setup_future_usage when "Save this card" is ticked — so
         // there's no separate SetupIntent step here; just commit + close.
         if (pendingPayMode === 'new-card') {
+            // The details must actually be COMPLETE first. Stripe reports this
+            // on the element's change event, which /js/ui/cart.js records as
+            // data-pay-complete on this row.
+            // Without the check the sheet closed on a blank or half-typed card
+            // and the cart proudly showed "New card · Charged at checkout" —
+            // the customer only discovered it was never valid at Place order.
+            // Wallets (Apple/Google Pay) mark themselves complete on selection,
+            // so they still pass straight through.
+            if (row.getAttribute('data-pay-complete') !== '1') {
+                showPayError('Please complete your card details.');
+                return;                       // stay open so they can fix it
+            }
             commitPayRow(row, 'new-card');
             close();
             return;
@@ -339,6 +403,14 @@
             ev.preventDefault();
             var action = trig.getAttribute('data-action');
             var name = action.replace('ckt-open-', '');
+            // Card tile on a £0 bill — don't even open the payment sheet;
+            // there is nothing to charge, so say so and keep them on Cash.
+            if (name === 'payment' && zeroTotal()) {
+                if (window.EatNDealUi && window.EatNDealUi.showToast) {
+                    window.EatNDealUi.showToast('error', 'Your total is £0.00 — please select Cash to place this order.');
+                }
+                return;
+            }
             open(name);
             return;
         }

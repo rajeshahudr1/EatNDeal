@@ -94,6 +94,13 @@ async function place(req, res) {
         let paymentSucceeded = false;
         let paymentDetail = null;
         if (Number(b.payment_option) === 2) {
+            // A £0 total (full discount / voucher / reward) can't go through
+            // Stripe at all — there is nothing to charge. Such orders are
+            // allowed, but Cash is the only method that makes sense.
+            if ((Number(v.cart.grandtotal) || 0) <= 0) {
+                return H.errorResponse(res,
+                    'Your total is £0.00 — please select Cash to place this order.', 422);
+            }
             if (!Payments.isConfigured()) {
                 return H.errorResponse(res,
                     'Card payments aren\'t available right now. Please pick Cash on Delivery.', 503);

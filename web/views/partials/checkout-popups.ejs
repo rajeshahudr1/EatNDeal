@@ -92,9 +92,17 @@
                     <dd><% if (cart.freeDelivery || cart.deliveryFees === 0) { %><span class="ckt-totals__free">Free</span><% } else { %><%= sym %><%= cart.deliveryFees.toFixed(2) %><% } %></dd>
                 </div>
                 <% } %>
-                <% if (cart.bagCharge > 0 || cart.serviceCharge > 0) { %>
+                <%# Itemised, matching the cart page and legacy checkout — see
+                    views/cart/index.ejs. The review screen must show the same
+                    breakdown the customer just read, not a rolled-up figure. %>
+                <% if (cart.bagCharge > 0) { %>
                 <div class="ckt-totals__row">
-                    <dt>Other fees</dt><dd><%= sym %><%= (cart.bagCharge + cart.serviceCharge).toFixed(2) %></dd>
+                    <dt>Bag charge</dt><dd><%= sym %><%= cart.bagCharge.toFixed(2) %></dd>
+                </div>
+                <% } %>
+                <% if (cart.serviceCharge > 0) { %>
+                <div class="ckt-totals__row">
+                    <dt>Service charge</dt><dd><%= sym %><%= cart.serviceCharge.toFixed(2) %></dd>
                 </div>
                 <% } %>
                 <div class="ckt-totals__row ckt-totals__row--charity" data-ckt-confirm-charity-row<%= cart.charityAmount > 0 ? '' : ' hidden' %>>
@@ -292,7 +300,21 @@
             available-promos list (always shown so the customer can see
             and swap offers even when one is already applied). ── %>
         <div class="ckt-popup__body" data-cart-coupon data-ckt-promo-list>
-            <% if (cart.promocode) { %>
+            <%# The applied promo used to be shown TWICE — as this chip AND as a
+                highlighted "Remove" card in the list below. The chip now appears
+                ONLY when the applied code is NOT one of the listed promos, i.e.
+                a code typed in by hand or shared by a friend.
+                That exception matters: the list marks the applied one by
+                matching the code, so an off-list code would otherwise disappear
+                from the popup the moment it was applied — no way to see it, no
+                way to remove it. %>
+            <%
+                var __applied = cart.promocode ? String(cart.promocode).toLowerCase() : '';
+                var __inList  = !!(__applied && (promoList || []).some(function (p) {
+                    return String(p.code || '').toLowerCase() === __applied;
+                }));
+            %>
+            <% if (cart.promocode && !__inList) { %>
                 <div class="ckt-popup__chip">
                     <span class="ckt-popup__chip-icon" aria-hidden="true">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41 13.42 20.58a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
@@ -315,6 +337,11 @@
                     <input type="text" id="ckt-promo-input" class="ckt-popup__input" data-cart-coupon-input maxlength="40" placeholder="Enter promo code" autocomplete="off" autocapitalize="characters">
                     <button type="submit" class="ckt-popup__apply ckt-popup__apply--inline" data-action="cart-apply-coupon">Apply</button>
                 </div>
+                <%# Validation message sits HERE, under the field it belongs to —
+                    a corner toast made the customer look away from the sheet to
+                    read why nothing happened. Same element/role the email and
+                    card popups use. %>
+                <p class="ckt-popup__err" data-coupon-error role="alert" hidden></p>
             </form>
 
             <%# Available promos for THIS restaurant — Select applies the

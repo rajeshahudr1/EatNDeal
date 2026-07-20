@@ -92,9 +92,15 @@
         <% if (anyKeep([pc('low'), pc('mid'), pc('high')])) { %>
         <section class="fsb__group">
             <h3 class="fsb__group-title">Price for one</h3>
-            <% if (keep(pc('low')))  { %><label class="fsb__check"><input type="checkbox" data-filter="price-low"><span><%= brand.currencySymbol %> &ndash; 6</span><%- badge(pc('low')) %></label><% } %>
-            <% if (keep(pc('mid')))  { %><label class="fsb__check"><input type="checkbox" data-filter="price-mid"><span><%= brand.currencySymbol %><%= brand.currencySymbol %> 6 &ndash; 12</span><%- badge(pc('mid')) %></label><% } %>
-            <% if (keep(pc('high'))) { %><label class="fsb__check"><input type="checkbox" data-filter="price-high"><span><%= brand.currencySymbol %><%= brand.currencySymbol %><%= brand.currencySymbol %> 12+</span><%- badge(pc('high')) %></label><% } %>
+            <%# ONE currency symbol per row, in front. These used to be the
+                £ / ££ / £££ price-TIER glyphs (the Yelp-style "how pricey"
+                convention), which read badly next to a range: the cheap row
+                rendered as "£ – 6", i.e. "£ minus 6". The tier is already
+                obvious from the numbers, so the repeats are gone and the low
+                row starts at 0 instead of an open dash. %>
+            <% if (keep(pc('low')))  { %><label class="fsb__check"><input type="checkbox" data-filter="price-low"><span><%= brand.currencySymbol %> 0 &ndash; 6</span><%- badge(pc('low')) %></label><% } %>
+            <% if (keep(pc('mid')))  { %><label class="fsb__check"><input type="checkbox" data-filter="price-mid"><span><%= brand.currencySymbol %> 6 &ndash; 12</span><%- badge(pc('mid')) %></label><% } %>
+            <% if (keep(pc('high'))) { %><label class="fsb__check"><input type="checkbox" data-filter="price-high"><span><%= brand.currencySymbol %> 12+</span><%- badge(pc('high')) %></label><% } %>
         </section>
         <% } %>
 

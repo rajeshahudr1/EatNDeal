@@ -215,8 +215,12 @@
                             <% } else { %>
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="3"/></svg>
                             <% } %>
+                            <%# Payment METHOD only. The Pending/Paid pill used to
+                                sit here too, but on a cash order "Pending" just
+                                means "you pay the driver" — it read as though
+                                something had gone wrong with the payment. The
+                                order's own status badge already covers progress. %>
                             <%= o.payment.method %>
-                            · <span class="orders-card__pay-status orders-card__pay-status--<%= o.payment.status.toLowerCase() %>"><%= o.payment.status %></span>
                         </p>
                         <% } %>
                         <div class="orders-card__foot">

@@ -336,7 +336,13 @@
                         <p class="ckt-row__sub">Have a promo code? Apply it for instant savings.</p>
                     <% } %>
                 </div>
-                <button type="button" class="ckt-row__edit" data-action="ckt-open-promo"><%= couponApplied ? 'Edit' : 'Add' %></button>
+                <% if (couponApplied) { %>
+                    <%# Applied coupon — Remove (asks for confirmation) instead
+                        of Edit; removing puts the row back to its "Add" state. %>
+                    <button type="button" class="ckt-row__edit" data-action="cart-remove-coupon">Remove</button>
+                <% } else { %>
+                    <button type="button" class="ckt-row__edit" data-action="ckt-open-promo">Add</button>
+                <% } %>
             </div>
 
             <%# Voucher — a SEPARATE box for customer reward vouchers
@@ -473,10 +479,23 @@
                         </dd>
                     </div>
                     <% } %>
-                    <% if (cart.bagCharge > 0 || cart.serviceCharge > 0) { %>
+                    <%# Bag and service charge are listed SEPARATELY, the way
+                        legacy checkout does (webordering/views/cart/checkout.php
+                        :844 "Service Charge", :850 "Bag Charge"). They used to be
+                        summed into one "Other fees" line, which told the customer
+                        neither what they were paying for nor where it came from —
+                        and didn't match the legacy bill. Both are the branch's
+                        own settings (online_bag_charge / service_charge_online_order). %>
+                    <% if (cart.bagCharge > 0) { %>
                     <div class="ckt-totals__row">
-                        <dt>Other fees</dt>
-                        <dd><%= sym %><%= (cart.bagCharge + cart.serviceCharge).toFixed(2) %></dd>
+                        <dt>Bag charge</dt>
+                        <dd><%= sym %><%= cart.bagCharge.toFixed(2) %></dd>
+                    </div>
+                    <% } %>
+                    <% if (cart.serviceCharge > 0) { %>
+                    <div class="ckt-totals__row">
+                        <dt>Service charge</dt>
+                        <dd><%= sym %><%= cart.serviceCharge.toFixed(2) %></dd>
                     </div>
                     <% } %>
                     <div class="ckt-totals__row ckt-totals__row--charity" data-cart-charity-row<%= cart.charityAmount > 0 ? '' : ' hidden' %>>

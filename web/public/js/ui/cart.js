@@ -543,7 +543,9 @@
         var root = findSchedRoot(btn);
         var input = root && root.querySelector('[data-cart-sched-input]');
         var val = input ? input.value : '';
-        if (!val) { toast('error', 'Pick a date and time first.'); return; }
+        // Same early-return trap as the coupon field: this button dims the
+        // popup, so bailing out has to un-dim it. See cancelSettle.
+        if (!val) { cancelSettle(); toast('error', 'Pick a date and time first.'); return; }
         btn.disabled = true;
         postCart('/cart/set-schedule', { is_pre_order: true, scheduled_at: val }).then(function (env) {
             handleEnvelope(env, { reload: true });
@@ -553,24 +555,72 @@
 
     // Coupon flow: Apply reads the input + POSTs the code; Remove
     // wipes the applied coupon from the cart.
+    /**
+     * cancelSettle
+     *
+     * What:  Tells an open checkout popup that the click it just dimmed itself
+     *        for is over — used when we bail out BEFORE any request.
+     * Why:   checkout-popups.js greys the sheet the moment an apply-style button
+     *        is pressed, and only un-greys on 'ckt:settle-done' (normally fired
+     *        by handleEnvelope) or after an 8-second timeout. An early return —
+     *        "Enter a coupon code." — fired neither, so the popup sat disabled
+     *        for eight seconds with no request in flight.
+     */
+    function cancelSettle() {
+        // Deferred by a tick ON PURPOSE. Both modules listen for the same click
+        // on `document`, and this one runs FIRST — firing the event straight
+        // away told checkout-popups.js "done" before it had even applied the
+        // dim, so the dim then went on and stayed for the full 8s timeout.
+        // A 0ms timeout puts us after every handler for this click.
+        window.setTimeout(function () {
+            document.dispatchEvent(new CustomEvent('ckt:settle-done'));
+        }, 0);
+    }
+
+    /** Show a validation message inside the popup, next to the field. */
+    function setCouponError(msg) {
+        var box = document.querySelector('[data-coupon-error]');
+        if (box) {
+            box.textContent = msg || '';
+            box.hidden = !msg;
+            return;
+        }
+        if (msg) { toast('error', msg); }     // popup not on the page
+    }
+
     function onApplyCoupon(ev, btn) {
         ev.preventDefault();
         var panel = btn.closest('[data-cart-coupon]');
         var input = panel && panel.querySelector('[data-cart-coupon-input]');
         var code  = input ? input.value.trim() : '';
-        if (!code) { toast('error', 'Enter a coupon code.'); return; }
+        if (!code) {
+            cancelSettle();                    // drop the dim straight away
+            setCouponError('Enter a coupon code.');
+            if (input) { input.focus(); }
+            return;
+        }
+        setCouponError('');                    // clear a previous message
         btn.disabled = true;
         postCart('/cart/apply-coupon', { code: code }).then(function (env) {
             handleEnvelope(env, { reload: true });
             if (!env || env.status !== 200) { btn.disabled = false; }
         });
     }
+    // Removing a promo is destructive (the saving disappears), so ask
+    // for confirmation first — same pattern as clearing the cart.
     function onRemoveCoupon(ev, btn) {
         ev.preventDefault();
-        btn.disabled = true;
-        postCart('/cart/remove-coupon', {}).then(function (env) {
-            handleEnvelope(env, { reload: true });
-            if (!env || env.status !== 200) { btn.disabled = false; }
+        confirm({
+            title:   'Remove this promo?',
+            message: 'The discount will be taken off your order. You can apply another promo afterwards.',
+            okLabel: 'Remove promo',
+        }).then(function (ok) {
+            if (!ok) { return; }
+            btn.disabled = true;
+            return postCart('/cart/remove-coupon', {}).then(function (env) {
+                handleEnvelope(env, { reload: true });
+                if (!env || env.status !== 200) { btn.disabled = false; }
+            });
         });
     }
 
@@ -645,6 +695,15 @@
     // True when the selected payment is any card (new or saved).
     function cardSelected() {
         try { return readPayMode().kind !== 'cash'; } catch (e) { return false; }
+    }
+    // True when the bill comes to nothing (discount/voucher/reward covers it
+    // all). Such orders are still placeable — but Cash only, since there is
+    // no amount for Stripe to take. Reads the base grand so the card service
+    // charge doesn't mask a £0 bill.
+    function zeroTotal() {
+        var el = document.querySelector('[data-cart-grandtotal]');
+        if (!el) { return false; }
+        return (parseFloat(el.getAttribute('data-base-grand')) || 0) <= 0;
     }
     // Re-render the MAIN bill total = base grand + (card ? card charge : 0)
     // and toggle the "Card service charge" row. Driven by the selected
@@ -894,8 +953,29 @@
                 var email   = (emailEl && (emailEl.value || emailEl.getAttribute('data-customer-email'))) || '';
                 if (email && checkoutActions.updateEmail) { checkoutActions.updateEmail(email); }
                 setPayLoading(false);   // reveal the card box, then mount into it
+                // A FRESH element starts empty — clear any completeness left
+                // over from an earlier card, or "Use this method" would accept
+                // a blank form on the strength of the last one.
+                var payRootEl = getPayRoot();
+                if (payRootEl) { payRootEl.setAttribute('data-pay-complete', '0'); }
                 payElement = checkoutEle.createPaymentElement({ wallets: { applePay: 'auto', googlePay: 'auto' } });
-                if (payElement.on) { payElement.on('change', function (event) { setError(event && event.error ? event.error.message : ''); }); }
+                if (payElement.on) {
+                    payElement.on('change', function (event) {
+                        setError(event && event.error ? event.error.message : '');
+                        // Record whether Stripe considers the details COMPLETE.
+                        // checkout-popups.js reads this before it lets "Use this
+                        // method" close the sheet — without it a half-typed (or
+                        // empty) card was accepted and the cart showed "New card"
+                        // as if a real method had been chosen.
+                        // Passed via the DOM because the two modules are separate
+                        // IIFEs with no shared object; every other cross-module
+                        // signal here works the same way.
+                        var root = getPayRoot();
+                        if (root) {
+                            root.setAttribute('data-pay-complete', (event && event.complete) ? '1' : '0');
+                        }
+                    });
+                }
                 // Resolve ONLY after the element has mounted AND emitted 'ready'.
                 // Stripe throws "Please ensure that the Payment Element is mounted
                 // and the ready event has been emitted before calling confirm()"
@@ -1004,6 +1084,12 @@
         }
 
         var mode = readPayMode();
+        // £0 total (fully discounted) — Stripe has nothing to charge, so the
+        // order can only go through as Cash. Mirrors the API guard.
+        if (mode.kind !== 'cash' && zeroTotal()) {
+            toast('error', 'Your total is £0.00 — please select Cash to place this order.');
+            return;
+        }
         if (mode.kind === 'card-new')   { return doCardCheckout(btn, mode); }
         if (mode.kind === 'card-saved') { return doCardCheckout(btn, mode); }
 

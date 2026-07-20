@@ -68,9 +68,13 @@ async function createIntent(req, res) {
         const cart = await Cart.loadActiveCart(open.id, customerId);
         if (!cart) { return H.errorResponse(res, 'Your cart is no longer available.', 404); }
 
+        // Nothing to charge — either an empty cart, or a total wiped out by a
+        // discount/voucher/reward. Both are placeable as CASH orders; Stripe
+        // simply has no amount to take, so send the customer back to Cash.
         const baseAmount = Number(cart.grandtotal) || 0;
         if (baseAmount <= 0) {
-            return H.errorResponse(res, 'Add at least one item before paying.', 422);
+            return H.errorResponse(res,
+                'Your total is £0.00 — please select Cash to place this order.', 422);
         }
         // ── Stripe Connect — EXACTLY like the legacy (StripeController.paymentCreate +
         //    CompanyStripeSettings::calculateStripeCharge). Every value comes from

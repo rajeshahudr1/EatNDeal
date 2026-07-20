@@ -95,8 +95,11 @@
             On mobile only the welcome strip shows (the app card is desktop-only).
             Hidden entirely in browse mode. %>
         <% if (!__browseActive) { %>
-        <div class="home-topline">
-            <% if (typeof welcome_banner !== 'undefined' && welcome_banner) { %>
+        <%# No welcome strip → the app card is alone on the row, so it stretches
+            full width (flush to the right edge) and sits a little taller. %>
+        <% var hasWelcome = (typeof welcome_banner !== 'undefined' && welcome_banner); %>
+        <div class="home-topline<%= hasWelcome ? '' : ' home-topline--solo' %>">
+            <% if (hasWelcome) { %>
                 <% var wb = welcome_banner; var wbImage = Number(wb.type) === 2; %>
                 <section class="welcome-strip welcome-strip--<%= wbImage ? 'image' : 'text' %>" aria-label="Welcome">
                     <% if (wb.link) { %><a class="welcome-strip__link" href="<%= wb.link %>"><% } %>

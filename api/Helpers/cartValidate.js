@@ -124,7 +124,14 @@ async function validate(cartId, owner, ctx) {
             pushErr(out, 'branch.closed', closedMsg);
         }
     } else if (!isOpen) {
-        pushWarn(out, 'branch.closed', 'The restaurant is closed right now — you can still pre-order.');
+        // Only offer pre-ordering when there IS a future slot to book — a
+        // branch with no upcoming shifts (permanently closed / both services
+        // off) must not be told "you can still pre-order".
+        const days = await StoreHours.scheduleDaysForBranch(branch, Number(cart.serve_type) === 2 ? 2 : 3);
+        const canPreOrder = days.some(d => d.slots && d.slots.length);
+        pushWarn(out, 'branch.closed', canPreOrder
+            ? 'The restaurant is closed right now — you can still pre-order.'
+            : 'The restaurant is closed right now.');
     }
 
     // ── 3. Line items — exist, still marketplace-on, stock, price ────
@@ -136,15 +143,10 @@ async function validate(cartId, owner, ctx) {
         return out;
     }
 
-    // Block "zero-total" carts at PLACE — a 100%-off coupon (or rounding
-    // error) can leave grandtotal at 0 / below. Stripe rejects amount<=0
-    // with a cryptic error; cash flow would create a £0 order. Both
-    // unwanted; we fail early with a friendly message.
-    if (level === LEVEL.PLACE && (Number(cart.grandtotal) || 0) <= 0) {
-        pushErr(out, 'cart.zero_total',
-            'Your order total is zero. Please add items or remove discounts before placing the order.');
-        return out;
-    }
+    // Zero-total carts (a 100%-off coupon / voucher / reward) ARE placeable —
+    // but only as CASH, since Stripe rejects amount<=0. The card path is
+    // refused in OrderController/PaymentController; here we only guard the
+    // genuinely empty cart, which the items check above already covers.
 
     if (level === LEVEL.READ) {
         // Cheap path: trust stored prices, skip per-item DB lookups.

@@ -350,7 +350,13 @@
 .ckt-popup__cancel { background: #fff; border: 1px solid var(--color-border); color: var(--color-text); }
 .ckt-popup__cancel:hover { border-color: var(--color-primary); color: var(--color-primary); }
 .ckt-popup__apply  { background: #1a1a1a; color: #fff; }
-.ckt-popup__apply:hover { background: #2b2b2b; }
+.ckt-popup__apply:hover:not(:disabled) { background: #2b2b2b; }
+/* The promo DETAIL "Select" is disabled when the promo isn't eligible yet
+   (checkout-popups.js sets .disabled from data.eligible), but with no disabled
+   style it still rendered solid black and read as tappable — the list's Select
+   greyed out while the detail's didn't. Same treatment as .ckt-promo__select. */
+.ckt-popup__apply:disabled { opacity: 0.5; cursor: not-allowed; }
+.ckt-popup__apply:disabled:hover { background: #1a1a1a; }
 .ckt-popup__apply--inline { flex: 0 0 auto; padding: 12px 18px; min-height: 44px; }
 
 .ckt-popup__link {

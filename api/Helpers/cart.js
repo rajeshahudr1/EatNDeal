@@ -360,10 +360,33 @@ async function recomputeTotals(cartId) {
     }
 
     // Charity contribution — the CUSTOMER's chosen donation (set via
-    // /cart/set-charity: No / a % tier / Custom). Preserved across
-    // recomputes (like delivery_fees) and ADDED to the grand total; the
+    // /cart/set-charity: No / a % tier / Custom). ADDED to the grand total; the
     // customer pays it and it's donated to the company. NOT auto-charged.
-    const charityAmt = Number(cart.charity_amount) || 0;
+    //
+    // A % TIER RESCALES WITH THE BASKET. The cart stores only the £ amount, and
+    // the cart page works out which tier chip to light up by matching that
+    // amount against each tier of the CURRENT sub-total. Leaving the amount
+    // frozen therefore moved the selection on its own: pick 10% of £6 (£0.60),
+    // add an item so the sub-total is £12, and £0.60 is now 5% — the page showed
+    // 5% selected and the customer's 10% choice was silently halved.
+    //
+    // The percentage is recovered from the state we still have here — cart row
+    // = the PREVIOUS sub-total and amount — and re-applied to the new one.
+    // It's only done when the old amount really was one of the offered tiers;
+    // a CUSTOM £ amount is a flat pledge and stays exactly as entered.
+    // No schema change: the amount keeps being the single stored value, it is
+    // just kept honest instead of going stale.
+    let charityAmt = Number(cart.charity_amount) || 0;
+    const prevSub = Number(cart.sub_total) || 0;
+    if (charityAmt > 0 && prevSub > 0 && Math.abs(subTotal - prevSub) > 0.005) {
+        // Tiers are per-branch (quick_tips), the same list the page renders —
+        // read them rather than assuming 5/10/15, or a branch with its own
+        // tiers would have its selection treated as a custom amount.
+        const tiers = await getCharityTiers(cart.branch_id, cart.company_id);
+        const pct   = (charityAmt / prevSub) * 100;
+        const tier  = tiers.find((t) => Math.abs(Number(t) - pct) < 0.05);
+        if (tier) { charityAmt = round2(subTotal * Number(tier) / 100); }
+    }
 
     // Fixed charity — the COMPANY's automatic donation = branch
     // fix_charity_percentage % of sub-total. Shown to the customer as the
@@ -413,7 +436,48 @@ async function recomputeTotals(cartId) {
 
     const hasManualPromo = Number(cart.coupon_id) > 0 || Number(cart.voucher_id) > 0;
     if (hasManualPromo) {
-        discount = Math.min(Number(cart.discount) || 0, subTotal);
+        // RE-VALIDATE against the CURRENT basket, don't just carry the old
+        // number forward. The amount was computed when the promo was applied;
+        // every add / remove / quantity change since then has moved the
+        // sub-total out from under it. Clamping alone (what this did before)
+        // left two real faults:
+        //   • apply on a small basket, then add items  → the discount stayed
+        //     at the old, smaller figure — the customer paid more than the
+        //     promo promised, while the code still showed as applied.
+        //   • apply on a big basket, then remove items → the old, larger
+        //     discount rode down with it, so the restaurant gave away more
+        //     than the promo allows (and min_order_value stopped meaning
+        //     anything).
+        // Requiring lazily: coupons/vouchers pull in helpers that reach back
+        // here, and this is the established pattern in this file.
+        const promoCart = { ...cart, sub_total: subTotal };
+        let promo = null;
+        try {
+            if (Number(cart.coupon_id) > 0 && cart.promocode) {
+                promo = await require('./coupons').validate(cart.promocode, promoCart);
+            } else if (Number(cart.voucher_id) > 0 && cart.promocode) {
+                promo = await require('./vouchers').validate(cart.promocode, promoCart, cart.user_id);
+            }
+        } catch (e) {
+            promo = null;                    // treat a lookup failure as "unknown"
+        }
+
+        if (promo && promo.ok) {
+            discount = Math.min(round2(promo.discount) || 0, subTotal);
+        } else if (promo) {
+            // It no longer qualifies (below min order, wrong fulfilment mode,
+            // expired, used up). Drop it rather than silently discount £0 —
+            // a code shown as applied that takes nothing off is worse than no
+            // code at all.
+            discount = 0;
+            await db('cart').where({ id: cartId }).update({
+                coupon_id: 0, voucher_id: 0, promocode: null, free_delivery: 0,
+            });
+        } else {
+            // Couldn't check (no code stored / lookup threw) — fall back to the
+            // old behaviour rather than removing something on a hiccup.
+            discount = Math.min(Number(cart.discount) || 0, subTotal);
+        }
         discountId = 0;  // auto-discount slot is cleared when a coupon is in play
     } else if (branch) {
         const result = await AutoDiscount.findBest({ ...cart, sub_total: subTotal }, branch);
@@ -673,6 +737,54 @@ async function addItem({ cartId, product, qty, options, unitPrice, remark }) {
  *        Row is NOT deleted — kept for audit.
  * Type:  WRITE.
  */
+/**
+ * wipeDiscounts
+ *
+ * What:  Removes every applied discount from a cart — coupon, voucher, the
+ *        auto-discount link, and any redeemed cashback.
+ * Why:   "Clear cart" has to mean a clean slate. Anything left behind reappears
+ *        on the customer's next basket looking applied while contributing
+ *        nothing (the discount is not recomputed against the new items).
+ *        used_cashback is only touched when the column exists — the redeem
+ *        feature ships behind that migration.
+ * Type:  WRITE.
+ */
+async function wipeDiscounts(cartId) {
+    if (!cartId) { return; }
+    const patch = {
+        coupon_id:     0,
+        voucher_id:    0,
+        discount_id:   0,
+        promocode:     null,
+        discount:      0,
+        free_delivery: 0,
+    };
+    if (await hasUsedCashbackCol()) { patch.used_cashback = 0; }
+    await db('cart').where({ id: cartId }).update(patch);
+}
+
+/**
+ * wipeDiscountsIfEmpty
+ *
+ * What:  Runs wipeDiscounts, but ONLY once the cart has no live lines left.
+ * Why:   Removing the last item — or stepping its quantity to zero — leaves the
+ *        same empty basket "Clear cart" leaves, so it has to leave it in the
+ *        same state. Without this the coupon stayed attached to an empty cart
+ *        and came back looking applied against the next thing added, while
+ *        contributing nothing (the discount is not recomputed on add).
+ * Type:  WRITE. Returns true when it wiped.
+ */
+async function wipeDiscountsIfEmpty(cartId) {
+    if (!cartId) { return false; }
+    const row = await db('cart_details')
+        .where({ cart_id: cartId, is_deleted: 0 })
+        .count('* as n')
+        .first();
+    if (Number(row && row.n) > 0) { return false; }
+    await wipeDiscounts(cartId);
+    return true;
+}
+
 async function closeCart(cartId) {
     if (!cartId) { return 0; }
     // Only close when STILL open — guards against the
@@ -1381,6 +1493,8 @@ module.exports = {
     // allowance; see Helpers/surpriseBox.
     addSurpriseItem,
     closeCart,
+    wipeDiscounts,
+    wipeDiscountsIfEmpty,
     loadOwnedLineItem,
     updateLineQty,
     removeLineItem,

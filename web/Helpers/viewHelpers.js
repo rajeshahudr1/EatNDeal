@@ -42,12 +42,46 @@ function esc(s) {
     });
 }
 
-// Friendly 'D MMM YYYY' date; '' on empty / unparseable input.
+// Friendly 'D MMM YYYY' date in UK local time; '' on empty / unparseable input.
+// Read in UK time so a late-evening UTC timestamp doesn't show yesterday's (or
+// tomorrow's) date to a customer — see UK_TZ below.
 function fmtDate(d) {
     if (!d) { return ''; }
     const dt = new Date(d);
     if (isNaN(dt.getTime())) { return ''; }
-    return dt.getDate() + ' ' + MONTHS[dt.getMonth()] + ' ' + dt.getFullYear();
+    return dt.toLocaleDateString('en-GB', {
+        timeZone: UK_TZ, day: 'numeric', month: 'short', year: 'numeric',
+    });
+}
+
+// The business runs in the UK, so every customer-facing time is shown in UK
+// local time — NOT the server's timezone and NOT the viewer's. `toLocaleString()`
+// with no zone follows whatever the Node process is set to, which silently
+// mis-stated every order time by the offset between that and London (and by an
+// hour again through BST). Europe/London handles GMT/BST automatically.
+const UK_TZ = process.env.DISPLAY_TIMEZONE || 'Europe/London';
+
+/**
+ * fmtDateTime / fmtTime — a UTC timestamp rendered in UK local time.
+ * '' on empty / unparseable input, so views can guard with a plain falsy check.
+ */
+function fmtDateTime(d) {
+    if (!d) { return ''; }
+    const dt = new Date(d);
+    if (isNaN(dt.getTime())) { return ''; }
+    return dt.toLocaleString('en-GB', {
+        timeZone: UK_TZ,
+        day: 'numeric', month: 'short', year: 'numeric',
+        hour: '2-digit', minute: '2-digit',
+    });
+}
+function fmtTime(d) {
+    if (!d) { return ''; }
+    const dt = new Date(d);
+    if (isNaN(dt.getTime())) { return ''; }
+    return dt.toLocaleTimeString('en-GB', {
+        timeZone: UK_TZ, hour: '2-digit', minute: '2-digit',
+    });
 }
 
 /**
@@ -75,4 +109,4 @@ function getInitial(name, fallback) {
     return s ? s.charAt(0).toUpperCase() : fb;
 }
 
-module.exports = { CURRENCY_SYMBOL, currencySymbol, money, esc, fmtDate, fmtSchedule, getInitial };
+module.exports = { CURRENCY_SYMBOL, currencySymbol, money, esc, fmtDate, fmtDateTime, fmtTime, fmtSchedule, getInitial };

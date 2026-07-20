@@ -206,7 +206,7 @@
                         <p class="orders-card__meta">
                             <%= o.itemCount %> item<%= o.itemCount === 1 ? '' : 's' %>
                             · <%= o.serveType === 2 ? 'Pickup' : 'Delivery' %>
-                            <% if (o.createdAt) { %> · <span class="orders-card__date" data-utc="<%= o.createdAt %>"><%= new Date(o.createdAt).toLocaleDateString() %></span><% } %>
+                            <% if (o.createdAt) { %> · <span class="orders-card__date" data-utc="<%= o.createdAt %>"><%= fmt.fmtDate(o.createdAt) %></span><% } %>
                         </p>
                         <% if (o.payment) { %>
                         <p class="orders-card__pay">

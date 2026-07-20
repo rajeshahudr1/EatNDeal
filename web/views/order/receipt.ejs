@@ -33,7 +33,7 @@
 
         <div class="receipt__meta">
             <div><span>Order</span><strong><%= o.number || ('#' + o.id) %></strong></div>
-            <% if (o.createdAt) { %><div><span>Date</span><strong><%= new Date(o.createdAt).toLocaleString() %></strong></div><% } %>
+            <% if (o.createdAt) { %><div><span>Date</span><strong><%= fmt.fmtDateTime(o.createdAt) %></strong></div><% } %>
             <div><span>Type</span><strong><%= o.serveType === 2 ? 'Pickup' : 'Delivery' %></strong></div>
             <% if (o.customerName) { %><div><span>Customer</span><strong><%= o.customerName %></strong></div><% } %>
             <% if (o.customerNumber) { %><div><span>Phone</span><strong><%= o.customerNumber %></strong></div><% } %>

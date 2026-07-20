@@ -1053,11 +1053,9 @@
         }
         if (raw === 'cash')     { return { kind: 'cash' }; }
         if (raw === 'new-card') { return { kind: 'card-new' }; }
-        // A stale 'card:<pm_id>' can still be sitting on the row from before
-        // saved cards were withdrawn. Treat it as a plain card payment — the
-        // Checkout Session is the only way a direct charge can be taken — so
-        // the customer gets the working card form instead of a dead end.
-        if (raw.indexOf('card:') === 0) { return { kind: 'card-new' }; }
+        if (raw.indexOf('card:') === 0) {
+            return { kind: 'card-saved', paymentMethodId: raw.slice(5) };
+        }
         return { kind: 'cash' };
     }
 
@@ -1150,6 +1148,37 @@
         // id — the server verifies payment_status='paid' on the connected
         // account. No saved-card path: a Connect direct charge has no platform
         // customer, so both card modes use the same session flow.
+        // SAVED CARD — no Payment Element involved. The server clones the card
+        // onto the restaurant's connected account and confirms the charge
+        // ON-SESSION, so a 3-D Secure challenge can be answered right here
+        // instead of failing the payment. Resolves with a payment_intent_id
+        // for /order/place (which re-verifies it server-side).
+        if (mode.kind === 'card-saved') {
+            origLabel.textContent = 'Confirming payment...';
+            var savedPromise = postCart('/cart/pay-saved-card', {
+                payment_method_id: mode.paymentMethodId,
+            }).then(function (env) {
+                if (!env) { throw new Error('Could not reach the server.'); }
+                if (env.status !== 200) { throw new Error(env.msg || 'That card was declined.'); }
+                var d = env.data || {};
+                if (d.status === 'succeeded') { return d.paymentIntentId; }
+                if (d.status !== 'requires_action') { throw new Error('That payment didn\'t go through.'); }
+                // 3-D Secure — finish it on the CONNECTED account, which is
+                // where the intent lives.
+                var s = ensureStripe(d.stripeAccount);
+                if (!s) { throw new Error('Card payments aren\'t ready. Please refresh and try again.'); }
+                origLabel.textContent = 'Verifying with your bank...';
+                return s.handleNextAction({ clientSecret: d.clientSecret }).then(function (r) {
+                    if (r && r.error) { throw new Error(r.error.message || 'Card verification failed.'); }
+                    if (!r || !r.paymentIntent || r.paymentIntent.status !== 'succeeded') {
+                        throw new Error('Card verification didn\'t complete. Please try again.');
+                    }
+                    return r.paymentIntent.id;
+                });
+            });
+            return finishCardOrder(savedPromise, origLabel, orig, btn, { savedCard: true });
+        }
+
         var paidIntentPromise = ensurePaymentElement(false).then(function (el) {
             if (!el || !checkoutActions) { throw new Error('Payment form is not ready. Please refresh and try again.'); }
             origLabel.textContent = 'Confirming payment...';
@@ -1170,14 +1199,24 @@
             });
         });
 
-        paidIntentPromise.then(function (sessionId) {
-            // Place the order — server verifies payment_status='paid' on the
-            // connected account via the session id (legacy checkoutSessionRetrieve).
+        return finishCardOrder(paidIntentPromise, origLabel, orig, btn, { savedCard: false });
+    }
+
+    /**
+     * finishCardOrder — shared tail of BOTH card routes.
+     *
+     * `paidPromise` resolves with the proof of payment: a Checkout Session id
+     * for a newly-entered card, or a PaymentIntent id for a saved card. The
+     * server re-verifies whichever it's given before writing the order, so the
+     * only difference here is which field we send.
+     */
+    function finishCardOrder(paidPromise, origLabel, orig, btn, opts) {
+        var savedCard = !!(opts && opts.savedCard);
+        return paidPromise.then(function (paidId) {
             origLabel.textContent = 'Placing order...';
-            return postCart('/order/place', {
-                payment_option: 2,
-                session_id:     sessionId,
-            }).then(function (env) {
+            var body = { payment_option: 2 };
+            if (savedCard) { body.payment_intent_id = paidId; } else { body.session_id = paidId; }
+            return postCart('/order/place', body).then(function (env) {
                 if (!env) { throw new Error('Could not reach the server.'); }
                 if (env.status === 401) {
                     window.location.href = '/signin?next=' + encodeURIComponent('/cart');
@@ -1192,10 +1231,11 @@
             });
         }).catch(function (err) {
             toast('error', (err && err.message) || 'Payment failed.');
-            // The intent may have succeeded but order-place failed — the
+            // The payment may have succeeded but order-place failed — the
             // Stripe webhook recovers that. Rebuild the element so a retry
-            // starts from a clean, fresh intent.
-            teardownPaymentElement();
+            // starts from a clean, fresh intent. (Saved cards mount no
+            // element, so there is nothing to tear down there.)
+            if (!savedCard) { teardownPaymentElement(); }
         }).then(function () {
             // Only release the guard on FAILURE — on success we've already
             // navigated to /order/:id/confirm and don't want a flash of an

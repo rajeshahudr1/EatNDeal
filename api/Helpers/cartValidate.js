@@ -136,9 +136,17 @@ async function validate(cartId, owner, ctx) {
             pushErr(out, 'branch.closed', closedMsg);
         }
     } else if (!isOpen) {
-        pushWarn(out, 'branch.closed', canPreOrder
-            ? 'The restaurant is closed right now — you can still pre-order.'
-            : 'The restaurant is closed right now.');
+        // ONE closed message everywhere. When the branch carries its own
+        // closure notice (admin's clossed_text, e.g. "…reopen day on 20/07"),
+        // that is what the customer already sees in the toast at place-time —
+        // so the checkout banner must say the same thing rather than a second,
+        // different sentence. Only add "you can still pre-order" when they
+        // genuinely can.
+        pushWarn(out, 'branch.closed', (avail && avail.message)
+            ? closedMsg
+            : (canPreOrder
+                ? 'The restaurant is closed right now — you can still pre-order.'
+                : 'The restaurant is closed right now.'));
     }
 
     // ── 3. Line items — exist, still marketplace-on, stock, price ────

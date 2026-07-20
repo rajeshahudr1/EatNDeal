@@ -291,6 +291,63 @@ async function listPaymentMethods({ customer }) {
     }));
 }
 
+/**
+ * clonePaymentMethodToAccount
+ *
+ * What:  Copies a card saved on the PLATFORM customer onto a connected
+ *        account so a DIRECT charge can use it. Stripe's documented route for
+ *        exactly this (docs.stripe.com/connect/direct-charges-multiple-accounts):
+ *        the platform PaymentMethod id is not chargeable on a connected
+ *        account, a clone made on that account is. The clone is single-use —
+ *        make a fresh one per order.
+ * Type:  WRITE. Returns the cloned payment_method id.
+ */
+async function clonePaymentMethodToAccount({ customer, paymentMethodId, account }) {
+    if (!customer || !paymentMethodId || !account) {
+        throw stripeError('stripe.clone_args', 'Card details are incomplete. Please try another card.');
+    }
+    const pm = await post('/payment_methods', {
+        customer:       customer,
+        payment_method: paymentMethodId,
+    }, { 'Stripe-Account': account });
+    if (!pm || !pm.id) {
+        throw stripeError('stripe.clone_failed', 'That saved card could not be used here. Please try another card.');
+    }
+    return pm.id;
+}
+
+/**
+ * chargeSavedCard
+ *
+ * What:  Creates + confirms a PaymentIntent on the restaurant's connected
+ *        account using a cloned card. ON-SESSION on purpose: the customer is
+ *        watching the checkout, so if their bank asks for 3-D Secure the
+ *        browser can complete it and the order still goes through. Sending
+ *        off_session instead would just fail those orders outright.
+ *        A `requires_action` result is NOT an error — the caller hands the
+ *        client secret to Stripe.js to finish the challenge.
+ * Type:  WRITE. Returns the PaymentIntent.
+ */
+async function chargeSavedCard({ amount, paymentMethodId, account, applicationFee, cartId, returnUrl }) {
+    const minor = Math.round((Number(amount) || 0) * 100);
+    if (minor <= 0) {
+        throw stripeError('stripe.bad_amount', 'There is nothing to pay on this order.');
+    }
+    const body = {
+        amount:              minor,
+        currency:            CURRENCY,
+        payment_method:      paymentMethodId,
+        confirm:             'true',
+        off_session:         'false',           // on-session — 3DS can be completed
+        'metadata[cart_id]': String(cartId || ''),
+    };
+    if (returnUrl) { body.return_url = returnUrl; }
+    if (Number(applicationFee) > 0) {
+        body.application_fee_amount = Math.round(Number(applicationFee) * 100);
+    }
+    return post('/payment_intents', body, { 'Stripe-Account': account });
+}
+
 async function detachPaymentMethod(paymentMethodId) {
     return post('/payment_methods/' + encodeURIComponent(paymentMethodId) + '/detach', {});
 }
@@ -395,5 +452,7 @@ module.exports = {
     createSetupIntent,
     listPaymentMethods,
     detachPaymentMethod,
+    clonePaymentMethodToAccount,
+    chargeSavedCard,
     verifyWebhookSignature,
 };

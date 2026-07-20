@@ -391,7 +391,48 @@ const updateQty  = (req, res) => forwardGuestWrite(req, res, '/api/v1/customer/c
 const removeItem = (req, res) => forwardGuestWrite(req, res, '/api/v1/customer/cart/remove-item');
 const clear      = (req, res) => forwardGuestWrite(req, res, '/api/v1/customer/cart/clear');
 const setMode    = (req, res) => forwardGuestWrite(req, res, '/api/v1/customer/cart/set-mode');
-const setAddress  = (req, res) => forwardWrite(req, res, '/api/v1/customer/cart/set-address');
+// Charge a saved card for the open cart. The api clones the card onto the
+// restaurant's connected account and confirms ON-SESSION, so the reply may be
+// `requires_action` (3-D Secure) rather than an outright success.
+const paySavedCard = (req, res) => forwardWrite(req, res, '/api/v1/customer/payment/saved-card');
+
+/**
+ * setAddress
+ *
+ * What:  Applies a saved address to the cart AND moves the header location to
+ *        match it.
+ * Why:   The api treats the header location as the source of truth and rewrites
+ *        the cart's address back to it on the next load (Helpers/cart.js
+ *        ensureDefaultDeliveryAddress). Picking an address at checkout without
+ *        moving the header therefore "bounced" — most visibly when the customer
+ *        picked their DEFAULT address, which that code can't tell apart from an
+ *        auto-attached one. Choosing a delivery address IS choosing where you
+ *        are ordering to, so the two now stay in step.
+ */
+async function setAddress(req, res) {
+    await claimGuestCart(req);
+    const user = needUser(req, res);
+    if (!user) { return; }
+
+    const payload = Object.assign({}, req.body, { customer_id: user.id });
+    const apiRes  = await callApi(req, 'POST', '/api/v1/customer/cart/set-address', payload);
+    syncSessionCount(req, apiRes);
+
+    // Only follow a SUCCESSFUL change — a rejected address must not move the
+    // header location.
+    if (apiRes && apiRes.body && apiRes.body.status === 200 && req.session) {
+        const addr = apiRes.body.data && apiRes.body.data.cart;
+        if (addr && addr.deliveryPostcode) {
+            req.session.userLocation = Object.assign({}, req.session.userLocation, {
+                postcode: addr.deliveryPostcode,
+                label:    addr.deliveryLabel || addr.deliveryAddress || '',
+                lat:      addr.deliveryLat != null ? addr.deliveryLat : null,
+                lng:      addr.deliveryLng != null ? addr.deliveryLng : null,
+            });
+        }
+    }
+    return relay(res, apiRes);
+}
 const setSchedule  = (req, res) => forwardWrite(req, res, '/api/v1/customer/cart/set-schedule');
 const setInstructions = (req, res) => forwardWrite(req, res, '/api/v1/customer/cart/set-instructions');
 const applyCoupon  = (req, res) => forwardWrite(req, res, '/api/v1/customer/cart/apply-coupon');
@@ -406,7 +447,7 @@ module.exports = {
     page, data, count, promotions,
     add,
     addSurpriseBox, updateQty, removeItem, clear,
-    setMode, setAddress, setSchedule, setInstructions,
+    setMode, setAddress, setSchedule, setInstructions, paySavedCard,
     applyCoupon, removeCoupon, applyVoucher, removeVoucher,
     applyLoyalty, removeLoyalty, setCharity,
 };

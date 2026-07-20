@@ -38,7 +38,7 @@
                 <p class="merchant-detail__crumbs"><a href="/merchant">Dashboard</a> &rsaquo; <%= order.number || ('#' + order.id) %></p>
                 <h1 class="merchant-detail__title">Order <%= order.number || ('#' + order.id) %></h1>
                 <% if (order.createdAt) { %>
-                <p class="merchant-detail__sub">Placed <span data-utc="<%= order.createdAt %>"><%= new Date(order.createdAt).toLocaleString() %></span></p>
+                <p class="merchant-detail__sub">Placed <span data-utc="<%= order.createdAt %>"><%= fmt.fmtDateTime(order.createdAt) %></span></p>
                 <% } %>
             </div>
             <span class="merchant-order__status merchant-order__status--<%= order.statusClass %>" data-status-pill><%= order.statusLabel %></span>

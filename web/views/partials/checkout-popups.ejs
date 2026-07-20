@@ -64,7 +64,7 @@
                     <span class="ckt-review__label">When</span>
                     <span class="ckt-review__value">
                         <% if (cart.isPreOrder && cart.preOrderTime) { %>
-                            Scheduled for <%= new Date(cart.preOrderTime).toLocaleString() %>
+                            Scheduled for <%= fmt.fmtDateTime(cart.preOrderTime) %>
                         <% } else { %>
                             ASAP — <%= cart.serveType === 2 ? 'pickup' : 'deliver' %> as soon as ready
                         <% } %>
@@ -226,7 +226,7 @@
                 <% } %>
             </div>
             <% if (cart.isPreOrder && cart.preOrderTime) { %>
-                <p class="ckt-popup__hint-row" data-cart-sched-time>Currently scheduled for <%= new Date(cart.preOrderTime).toLocaleString() %></p>
+                <p class="ckt-popup__hint-row" data-cart-sched-time>Currently scheduled for <%= fmt.fmtDateTime(cart.preOrderTime) %></p>
             <% } %>
         </div>
         <footer class="ckt-popup__foot">
@@ -425,16 +425,11 @@
             <ul class="ckt-list" role="list">
                 <%# Card-only — Cash is chosen on the cart page (the "Cash"
                     tile), so it's no longer offered inside this popup. %>
-                <%# Saved cards — NOT offered. Payment runs as a Stripe Connect
-                    DIRECT charge on the restaurant's own connected account, and
-                    a card saved against the PLATFORM customer cannot be charged
-                    there (see cart.js ensurePaymentElement). Listing them let
-                    the customer pick a card that could never be used: the
-                    confirm step then asked for card details that weren't on
-                    screen, and the error landed in the hidden card panel, so
-                    nothing appeared and the order never placed. Re-enable only
-                    once saved cards exist on the connected account. %>
-                <% if (false && stripeOn && payList.length) { %>
+                <%# Saved cards. These live on the PLATFORM Stripe customer while
+                    the charge is a DIRECT charge on the restaurant's connected
+                    account, so the card is cloned onto that account at pay time
+                    (POST /cart/pay-saved-card → api payment/saved-card). %>
+                <% if (stripeOn && payList.length) { %>
                     <% payList.forEach(function (c) {
                         var brand = (c.brand || 'card').replace(/\b\w/g, function (s){ return s.toUpperCase(); });
                         var exp = (c.expMonth && c.expYear) ? (String(c.expMonth).padStart(2,'0') + '/' + String(c.expYear).slice(-2)) : '';

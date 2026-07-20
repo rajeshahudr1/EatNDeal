@@ -277,9 +277,34 @@ async function loadLineItems(cartId) {
         subsByItem.get(k).push(s);
     });
 
-    return items.map((it) => Object.assign({}, it, {
-        modifiers: subsByItem.get(String(it.id)) || [],
-    }));
+    // BOGOF — attach the PAYABLE quantity per line. Legacy charges
+    // (base + mods) × payableQty (CartController.php:1343); it never touches
+    // the unit price, so its money never drifts. We keep unit prices intact
+    // for the same reason and let lineSubtotal multiply by this instead of
+    // the raw qty. Baking the discount into a 2-dp unit price (the old way)
+    // lost pennies: buy-2-get-4 at qty 6 came to £4.02, not £4.00.
+    let payableOf = null;
+    try {
+        const cartRow = await db('cart').where({ id: cartId }).first('company_id');
+        if (cartRow && cartRow.company_id) {
+            const Loyalty = require('./loyalty');
+            const map = await Loyalty.bogoMapFor(cartRow.company_id);
+            if (map && map.size) {
+                payableOf = (it) => {
+                    const rule = map.get(String(it.product_id));
+                    return rule ? Loyalty.payableQtyFor(rule, Number(it.product_qty) || 0) : null;
+                };
+            }
+        }
+    } catch (e) { payableOf = null; }   // any hiccup → plain qty pricing
+
+    return items.map((it) => {
+        const payable = payableOf ? payableOf(it) : null;
+        return Object.assign({}, it, {
+            modifiers:   subsByItem.get(String(it.id)) || [],
+            payable_qty: payable,          // null = no BOGO rule on this line
+        });
+    });
 }
 
 /**
@@ -304,7 +329,11 @@ function lineSubtotal(item) {
         const q = Number(m.variant_qty)   || 1;
         mods += p * q;
     });
-    const line = (unit + mods) * qty;
+    // Charge for the PAYABLE units under a BOGOF rule (loadLineItems sets
+    // payable_qty; null when no rule applies). Exactly legacy's
+    // ($basePrice + $variantPrice) * $payableQty — multiply, never divide.
+    const billQty = (item.payable_qty == null) ? qty : Number(item.payable_qty);
+    const line = (unit + mods) * billQty;
     return Math.round(line * 100) / 100;
 }
 
@@ -1508,6 +1537,7 @@ module.exports = {
     wipeDiscountsIfEmpty,
     loadOwnedLineItem,
     updateLineQty,
+
     removeLineItem,
     resolveDeliveryFee,
     setMode,

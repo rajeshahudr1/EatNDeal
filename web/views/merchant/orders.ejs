@@ -59,7 +59,7 @@
                         <%= o.totalQty %> item<%= o.totalQty === 1 ? '' : 's' %>
                         · <%= o.serveType === 2 ? 'Pickup' : 'Delivery' %>
                         · <%= brand.currencySymbol %><%= o.grandTotal.toFixed(2) %>
-                        <% if (o.createdAt) { %> · <span data-utc="<%= o.createdAt %>"><%= new Date(o.createdAt).toLocaleTimeString() %></span><% } %>
+                        <% if (o.createdAt) { %> · <span data-utc="<%= o.createdAt %>"><%= fmt.fmtTime(o.createdAt) %></span><% } %>
                     </p>
                     <% if (o.customerName) { %>
                         <p class="merchant-order__cust"><%= o.customerName %><% if (o.customerPhone) { %> · <%= o.customerPhone %><% } %></p>

@@ -186,7 +186,7 @@
                         <p class="ckt-row__title">When</p>
                         <p class="ckt-row__sub" data-cart-sched-display>
                             <% if (cart.isPreOrder && cart.preOrderTime) { %>
-                                Scheduled for <%= new Date(cart.preOrderTime).toLocaleString() %>
+                                Scheduled for <%= fmt.fmtDateTime(cart.preOrderTime) %>
                             <% } else { %>
                                 <%= cart.serveType === 2 ? 'ASAP — pickup as soon as ready' : 'ASAP — deliver as soon as ready' %>
                             <% } %>

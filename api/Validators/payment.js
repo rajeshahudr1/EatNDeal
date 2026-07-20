@@ -33,6 +33,18 @@ const paymentIntentSchema = Joi.object({
     save_card:   Joi.boolean().truthy(1, '1', 'true').falsy(0, '0', 'false', '').default(false),
 });
 
+// POST /customer/payment/saved-card — charge an already-saved card. The
+// payment method must belong to this customer; the controller re-checks that
+// against Stripe rather than trusting the id off the wire.
+const savedCardSchema = Joi.object({
+    customer_id:       customerIdRule,
+    payment_method_id: Joi.string().trim().max(255).required().messages({
+        'any.required':  'Please choose a card.',
+        'string.empty':  'Please choose a card.',
+    }),
+});
+
 module.exports = {
     paymentIntentSchema,
+    savedCardSchema,
 };

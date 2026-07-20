@@ -694,6 +694,7 @@ app.post('/cart/remove-item',  CartController.removeItem);
 app.post('/cart/clear',        CartController.clear);
 app.post('/cart/set-mode',     CartController.setMode);
 app.post('/cart/set-address',  CartController.setAddress);
+app.post('/cart/pay-saved-card', CartController.paySavedCard);
 app.post('/cart/set-schedule', CartController.setSchedule);
 app.post('/cart/set-instructions', CartController.setInstructions);
 app.post('/cart/apply-coupon', CartController.applyCoupon);

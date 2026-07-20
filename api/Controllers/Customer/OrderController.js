@@ -105,6 +105,34 @@ async function place(req, res) {
                 return H.errorResponse(res,
                     'Card payments aren\'t available right now. Please pick Cash on Delivery.', 503);
             }
+            // SAVED-CARD route — the money was taken as a PaymentIntent on the
+            // connected account (payment/saved-card), not a Checkout Session.
+            // Re-read that intent server-side and only accept a genuinely
+            // succeeded one whose amount + cart match. Never trust the browser.
+            if (b.payment_intent_id && !b.session_id) {
+                const css = await db('company_stripe_settings')
+                    .where({ company_id: v.cart.company_id, is_enable: 1 })
+                    .first('stripe_account_id');
+                const acct = (css && css.stripe_account_id) || null;
+                const intent = await Payments.retrieveIntent(b.payment_intent_id, acct);
+                if (!intent || intent.status !== 'succeeded') {
+                    return H.errorResponse(res,
+                        'Payment hasn\'t completed yet. Please try again.', 422,
+                        { stripeStatus: intent && intent.status });
+                }
+                if (String(intent.metadata && intent.metadata.cart_id) !== String(v.cart.id)) {
+                    return H.errorResponse(res,
+                        'That payment belongs to a different order. Please refresh and try again.', 422);
+                }
+                const cardCharge  = await Cart.cardServiceCharge(v.cart.company_id);
+                const wantMinor   = Math.round(((Number(v.cart.grandtotal) || 0) + cardCharge) * 100);
+                if (Number(intent.amount) !== wantMinor) {
+                    return H.errorResponse(res,
+                        'Payment amount doesn\'t match your cart total. Please refresh and try again.', 422);
+                }
+                paymentIntentId  = intent.id;
+                paymentSucceeded = true;
+            } else {
             if (!b.session_id) {
                 return H.errorResponse(res, 'Payment confirmation is missing.', 422);
             }
@@ -149,6 +177,7 @@ async function place(req, res) {
                 return H.errorResponse(res,
                     'We couldn\'t verify your payment. Please try again or pick Cash on Delivery.', 502);
             }
+            }   // end Checkout-Session route
         }
 
         // 5b. The big one — single transaction. Availability is validated

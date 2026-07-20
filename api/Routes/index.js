@@ -930,11 +930,17 @@ router.get('/customer/loyalty/review-types',
 // Stripe.js. Verification at order-place time happens inside
 // OrderController.place (server reads the intent + checks succeeded).
 const PaymentCtl = require('../Controllers/Customer/PaymentController');
-const { paymentIntentSchema } = require('../Validators/payment');
+const { paymentIntentSchema, savedCardSchema } = require('../Validators/payment');
 
 router.post('/customer/payment/intent',
     validate(paymentIntentSchema),
     PaymentCtl.createIntent);
+
+// Charge a SAVED card. Cloned onto the restaurant's connected account first
+// (direct charges can't use a platform card) — see PaymentController.
+router.post('/customer/payment/saved-card',
+    validate(savedCardSchema),
+    PaymentCtl.paySavedCard);
 
 // Stripe webhook — Stripe POSTs signed events here. No Joi validation:
 // the body is verified via HMAC against req.rawBody (set by the

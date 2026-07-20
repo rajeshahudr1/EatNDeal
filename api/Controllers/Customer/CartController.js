@@ -487,16 +487,12 @@ async function add(req, res) {
         // with the product's own discount applied (legacy webordering
         // actionAdd: discount_type 1 = flat £, 2 = %).
         const discountedUnit = M.applyProductDiscount(M.pickPrice(product), product);
-        // BOGOF — the customer pays for the payable quantity only (legacy
-        // gePaybleQuantity). Expressed as an EFFECTIVE per-unit price so the
-        // existing line math (unit × qty) nets the right total — NO schema
-        // change (legacy stores a reduced line price too, not a flag).
-        const Loyalty = require('../../Helpers/loyalty');
-        const bogo    = await Loyalty.bogoForProduct(product.id, product.company_id);
-        const payable = Loyalty.payableQtyFor(bogo, qty);
-        const unitPrice = (bogo && qty > 0 && payable < qty)
-            ? Math.round((discountedUnit * payable / qty) * 100) / 100
-            : discountedUnit;
+        // BOGOF is NOT folded into the unit price — the stored price stays the
+        // real per-unit price and lineSubtotal bills only the payable units
+        // (see Helpers/cart.js loadLineItems), exactly as legacy does. Folding
+        // it in meant dividing by the qty, and a 2-dp price column then lost
+        // pennies (buy-2-get-4 at qty 6 billed £4.02 instead of £4.00).
+        const unitPrice = discountedUnit;
         await Cart.addItem({
             cartId:    cart.id,
             product,
@@ -631,6 +627,8 @@ async function updateQty(req, res) {
                 '"' + availRow.name + '" is ' + (avail.soldOut ? 'sold out' : 'currently unavailable') + '.', 422);
         }
 
+        // No BOGOF price rewrite needed — the unit price stays the real one and
+        // the payable-units discount is applied when the line is priced.
         await Cart.updateLineQty(line.id, newQty);
         // Stepping the last item down to zero empties the cart just as surely
         // as Remove does — same rule, same place. See removeItem.

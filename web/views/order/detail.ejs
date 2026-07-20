@@ -28,7 +28,7 @@
             <p class="order-detail__crumbs"><a href="/account?tab=orders">My orders</a> &rsaquo; <%= order.number || ('#' + order.id) %></p>
             <h1 class="order-detail__title"><%= order.restaurant.name || 'Order' %></h1>
             <% if (order.createdAt) { %>
-            <p class="order-detail__sub">Placed <span data-utc="<%= order.createdAt %>"><%= new Date(order.createdAt).toLocaleString() %></span></p>
+            <p class="order-detail__sub">Placed <span data-utc="<%= order.createdAt %>"><%= fmt.fmtDateTime(order.createdAt) %></span></p>
             <% } %>
         </div>
         <span class="order-detail__status order-detail__status--<%= order.statusClass %>" data-order-status-pill><%= order.statusLabel %></span>
@@ -179,7 +179,7 @@
             <% if (order.payment) { %>
             <p class="order-detail__pay">
                 <strong>Payment:</strong> <%= order.payment.method %>
-                <span class="order-detail__pay-status order-detail__pay-status--<%= order.payment.status.toLowerCase() %>"><%= order.payment.status %></span>
+                <!-- <span class="order-detail__pay-status order-detail__pay-status--<%= order.payment.status.toLowerCase() %>"><%= order.payment.status %></span> -->
             </p>
             <% } %>
 

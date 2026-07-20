@@ -135,6 +135,129 @@ async function createIntent(req, res) {
 }
 
 /**
+ * paySavedCard
+ *
+ * What:  Charges one of the customer's SAVED cards for the current cart.
+ *
+ *        Saved cards live on the PLATFORM Stripe customer, but the money is
+ *        taken as a DIRECT charge on the restaurant's connected account, and a
+ *        platform card id cannot be charged there. So we do what Stripe
+ *        documents for this exact case: clone the card onto the connected
+ *        account, then create + confirm a PaymentIntent on that account.
+ *
+ *        Confirmed ON-SESSION — the customer is on the checkout screen, so a
+ *        3-D Secure challenge can be completed in the browser instead of
+ *        failing the payment. `requires_action` therefore is a normal outcome:
+ *        we hand the client secret back and the browser finishes it.
+ *
+ *        Amount + application fee are computed EXACTLY as createIntent does,
+ *        so both card routes charge the same figure.
+ *
+ * Input:  { customer_id, payment_method_id }
+ * Output: 200 { status:'succeeded', paymentIntentId }
+ *         200 { status:'requires_action', clientSecret, paymentIntentId, ... }
+ */
+async function paySavedCard(req, res) {
+    try {
+        const b = req.body;
+        const { row: customer, error } = await customers.loadMarketplaceCustomer(b.customer_id);
+        if (error) { return H.errorResponse(res, error.msg, error.status); }
+        if (!Payments.isConfigured()) {
+            return H.errorResponse(res, 'Card payments aren\'t available right now. Please pick Cash.', 503);
+        }
+
+        const pmId = String(b.payment_method_id || '').trim();
+        if (!pmId) { return H.errorResponse(res, 'Please choose a card.', 422); }
+
+        const open = await Cart.findOpenCart(customer.id);
+        if (!open) { return H.errorResponse(res, 'Your cart is no longer available.', 404); }
+        await Cart.recomputeTotals(open.id);
+        const cart = await Cart.loadActiveCart(open.id, customer.id);
+        if (!cart) { return H.errorResponse(res, 'Your cart is no longer available.', 404); }
+
+        const baseAmount = Number(cart.grandtotal) || 0;
+        if (baseAmount <= 0) {
+            return H.errorResponse(res,
+                'Your total is £0.00 — please select Cash to place this order.', 422);
+        }
+
+        // The card must belong to THIS customer — never charge a payment method
+        // id supplied by the browser without checking whose it is.
+        const mapping = await db('mp_customer_stripe')
+            .where({ customer_id: customer.id }).first('stripe_customer_id');
+        if (!mapping || !mapping.stripe_customer_id) {
+            return H.errorResponse(res, 'That card is no longer available.', 404);
+        }
+        const owned = await Payments.listPaymentMethods({ customer: mapping.stripe_customer_id });
+        if (!owned.some((c) => c.id === pmId)) {
+            return H.errorResponse(res, 'That card is no longer available.', 404);
+        }
+
+        const css = await db('company_stripe_settings')
+            .where({ company_id: cart.company_id, is_enable: 1 })
+            .first('stripe_account_id', 'service_charge', 'commission');
+        if (!css || !css.stripe_account_id) {
+            return H.errorResponse(res, 'Card payment isn\'t set up for this restaurant yet.', 422);
+        }
+
+        const serviceCharge = Number(css.service_charge) || 0;
+        const amount = Cart.round2(baseAmount + serviceCharge);
+        const fee = StripeFee.computeStripeCharge({
+            grandtotal:    baseAmount,
+            charityAmount: Number(cart.charity_amount) || 0,
+            usedCashback:  Number(cart.used_cashback)  || 0,
+            serviceCharge,
+            commission:    css.commission,
+        });
+
+        try {
+            const clonedPm = await Payments.clonePaymentMethodToAccount({
+                customer:        mapping.stripe_customer_id,
+                paymentMethodId: pmId,
+                account:         css.stripe_account_id,
+            });
+            const returnUrl = (process.env.WEB_URL || process.env.APP_URL || '').replace(/\/$/, '') + '/cart';
+            const intent = await Payments.chargeSavedCard({
+                amount,
+                paymentMethodId: clonedPm,
+                account:         css.stripe_account_id,
+                applicationFee:  (Number(fee.appFeesCents) || 0) / 100,
+                cartId:          cart.id,
+                returnUrl,
+            });
+
+            if (intent && intent.status === 'succeeded') {
+                return H.successResponse(res, {
+                    status:          'succeeded',
+                    paymentIntentId: intent.id,
+                    amount,
+                });
+            }
+            if (intent && (intent.status === 'requires_action' || intent.status === 'requires_confirmation')) {
+                // 3-D Secure — the browser completes it with this client secret.
+                return H.successResponse(res, {
+                    status:          'requires_action',
+                    clientSecret:    intent.client_secret,
+                    paymentIntentId: intent.id,
+                    stripeAccount:   css.stripe_account_id,
+                    publishableKey:  Payments.publishableKey(),
+                    amount,
+                });
+            }
+            return H.errorResponse(res,
+                'That payment didn\'t go through. Please try another card.', 422,
+                { stripeStatus: intent && intent.status });
+        } catch (stripeErr) {
+            H.log.error('payment.paySavedCard.stripe', stripeErr && stripeErr.message);
+            return H.errorResponse(res, stripeErr.message || 'Could not take the payment.', 502);
+        }
+    } catch (err) {
+        H.log.error('payment.paySavedCard', err && err.message);
+        return H.errorResponse(res, MSG.server.oops, 500);
+    }
+}
+
+/**
  * webhook
  *
  * What:  Receives signed events from Stripe and uses
@@ -304,4 +427,4 @@ async function handleIntentSucceeded(intent) {
     }
 }
 
-module.exports = { createIntent, webhook };
+module.exports = { createIntent, paySavedCard, webhook };

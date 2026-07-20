@@ -425,8 +425,16 @@
             <ul class="ckt-list" role="list">
                 <%# Card-only — Cash is chosen on the cart page (the "Cash"
                     tile), so it's no longer offered inside this popup. %>
-                <%# Saved cards %>
-                <% if (stripeOn && payList.length) { %>
+                <%# Saved cards — NOT offered. Payment runs as a Stripe Connect
+                    DIRECT charge on the restaurant's own connected account, and
+                    a card saved against the PLATFORM customer cannot be charged
+                    there (see cart.js ensurePaymentElement). Listing them let
+                    the customer pick a card that could never be used: the
+                    confirm step then asked for card details that weren't on
+                    screen, and the error landed in the hidden card panel, so
+                    nothing appeared and the order never placed. Re-enable only
+                    once saved cards exist on the connected account. %>
+                <% if (false && stripeOn && payList.length) { %>
                     <% payList.forEach(function (c) {
                         var brand = (c.brand || 'card').replace(/\b\w/g, function (s){ return s.toUpperCase(); });
                         var exp = (c.expMonth && c.expYear) ? (String(c.expMonth).padStart(2,'0') + '/' + String(c.expYear).slice(-2)) : '';

@@ -1053,9 +1053,11 @@
         }
         if (raw === 'cash')     { return { kind: 'cash' }; }
         if (raw === 'new-card') { return { kind: 'card-new' }; }
-        if (raw.indexOf('card:') === 0) {
-            return { kind: 'card-saved', paymentMethodId: raw.slice(5) };
-        }
+        // A stale 'card:<pm_id>' can still be sitting on the row from before
+        // saved cards were withdrawn. Treat it as a plain card payment — the
+        // Checkout Session is the only way a direct charge can be taken — so
+        // the customer gets the working card form instead of a dead end.
+        if (raw.indexOf('card:') === 0) { return { kind: 'card-new' }; }
         return { kind: 'cash' };
     }
 

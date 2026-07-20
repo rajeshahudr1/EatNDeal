@@ -1022,11 +1022,22 @@ async function setMode(cartId, serveType, branch) {
     const next = Number(serveType) === 2 ? 2 : 3;
     const patch = { serve_type: next };
     if (next === 2) {
+        // Pickup has no delivery to charge for. `free_delivery` is a property
+        // of the applied COUPON, not of the mode, so it is left alone — the
+        // coupon survives the switch and must still waive the fee if the
+        // customer flips back to Delivery.
         patch.delivery_fees  = 0;
-        patch.free_delivery  = 0;
     } else {
-        const r = await resolveDeliveryFee({ ...cart, serve_type: next }, branch);
-        patch.delivery_fees = r.fee != null ? r.fee : 0;
+        // Re-price against the destination zone, UNLESS a coupon is waiving
+        // delivery. Without this check the zone fee came back on a switch to
+        // Delivery while the bill still displayed "Free" (the view reads
+        // free_delivery), so the customer was quietly charged it.
+        if (Number(cart.free_delivery) === 1) {
+            patch.delivery_fees = 0;
+        } else {
+            const r = await resolveDeliveryFee({ ...cart, serve_type: next }, branch);
+            patch.delivery_fees = r.fee != null ? r.fee : 0;
+        }
     }
     await db('cart').where({ id: cartId }).update(patch);
 }

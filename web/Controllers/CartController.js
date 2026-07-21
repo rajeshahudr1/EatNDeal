@@ -340,6 +340,22 @@ async function renderCartFragments(req, res) {
     const built = await buildCartLocals(req, res);
     if (!built.ok) { return { noOwner: true }; }
 
+    // Explicit empty-cart short-circuit (covers BOTH empty states: no open
+    // cart at all, and a cart present with items: []). index.ejs shows the
+    // empty-state shell for either — the partials render neither, so
+    // without this check a `cart: {items: []}` sailed through render() with
+    // no error and came back as a "valid" cart shell (£0.00 totals, a live
+    // Continue CTA) instead of the empty state. Returning null here — the
+    // same value callers already treat as "nothing to swap" — lets both
+    // relayWithFragments (falls back to reload) and fragment (reports the
+    // benign "nothing to render" result) handle it without ever reaching
+    // res.render, so this is also no longer reliant on the render-exception
+    // fallback (cart === null throwing inside the partials) that used to be
+    // the only thing catching this case, and which logged a render failure
+    // on every emptying action.
+    const cart = built.locals && built.locals.cart;
+    if (!cart || !Array.isArray(cart.items) || !cart.items.length) { return null; }
+
     // res.render's callback form returns the string instead of sending it.
     // _layoutFile must be falsy or ejs-locals (the engine this app uses —
     // see web/index.js `app.engine('ejs', ejsLocals)`) would wrap the
@@ -387,11 +403,25 @@ async function renderCartFragments(req, res) {
 async function relayWithFragments(req, res, apiRes) {
     const body = apiRes && apiRes.body;
     if (!body || body.status !== 200) { return relay(res, apiRes); }
-    const html = await renderCartFragments(req, res);
-    if (html && !html.noOwner) {
-        body.data = Object.assign({}, body.data, { html: html });
+    // The api write already succeeded at this point — a throw from the
+    // render step (renderCartFragments awaits buildCartLocals, which calls
+    // out to the api again) must NEVER turn a successful write into a hung
+    // request. Express 4 does not forward a rejected promise from an async
+    // handler, so without this catch the request would sit open until the
+    // client's own timeout. Fall through to relay(res, apiRes) — the
+    // customer still gets their 200, and the client's existing "no
+    // fragments came back" fallback (see cart.js handleEnvelope) reloads
+    // the page instead of leaving a stale view.
+    try {
+        const html = await renderCartFragments(req, res);
+        if (html && !html.noOwner) {
+            body.data = Object.assign({}, body.data, { html: html });
+        }
+        return res.status(200).json(body);
+    } catch (err) {
+        console.error('[CartController] relayWithFragments render failed:', err && err.message);
+        return relay(res, apiRes);
     }
-    return res.status(200).json(body);
 }
 
 /**
@@ -410,10 +440,20 @@ async function relayWithFragments(req, res, apiRes) {
  * Type:  READ.
  */
 async function fragment(req, res) {
-    const html = await renderCartFragments(req, res);
-    if (html && html.noOwner) { return res.status(200).json({ status: 401, msg: 'Please sign in to use the cart.' }); }
-    if (!html) { return res.status(200).json({ status: 200, show: false, msg: 'Nothing to render — the cart is empty.' }); }
-    return res.status(200).json({ status: 200, data: { html: html } });
+    // Express 4 never forwards a rejected promise from an async handler —
+    // an uncaught throw here (e.g. callApi rejecting inside buildCartLocals)
+    // would leave the request open until the client's own timeout instead
+    // of failing fast. `page` already guards this with try/catch + next();
+    // this mirrors that.
+    try {
+        const html = await renderCartFragments(req, res);
+        if (html && html.noOwner) { return res.status(200).json({ status: 401, msg: 'Please sign in to use the cart.' }); }
+        if (!html) { return res.status(200).json({ status: 200, show: false, msg: 'Nothing to render — the cart is empty.' }); }
+        return res.status(200).json({ status: 200, data: { html: html } });
+    } catch (err) {
+        console.error('[CartController] fragment failed:', err && err.message);
+        return res.status(200).json({ status: 500, msg: 'Could not load the cart.' });
+    }
 }
 
 /**

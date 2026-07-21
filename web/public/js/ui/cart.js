@@ -270,6 +270,15 @@
         // flag name at the call sites: it still means "this action changed the
         // cart, refresh the view" — it just no longer costs a page load.
         if (opts.reload) {
+            // Capture the customer's CURRENT payment-method choice before the
+            // main region is swapped out — partials/cart/main.ejs hardcodes
+            // data-ckt-pay-mode="cash" on the fresh markup, so without this the
+            // server's default silently overwrote a customer's Card choice on
+            // every swap (pick Card, bump a quantity, bill reverts to cash
+            // pricing). The 'eatndeal:cart-updated' listener below re-applies
+            // it to the new node once the swap has happened.
+            var payRootBefore = document.querySelector('[data-cart-pay]');
+            payModeBeforeSwap = payRootBefore ? payRootBefore.getAttribute('data-ckt-pay-mode') : null;
             var swapped = env.data && env.data.html && window.CartRender
                 ? window.CartRender.swap(env.data.html)
                 : false;
@@ -986,6 +995,11 @@
     var checkoutActions = null;    // its actions: updateEmail, confirm
     var paySessionId = null;       // the Checkout Session id — order is placed with this
     var stripeMethod = 'cash';     // 'cash' | 'card'
+    // The customer's data-ckt-pay-mode value as it stood immediately before a
+    // region swap, so it can be re-applied to the fresh [data-cart-pay] node
+    // once 'eatndeal:cart-updated' fires (see handleEnvelope + the listener
+    // near initCardChargeSync below). null when there's nothing to restore.
+    var payModeBeforeSwap = null;
 
     function getPayRoot() { return document.querySelector('[data-cart-pay]'); }
 
@@ -1155,6 +1169,25 @@
         try { if (payElement) { payElement.unmount(); } } catch (e) { /* ignore */ }
         payElement = null; payElements = null; payElementPromise = null; payIntentId = null;
         checkoutEle = null; checkoutActions = null; paySessionId = null;
+    }
+
+    /**
+     * teardownPaymentElementForSwap
+     *
+     * What:  Hook called by ui/cart-render.js immediately before it replaces
+     *        the popups region's innerHTML. Tears down a mounted Payment
+     *        Element (if any) so the memoised payElementPromise is cleared.
+     * Why:   [data-stripe-mount] lives inside the popups region. Closing the
+     *        payment popup leaves the element mounted-but-hidden; any later
+     *        cart action swaps the popups region and detaches that node from
+     *        the document while payElementPromise still points at it. On the
+     *        next open, ensurePaymentElement() would hand back that stale
+     *        promise instead of re-mounting — an empty, un-payable card box.
+     *        Tearing down here means the next open always starts clean.
+     * Type:  WRITE (module state).
+     */
+    function teardownPaymentElementForSwap() {
+        if (payElement || payElementPromise) { teardownPaymentElement(); }
     }
 
     // Back-compat shim: checkout-popups.js calls ensureCardElement() to
@@ -1495,6 +1528,36 @@
         }
     });
 
+    /**
+     * eatndeal:cart-updated — fired by ui/cart-render.js right after a region
+     * swap. Re-runs the two initialisers whose targets live INSIDE the
+     * swapped main region, since a MutationObserver / event listener attached
+     * to the OLD node (onReady only ran this once, at initial page load)
+     * silently goes dead the moment that node is replaced:
+     *
+     *   • initCardChargeSync — its MutationObserver watches [data-cart-pay]
+     *     for the card-service-charge fold-in; after the first swap it was
+     *     observing an orphaned node, so the charge silently stopped
+     *     tracking the payment method.
+     *   • initBasketState    — its 'toggle' listener persists the "Basket
+     *     summary" disclosure to sessionStorage; after the first swap the
+     *     new <details> node had no listener and the stored value went stale.
+     *
+     * Also re-applies the pay-mode captured in handleEnvelope just before the
+     * swap (partials/cart/main.ejs always renders a fresh node hardcoded to
+     * data-ckt-pay-mode="cash", which would otherwise silently revert the
+     * customer's Card choice back to Cash pricing on every swap).
+     */
+    document.addEventListener('eatndeal:cart-updated', function () {
+        var payRootAfter = document.querySelector('[data-cart-pay]');
+        if (payRootAfter && payModeBeforeSwap) {
+            payRootAfter.setAttribute('data-ckt-pay-mode', payModeBeforeSwap);
+        }
+        payModeBeforeSwap = null;
+        initCardChargeSync();
+        initBasketState();
+    });
+
     /*
      * Client-side pre-checks.
      *
@@ -1596,5 +1659,8 @@
         // on demand when the customer picks "Pay another way" in the payment
         // sheet — we don't load Stripe.js until it's needed.
         ensureCardElement: ensureCardElement,
+        // Hook for ui/cart-render.js — see teardownPaymentElementForSwap's
+        // own comment for why this must run before the popups region swaps.
+        teardownPaymentElementForSwap: teardownPaymentElementForSwap,
     };
 })();

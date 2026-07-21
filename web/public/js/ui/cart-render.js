@@ -99,6 +99,20 @@
         // an open popup would destroy mounted Stripe Elements and whatever the
         // customer was typing. A closed popup is safe and needs the refresh —
         // it holds the promo list, address list and saved cards.
+        //
+        // A CLOSED popup can still hold a MOUNTED (but hidden) Stripe Payment
+        // Element from an earlier open/close — [data-stripe-mount] lives in
+        // this region. Replacing the region's innerHTML then detaches that
+        // node from the document while ui/cart.js still holds the mounted
+        // element + its memoised init promise, so the next time the payment
+        // popup opens, cart.js hands back the same (now-orphaned) promise
+        // instead of re-mounting — the customer sees an empty card box and
+        // can't pay. Tear it down first so the next open remounts fresh.
+        // Guarded: cart-render.js loads before cart.js, and on a page with
+        // no payment popup at all EatNDealCart never defines the hook.
+        if (window.EatNDealCart && typeof window.EatNDealCart.teardownPaymentElementForSwap === 'function') {
+            window.EatNDealCart.teardownPaymentElementForSwap();
+        }
         if (typeof html.popups === 'string' && html.popups) {
             var host = document.querySelector('[data-cart-region="popups"]');
             var anyOpen = !!document.querySelector('.ckt-popup:not([hidden]), [data-ckt-popup]:not([hidden])');

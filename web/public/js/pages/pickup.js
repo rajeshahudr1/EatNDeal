@@ -2,19 +2,19 @@
  * pages/pickup.js
  *
  * What:  Drives the Pickup surface (views/partials/pickup.ejs):
- *          • Reads the server-rendered restaurant cards (which carry
- *            data-lat / data-lng / rating / name / eta / dist / image …)
- *            and plots each one as a marker on the LOCAL stylized map,
- *            positioned by its REAL offset from the user — no street
- *            tiles, nothing external (CSP-safe).
+ *          • Reads the server-rendered restaurant cards (rating / name /
+ *            eta / image …) and plots each one on a LOCAL time-ring panel:
+ *            the customer sits at the centre and every restaurant sits on
+ *            the ring for its pickup ETA. No street tiles, nothing
+ *            external (CSP-safe), and no dependence on branch coordinates
+ *            — which are unreliable in the live data (see "TIME RINGS").
  *          • Marker tap → popup card over the map + cross-highlights the
  *            matching list card (and scrolls it into view). Popup / card
  *            tap → opens that restaurant (the <a> href does the nav).
  *          • Hide-list / Map toggles flip between split and full-map.
- * Why:   The user asked for Uber-Eats-style Pickup: restaurants on a map
- *        by distance, tap a marker to see the restaurant, tap through to
- *        open it. The projection keeps the relative geography so the
- *        "km-wise" placement is real.
+ * Why:   Pickup is a "how soon can I collect this" decision, so the panel
+ *        answers exactly that. An earlier geographic version collapsed to
+ *        a single dot whenever one branch carried a placeholder lat/lng.
  * Used:  Loaded only on the pickup page (SiteController sets extra_js).
  */
 
@@ -80,8 +80,135 @@
         }
     });
 
-    var DEG2RAD = Math.PI / 180;
     var PAD = 48;   // keep markers off the panel edges (px)
+
+    // Markers closer together than this on screen get nudged apart so each
+    // one stays tappable (they'd otherwise stack into a single pin).
+    var MIN_MARKER_GAP_PX = 34;
+
+    /*
+     * TIME RINGS — what this panel plots.
+     *
+     * It is deliberately NOT a geographic map. Branch coordinates in the live
+     * data are unreliable (placeholder values like 123456 are common), and a
+     * single bad point used to collapse every marker onto one pixel, which is
+     * what made the old map look empty and its zoom look broken.
+     *
+     * What a customer choosing pickup actually wants to know is "how soon can
+     * I collect this", so the panel answers that directly: they sit at the
+     * centre, and each restaurant is placed on the ring for its pickup ETA.
+     * The bands match the Pickup Time filter in the sidebar exactly, so the
+     * picture and the filters tell the same story.
+     */
+    var RINGS = [
+        { max: 15,       label: 'Up to 15 min' },
+        { max: 30,       label: '15 – 30 min'  },
+        { max: 45,       label: '30 – 45 min'  },
+        { max: Infinity, label: '45+ min'      },
+    ];
+
+    /**
+     * etaMinutes
+     *
+     * What:  "30 min" / "1 hour" / "45-60 min" → a number of minutes. Reads
+     *        the FIRST number and scales it when the label says hours; a
+     *        range takes its lower bound (the soonest you could collect).
+     *        Unparseable → null.
+     * Type:  READ (pure).
+     */
+    function etaMinutes(eta) {
+        var s = String(eta || '').toLowerCase();
+        var m = s.match(/(\d+(?:\.\d+)?)/);
+        if (!m) { return null; }
+        var n = parseFloat(m[1]);
+        if (!isFinite(n)) { return null; }
+        return /hour|hr/.test(s) ? Math.round(n * 60) : Math.round(n);
+    }
+
+    /**
+     * bandFor — index into RINGS for one ETA. An unknown ETA goes to the
+     * outermost band rather than pretending it is fast.
+     * Type: READ (pure).
+     */
+    function bandFor(eta) {
+        var mins = etaMinutes(eta);
+        if (mins == null) { return RINGS.length - 1; }
+        for (var i = 0; i < RINGS.length; i += 1) {
+            if (mins <= RINGS[i].max) { return i; }
+        }
+        return RINGS.length - 1;
+    }
+
+    /**
+     * drawRings
+     *
+     * What:  Paints the concentric band circles + their labels under the
+     *        markers. Rebuilt on every layout so zoom and pan move them with
+     *        the markers.
+     * Type:  WRITE (DOM).
+     */
+    function drawRings(cx, cy, step) {
+        var old = q('.pickup-rings', planeEl);
+        if (old) { old.remove(); }
+
+        var wrap = document.createElement('div');
+        wrap.className = 'pickup-rings';
+        wrap.setAttribute('aria-hidden', 'true');
+
+        RINGS.forEach(function (ring, i) {
+            var r = step * (i + 1);
+            var c = document.createElement('div');
+            c.className = 'pickup-ring';
+            c.style.left   = (cx - r) + 'px';
+            c.style.top    = (cy - r) + 'px';
+            c.style.width  = (r * 2) + 'px';
+            c.style.height = (r * 2) + 'px';
+            wrap.appendChild(c);
+
+            var lab = document.createElement('span');
+            lab.className = 'pickup-ring__label';
+            lab.textContent = ring.label;
+            lab.style.left = cx + 'px';
+            lab.style.top  = (cy - r) + 'px';
+            wrap.appendChild(lab);
+        });
+
+        // Behind the markers — insertBefore keeps the DOM order honest
+        // instead of relying on z-index alone.
+        planeEl.insertBefore(wrap, planeEl.firstChild);
+    }
+
+    /**
+     * spreadOverlaps
+     *
+     * What:  Pushes markers that landed on top of each other into a small
+     *        ring around their shared spot, so two restaurants at the same
+     *        postcode are both clickable instead of one hiding the other.
+     *        Positions move by a few px only — the geography still reads
+     *        correctly.
+     * Type:  WRITE (mutates m.x / m.y).
+     */
+    function spreadOverlaps(pts) {
+        for (var i = 0; i < pts.length; i += 1) {
+            var clash = [];
+            for (var j = 0; j < pts.length; j += 1) {
+                if (j === i) { continue; }
+                var dx = pts[i].x - pts[j].x, dy = pts[i].y - pts[j].y;
+                if (Math.sqrt(dx * dx + dy * dy) < MIN_MARKER_GAP_PX) { clash.push(j); }
+            }
+            if (!clash.length) { continue; }
+            // Fan this marker and its clashing neighbours around the point.
+            var group = [i].concat(clash).sort(function (a, b) { return a - b; });
+            if (group[0] !== i) { continue; }          // handled by the first of the group
+            var r = MIN_MARKER_GAP_PX * 0.7;
+            group.forEach(function (idx, k) {
+                if (k === 0) { return; }               // leave the first where it is
+                var a = (2 * Math.PI * k) / group.length;
+                pts[idx].x += Math.cos(a) * r;
+                pts[idx].y += Math.sin(a) * r;
+            });
+        }
+    }
 
     var root, listEl, mapEl, planeEl, popupEl;
     var markers = [];        // { card, marker, x, y, data }
@@ -114,14 +241,10 @@
      */
     function readCards() {
         return qa('.pickup-card', listEl).map(function (card) {
-            var lat = parseFloat(card.getAttribute('data-lat'));
-            var lng = parseFloat(card.getAttribute('data-lng'));
             return {
                 card:    card,
                 id:      card.getAttribute('data-id') || '',
                 slug:    card.getAttribute('data-slug') || '',
-                lat:     isFinite(lat) ? lat : null,
-                lng:     isFinite(lng) ? lng : null,
                 rating:  card.getAttribute('data-rating') || '',
                 name:    card.getAttribute('data-name') || '',
                 eta:     card.getAttribute('data-eta') || '',
@@ -131,26 +254,6 @@
                 initial: card.getAttribute('data-initial') || '',
             };
         });
-    }
-
-    /**
-     * getCenter
-     *
-     * What:  The map's centre lat/lng — the user's saved location when
-     *        we have it (data-center-* / window.boot), else the centroid
-     *        of the plotted restaurants so the cluster still centres
-     *        nicely. Returns { lat, lng, hasUser }.
-     */
-    function getCenter(points) {
-        var cLat = parseFloat(mapEl.getAttribute('data-center-lat'));
-        var cLng = parseFloat(mapEl.getAttribute('data-center-lng'));
-        if (!isFinite(cLat) && window.boot && isFinite(window.boot.lat)) { cLat = window.boot.lat; }
-        if (!isFinite(cLng) && window.boot && isFinite(window.boot.lng)) { cLng = window.boot.lng; }
-        if (isFinite(cLat) && isFinite(cLng)) { return { lat: cLat, lng: cLng, hasUser: true }; }
-        // Fallback: centroid of the points.
-        var sum = points.reduce(function (a, p) { return { lat: a.lat + p.lat, lng: a.lng + p.lng }; }, { lat: 0, lng: 0 });
-        var n = points.length || 1;
-        return { lat: sum.lat / n, lng: sum.lng / n, hasUser: false };
     }
 
     /**
@@ -168,49 +271,61 @@
         var h = planeEl.clientHeight;
         if (w < 20 || h < 20) { return; }   // map hidden (e.g. mobile list view)
 
-        var pts = markers.filter(function (m) { return m.data.lat != null && m.data.lng != null; });
+        var pts = markers;
         if (!pts.length) { return; }
 
-        var center = getCenter(pts.map(function (m) { return m.data; }));
-        var cosLat = Math.cos(center.lat * DEG2RAD) || 1;
-
-        // Offsets in a flat plane (east = +x, north = +y).
-        var maxX = 0.0001, maxY = 0.0001;
-        pts.forEach(function (m) {
-            m.dx = (m.data.lng - center.lng) * cosLat;
-            m.dy = (m.data.lat - center.lat);
-            maxX = Math.max(maxX, Math.abs(m.dx));
-            maxY = Math.max(maxY, Math.abs(m.dy));
-        });
-        // Uniform fit scale (zoom = 1 fits the farthest marker inside
-        // the padded box); zoom spreads/clusters from there. Pan shifts
-        // the centre so a zoomed-in map can be dragged around.
-        baseScale = Math.min((w / 2 - PAD) / maxX, (h / 2 - PAD) / maxY);
+        // Ring radius at zoom 1: the outermost band sits just inside the
+        // padded box, so every restaurant is always on screen before the
+        // user zooms.
+        baseScale = (Math.min(w, h) / 2 - PAD) / RINGS.length;
         if (!isFinite(baseScale) || baseScale <= 0) { baseScale = 1; }
-        var scale = baseScale * zoom;
+        var ringStep = baseScale * zoom;
 
         var cx = w / 2 + panX, cy = h / 2 + panY;
+
+        // Group by band first so each band can fan its own restaurants
+        // evenly around the circle instead of them bunching at one angle.
+        var byBand = {};
         pts.forEach(function (m) {
-            m.x = cx + m.dx * scale;
-            m.y = cy - m.dy * scale;   // screen y grows downward → invert
+            var b = bandFor(m.data.eta);
+            if (!byBand[b]) { byBand[b] = []; }
+            byBand[b].push(m);
+        });
+
+        Object.keys(byBand).forEach(function (bandIdx) {
+            var group = byBand[bandIdx];
+            var r = ringStep * (Number(bandIdx) + 1);
+            group.forEach(function (m, i) {
+                // Offset each band's starting angle so neighbouring rings
+                // don't line their markers up along the same spoke.
+                var a = ((2 * Math.PI * i) / group.length) - (Math.PI / 2)
+                      + (Number(bandIdx) * 0.5);
+                m.x = cx + Math.cos(a) * r;
+                m.y = cy + Math.sin(a) * r;
+            });
+        });
+
+        // Two restaurants on the same ring with the same ETA can still land
+        // close together — fan them apart so each stays tappable.
+        spreadOverlaps(pts);
+        pts.forEach(function (m) {
             m.marker.style.left = m.x + 'px';
             m.marker.style.top  = m.y + 'px';
         });
 
-        // "You are here" dot at the centre (only when we know the user).
+        drawRings(cx, cy, ringStep);
+
+        // "You are here" dot — always drawn now: the centre IS the user in a
+        // time-based view, no coordinates needed.
         var you = q('.pickup-map__you', planeEl);
-        if (center.hasUser) {
-            if (!you) {
-                you = document.createElement('div');
-                you.className = 'pickup-map__you';
-                you.title = 'You are here';
-                planeEl.appendChild(you);
-            }
-            you.style.left = cx + 'px';
-            you.style.top  = cy + 'px';
-        } else if (you) {
-            you.remove();
+        if (!you) {
+            you = document.createElement('div');
+            you.className = 'pickup-map__you';
+            you.title = 'You are here';
+            planeEl.appendChild(you);
         }
+        you.style.left = cx + 'px';
+        you.style.top  = cy + 'px';
 
         // Keep an open popup glued to its marker.
         if (activeKey) {
@@ -228,8 +343,10 @@
     function buildMarkers() {
         var data = readCards();
         markers = [];
+        // EVERY restaurant gets a marker now. Placement is by pickup ETA, not
+        // by coordinates, so a branch with missing or placeholder lat/lng is
+        // no longer silently dropped from the panel.
         data.forEach(function (d) {
-            if (d.lat == null || d.lng == null) { return; }   // unmappable — list only
             var marker = document.createElement('button');
             marker.type = 'button';
             marker.className = 'pickup-marker';

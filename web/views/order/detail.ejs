@@ -277,14 +277,9 @@
 
                 <textarea class="review-form__text" name="review" rows="4" maxlength="1500" placeholder="Tell others about the food, packaging &amp; delivery…"></textarea>
 
-                <div class="review-form__photo">
-                    <img class="review-form__preview" src="" alt="Your photo" data-review-preview hidden>
-                    <label class="review-form__photo-btn">
-                        <input type="file" name="photo" accept="image/png,image/jpeg,image/webp,image/gif" data-review-photo hidden>
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
-                        <span>Add a food photo</span>
-                    </label>
-                </div>
+                <%# No photo upload here — a review is stars + text only.
+                    The backend still ACCEPTS a photo (review_photo), so the
+                    field is only dropped from this form, not from the API. %>
 
                 <button type="submit" class="btn btn--primary btn--block review-form__submit" data-review-submit>Submit review</button>
             </form>

@@ -126,6 +126,24 @@
     background: var(--color-primary); border: 3px solid #fff;
     box-shadow: 0 0 0 4px rgba(229, 37, 42, 0.2);
 }
+
+/* ── Pickup-time rings ─────────────────────────────────────────────
+   The panel plots restaurants by how soon you can collect, not by
+   coordinates (see pickup.js "TIME RINGS"). These are the band circles
+   the markers sit on: quiet enough to read as a backdrop, clear enough
+   that the "closer to the middle = ready sooner" idea lands. */
+.pickup-rings { position: absolute; inset: 0; z-index: 1; pointer-events: none; }
+.pickup-ring {
+    position: absolute; border-radius: 50%;
+    border: 1px dashed rgba(229, 37, 42, 0.22);
+    background: radial-gradient(circle, rgba(229, 37, 42, 0.045) 0%, transparent 70%);
+}
+.pickup-ring__label {
+    position: absolute; transform: translate(-50%, -50%);
+    background: #fff; border: 1px solid var(--color-border-soft); border-radius: 999px;
+    padding: 1px 8px; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.2px;
+    color: var(--color-text-soft); white-space: nowrap;
+}
 .pickup-marker { position: absolute; transform: translate(-50%, -100%); z-index: 2; cursor: pointer; }
 .pickup-marker__pill {
     display: flex; align-items: center; gap: 3px; white-space: nowrap;

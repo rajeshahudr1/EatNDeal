@@ -5,7 +5,11 @@
  *          • Open / close (data-action open-review / close-review).
  *          • Star selector — tap a star, fills 1..n + writes the hidden
  *            `rating` field.
- *          • Optional food photo — local preview before upload.
+ *          • Optional food photo — local preview before upload. The order-detail
+ *            form no longer renders that field (stars + text only), so these
+ *            lookups come back null and the block below simply doesn't bind.
+ *            Kept because the handler is still correct for any surface that
+ *            does offer a photo, and the api still accepts one.
  *          • Submit — multipart POST to /order/:id/review (rating + text +
  *            photo). On success: toast + reload so the order page shows the
  *            new "Your review" summary + flips the button to "Edit".

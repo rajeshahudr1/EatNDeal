@@ -378,14 +378,32 @@ async function add(req, res) {
         const optionIds = (b.options || []).map((o) => o.optionId).filter(Boolean);
         let optionRows = [];
         if (optionIds.length) {
+            // Allowed groups = the product's OWN groups PLUS any group
+            // nested inside one of them via modifier_copy_details (e.g.
+            // "Crust (Large)" hangs off the "Large" size option). The
+            // product page renders those nested groups, so the cart must
+            // accept them too — validating on modifier_group_products
+            // alone rejected every nested pick with "option is no longer
+            // available". Mirrors loadProductOptionGroups() in
+            // Marketplace/ProductsController.
+            const ownGroupIds = await db('modifier_group_products')
+                .where('product_id', product.id)
+                .andWhere('status', '1')
+                .pluck('modifier_group_id');
+            const nestedGroupIds = ownGroupIds.length
+                ? await db('modifier_copy_details')
+                    .whereIn('group_id', ownGroupIds)
+                    .andWhere('status', '1')
+                    .pluck('link_group_id')
+                : [];
+            const allowedGroupIds = Array.from(new Set([...ownGroupIds, ...nestedGroupIds]));
+
             optionRows = await db('modifier_group_options as mgo')
                 .innerJoin('modifier_group as mg',          'mg.id',  'mgo.modifier_group_id')
-                .innerJoin('modifier_group_products as mgp','mgp.modifier_group_id', 'mgo.modifier_group_id')
                 .whereIn('mgo.id', optionIds)
                 .andWhere('mgo.status', '1')
                 .andWhere('mg.status',  '1')
-                .andWhere('mgp.status', '1')
-                .andWhere('mgp.product_id', product.id)
+                .whereIn('mgo.modifier_group_id', allowedGroupIds)
                 .select(
                     'mgo.id', 'mgo.option_name', 'mgo.modifier_group_id',
                     'mgo.price_tax_include', 'mgo.price_tax_excluded',

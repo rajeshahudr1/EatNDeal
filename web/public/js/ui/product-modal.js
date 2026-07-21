@@ -550,9 +550,26 @@
         groups.forEach(sumGroup);
         return base;
     }
+    /**
+     * payableQty — units the customer actually PAYS for under a BOGOF rule.
+     *
+     * Mirrors the server's Loyalty.payableQtyFor / legacy gePaybleQuantity:
+     * the basket is grouped into (buy + get) blocks and only the `buy` part of
+     * each block is charged, plus any remainder up to `buy`. Without this the
+     * sheet showed the full price — "Buy 1 Get 1" at qty 2 quoted £24 while
+     * the cart correctly charged £12.
+     */
+    function payableQty(n) {
+        var b = bogo && Number(bogo.buyQty) || 0;
+        var g = bogo && Number(bogo.getQty) || 0;
+        if (b <= 0 || g <= 0) { return n; }
+        var block = b + g;
+        return (Math.floor(n / block) * b) + Math.min(n % block, b);
+    }
+
     function updateTotals() {
         var unit = lineUnitPrice();
-        var total = unit * qty;
+        var total = unit * payableQty(qty);
         if (qtyEl)      { qtyEl.textContent = String(qty); }
         if (totalEl)    { totalEl.textContent = money(total); }
         if (addLabelEl) { addLabelEl.textContent = 'Add ' + qty + ' to order'; }

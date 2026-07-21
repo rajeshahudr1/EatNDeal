@@ -38,6 +38,7 @@ const PaymentOptions = require('../../Helpers/paymentOptions');  // cash_king ga
 const StripeConnect = require('../../Helpers/stripeConnect');   // legacy StripeController.js port
 const M            = require('../../Helpers/marketplace');
 const A            = require('../../Helpers/availability');
+const StoreHours   = require('../../Helpers/storeHours');   // per-service open/closed — reorder serve-type fallback
 const { db }       = require('../../config/db');
 
 /**
@@ -450,10 +451,37 @@ async function reorder(req, res) {
         const orderItems = await db('orders_items').where({ order_id: order.id }).orderBy('id', 'asc');
         if (!orderItems.length) { return H.errorResponse(res, 'This order has no items to reorder.', 422); }
 
+        // Serve type: reuse the past order's mode, but only if the branch
+        // still offers it. A restaurant that has since switched delivery
+        // off left the cloned cart on delivery=3, and place-order then
+        // refused it with no way back — so fall back to the mode that IS
+        // open (2 = pickup / 3 = delivery). Both shut → the cart is still
+        // created and cartValidate reports the closure at place time.
+        let serveType = Number(order.serve_type) === 2 ? 2 : 3;
+
+        // First the CONFIG level: a branch that has switched delivery off
+        // for good doesn't just look "closed right now" — that mode is gone.
+        // offeredServices reads the show_*_option flags, so this catches the
+        // permanent case even while the shop is outside its opening hours
+        // (where the hours check below would see BOTH modes shut and stay
+        // on the dead one).
+        const offered = StoreHours.offeredServices(branch);
+        if (serveType === 3 && !offered.delivery && offered.pickup) { serveType = 2; }
+        if (serveType === 2 && !offered.pickup && offered.delivery) { serveType = 3; }
+
+        const avail = await StoreHours.availabilityForBranch(branch);
+        if (avail && avail.services) {
+            const wanted = serveType === 2 ? avail.services.takeaway : avail.services.delivery;
+            const other  = serveType === 2 ? avail.services.delivery : avail.services.takeaway;
+            if (wanted && wanted.status !== 'open' && other && other.status === 'open') {
+                serveType = serveType === 2 ? 3 : 2;
+            }
+        }
+
         // Fresh cart: close any existing open cart so reorder replaces it.
         await db('cart').where({ user_id: customerId, is_marketplace: 1, is_open: 1 }).update({ is_open: 0 });
         const cart = await Cart.getOrCreateCart({
-            customerId, branchId: order.branch_id, companyId: order.company_id, serveType: order.serve_type,
+            customerId, branchId: order.branch_id, companyId: order.company_id, serveType,
         });
 
         const skipped = [];

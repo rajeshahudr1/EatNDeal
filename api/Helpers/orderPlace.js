@@ -68,7 +68,8 @@ const CREATED_FROM_WEB     = '2';  // legacy enum (1=app-iOS, 2=web, 3=app-Andro
 //   created_by / updated_by = 1  — a "web ordering system" sentinel, NOT a user
 //   id (OrderController.php:537-538, sourced from CartController.php:773).
 const CREATED_FROM_LEGACY_WEB = '1';
-const SYSTEM_ACTOR            = 1;
+// const SYSTEM_ACTOR         = 1;   // legacy sentinel — parked for now
+const SYSTEM_ACTOR            = 0;   // stamp created_by / updated_by as 0
 const PAYMENT_STATUS_PENDING = 0;  // 0 = unpaid; cash collected on delivery
 
 /*

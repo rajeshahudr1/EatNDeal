@@ -86,7 +86,17 @@ async function list(req, res) {
                 // no rating even for restaurants that have reviews.
                 M.avgRatingSubq(db, 'c'),
             )
-            .orderBy([{ column: 'c.id', order: 'asc' }, { column: 'b.id', order: 'asc' }, { column: 'f.id', order: 'desc' }]);
+            // Newest heart FIRST — a just-added favourite must land at the
+            // top of the rail, not wherever its company id happens to sort.
+            // updated_at leads because a RE-heart only flips status on the
+            // existing row (id unchanged), so id alone would bury it.
+            // b.id asc stays last so the de-dupe below still keeps the
+            // canonical (lowest-id) branch per company.
+            .orderBy([
+                { column: 'f.updated_at', order: 'desc' },
+                { column: 'f.id',         order: 'desc' },
+                { column: 'b.id',         order: 'asc'  },
+            ]);
 
         // De-dupe: one canonical card per company even if two branches
         // somehow joined.
@@ -165,6 +175,9 @@ async function toggle(req, res) {
                 status:      STATUS_ACTIVE,
                 created_by:  customerId,
                 updated_by:  customerId,
+                // Stamped on insert too — list() sorts on updated_at, and a
+                // NULL here would order unpredictably against re-hearted rows.
+                updated_at:  db.fn.now(),
             });
             isFavourite = true;
         } else if (Number(existing.status) === STATUS_ACTIVE) {

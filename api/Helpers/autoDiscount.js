@@ -124,15 +124,22 @@ async function findBest(cart, branch) {
             // be a candidate.
             qb.where('product_id', 0).orWhereNull('product_id')
               .orWhere('discount_type', 3);
-        });
+        })
+        // Legacy order — Commonquery::validateAndApplyDiscount:2373
+        //   ->orderBy(['min_order_value' => SORT_DESC, 'id' => SORT_DESC])
+        // It walks this list and RETURNS on the first rule the basket
+        // qualifies for, so the rule with the HIGHEST min_order_value the
+        // customer has reached wins (newest first on a tie).
+        .orderBy([{ column: 'min_order_value', order: 'desc' }, { column: 'id', order: 'desc' }]);
 
     const now = new Date();
     // Legacy discount_type enum: 1 = %, 2 = fixed £, 3 = free item.
     const TYPE_FREE_ITEM = 3;
-    let bestRow = null;
-    let bestAmount = 0;
-    let bestFree = null;      // first matching free-item rule, if any
-
+    // FIRST match wins — legacy returns as soon as a rule qualifies, walking
+    // the list ordered by min_order_value DESC (see the query above). It does
+    // NOT hunt for the biggest saving, and it does not prefer a money discount
+    // over a free item: whichever rule sits highest in that order and the
+    // basket qualifies for is the one applied.
     for (const d of candidates) {
         // Time-of-day window (when set).
         if (!inTimeWindow(d, now)) { continue; }
@@ -144,18 +151,16 @@ async function findBest(cart, branch) {
         const value = Number(d.discount_value) || 0;
         const maxD  = Number(d.max_discount) || 0;
 
-        // Type 3 = FREE ITEM: no money comes off the bill, a product is added
-        // to the cart at £0 instead (legacy Commonquery::addFreeItem, granted
-        // by checkFreeDiscount). It carries no discount_value, so it can never
-        // win the "biggest amount" contest below — keep it aside and let it
-        // apply only when no money discount beat it.
+        // Type 3 = FREE ITEM: nothing comes off the bill, a product goes into
+        // the cart at £0 instead (legacy addFreeItem, granted by
+        // checkFreeDiscount). product_id names the GIFT, not a target filter.
         if (type === TYPE_FREE_ITEM) {
             const pid = Number(d.product_id) || 0;
-            if (pid > 0 && !bestFree) { bestFree = { discount: d, productId: pid }; }
-            continue;
+            if (pid <= 0) { continue; }                 // misconfigured — skip it
+            return { discount: d, amount: 0, freeProductId: pid };
         }
 
-        let amount  = 0;
+        let amount = 0;
         if (type === 1)      { amount = (subTotal * value) / 100; }
         else if (type === 2) { amount = value; }
 
@@ -163,18 +168,9 @@ async function findBest(cart, branch) {
         if (amount > subTotal)         { amount = subTotal; }
         amount = Math.round(amount * 100) / 100;
 
-        if (amount > bestAmount) {
-            bestRow    = d;
-            bestAmount = amount;
-        }
+        return { discount: d, amount: amount, freeProductId: 0 };
     }
 
-    if (bestRow) { return { discount: bestRow, amount: bestAmount, freeProductId: 0 }; }
-    if (bestFree) {
-        // A free-item rule: zero money off, but tell the caller which product
-        // to put in the basket.
-        return { discount: bestFree.discount, amount: 0, freeProductId: bestFree.productId };
-    }
     return null;
 }
 

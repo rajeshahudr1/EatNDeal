@@ -57,6 +57,14 @@ async function createIntent(req, res) {
         const customerId = req.body.customer_id;
         const { row: cust, error } = await customers.loadMarketplaceCustomer(customerId);
         if (error) { return H.errorResponse(res, error.msg, error.status); }
+        // Card needs an email — Stripe receipts and the order confirmation
+        // both go there. Without this the pay step just stalled with no
+        // explanation, so say exactly what to fix and where.
+        if (!String(cust.email || '').trim()) {
+            return H.errorResponse(res,
+                'Please add your email address in My Profile to pay by card.', 422,
+                { code: 'customer.email_required' });
+        }
 
         const open = await Cart.findOpenCart(customerId);
         if (!open) { return H.errorResponse(res, 'Your cart is empty.', 404); }
@@ -162,6 +170,12 @@ async function paySavedCard(req, res) {
         const b = req.body;
         const { row: customer, error } = await customers.loadMarketplaceCustomer(b.customer_id);
         if (error) { return H.errorResponse(res, error.msg, error.status); }
+        // Same email gate as the intent path — see createIntent.
+        if (!String(customer.email || '').trim()) {
+            return H.errorResponse(res,
+                'Please add your email address in My Profile to pay by card.', 422,
+                { code: 'customer.email_required' });
+        }
         if (!Payments.isConfigured()) {
             return H.errorResponse(res, 'Card payments aren\'t available right now. Please pick Cash.', 503);
         }

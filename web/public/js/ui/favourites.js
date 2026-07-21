@@ -77,6 +77,23 @@
         if (!rail.querySelector('[data-fav-toggle]')) { rail.hidden = true; }
     }
 
+    /**
+     * needsReload
+     *
+     * What:  Any add OR remove on a page that shows a favourites section
+     *        (home rail, Account → Favourites) re-fetches the page. The
+     *        section — its cards, their order, the empty state — is built
+     *        server-side, so patching it in JS only ever half-matched what
+     *        a reload gives for free.
+     * Type:  READ (DOM) → boolean.
+     */
+    function needsReload() {
+        var path = window.location.pathname;
+        if (path === '/') { return true; }
+        if (path === '/account' && window.location.search.indexOf('tab=favourites') !== -1) { return true; }
+        return false;
+    }
+
     document.addEventListener('click', function (ev) {
         var btn = ev.target && ev.target.closest && ev.target.closest('[data-fav-toggle]');
         if (!btn) { return; }
@@ -109,6 +126,11 @@
             paint(btn, isFav);
             if (!isFav) { pruneFavRail(btn); }
             toast('success', isFav ? (name + ' added to favourites.') : (name + ' removed from favourites.'));
+            // Let the toast be readable, then re-render server-side where
+            // a whole section appears/disappears (see needsReload).
+            if (needsReload()) {
+                window.setTimeout(function () { window.location.reload(); }, 900);
+            }
         }).catch(function () {
             btn.disabled = false;
             toast('error', 'Could not update favourites.');

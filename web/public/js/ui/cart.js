@@ -196,6 +196,10 @@
         document.dispatchEvent(new CustomEvent('ckt:settle-done'));
         if (!env) { toast('error', 'Could not reach the server.'); return false; }
         if (env.status === 401) {
+            // opts.authMessage — for small, optional tweaks (charity tier)
+            // yanking a guest to /signin loses the page they were building.
+            // Tell them what to do instead and leave the cart alone.
+            if (opts.authMessage) { toast('error', opts.authMessage); return false; }
             var here = window.location.pathname + window.location.search;
             window.location.href = '/signin?next=' + encodeURIComponent(here);
             return false;
@@ -831,7 +835,7 @@
         if (btn) { btn.disabled = true; }
         postCart('/cart/set-charity', { charity_amount: amount }).then(function (env) {
             // Quiet success (no toast on every tap); patch the bill in place.
-            if (handleEnvelope(env, { successToast: false })) {
+            if (handleEnvelope(env, { successToast: false, authMessage: 'Please sign in to change your charity contribution.' })) {
                 applyCharityToBill(env.data && env.data.cart);
             }
             if (btn) { btn.disabled = false; }

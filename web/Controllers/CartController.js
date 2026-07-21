@@ -351,14 +351,23 @@ async function renderCartFragments(req, res) {
         });
     }
 
-    const main   = await render('partials/cart/main');
-    const side   = await render('partials/cart/side');
-    // Popups carry state that an action changes too — the promo list's
-    // "applied" tick, the address list, the saved cards. Without this they
-    // stayed stale until a reload.
-    const popups = await render('partials/checkout-popups');
+    // Render all three regions concurrently. Each render's error resolves to ''
+    // rather than rejecting, so one failure doesn't prevent the others.
+    const [main, side, popups] = await Promise.all([
+        render('partials/cart/main'),
+        render('partials/cart/side'),
+        // Popups carry state that an action changes too — the promo list's
+        // "applied" tick, the address list, the saved cards. Without this they
+        // stayed stale until a reload.
+        render('partials/checkout-popups'),
+    ]);
     if (!main && !side) { return null; }
-    return { main: main, side: side, popups: popups };
+
+    // Only include popups if it actually rendered, so the caller can tell
+    // "not rendered" (popups absent) from "rendered empty" (popups: '').
+    const result = { main, side };
+    if (popups) { result.popups = popups; }
+    return result;
 }
 
 /**

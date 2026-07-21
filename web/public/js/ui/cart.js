@@ -1418,11 +1418,61 @@
         }
     });
 
+    /*
+     * Client-side pre-checks.
+     *
+     * What:  Per-action rules that catch a bad input before the request goes
+     *        out. The api still enforces all of these — this only saves a
+     *        round trip and shows the problem instantly on a slow phone.
+     * Type:  READ (pure per entry) → message string, or null to proceed.
+     */
+    var VALIDATORS = {
+        'cart-apply-coupon': function () {
+            var el = document.querySelector('[data-cart-coupon-input]');
+            return (el && el.value.trim()) ? null : 'Enter a promo code.';
+        },
+        'cart-apply-voucher': function () {
+            var el = document.querySelector('[data-cart-voucher-input]');
+            return (el && el.value.trim()) ? null : 'Enter a voucher code.';
+        },
+        'cart-apply-loyalty': function () {
+            var el = document.querySelector('[data-cart-loyalty-input]');
+            var amt = parseFloat(el && el.value);
+            if (!isFinite(amt) || amt <= 0) { return 'Enter how much reward to use.'; }
+            var panel = document.querySelector('[data-cart-loyalty]');
+            var max = parseFloat(panel && panel.getAttribute('data-reward-max'));
+            if (isFinite(max) && amt > max) {
+                return 'You can use up to ' + curSym() + max.toFixed(2) + ' on this order.';
+            }
+            return null;
+        },
+        'cart-charity-custom': function () {
+            var el = document.querySelector('[data-charity-input]');
+            var amt = parseFloat(el && el.value);
+            return (isFinite(amt) && amt > 0) ? null : 'Enter a charity amount.';
+        },
+        'cart-set-address': function (btn) {
+            return btn.getAttribute('data-address-id') ? null : 'Pick an address.';
+        }
+    };
+
+    /**
+     * validateAction — run the rule for one action, if it has one.
+     * Type: READ. Returns a message to block with, or null.
+     */
+    function validateAction(action, btn) {
+        var fn = VALIDATORS[action];
+        if (!fn) { return null; }
+        try { return fn(btn); } catch (e) { return null; }
+    }
+
     // ── Single document delegate ────────────────────────────────────
     document.addEventListener('click', function (ev) {
         var btn = ev.target && ev.target.closest && ev.target.closest('[data-action]');
         if (!btn) { return; }
         var action = btn.getAttribute('data-action');
+        var blocked = validateAction(action, btn);
+        if (blocked) { ev.preventDefault(); toast('error', blocked); return; }
         switch (action) {
             case 'pd-add':          return onAddClick(ev, btn);
             case 'rd-add':          return onQuickAdd(ev, btn);

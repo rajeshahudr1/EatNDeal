@@ -338,6 +338,65 @@ function lineSubtotal(item) {
 }
 
 /**
+ * syncFreeItem
+ *
+ * What:  Makes the cart's free-gift line match the CURRENT auto-discount
+ *        verdict. Port of legacy checkFreeDiscount + Commonquery::addFreeItem
+ *        ($from = 3, the cart branch): every free line is deleted, then the
+ *        winning rule's product is re-added at £0, qty 1.
+ *
+ *        Deleting-then-re-adding (rather than diffing) is legacy's own
+ *        approach and keeps this idempotent — recompute runs on every cart
+ *        write, so the gift can appear and disappear as the basket crosses
+ *        the rule's minimum.
+ *
+ *        The line is priced at 0, so lineSubtotal contributes nothing and the
+ *        totals need no special-casing.
+ * Type:  WRITE.
+ */
+async function syncFreeItem(cartId, freeProductId, cart) {
+    if (!cartId) { return; }
+    const pid = Number(freeProductId) || 0;
+
+    // Legacy deletes outright; we soft-delete to stay with this schema's
+    // convention (loadLineItems filters is_deleted = 0).
+    const existing = await db('cart_details')
+        .where({ cart_id: cartId, is_free_item: 1, is_deleted: 0 })
+        .first('id', 'product_id');
+
+    if (!pid) {
+        if (existing) { await db('cart_details').where({ id: existing.id }).update({ is_deleted: 1 }); }
+        return;
+    }
+    // Already the right gift — leave it alone rather than churn the row.
+    if (existing && String(existing.product_id) === String(pid)) { return; }
+    if (existing) { await db('cart_details').where({ id: existing.id }).update({ is_deleted: 1 }); }
+
+    const product = await db('products').where({ id: pid, status: '1' }).first();
+    if (!product) { return; }                       // legacy addFreeItem bails the same way
+
+    const ppc = await db('product_product_category')
+        .where({ product_id: pid, status: '1' })
+        .first('category_id');
+
+    await db('cart_details').insert({
+        cart_id:           cartId,
+        product_id:        pid,
+        product_name:      product.name || '',
+        product_price:     0,
+        product_net_price: 0,
+        product_qty:       1,
+        category_id:       ppc ? ppc.category_id : null,
+        company_id:        cart.company_id,
+        is_free_item:      1,
+        is_deleted:        0,
+        sync:              0,
+        is_send_kitchen:   0,
+        created_at:        db.fn.now(),
+    });
+}
+
+/**
  * recomputeTotals
  *
  * What:  THE single recompute path — every cart write calls this last so
@@ -517,6 +576,13 @@ async function recomputeTotals(cartId) {
             discountId = 0;
             discount   = 0;
         }
+        // FREE ITEM (discount_type 3) — legacy checkFreeDiscount: wipe any
+        // free line first, then re-grant only if a rule still qualifies. It
+        // has to be re-derived on EVERY recompute, not just when granted:
+        // without that a customer who drops below the minimum keeps a gift
+        // they no longer qualify for. Skipped entirely while a coupon or
+        // voucher is applied, exactly as legacy does.
+        await syncFreeItem(cartId, result && result.freeProductId, cart);
     }
 
     // ── Loyalty redeem ──────────────────────────────────────────────

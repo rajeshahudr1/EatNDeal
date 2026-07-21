@@ -117,14 +117,21 @@ async function findBest(cart, branch) {
             qb.where('platform', 0).orWhere('platform', 1);
         })
         .andWhere((qb) => {
-            // Skip per-product rows in Phase 2C.2 — those are handled
-            // at the line level (not yet wired).
-            qb.where('product_id', 0).orWhereNull('product_id');
+            // Skip per-product rows — those are handled at the line level
+            // (not yet wired). EXCEPT free-item rules (type 3), where
+            // product_id is not a targeting filter at all: it names the GIFT
+            // to add. Excluding them here meant no free-item rule could ever
+            // be a candidate.
+            qb.where('product_id', 0).orWhereNull('product_id')
+              .orWhere('discount_type', 3);
         });
 
     const now = new Date();
+    // Legacy discount_type enum: 1 = %, 2 = fixed £, 3 = free item.
+    const TYPE_FREE_ITEM = 3;
     let bestRow = null;
     let bestAmount = 0;
+    let bestFree = null;      // first matching free-item rule, if any
 
     for (const d of candidates) {
         // Time-of-day window (when set).
@@ -136,6 +143,18 @@ async function findBest(cart, branch) {
         const type  = Number(d.discount_type) || 0;
         const value = Number(d.discount_value) || 0;
         const maxD  = Number(d.max_discount) || 0;
+
+        // Type 3 = FREE ITEM: no money comes off the bill, a product is added
+        // to the cart at £0 instead (legacy Commonquery::addFreeItem, granted
+        // by checkFreeDiscount). It carries no discount_value, so it can never
+        // win the "biggest amount" contest below — keep it aside and let it
+        // apply only when no money discount beat it.
+        if (type === TYPE_FREE_ITEM) {
+            const pid = Number(d.product_id) || 0;
+            if (pid > 0 && !bestFree) { bestFree = { discount: d, productId: pid }; }
+            continue;
+        }
+
         let amount  = 0;
         if (type === 1)      { amount = (subTotal * value) / 100; }
         else if (type === 2) { amount = value; }
@@ -150,7 +169,13 @@ async function findBest(cart, branch) {
         }
     }
 
-    return bestRow ? { discount: bestRow, amount: bestAmount } : null;
+    if (bestRow) { return { discount: bestRow, amount: bestAmount, freeProductId: 0 }; }
+    if (bestFree) {
+        // A free-item rule: zero money off, but tell the caller which product
+        // to put in the basket.
+        return { discount: bestFree.discount, amount: 0, freeProductId: bestFree.productId };
+    }
+    return null;
 }
 
 module.exports = {

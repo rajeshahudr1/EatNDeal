@@ -29,7 +29,7 @@
 const { db } = require('../config/db');
 // One clock for the whole app — opening hours, the trading day and every
 // displayed date/time. See config/params.js (the port of legacy params.php).
-const { TRADING_TZ } = require('../config/params');
+const { TRADING_TZ, SHOP_CLOSE_TIME } = require('../config/params');
 const DISPLAY_TZ = TRADING_TZ;
 
 const SERVICE = { TAKEAWAY: 2, DELIVERY: 3 };
@@ -347,11 +347,30 @@ async function loadHolidayToday(companyId, branchId) {
             .first() || null;
     } catch (e) { return null; }
 }
+/**
+ * shiftDows — which day_of_week rows apply RIGHT NOW.
+ *
+ * Normally just today. But between midnight and SHOP_CLOSE_TIME we must ALSO
+ * read YESTERDAY's rows: a shift saved on Monday as 18:00→02:00 is still
+ * running at 01:00 on Tuesday, and it lives on Monday's day_of_week. Reading
+ * only today's row made such a branch look closed for those hours.
+ * Legacy does exactly this — Branch.php:826 widens day_of_week to
+ * (today, yesterday) inside the same window.
+ */
+function shiftDows() {
+    const t = nowParts();
+    const nowHms = String(t.hour).padStart(2, '0') + ':' + String(t.minute).padStart(2, '0') + ':00';
+    if (nowHms > SHOP_CLOSE_TIME) { return [t.dow]; }
+    const prev = t.dow === 1 ? 7 : t.dow - 1;      // 1=Mon … 7=Sun
+    return [t.dow, prev];
+}
+
 async function loadShiftsToday(companyId, branchId) {
     try {
         return await db('store_business_hours as h')
             .innerJoin('store_business_hour_shifts as s', 's.business_hour_id', 'h.id')
-            .where({ 'h.company_id': companyId, 'h.branch_id': branchId, 'h.day_of_week': isoDow() })
+            .where({ 'h.company_id': companyId, 'h.branch_id': branchId })
+            .whereIn('h.day_of_week', shiftDows())
             .whereIn('s.service_type_id', [SERVICE.TAKEAWAY, SERVICE.DELIVERY])
             .select('s.service_type_id', 's.is_open', 's.open_time', 's.close_time');
     } catch (e) { return []; }

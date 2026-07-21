@@ -124,6 +124,15 @@
     .pm-hero__initial { font-size: 2.6rem; }
 }
 
+/* "Buy X Get Y Free" on the item sheet. Same amber treatment as the badge on
+   the menu card (.rd-product__bogo) so the offer reads as one thing across
+   the menu and the sheet. */
+.pm-bogo {
+    display: inline-block; margin: 6px 0 4px; padding: 3px 10px;
+    background: #fef3c7; color: #92400e; border-radius: 6px;
+    font-size: 0.75rem; font-weight: 800;
+}
+
 /* Veg / non-veg surfaced as a subtle text badge under the price.
    Cleaner than the FSSAI square+triangle inline marker, which clashed
    with the H1 visually. */

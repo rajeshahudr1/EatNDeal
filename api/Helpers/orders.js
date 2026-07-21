@@ -229,6 +229,11 @@ async function loadDetail(orderId, customerId) {
         bagCharge:        Number(order.bag_charge)            || 0,
         charityAmount:    Number(order.charity_amount)        || 0,
         discount:         Number(order.discount)              || 0,
+        // Loyalty/reward spent on this order. The column was always written at
+        // place-time but never surfaced, so the receipt showed a total the
+        // customer couldn't reconcile — the reward simply vanished from the
+        // breakdown.
+        usedCashback:     Number(order.used_cashback)         || 0,
         freeDelivery:     Number(order.free_delivery) === 1,
         grandTotal:       Number(order.grand_total) || 0,
         totalQty:         Number(order.total_qty)   || 0,

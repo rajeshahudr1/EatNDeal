@@ -38,6 +38,7 @@
 
     // ── State (per-open) ────────────────────────────────────────────
     var product   = null;       // raw JSON from /product/json
+    var bogo      = null;       // { buyQty, getQty } when this item has a BOGOF rule
     var groups    = [];         // top-level option groups
     var selections = {};        // { [groupId]: [optionId, optionId] }
     var qty       = 1;
@@ -168,8 +169,14 @@
               }
               product = env.data.product;
               groups  = env.data.groups || [];
+              bogo    = env.data.bogo || null;
               selections = {};
-              qty = 1;
+              // A BOGOF item opens at the full buy+get quantity so the deal is
+              // actually taken — leaving it at 1 on a "Buy 1 Get 1" silently
+              // forfeits the free unit. Legacy does the same (products.js:174).
+              qty = (bogo && Number(bogo.buyQty) > 0 && Number(bogo.getQty) > 0)
+                  ? (Number(bogo.buyQty) + Number(bogo.getQty))
+                  : 1;
               seedDefaults();
               renderMain();
           })
@@ -248,10 +255,17 @@
                        (p.veg ? 'Vegetarian' : 'Non-vegetarian') +
                        '</span>';
 
+        // "Buy X Get Y Free" — same wording as the badge on the menu card, so
+        // the customer sees the offer on the sheet they actually order from.
+        var bogoBadge = (bogo && Number(bogo.buyQty) > 0 && Number(bogo.getQty) > 0)
+            ? '<p class="pm-bogo">Buy ' + esc(bogo.buyQty) + ' Get ' + esc(bogo.getQty) + ' Free</p>'
+            : '';
+
         return '' +
             '<div class="pm-info">' +
                 '<h1 class="pm-name">' + esc(p.name) + '</h1>' +
                 '<p class="pm-price" data-pm-price>' + money(p.basePrice) + '</p>' +
+                bogoBadge +
                 vegBadge +
                 stockLine +
                 desc +

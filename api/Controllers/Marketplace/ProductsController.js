@@ -638,7 +638,17 @@ async function detail(req, res) {
             tint: M.tintFor(r.id), initial: M.initialFor(r.name),
         }));
 
-        return H.successResponse(res, { product, groups, related });
+        // BOGOF for THIS product, so the item sheet can show the badge and
+        // open at the full buy+get quantity — legacy does exactly this
+        // (ProductController.php:81 returns `bogof`, products.js:170-174 shows
+        // the container and sets the qty to buy_qty + get_qty).
+        let bogo = null;
+        try {
+            const Loyalty = require('../../Helpers/loyalty');
+            bogo = await Loyalty.bogoForProduct(productId, row.company_id);
+        } catch (e) { bogo = null; }
+
+        return H.successResponse(res, { product, groups, related, bogo });
     } catch (err) {
         H.log.error('marketplace.products.detail', err && err.message);
         return H.errorResponse(res, MSG.server.oops, 500);

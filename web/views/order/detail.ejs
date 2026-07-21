@@ -173,6 +173,11 @@
                 <% if (order.discount > 0) { %>
                 <div class="order-detail__row order-detail__row--discount"><dt>Discount</dt><dd>−<%= brand.currencySymbol %><%= order.discount.toFixed(2) %></dd></div>
                 <% } %>
+                <%# Reward spent — without this line the total didn't add up
+                    from the rows above it. %>
+                <% if (order.usedCashback > 0) { %>
+                <div class="order-detail__row order-detail__row--discount"><dt>Reward applied</dt><dd>−<%= brand.currencySymbol %><%= order.usedCashback.toFixed(2) %></dd></div>
+                <% } %>
                 <div class="order-detail__row order-detail__row--total"><dt>Total</dt><dd><%= brand.currencySymbol %><%= order.grandTotal.toFixed(2) %></dd></div>
             </dl>
 
@@ -221,8 +226,9 @@
                 <% if (order.reviewable && !order.review) { %>
                 <button type="button" class="btn btn--ghost" data-action="open-review" data-review-btn>Rate &amp; Review</button>
                 <% } %>
-                <%# Printable receipt (browser print → PDF). %>
-                <a class="btn btn--ghost" href="/order/<%= order.id %>/receipt">Receipt</a>
+                <%# The "Receipt" button was removed on request. The printable
+                    receipt page itself still exists at /order/:id/receipt —
+                    only the link out of this screen is gone. %>
                 <%# Report an issue with this order (→ epos_complaints). %>
                 <button type="button" class="btn btn--ghost" data-action="open-issue">Report an issue</button>
                 <% if (order.restaurant.slug) { %>

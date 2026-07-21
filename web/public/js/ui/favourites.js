@@ -58,6 +58,25 @@
         return env || { status: 500, msg: 'Network error.' };
     }
 
+    /**
+     * pruneFavRail
+     *
+     * What:  A rail marked [data-fav-rail] lists ONLY favourites, so a card
+     *        that has just been un-hearted no longer belongs there — drop it,
+     *        and hide the whole section once none are left. Rails that merely
+     *        contain hearts (Order again, Offers, search results) are untouched:
+     *        the heart there is a control, not the reason the card is listed.
+     * Type:  WRITE (DOM).
+     */
+    function pruneFavRail(btn) {
+        var rail = btn.closest && btn.closest('[data-fav-rail]');
+        if (!rail) { return; }
+        var card = btn.closest('li') || btn.closest('[data-search-id]');
+        if (card && card.parentNode) { card.parentNode.removeChild(card); }
+        // Nothing left → the heading and empty scroller would look broken.
+        if (!rail.querySelector('[data-fav-toggle]')) { rail.hidden = true; }
+    }
+
     document.addEventListener('click', function (ev) {
         var btn = ev.target && ev.target.closest && ev.target.closest('[data-fav-toggle]');
         if (!btn) { return; }
@@ -88,6 +107,7 @@
             }
             var isFav = !!env.data.isFavourite;
             paint(btn, isFav);
+            if (!isFav) { pruneFavRail(btn); }
             toast('success', isFav ? (name + ' added to favourites.') : (name + ' removed from favourites.'));
         }).catch(function () {
             btn.disabled = false;

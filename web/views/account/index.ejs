@@ -489,7 +489,10 @@
                 <a class="acct-btn acct-btn--update" href="/">Browse restaurants</a>
             </div>
         <% } else { %>
-            <ul class="resto-rail acct-fav-grid" role="list">
+            <%# data-fav-rail — same hook the home rail uses: un-hearting a
+                card removes it here and now, instead of leaving it listed
+                under "Favourites" until the page is reloaded. %>
+            <ul class="resto-rail acct-fav-grid" role="list" data-fav-rail>
             <% favs.forEach(function (r) { %>
                 <%- include('../partials/restaurant-card', { r: r, forceFavourite: true }) %>
             <% }); %>

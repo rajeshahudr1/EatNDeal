@@ -61,6 +61,8 @@
         <div class="receipt__totals">
             <div class="receipt__row"><span>Subtotal</span><span><%= sym %><%= (o.subTotal || 0).toFixed(2) %></span></div>
             <% if (o.discount > 0) { %><div class="receipt__row"><span>Discount</span><span>&minus;<%= sym %><%= o.discount.toFixed(2) %></span></div><% } %>
+            <%# Reward spent — the receipt has to reconcile to the total. %>
+            <% if (o.usedCashback > 0) { %><div class="receipt__row"><span>Reward applied</span><span>&minus;<%= sym %><%= o.usedCashback.toFixed(2) %></span></div><% } %>
             <% if (o.serveType !== 2) { %><div class="receipt__row"><span>Delivery</span><span><%= (o.freeDelivery || o.deliveryFees === 0) ? 'Free' : (sym + o.deliveryFees.toFixed(2)) %></span></div><% } %>
             <% if (o.serviceCharge > 0) { %><div class="receipt__row"><span>Service charge</span><span><%= sym %><%= o.serviceCharge.toFixed(2) %></span></div><% } %>
             <% if (o.cardServiceCharge > 0) { %><div class="receipt__row"><span>Card charge</span><span><%= sym %><%= o.cardServiceCharge.toFixed(2) %></span></div><% } %>

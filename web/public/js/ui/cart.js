@@ -1427,18 +1427,21 @@
      * Type:  READ (pure per entry) → message string, or null to proceed.
      */
     var VALIDATORS = {
-        'cart-apply-coupon': function () {
-            var el = document.querySelector('[data-cart-coupon-input]');
-            return (el && el.value.trim()) ? null : 'Enter a promo code.';
-        },
+        // 'cart-apply-coupon' is deliberately NOT pre-checked here — onApplyCoupon
+        // already shows a richer inline error under the field (setCouponError) and
+        // focuses the input on empty code. A generic toast pre-check here would
+        // fire first and hide that better feedback. Do not re-add an entry.
         'cart-apply-voucher': function () {
             var el = document.querySelector('[data-cart-voucher-input]');
             return (el && el.value.trim()) ? null : 'Enter a voucher code.';
         },
         'cart-apply-loyalty': function () {
+            // A blank / zero / non-positive amount means "use the full available
+            // max" (see onApplyLoyalty) — that must fall through, NOT be blocked.
+            // Only an amount ABOVE the available max is genuinely invalid here.
             var el = document.querySelector('[data-cart-loyalty-input]');
             var amt = parseFloat(el && el.value);
-            if (!isFinite(amt) || amt <= 0) { return 'Enter how much reward to use.'; }
+            if (!isFinite(amt) || amt <= 0) { return null; }
             var panel = document.querySelector('[data-cart-loyalty]');
             var max = parseFloat(panel && panel.getAttribute('data-reward-max'));
             if (isFinite(max) && amt > max) {

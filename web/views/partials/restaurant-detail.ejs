@@ -531,10 +531,14 @@
                     <a class="rd-rinfo__text rd-rinfo__link" href="<%= /^https?:/i.test(r.website) ? r.website : 'http://' + r.website %>" target="_blank" rel="noopener noreferrer"><%= r.website %></a>
                 </li>
                 <% } %>
+                <%# "Report a problem" hidden on request. The rd-report handler
+                    and its popup are left in place, so restoring it is just a
+                    matter of un-commenting this row.
                 <li class="rd-rinfo__row">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
                     <button type="button" class="rd-rinfo__text rd-rinfo__link" data-action="rd-report">Report a problem</button>
                 </li>
+                %>
             </ul>
         </div>
 

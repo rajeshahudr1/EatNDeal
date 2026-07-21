@@ -1122,6 +1122,12 @@ async function setMode(cartId, serveType, branch) {
         // coupon survives the switch and must still waive the fee if the
         // customer flips back to Delivery.
         patch.delivery_fees  = 0;
+        // Drop-off options are a DELIVERY concept ("leave at door", "hand it
+        // to me"). Switching to collection must drop them, or the note the
+        // customer wrote for a driver rides along onto a pickup order and is
+        // printed in the kitchen — it survived the switch and was placed with
+        // the order. Stored encoded in driver_instructions ([dropoff:…] tag).
+        patch.driver_instructions = null;
     } else {
         // Re-price against the destination zone, UNLESS a coupon is waiving
         // delivery. Without this check the zone fee came back on a switch to

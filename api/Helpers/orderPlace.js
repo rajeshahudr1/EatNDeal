@@ -98,17 +98,20 @@ const CREATED_VIA_MARKETPLACE = 5;
  *        legacy WO_ (web order) / CC_ (counter) ones while matching their
  *        compact "prefix_date_timestamp" style — the long _HHMMSS_<12-hex>
  *        suffix was replaced with the legacy look per user request.
- * Note:  Mirrors legacy PHP `time()` — seconds, not ms. order_number has NO
- *        unique constraint (verified in DB), so a rare same-second collision is
- *        harmless (numeric orders.id stays the true PK), exactly as legacy.
+ * Uniqueness: the tail is the order's OWN id, taken from the orders sequence
+ *        before the insert. It used to be unix seconds, which meant two orders
+ *        placed in the SAME SECOND were handed the identical number — two
+ *        customers seeing one order id. Legacy has the same class of bug (its
+ *        `count(*) + 1` races the same way, Commonquery.php:2783-2790), so the
+ *        sequence is a deliberate improvement: it cannot collide, needs no
+ *        retry loop, and stays readable.
  * Type:  READ (pure).
  */
-function generateOrderNumber(now) {
+function generateOrderNumber(now, seq) {
     const d = now || new Date();
     const pad = (n, w) => String(n).padStart(w || 2, '0');
     const ymd = d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate());
-    const ts  = Math.floor(d.getTime() / 1000);   // unix seconds (legacy `time()`)
-    return 'MP_' + ymd + '_' + ts;
+    return 'MP_' + ymd + '_' + pad(seq, 6);
 }
 
 /**
@@ -201,6 +204,23 @@ async function nextInternalOrderId(trx, branchId, companyId) {
 }
 
 /**
+ * dropOffText
+ *
+ * What:  The cart's encoded drop-off value as a plain, human sentence for the
+ *        order note / kitchen ticket:
+ *          "[dropoff:meet_outside] ring the bell" → "Meet outside — ring the bell"
+ *          "[dropoff:meet_outside]"               → "Meet outside"
+ *          "just leave it"        (untagged)      → "just leave it"
+ *        Empty in, empty out.
+ * Type:  READ (pure).
+ */
+function dropOffText(raw) {
+    const d = Cart.decodeDropOff(raw);
+    if (d.dropOffLabel && d.instructions) { return d.dropOffLabel + ' — ' + d.instructions; }
+    return d.dropOffLabel || d.instructions || '';
+}
+
+/**
  * placeOrder
  *
  * What:  See file header. Returns the inserted orders row on success.
@@ -250,7 +270,14 @@ async function placeOrder({ customer, cart, branch, items, paymentOption, custom
         // Ours was an all-time MAX per branch, which never reset.
         const internalOrderId = await nextInternalOrderId(trx, branch.id, cart.company_id);
 
-        const orderNumber = generateOrderNumber(now);
+        // Claim this order's id from the sequence UP FRONT so the number can be
+        // built from it. nextval is atomic — two concurrent placements get two
+        // different values, which is exactly what the old timestamp tail could
+        // not guarantee. The same value is used as the row's explicit id, so
+        // the sequence never hands it out twice.
+        const seqRow  = await trx.raw("SELECT nextval('orders_id_seq') AS id");
+        const orderId = Number((seqRow.rows || seqRow)[0].id);
+        const orderNumber = generateOrderNumber(now, orderId);
         const orderStatus = resolveOrderStatus(branch, cart.serve_type);
 
         // Pre-order schedule → legacy splits it across TWO columns:
@@ -271,6 +298,9 @@ async function placeOrder({ customer, cart, branch, items, paymentOption, custom
 
         // ── 2. orders row ───────────────────────────────────────────
         const [order] = await trx('orders').insert({
+            // Explicit — this id was already taken from the sequence above to
+            // build order_number, so the two can never disagree.
+            id:                orderId,
             is_marketplace:    1,
             user_id:           customer.id,
             company_id:        cart.company_id,
@@ -309,7 +339,12 @@ async function placeOrder({ customer, cart, branch, items, paymentOption, custom
             // orders.remark column so the drop-off survives onto the
             // order — there's no dedicated instructions column. Joined
             // with a unique separator loadDetail can split back out.
-            remark:            [customerNote, cart.driver_instructions, cart.remark]
+            // Drop-off is stored ENCODED on the cart ("[dropoff:meet_outside] …")
+            // — that tag is an internal storage detail, not something a driver
+            // or the kitchen should read. Decode it to the human label before
+            // it lands on the order, or the printed note says
+            // "[dropoff:meet_outside] ring the bell".
+            remark:            [customerNote, dropOffText(cart.driver_instructions), cart.remark]
                                    .map((s) => String(s || '').trim()).filter(Boolean)
                                    .join('  |  ') || null,
             is_pre_order:      Number(cart.is_pre_order) || 0,

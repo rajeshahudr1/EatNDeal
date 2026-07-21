@@ -179,13 +179,46 @@
     }
 
     // ── Network helper ──────────────────────────────────────────────
+    // One in-flight request per (url, body) pair at a time. Keyed on the
+    // serialized body too — NOT the URL alone — because several distinct
+    // actions post to the same endpoint with different bodies (e.g. the
+    // charity tiers all POST /cart/set-charity with a different amount;
+    // the schedule tabs both POST /cart/set-schedule). A URL-only lock
+    // would silently drop a legitimate second tap on a different tier
+    // while the first tier's request was still in flight. A duplicate
+    // tap on the SAME action (identical body) is still coalesced, which
+    // is the case we actually want to guard against (double-tap "Apply").
+    var inFlight = {};
+
+    /**
+     * postCart — POST a cart action. Rejects (resolves null, no request
+     * sent) a repeat call for the same (url, body) while one is already
+     * running, and discards a response that a newer request has already
+     * superseded (per window.CartRender's stale-ticket check), so two
+     * taps can never land their responses out of order.
+     * Type: WRITE (network).
+     */
     function postCart(path, body) {
+        var key = path + '|' + JSON.stringify(body || {});
+        if (inFlight[key]) { return Promise.resolve(null); }
+        inFlight[key] = true;
+        var ticket = window.CartRender ? window.CartRender.begin() : 0;
+
         return fetch(path, {
             method:      'POST',
             credentials: 'same-origin',
             headers:     { 'Content-Type': 'application/json', 'Accept': 'application/json' },
             body:        JSON.stringify(body || {}),
-        }).then(function (r) { return r.json().catch(function () { return null; }); });
+        }).then(function (r) {
+            return r.json().catch(function () { return null; });
+        }).then(function (env) {
+            inFlight[key] = false;
+            if (window.CartRender && window.CartRender.isStale(ticket)) { return null; }
+            return env;
+        }).catch(function () {
+            inFlight[key] = false;
+            return null;
+        });
     }
 
     // ── Envelope handler (401 / 409 conflict / 422 / 200) ───────────
@@ -194,6 +227,10 @@
         // The request has settled (it will reload, error, or conflict) — tell any
         // open checkout popup to drop its "busy" state so it never hangs.
         document.dispatchEvent(new CustomEvent('ckt:settle-done'));
+        // null = the request was skipped (already in flight for the same
+        // action) or its response was superseded by a newer one. Neither
+        // is an error — say nothing and just leave the screen as-is.
+        if (env === null) { return false; }
         if (!env) { toast('error', 'Could not reach the server.'); return false; }
         if (env.status === 401) {
             // opts.authMessage — for small, optional tweaks (charity tier)
@@ -214,7 +251,18 @@
         }
         bumpCartBadge(env.data && env.data.cart);
         if (opts.successToast !== false && env.msg) { toast('success', env.msg); }
-        if (opts.reload) { window.location.reload(); }
+        // Swap the freshly rendered regions in. `opts.reload` is kept as the
+        // flag name at the call sites: it still means "this action changed the
+        // cart, refresh the view" — it just no longer costs a page load.
+        if (opts.reload) {
+            var swapped = env.data && env.data.html && window.CartRender
+                ? window.CartRender.swap(env.data.html)
+                : false;
+            // No fragments came back (older response shape, or the render
+            // failed server-side) — fall back to the reload so the customer
+            // still sees a correct cart rather than a stale one.
+            if (!swapped) { window.location.reload(); }
+        }
         return true;
     }
 

@@ -23,9 +23,9 @@
  *        the save/resolve logic live here once — not copied per feature.
  *
  * Config (env):
- *        UPLOAD_API_URL  — the legacy upload API endpoint (live vs local test).
- *        UPLOAD_API_KEY  — its secret key (server-side only, never sent to a page).
  *        MEDIA_DIR       — our own media root (shared with the rest of the app).
+ *        (The legacy server's url + key are Helpers/legacyApi's business, not
+ *         this file's — see UPLOAD_API_URL / UPLOAD_API_KEY there.)
  *
  * Type:  WRITE (disk / network) + READ (url resolve).
  *
@@ -55,10 +55,9 @@ const FOLDERS = Object.freeze({
 
 const MARKETPLACE_COMPANY_ID = 0;
 
-// Legacy upload API — endpoint + key from env. Both blank in an env that has no
-// legacy server (then restaurant uploads fail loudly instead of silently).
-const UPLOAD_API_URL = (process.env.UPLOAD_API_URL || '').trim();
-const UPLOAD_API_KEY = (process.env.UPLOAD_API_KEY || '').trim();
+// All legacy-server traffic goes through Helpers/legacyApi — base url, api_key,
+// timeout and error shaping live there, so this file only decides WHAT to send.
+const LegacyApi = require('./legacyApi');
 
 // Our own media root — the same one admin/index + web use (api/public/upload).
 const MEDIA_DIR = process.env.MEDIA_DIR
@@ -110,7 +109,7 @@ async function saveImage({ companyId, folder, fileName, base64, buffer }) {
     }
 
     // ── RESTAURANT → legacy Eat-n-Deal upload API ───────────────────
-    if (!UPLOAD_API_URL || !UPLOAD_API_KEY) {
+    if (!LegacyApi.isConfigured()) {
         return { ok: false, message: 'Upload service is not configured for restaurants yet.' };
     }
     // The legacy API only accepts jpg/jpeg/png (DefaultController::actionUploadFile).
@@ -119,21 +118,15 @@ async function saveImage({ companyId, folder, fileName, base64, buffer }) {
     if (!['jpg', 'jpeg', 'png'].includes(ext)) {
         return { ok: false, message: 'Only JPG, JPEG and PNG images are allowed.' };
     }
-    try {
-        const form = new FormData();
-        form.append('api_key', UPLOAD_API_KEY);
-        form.append('upload_path', cid + '/' + sub);   // e.g. "1/reviews"
-        form.append('file_name', name);
-        form.append('image_data', b64);                // base64 string
-
-        const r = await fetch(UPLOAD_API_URL, { method: 'POST', body: form });
-        const json = await r.json().catch(() => null);
-        if (!json || json.success !== true) {
-            return { ok: false, message: (json && json.message) || 'Upload failed on the restaurant server.' };
-        }
-    } catch (e) {
-        H.log.error('imageUpload.legacy', e && e.message);
-        return { ok: false, message: 'Could not reach the upload server.' };
+    // Only the PARAMETERS are our business — LegacyApi owns the transport and
+    // never throws, so there is nothing to catch here.
+    const res = await LegacyApi.uploadFile({
+        uploadPath:  cid + '/' + sub,   // e.g. "1/reviews"
+        fileName:    name,
+        imageBase64: b64,
+    });
+    if (!res.ok) {
+        return { ok: false, message: res.message || 'Upload failed on the restaurant server.' };
     }
     // Stored as the bare file name; resolveUrl rebuilds the legacy path.
     return { ok: true, ref: name, url: legacyUrl(cid, sub, name) };

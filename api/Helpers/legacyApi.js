@@ -131,6 +131,11 @@ async function uploadFile({ uploadPath, fileName, imageBase64 }) {
         upload_path: uploadPath,
         file_name:   fileName,
         image_data:  imageBase64,
+        // is_web_ordering — tells the legacy side this upload came from the
+        // web-ordering/marketplace app rather than the POS. Fixed at 1: every
+        // upload from this codebase is web ordering. If a POS-side caller is
+        // ever added, this becomes a parameter instead of a constant.
+        is_web_ordering: 1,
     });
 }
 

@@ -107,6 +107,34 @@ async function get(req, res) {
         // actually carry that address before Place Order). Customers only —
         // a guest has no saved address book.
         const branch = await M.loadActiveBranch(open.branch_id);
+
+        // Bring the cart into line with the header's Delivery/Pickup choice.
+        // Order mode is ONE decision shown in three places (header toggle,
+        // restaurant tabs, cart); without this the cart kept its own copy, so
+        // choosing Pickup on the home page and opening the cart showed
+        // Delivery. Skipped when the restaurant doesn't offer that service, or
+        // when a Surprise Box pins the cart to Pickup.
+        if (branch && req.query.serve_type != null) {
+            const want = Number(req.query.serve_type) === 2 ? 2 : 3;
+            if (Number(open.serve_type) !== want) {
+                const offered = StoreHours.offeredServices(branch);
+                const canHave = want === 2 ? offered.pickup : offered.delivery;
+                let pinned = false;
+                if (want === 3) {
+                    const box = await db('cart_details')
+                        .where({ cart_id: open.id, is_surprise_item: 1, is_deleted: 0 })
+                        .first('id');
+                    pinned = !!box;               // a box is Pickup-only
+                }
+                if (canHave && !pinned) {
+                    await Cart.setMode(open.id, want, branch);
+                    if (want === 3 && !owner.isGuest) {
+                        await Cart.ensureDefaultDeliveryAddress(open.id, owner.customerId, branch);
+                    }
+                }
+            }
+        }
+
         if (branch && !owner.isGuest) {
             await Cart.ensureDefaultDeliveryAddress(open.id, owner.customerId, branch, {
                 postcode: req.query.loc_postcode, label: req.query.loc_label,

@@ -49,18 +49,22 @@
     <div class="fsb__scroll">
 
         <%# ── Sort by ── %>
+        <%# In Pickup mode the times shown are how long until the food is ready
+            to collect, not a delivery estimate — so the labels follow the
+            active order mode instead of always saying "Delivery". %>
+        <% var __timeWord = (typeof order_mode !== 'undefined' && order_mode === 'pickup') ? 'Pickup' : 'Delivery'; %>
         <section class="fsb__group">
             <h3 class="fsb__group-title">Sort by</h3>
             <label class="fsb__radio"><input type="radio" name="sort-web" value="relevance" checked><span>Recommended</span></label>
             <label class="fsb__radio"><input type="radio" name="sort-web" value="rating"><span>Rating: High to Low</span></label>
-            <label class="fsb__radio"><input type="radio" name="sort-web" value="time"><span>Delivery Time: Low to High</span></label>
+            <label class="fsb__radio"><input type="radio" name="sort-web" value="time"><span><%= __timeWord %> Time: Low to High</span></label>
             <label class="fsb__radio"><input type="radio" name="sort-web" value="distance"><span>Distance: Low to High</span></label>
         </section>
 
         <%# ── Delivery time ── (only bands with count > 0) %>
         <% if (anyKeep([dc('15'), dc('30'), dc('45'), dc('60')])) { %>
         <section class="fsb__group">
-            <h3 class="fsb__group-title">Delivery Time</h3>
+            <h3 class="fsb__group-title"><%= __timeWord %> Time</h3>
             <% if (keep(dc('15'))) { %><label class="fsb__check"><input type="checkbox" data-filter="time-15"><span>Up to 15 min</span><%- badge(dc('15')) %></label><% } %>
             <% if (keep(dc('30'))) { %><label class="fsb__check"><input type="checkbox" data-filter="time-30"><span>15 – 30 min</span><%- badge(dc('30')) %></label><% } %>
             <% if (keep(dc('45'))) { %><label class="fsb__check"><input type="checkbox" data-filter="time-45"><span>30 – 45 min</span><%- badge(dc('45')) %></label><% } %>

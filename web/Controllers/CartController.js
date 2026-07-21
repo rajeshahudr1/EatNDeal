@@ -84,6 +84,10 @@ async function fetchCart(req, owner) {
     // owner = { customer_id } | { guest_id }
     const qs = new URLSearchParams(owner);
     applyBrowseLoc(req, qs);
+    // Carry the header's Delivery/Pickup choice so the api can bring the cart
+    // into line with it — picking Pickup on the home page and then opening the
+    // cart used to show Delivery, because the cart kept its own serve_type.
+    qs.set('serve_type', String(browseMode(req).serve_type));
     const apiRes = await callApi(req, 'GET', '/api/v1/customer/cart?' + qs.toString());
     if (!apiRes || apiRes.networkError || !apiRes.body) { return null; }
     return apiRes.body;
@@ -390,7 +394,37 @@ const addSurpriseBox = (req, res) => {
 const updateQty  = (req, res) => forwardGuestWrite(req, res, '/api/v1/customer/cart/update-qty');
 const removeItem = (req, res) => forwardGuestWrite(req, res, '/api/v1/customer/cart/remove-item');
 const clear      = (req, res) => forwardGuestWrite(req, res, '/api/v1/customer/cart/clear');
-const setMode    = (req, res) => forwardGuestWrite(req, res, '/api/v1/customer/cart/set-mode');
+/**
+ * setMode
+ *
+ * What:  Switches the cart between Delivery and Pickup AND moves the header
+ *        toggle to match.
+ * Why:   Order mode is ONE choice the customer makes, shown in three places
+ *        (header toggle, restaurant tabs, cart). They each used to hold their
+ *        own copy: picking Pickup on the home page then opening the cart
+ *        showed Delivery, because the cart kept its own serve_type and the
+ *        session kept its own mode. Writing both here — and reading the
+ *        session on cart load (see `page`/`data`) — keeps the three in step.
+ */
+const setMode = async (req, res) => {
+    const wanted = Number(req.body && req.body.serve_type) === 2 ? 'pickup' : 'delivery';
+    const apiRes = await (async () => {
+        await claimGuestCart(req);
+        const owner = cartOwner(req);
+        if (!owner.customer_id && !owner.guest_id) { return null; }
+        const payload = Object.assign({}, req.body, owner);
+        const r = await callApi(req, 'POST', '/api/v1/customer/cart/set-mode', payload);
+        syncSessionCount(req, r);
+        return r;
+    })();
+    if (!apiRes) { return needUser(req, res); }
+    // Only follow a SUCCESSFUL switch — a refused one (e.g. a Surprise Box
+    // pins the cart to Pickup) must not move the header.
+    if (apiRes.body && apiRes.body.status === 200 && req.session) {
+        req.session.userLocation = Object.assign({}, req.session.userLocation, { mode: wanted });
+    }
+    return relay(res, apiRes);
+};
 // Charge a saved card for the open cart. The api clones the card onto the
 // restaurant's connected account and confirms ON-SESSION, so the reply may be
 // `requires_action` (3-D Secure) rather than an outright success.

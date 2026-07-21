@@ -948,6 +948,18 @@ async function changePhoneSendOtp(req, res) {
     if (!country || !contact) {
         return res.status(200).json({ status: 422, show: true, msg: 'Please enter your new mobile number.' });
     }
+    // Same number as the one already on the account → nothing to change, so
+    // don't send an OTP for it. Without this the customer could "change" their
+    // phone to itself: an OTP went out, they verified, and the flow claimed a
+    // successful update that changed nothing.
+    const curContact = normalisePhone(user.contact_no);
+    const curCountry = normaliseCountry(user.country_code);
+    if (curContact && curContact === contact && (!curCountry || curCountry === country)) {
+        return res.status(200).json({
+            status: 422, show: true,
+            msg: 'This is already your mobile number. Enter a different one to change it.',
+        });
+    }
     const apiRes = await callApi(req, 'POST', '/api/v1/auth/send-otp', { country_code: country, contact_no: contact });
     return relay(res, apiRes);
 }

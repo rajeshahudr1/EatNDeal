@@ -122,7 +122,7 @@
                         <li><label class="filter-sheet__radio-item is-active"><input type="radio" name="sort" value="relevance" checked> <span>Relevance</span></label></li>
                         <li><label class="filter-sheet__radio-item"><input type="radio" name="sort" value="distance"> <span>Distance: Low to High</span></label></li>
                         <li><label class="filter-sheet__radio-item"><input type="radio" name="sort" value="rating"> <span>Rating: High to Low</span></label></li>
-                        <li><label class="filter-sheet__radio-item"><input type="radio" name="sort" value="time"> <span>Delivery Time: Low to High</span></label></li>
+                        <li><label class="filter-sheet__radio-item"><input type="radio" name="sort" value="time"> <span><%= (typeof order_mode !== 'undefined' && order_mode === 'pickup') ? 'Pickup' : 'Delivery' %> Time: Low to High</span></label></li>
                         <li><label class="filter-sheet__radio-item"><input type="radio" name="sort" value="price-asc"> <span>Cost for one: Low to High</span></label></li>
                         <li><label class="filter-sheet__radio-item"><input type="radio" name="sort" value="price-desc"> <span>Cost for one: High to Low</span></label></li>
                     </ul>

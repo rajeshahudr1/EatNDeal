@@ -47,6 +47,9 @@ const browseLocationFields = {
     loc_label:    Joi.string().trim().max(200).allow('', null),
     loc_lat:      Joi.number().min(-90).max(90).allow(null, ''),
     loc_lng:      Joi.number().min(-180).max(180).allow(null, ''),
+    // The header's Delivery/Pickup choice (2 = pickup, 3 = delivery). The cart
+    // read syncs itself to this so the mode is the same on every screen.
+    serve_type:   Joi.number().valid(2, 3).allow(null, ''),
 };
 
 // ── GET /customer/cart ─────────────────────────────────────────────

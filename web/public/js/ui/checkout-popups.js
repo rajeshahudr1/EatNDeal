@@ -254,7 +254,32 @@
     // Persist the chosen mode onto the row + update the CARD tile's label
     // ([data-ckt-pay-title]/[sub] live on the Card tile). Cash has its own
     // static tile, so cash just resets the Card tile to its neutral label.
+    // ── Remembering the chosen payment method ───────────────────────
+    // The cart page renders data-ckt-pay-mode="cash" every time, and every
+    // cart write (promo, qty, address…) reloads the page — so picking Card
+    // and then touching anything silently threw the customer back to Cash.
+    // Keep the choice for the tab's lifetime; it is a UI preference, not
+    // cart data, so sessionStorage is the right home for it (nothing is
+    // charged until Place Order re-reads the row anyway).
+    var PAY_MODE_KEY = 'eatndeal_pay_mode';
+    function rememberPayMode(mode) {
+        try { window.sessionStorage.setItem(PAY_MODE_KEY, String(mode || '')); }
+        catch (e) { /* private mode / quota — the row still holds it */ }
+    }
+    function restorePayMode() {
+        var row = $('[data-cart-pay]');
+        if (!row) { return; }
+        var saved;
+        try { saved = window.sessionStorage.getItem(PAY_MODE_KEY); } catch (e) { saved = null; }
+        if (!saved || saved === 'cash') { return; }          // cash is already the default
+        // A saved CARD is only re-selectable if that tile still exists (the
+        // card may have been removed since). Otherwise leave it on Cash.
+        if (saved.indexOf('card:') === 0 && !document.querySelector('[data-pay-mode="' + saved + '"]')) { return; }
+        commitPayRow(row, saved);
+    }
+
     function commitPayRow(row, mode) {
+        rememberPayMode(mode);
         row.setAttribute('data-ckt-pay-mode', mode);
         var titleEl = row.querySelector('[data-ckt-pay-title]');
         var subEl   = row.querySelector('[data-ckt-pay-sub]');
@@ -494,6 +519,15 @@
     // A newly-entered card is saved at PAYMENT time (the intent's
     // setup_future_usage) and surfaces in the saved-cards list on the next
     // visit — there's no SetupIntent pre-save / reload step to reconcile here.
+
+    // Re-apply the payment method the customer picked before the last cart
+    // write reloaded the page. Runs after the DOM is ready so the saved-card
+    // tiles exist to validate against.
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', restorePayMode);
+    } else {
+        restorePayMode();
+    }
 
     // Expose for any other module that needs to drive it programmatically.
     window.EatNDealUi = window.EatNDealUi || {};

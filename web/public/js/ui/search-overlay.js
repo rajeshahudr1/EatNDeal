@@ -245,48 +245,79 @@
         var rests  = (payload && payload.restaurantResults)     || [];
         var prods  = (payload && payload.productResults)        || [];
 
+        // Everything goes into ONE list ranked by how well the NAME matches
+        // what was typed — not grouped by type. Typing "chicken burger" used
+        // to list every menu category first and push the actual "Chicken
+        // Burger" dish six rows down, because the four buckets were simply
+        // appended in a fixed order.
+        //
+        // Score (higher wins): exact name > starts with the query > a word in
+        // the name starts with it > merely contains it > every query word
+        // appears somewhere. Ties break by type, dish first.
+        var qn = String(query || '').trim().toLowerCase();
+        var qWords = qn.split(/\s+/).filter(Boolean);
+        function score(name) {
+            var n = String(name || '').trim().toLowerCase();
+            if (!n || !qn) { return 0; }
+            if (n === qn)                       { return 100; }
+            if (n.indexOf(qn) === 0)            { return 80; }
+            if (new RegExp('\\b' + qn.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).test(n)) { return 60; }
+            if (n.indexOf(qn) !== -1)           { return 40; }
+            var hit = qWords.filter(function (w) { return n.indexOf(w) !== -1; }).length;
+            return hit ? (10 + hit) : 0;        // partial word overlap
+        }
+        var TYPE_RANK = { dish: 0, category: 1, menu: 2, restaurant: 3 };
+        var rows = [];
+        var add = function (kind, name, opts) {
+            rows.push({ s: score(name), t: TYPE_RANK[kind], opts: opts });
+        };
+
         // (1) Marketplace category → home filtered to that cuisine.
         mpCats.forEach(function (c) {
-            resultsEl.appendChild(rowFor({
+            add('category', c.name, {
                 action: 'pick-category',
                 href:   '/?cuisine=' + enc(c.searchName || (c.name || '').toLowerCase()),
                 dataName: c.name, dataSearchName: c.searchName,
                 image: c.icon, initial: c.initial, name: c.name,
                 sub: 'Category', query: query,
-            }));
+            });
         });
         // (2) Restaurant menu category → that restaurant's page, section selected.
         rCats.forEach(function (c) {
-            resultsEl.appendChild(rowFor({
+            add('menu', c.name, {
                 action: 'pick-result',
                 href:   '/?restaurant=' + enc(c.restaurantSlug || '') + '&menu=' + enc(c.catSlug || ''),
                 dataName: c.name, image: c.icon, initial: c.initial, name: c.name,
                 sub: c.restaurant ? ('Menu · ' + c.restaurant) : 'Menu', query: query,
-            }));
+            });
         });
         // (3) Restaurant → its page.
         rests.forEach(function (r) {
-            resultsEl.appendChild(rowFor({
+            add('restaurant', r.name, {
                 action: 'pick-result',
                 href:   '/?restaurant=' + enc(r.slug || ''),
                 dataName: r.name, image: r.image, initial: r.initial, name: r.name,
                 sub: 'Restaurant', query: query,
-            }));
+            });
         });
         // (4) Product → that restaurant's page with the dish surfaced at the top.
         prods.forEach(function (p) {
             var pHref = (p.slug && p.restaurantSlug)
                 ? ('/?restaurant=' + enc(p.restaurantSlug) + '&highlight=' + enc(p.slug))
                 : ('/?product=' + enc(p.id));
-            resultsEl.appendChild(rowFor({
+            add('dish', p.name, {
                 action: 'pick-result',
                 href:   pHref,
                 dataName: p.name, image: p.image, initial: p.initial, name: p.name,
                 sub: p.restaurant ? ('Dish · ' + p.restaurant) : 'Dish', query: query,
-            }));
+            });
         });
 
-        var total = mpCats.length + rCats.length + rests.length + prods.length;
+        // Best match first; equal scores fall back to type order (dish first).
+        rows.sort(function (a, b) { return (b.s - a.s) || (a.t - b.t); });
+        rows.forEach(function (r) { resultsEl.appendChild(rowFor(r.opts)); });
+
+        var total = rows.length;
         resultsEl.hidden = total === 0;
         if (noMatchEl) { noMatchEl.hidden = total !== 0; }
         if (emptyEl)   { emptyEl.hidden   = true; }

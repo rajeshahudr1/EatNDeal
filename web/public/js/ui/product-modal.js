@@ -601,8 +601,11 @@
         if (av.available === false) { toast('error', av.soldOut ? 'This item is sold out.' : 'This item is currently unavailable.'); return; }
         var miss = firstMissingRequiredGroup();
         if (miss) {
+            // Say what's missing and stop there. We used to also fling the
+            // group's sheet open — the customer had asked for a choice they
+            // hadn't made yet, and having the UI jump for them was rejected.
+            // They open it themselves from the row.
             toast('error', 'Please choose: ' + miss.name + '.');
-            openGroup(miss.id);
             return;
         }
         // Walk the chain to collect every selected (group, option) pair

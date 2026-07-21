@@ -329,12 +329,16 @@ async function buildCartLocals(req, res) {
  *        reloading. Rendering server-side keeps the markup in EJS only.
  * Type:  READ.
  *
- * Output: { main, side, popups } | null (no renderable cart — caller just
- *         omits html)
+ * Output: { main, side, popups } | { noOwner: true } | null
+ *         — noOwner means genuinely unauthenticated (no customer/guest
+ *         owner at all); null means an owner exists but nothing rendered
+ *         (e.g. an empty cart, whose empty-state markup lives in
+ *         views/cart/index.ejs, not in these partials). Callers must tell
+ *         the two apart instead of treating both as an auth failure.
  */
 async function renderCartFragments(req, res) {
     const built = await buildCartLocals(req, res);
-    if (!built.ok) { return null; }
+    if (!built.ok) { return { noOwner: true }; }
 
     // res.render's callback form returns the string instead of sending it.
     // _layoutFile must be falsy or ejs-locals (the engine this app uses —
@@ -384,7 +388,7 @@ async function relayWithFragments(req, res, apiRes) {
     const body = apiRes && apiRes.body;
     if (!body || body.status !== 200) { return relay(res, apiRes); }
     const html = await renderCartFragments(req, res);
-    if (html) {
+    if (html && !html.noOwner) {
         body.data = Object.assign({}, body.data, { html: html });
     }
     return res.status(200).json(body);
@@ -395,11 +399,20 @@ async function relayWithFragments(req, res, apiRes) {
  *
  * What:  The two cart regions on demand, for resyncing without a reload
  *        (returning to a backgrounded tab, recovering from a failed swap).
+ * Why:   `renderCartFragments` returns null for an EMPTY cart (its empty-
+ *        state markup lives in views/cart/index.ejs, not in these
+ *        partials) just as readily as it does for no owner at all — those
+ *        are not the same failure. Only a missing owner is an auth
+ *        problem; an empty cart is a benign "nothing to swap" result and
+ *        must not be reported as a sign-in failure. `count` (above) uses
+ *        the same `status: 200, show: false` shape for its own benign
+ *        empty case, so this mirrors that existing convention.
  * Type:  READ.
  */
 async function fragment(req, res) {
     const html = await renderCartFragments(req, res);
-    if (!html) { return res.status(200).json({ status: 401, msg: 'Please sign in to use the cart.' }); }
+    if (html && html.noOwner) { return res.status(200).json({ status: 401, msg: 'Please sign in to use the cart.' }); }
+    if (!html) { return res.status(200).json({ status: 200, show: false, msg: 'Nothing to render — the cart is empty.' }); }
     return res.status(200).json({ status: 200, data: { html: html } });
 }
 

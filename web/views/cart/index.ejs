@@ -36,7 +36,7 @@
 
   Data:  cart, cart_warnings, cart_addresses (existing), plus the new
          cart_payment_methods and cart_restaurant locals from
-         CartController.page().
+         CartController.buildCartLocals().
 -%>
 <%# sym now arrives as a local from CartController.buildCartLocals() %>
 <%# addrList now arrives as a local from CartController.buildCartLocals() %>
@@ -45,52 +45,35 @@
     partials/cart/main.ejs and partials/cart/side.ejs — both columns use it. %>
 <%# promoList now arrives as a local from CartController.buildCartLocals() %>
 
+<%# Empty-cart layout: a single centred card instead of the two-column
+    grid. Both states render the SAME region wrappers (data-cart-region)
+    so an AJAX swap always has somewhere to land — an emptied cart is just
+    another fragment response, not a special "reload the page" case. The
+    empty-state markup itself lives in partials/cart/side.ejs (rendered
+    into the "side" region); partials/cart/main.ejs and
+    partials/checkout-popups.ejs render nothing for an empty cart. %>
+<% var isEmptyCart = !cart || !cart.items || !cart.items.length; %>
 <section class="cart-page" data-cart-root data-cart-guest="<%= (typeof cart_is_guest !== 'undefined' && cart_is_guest) ? '1' : '0' %>">
-
-    <% if (!cart || !cart.items.length) { %>
-        <%# ── Empty state ───────────────────────────────────────────── %>
-        <div class="cart-empty">
-            <span class="cart-empty__icon" aria-hidden="true">
-                <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-                    <circle cx="9" cy="21" r="1.6"/>
-                    <circle cx="18" cy="21" r="1.6"/>
-                    <path d="M2 3h2l2 13h13l2-9H6"/>
-                </svg>
-            </span>
-            <h2 class="cart-empty__title">Your cart is empty</h2>
-            <p class="cart-empty__sub">Pick a restaurant and add a few dishes — your cart will fill up here.</p>
-            <a class="btn btn--primary btn--lg cart-empty__cta" href="/">Browse restaurants</a>
-        </div>
-    <% } else { %>
 
     <%# selected, schedDefault, schedMin, stripeOn now arrive as locals
         from CartController.buildCartLocals() — see that function for the
         derivation (moved verbatim, unchanged logic). %>
 
-    <div class="cart-page__grid">
+    <div class="cart-page__grid<%= isEmptyCart ? ' cart-page__grid--empty' : '' %>">
 
         <%# ════════════════════ LEFT COLUMN ════════════════════ %>
         <div class="cart-page__main-wrap" data-cart-region="main">
             <%- include('../partials/cart/main', Object.assign({}, locals)) %>
         </div>
 
-        <%# ════════════════════ RIGHT COLUMN ════════════════════ %>
+        <%# ════════════════════ RIGHT COLUMN ════════════════════
+             (also renders the empty-state card + the mobile sticky CTA —
+             see partials/cart/side.ejs) %>
         <div class="cart-page__side-wrap" data-cart-region="side">
             <%- include('../partials/cart/side', Object.assign({}, locals)) %>
         </div>
 
     </div>
-
-    <%# Mobile sticky CTA — duplicates the desktop CTA so it stays in
-        view while the customer scrolls the long left column. Opens the
-        same review-order confirmation popup. -%>
-    <%# aria-hidden removed: this is the ONLY checkout CTA visible on mobile
-        (the desktop .ckt-cta is display:none there), so hiding it from the
-        a11y tree blocked screen-reader users from placing an order. The
-        desktop CTA is hidden from AT correctly via display:none. -%>
-    <button type="button" class="ckt-sticky-cta" data-action="ckt-open-confirm">
-        <span data-cart-cta-total>Continue · <%= sym %><%= cart.grandtotal.toFixed(2) %></span>
-    </button>
 
     <div data-cart-region="popups">
         <%- include('../partials/checkout-popups', {
@@ -105,8 +88,6 @@
             stripe_publishable_key: stripe_publishable_key
         }) %>
     </div>
-
-    <% } %>
 
 </section>
 

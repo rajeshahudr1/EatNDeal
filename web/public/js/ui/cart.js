@@ -207,13 +207,24 @@
      * Resolves null — a genuine failure — when the network request itself
      * fails (fetch rejects) or the response body can't be parsed as JSON
      * (e.g. a 500 HTML error page, a truncated body).
+     *
+     * `noTicket` — explicit opt-out from the CartRender ticket. Only calls
+     * whose response actually swaps the cart regions (i.e. every call that
+     * goes through handleEnvelope with opts.reload) need a ticket at all —
+     * it exists purely to let a newer region-swapping request discard a
+     * stale one. /payment/intent, /cart/pay-saved-card and /order/place
+     * never swap regions, so taking a ticket for them was meaningless and,
+     * worse, could mark a LATER genuine cart write's response stale (e.g. a
+     * cart edit fired while checkout was mid-flight), silently discarding
+     * it. Pass true here for any call site that does not feed its envelope
+     * into handleEnvelope's reload path.
      * Type: WRITE (network).
      */
-    function postCart(path, body) {
+    function postCart(path, body, noTicket) {
         var key = path + '|' + JSON.stringify(body || {});
         if (inFlight[key]) { return Promise.resolve(DISCARDED); }
         inFlight[key] = true;
-        var ticket = window.CartRender ? window.CartRender.begin() : 0;
+        var ticket = (!noTicket && window.CartRender) ? window.CartRender.begin() : 0;
 
         return fetch(path, {
             method:      'POST',
@@ -225,7 +236,7 @@
             return r.json().catch(function () { return null; });
         }).then(function (env) {
             inFlight[key] = false;
-            if (window.CartRender && window.CartRender.isStale(ticket)) { return DISCARDED; }
+            if (!noTicket && window.CartRender && window.CartRender.isStale(ticket)) { return DISCARDED; }
             return env;
         }).catch(function () {
             inFlight[key] = false;
@@ -1092,7 +1103,7 @@
         // Elements SDK (initCheckoutElementsSdk) and confirm later via
         // checkoutActions.confirm(). No saved cards on a direct charge (the
         // platform Stripe Customer can't be used on a connected account).
-        payElementPromise = postCart('/payment/intent', {}).then(function (env) {
+        payElementPromise = postCart('/payment/intent', {}, true).then(function (env) {
             // This path doesn't go through handleEnvelope, so it never had a
             // silent branch — DISCARDED must keep failing the same way `null`
             // always did here, otherwise it would fall through and read
@@ -1339,7 +1350,7 @@
             origLabel.textContent = 'Confirming payment...';
             var savedPromise = postCart('/cart/pay-saved-card', {
                 payment_method_id: mode.paymentMethodId,
-            }).then(function (env) {
+            }, true).then(function (env) {
                 // Same reasoning as /payment/intent above: no handleEnvelope
                 // here, so fold DISCARDED back to the pre-existing null path.
                 if (env === DISCARDED) { env = null; }
@@ -1401,7 +1412,7 @@
             origLabel.textContent = 'Placing order...';
             var body = { payment_option: 2 };
             if (savedCard) { body.payment_intent_id = paidId; } else { body.session_id = paidId; }
-            return postCart('/order/place', body).then(function (env) {
+            return postCart('/order/place', body, true).then(function (env) {
                 // Same reasoning as /payment/intent above: no handleEnvelope
                 // here, so fold DISCARDED back to the pre-existing null path.
                 if (env === DISCARDED) { env = null; }
@@ -1443,7 +1454,7 @@
         // through the redirect to the confirmation page on success.
         if (window.EatNDealUi && window.EatNDealUi.showLoader) { window.EatNDealUi.showLoader(); }
         var navigating = false;
-        postCart('/order/place', body)
+        postCart('/order/place', body, true)
             .then(function (env) {
                 // Same reasoning as /payment/intent above: no handleEnvelope
                 // here, so fold DISCARDED back to the pre-existing null path.

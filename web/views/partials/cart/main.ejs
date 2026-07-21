@@ -8,6 +8,11 @@
   Why:   Split out of index.ejs so an AJAX update re-renders the real
          template instead of a JS copy that could drift from it.
 %>
+<%# An empty cart has no delivery/payment details to show — the empty-state
+    card lives entirely in partials/cart/side.ejs, so this region simply
+    renders nothing (the wrapping data-cart-region="main" div stays empty,
+    same as a fresh page load). %>
+<% if (cart && cart.items && cart.items.length) { %>
 <% var rest = (typeof cart_restaurant !== 'undefined' && cart_restaurant) ? cart_restaurant : null; %>
         <div class="cart-page__main">
 
@@ -150,3 +155,4 @@
             </section>
 
         </div>
+<% } %>

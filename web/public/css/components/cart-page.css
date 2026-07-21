@@ -31,6 +31,15 @@
     grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
     align-items: start;
 }
+/* Empty cart: the "main" region renders nothing (partials/cart/main.ejs
+   short-circuits), so the grid collapses to a single centred column for
+   the empty-state card that partials/cart/side.ejs renders in its place.
+   Same modifier on first load and after an AJAX swap that empties the
+   cart — index.ejs and CartController.renderCartFragments render the
+   identical class from the same `isEmptyCart`/`cart` check. */
+.cart-page__grid--empty {
+    grid-template-columns: minmax(0, 1fr);
+}
 /* min-width:0 — grid/flex items default to min-width:auto (content-sized),
    which stops the columns shrinking and pushes wide cards off-screen. */
 .cart-page__main { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; }

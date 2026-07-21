@@ -26,6 +26,13 @@
          these popups only make sense on the cart page).
 -%>
 <% var sym = fmt.currencySymbol(brand); %>
+<%# An empty cart has nothing to check out — no schedule/payment/promo state
+    to edit, and a stray "Review order" / "Place order" control would be
+    actionable on nothing. Rendering nothing here (rather than the guard
+    living in the controller) means this partial can be re-rendered
+    unconditionally by renderCartFragments just like main/side, and the
+    empty case is simply "no popups to show", not a render skip. %>
+<% if (cart && cart.items && cart.items.length) { %>
 
 <%# ════════════════════ Review / confirm order popup ════════════════════ %>
 <%# Opened by "Continue to payment". Shows fulfilment + schedule +
@@ -513,3 +520,4 @@
         </footer>
     </div>
 </div>
+<% } %>

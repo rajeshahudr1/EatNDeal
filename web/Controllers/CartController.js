@@ -331,30 +331,18 @@ async function buildCartLocals(req, res) {
  *
  * Output: { main, side, popups } | { noOwner: true } | null
  *         — noOwner means genuinely unauthenticated (no customer/guest
- *         owner at all); null means an owner exists but nothing rendered
- *         (e.g. an empty cart, whose empty-state markup lives in
- *         views/cart/index.ejs, not in these partials). Callers must tell
- *         the two apart instead of treating both as an auth failure.
+ *         owner at all); null means an owner exists but BOTH regions
+ *         failed to render (a genuine render error — see the `!main &&
+ *         !side` check below). An empty cart is no longer this case: the
+ *         empty-state markup lives inside partials/cart/side.ejs (which
+ *         still renders a non-empty string) and partials/cart/main.ejs +
+ *         partials/checkout-popups.ejs simply render nothing for it, same
+ *         as any other cart state. Callers must tell a genuine render
+ *         failure apart from an auth failure.
  */
 async function renderCartFragments(req, res) {
     const built = await buildCartLocals(req, res);
     if (!built.ok) { return { noOwner: true }; }
-
-    // Explicit empty-cart short-circuit (covers BOTH empty states: no open
-    // cart at all, and a cart present with items: []). index.ejs shows the
-    // empty-state shell for either — the partials render neither, so
-    // without this check a `cart: {items: []}` sailed through render() with
-    // no error and came back as a "valid" cart shell (£0.00 totals, a live
-    // Continue CTA) instead of the empty state. Returning null here — the
-    // same value callers already treat as "nothing to swap" — lets both
-    // relayWithFragments (falls back to reload) and fragment (reports the
-    // benign "nothing to render" result) handle it without ever reaching
-    // res.render, so this is also no longer reliant on the render-exception
-    // fallback (cart === null throwing inside the partials) that used to be
-    // the only thing catching this case, and which logged a render failure
-    // on every emptying action.
-    const cart = built.locals && built.locals.cart;
-    if (!cart || !Array.isArray(cart.items) || !cart.items.length) { return null; }
 
     // res.render's callback form returns the string instead of sending it.
     // _layoutFile must be falsy or ejs-locals (the engine this app uses —
@@ -427,16 +415,14 @@ async function relayWithFragments(req, res, apiRes) {
 /**
  * fragment — GET /cart/fragment
  *
- * What:  The two cart regions on demand, for resyncing without a reload
+ * What:  The cart's regions on demand, for resyncing without a reload
  *        (returning to a backgrounded tab, recovering from a failed swap).
- * Why:   `renderCartFragments` returns null for an EMPTY cart (its empty-
- *        state markup lives in views/cart/index.ejs, not in these
- *        partials) just as readily as it does for no owner at all — those
- *        are not the same failure. Only a missing owner is an auth
- *        problem; an empty cart is a benign "nothing to swap" result and
- *        must not be reported as a sign-in failure. `count` (above) uses
- *        the same `status: 200, show: false` shape for its own benign
- *        empty case, so this mirrors that existing convention.
+ * Why:   An empty cart is now a NORMAL fragment result — the empty-state
+ *        markup lives in partials/cart/side.ejs, rendered like any other
+ *        cart state — so `renderCartFragments` returning null here means a
+ *        genuine render failure (both regions came back empty), not "the
+ *        cart is empty". Only a missing owner (html.noOwner) is an auth
+ *        problem.
  * Type:  READ.
  */
 async function fragment(req, res) {
@@ -448,7 +434,7 @@ async function fragment(req, res) {
     try {
         const html = await renderCartFragments(req, res);
         if (html && html.noOwner) { return res.status(200).json({ status: 401, msg: 'Please sign in to use the cart.' }); }
-        if (!html) { return res.status(200).json({ status: 200, show: false, msg: 'Nothing to render — the cart is empty.' }); }
+        if (!html) { return res.status(200).json({ status: 500, msg: 'Could not render the cart.' }); }
         return res.status(200).json({ status: 200, data: { html: html } });
     } catch (err) {
         console.error('[CartController] fragment failed:', err && err.message);
@@ -649,10 +635,37 @@ const setMode = async (req, res) => {
     }
     return relayWithFragments(req, res, apiRes);
 };
-// Charge a saved card for the open cart. The api clones the card onto the
-// restaurant's connected account and confirms ON-SESSION, so the reply may be
-// `requires_action` (3-D Secure) rather than an outright success.
-const paySavedCard = (req, res) => forwardWrite(req, res, '/api/v1/customer/payment/saved-card');
+/**
+ * paySavedCard
+ *
+ * What:  Charges a saved card for the open cart. The api clones the card onto
+ *        the restaurant's connected account and confirms ON-SESSION, so the
+ *        reply may be `requires_action` (3-D Secure) rather than an outright
+ *        success.
+ * Why:   A `requires_action` reply means the charge is still PENDING — the
+ *        cart itself hasn't changed at all yet (the write only lands once the
+ *        customer completes 3DS and /order/place is called). Rendering the
+ *        three fragment templates for that response is pure waste — same
+ *        cart, three re-renders, on every card payment that needs a 3DS
+ *        challenge. A genuinely `succeeded` charge still goes through
+ *        relayWithFragments as normal (forwardWrite's usual behaviour),
+ *        since a real cart write (used loyalty/coupon locking, etc.) may
+ *        have happened alongside it.
+ * Type:  WRITE (proxy).
+ */
+const paySavedCard = async (req, res) => {
+    await claimGuestCart(req);
+    const user = needUser(req, res);
+    if (!user) { return; }
+    const payload = Object.assign({}, req.body, { customer_id: user.id });
+    const apiRes  = await callApi(req, 'POST', '/api/v1/customer/payment/saved-card', payload);
+    syncSessionCount(req, apiRes);
+
+    const data    = apiRes && apiRes.body && apiRes.body.status === 200 && apiRes.body.data;
+    const pending = data && data.status === 'requires_action';
+    if (pending) { return relay(res, apiRes); }
+    return relayWithFragments(req, res, apiRes);
+};
 
 /**
  * setAddress

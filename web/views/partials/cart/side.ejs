@@ -9,6 +9,26 @@
   Why:   Split out of index.ejs so an AJAX update re-renders the real
          template instead of a JS copy that could drift from it.
 %>
+<% var isEmptyCart = !cart || !cart.items || !cart.items.length; %>
+<% if (isEmptyCart) { %>
+        <%# ── Empty state ───────────────────────────────────────────
+            Lives here (not in views/cart/index.ejs) so an emptied cart can
+            be rendered as a fragment like any other cart state — the AJAX
+            swap on the last "Remove" no longer has to fall back to a full
+            reload just because there is nothing left to show. %>
+        <div class="cart-empty">
+            <span class="cart-empty__icon" aria-hidden="true">
+                <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="9" cy="21" r="1.6"/>
+                    <circle cx="18" cy="21" r="1.6"/>
+                    <path d="M2 3h2l2 13h13l2-9H6"/>
+                </svg>
+            </span>
+            <h2 class="cart-empty__title">Your cart is empty</h2>
+            <p class="cart-empty__sub">Pick a restaurant and add a few dishes — your cart will fill up here.</p>
+            <a class="btn btn--primary btn--lg cart-empty__cta" href="/">Browse restaurants</a>
+        </div>
+<% } else { %>
 <% var rest = (typeof cart_restaurant !== 'undefined' && cart_restaurant) ? cart_restaurant : null; %>
         <aside class="cart-page__side" aria-label="Order summary">
 
@@ -52,7 +72,7 @@
                 handlers keep firing through /js/ui/cart.js. A "Clear"
                 button sits in the header (always visible); its click
                 preventDefault stops the <summary> from toggling. %>
-            <details class="ckt-basket">
+            <details class="ckt-basket" data-panel="basket">
                 <summary class="ckt-basket__summary">
                     <span class="ckt-basket__icon" aria-hidden="true">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2l-3 6v13a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8l-3-6z"/><line x1="3" y1="8" x2="21" y2="8"/><path d="M16 12a4 4 0 0 1-8 0"/></svg>
@@ -316,3 +336,21 @@
 
             <p class="ckt-legal">By placing your order, you agree to take full responsibility for it once it's delivered. Orders containing alcohol or other restricted items may not be eligible.</p>
         </aside>
+
+        <%# Mobile sticky CTA — duplicates the desktop CTA so it stays in
+            view while the customer scrolls the long left column. Opens the
+            same review-order confirmation popup. Lives here (not in
+            views/cart/index.ejs) so it disappears on the SAME swap that
+            empties the cart — it used to sit outside the swapped regions,
+            so emptying the cart via AJAX left a live "Continue" CTA
+            pointing at nothing until the page was reloaded. Positioned
+            fixed via CSS, so moving it into this region changes nothing
+            about where it appears on screen. %>
+        <%# aria-hidden removed: this is the ONLY checkout CTA visible on mobile
+            (the desktop .ckt-cta is display:none there), so hiding it from the
+            a11y tree blocked screen-reader users from placing an order. The
+            desktop CTA is hidden from AT correctly via display:none. %>
+        <button type="button" class="ckt-sticky-cta" data-action="ckt-open-confirm">
+            <span data-cart-cta-total>Continue · <%= sym %><%= cart.grandtotal.toFixed(2) %></span>
+        </button>
+<% } %>

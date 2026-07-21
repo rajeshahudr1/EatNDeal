@@ -755,6 +755,7 @@ const {
     cartSetAddressSchema,
     cartSetScheduleSchema,
     cartSetInstructionsSchema,
+    cartSetCookingInstructionsSchema,
     cartApplyCouponSchema,
     cartRemoveCouponSchema,
     cartApplyVoucherSchema,
@@ -818,6 +819,11 @@ router.post('/customer/cart/set-schedule',
 router.post('/customer/cart/set-instructions',
     validate(cartSetInstructionsSchema),
     CartCtl.setInstructions);
+
+// Kitchen note — applies to Delivery AND Pickup (unlike set-instructions).
+router.post('/customer/cart/set-cooking-instructions',
+    validate(cartSetCookingInstructionsSchema),
+    CartCtl.setCookingInstructions);
 
 router.post('/customer/cart/apply-coupon',
     validate(cartApplyCouponSchema),

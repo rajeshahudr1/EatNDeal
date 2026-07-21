@@ -1554,6 +1554,10 @@ function publicCartView(cart, items, opts) {
         dropOffOption:    decodeDropOff(cart.driver_instructions).dropOffOption,
         dropOffLabel:     decodeDropOff(cart.driver_instructions).dropOffLabel,
         driverInstructions: decodeDropOff(cart.driver_instructions).instructions,
+        // The KITCHEN note — a separate thing from the driver note above:
+        // it applies to Pickup as well, and legacy stores it plain on
+        // cart.remark (webordering OrderController.php:179).
+        cookingInstructions: cart.remark || '',
         // scheduledTime is the display-only HH:MM extracted from the
         // pre_order_time timestamp (the legacy `scheduled_time` time
         // column is unused on marketplace carts — we always store the

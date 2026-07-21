@@ -215,6 +215,20 @@ async function nextInternalOrderId(trx, branchId, companyId) {
  *        Empty in, empty out.
  * Type:  READ (pure).
  */
+/**
+ * labelled
+ *
+ * What:  "Cooking" + "no onions" → "Cooking: no onions"; empty text → ''.
+ *        Prefixes each remark part so loadDetail can split the composite
+ *        column back into its own fields (and so the printed ticket says
+ *        what the note IS).
+ * Type:  READ (pure).
+ */
+function labelled(label, text) {
+    const t = String(text || '').trim();
+    return t ? (label + ': ' + t) : '';
+}
+
 function dropOffText(raw) {
     const d = Cart.decodeDropOff(raw);
     if (d.dropOffLabel && d.instructions) { return d.dropOffLabel + ' — ' + d.instructions; }
@@ -345,7 +359,22 @@ async function placeOrder({ customer, cart, branch, items, paymentOption, custom
             // or the kitchen should read. Decode it to the human label before
             // it lands on the order, or the printed note says
             // "[dropoff:meet_outside] ring the bell".
-            remark:            [customerNote, dropOffText(cart.driver_instructions), cart.remark]
+            // Drop-off is a DELIVERY-only concept. Cart.setMode wipes it on a
+            // switch to Pickup, but that only covers the switch itself — a note
+            // seeded from the saved address afterwards (setAddress) still rode
+            // onto collection orders and printed "leave at door" in the
+            // kitchen. Gate on the mode the order is actually placed in.
+            // Each part is LABELLED ("Drop-off: …", "Cooking: …"). The old
+            // format was three bare strings, which loadDetail could not tell
+            // apart, so the order page showed one merged "Note" instead of the
+            // two distinct instructions the customer actually wrote. The
+            // labels also read correctly on the kitchen ticket, which prints
+            // this column raw.
+            remark:            [customerNote,
+                                (Number(cart.serve_type) === 2
+                                    ? ''
+                                    : labelled('Drop-off', dropOffText(cart.driver_instructions))),
+                                labelled('Cooking', cart.remark)]
                                    .map((s) => String(s || '').trim()).filter(Boolean)
                                    .join('  |  ') || null,
             is_pre_order:      Number(cart.is_pre_order) || 0,

@@ -85,7 +85,20 @@ async function list(req, res) {
         if (page > totalPages) { page = totalPages; }
 
         let qb = base()
-            .leftJoin(db(T_ASSIGN).select('category_id').count('* as restaurants').groupBy('category_id').as('a'),
+            // The badge count MUST use the same filter as the popup that opens
+            // when you click it (see `restaurants` below: joined to company,
+            // deleted companies excluded). Counting the raw assign rows made
+            // the row say "2 restaurants" while the popup listed 1 — the
+            // difference was an assignment pointing at a deleted company,
+            // which only shows up on data that HAS deleted companies (live).
+            .leftJoin(
+                db(T_ASSIGN + ' as ax')
+                    .join('company as cx', 'cx.id', 'ax.company_id')
+                    .whereNull('cx.deleted_at')
+                    .select('ax.category_id')
+                    .countDistinct('ax.company_id as restaurants')
+                    .groupBy('ax.category_id')
+                    .as('a'),
                 'a.category_id', T + '.id')
             .select(T + '.id', T + '.name', T + '.slug', T + '.icon', T + '.image',
                     T + '.status', T + '.sort_order', db.raw('COALESCE(a.restaurants, 0) as restaurants'));
@@ -193,6 +206,12 @@ async function save(req, res) {
             updated_at: nowStr(),
         };
         if (b.image) { patch.image = str(b.image).slice(0, 255); }   // new upload filename
+        // remove_image — the admin form's "Remove image" tick. Without it an
+        // uploaded image could never be taken back off: an empty file input
+        // means "keep the current one", so there was no way to fall back to
+        // the emoji icon short of editing the DB. A new upload wins over the
+        // removal (the tick is stale in that case).
+        else if (Number(b.remove_image) === 1) { patch.image = null; }
 
         if (id) {
             const owned = await db(T).where('id', id).first();

@@ -80,6 +80,16 @@
                 <div class="pr-imgupload">
                     <input type="file" name="image" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" data-img-input>
                     <p class="ly-hint">PNG / JPG / WEBP / GIF / SVG, up to 3 MB. <%= isEdit ? 'Leave empty to keep the current image.' : '' %></p>
+                    <%# Remove image — an empty file input means "keep what's
+                        there", so without this tick an uploaded image could
+                        never be taken back off and the emoji icon could never
+                        show again. Only offered when there IS one to remove. %>
+                    <% if (isEdit && p.image_url) { %>
+                    <label class="ly-check">
+                        <input type="checkbox" name="remove_image" value="1">
+                        <span>Remove image (show the emoji icon instead)</span>
+                    </label>
+                    <% } %>
                 </div>
             </div>
         </section>

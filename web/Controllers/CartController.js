@@ -469,6 +469,8 @@ async function setAddress(req, res) {
 }
 const setSchedule  = (req, res) => forwardWrite(req, res, '/api/v1/customer/cart/set-schedule');
 const setInstructions = (req, res) => forwardWrite(req, res, '/api/v1/customer/cart/set-instructions');
+// Kitchen note — shown for both modes (the driver note above is delivery-only).
+const setCookingInstructions = (req, res) => forwardWrite(req, res, '/api/v1/customer/cart/set-cooking-instructions');
 const applyCoupon  = (req, res) => forwardWrite(req, res, '/api/v1/customer/cart/apply-coupon');
 const removeCoupon = (req, res) => forwardWrite(req, res, '/api/v1/customer/cart/remove-coupon');
 const applyVoucher  = (req, res) => forwardWrite(req, res, '/api/v1/customer/cart/apply-voucher');
@@ -481,7 +483,7 @@ module.exports = {
     page, data, count, promotions,
     add,
     addSurpriseBox, updateQty, removeItem, clear,
-    setMode, setAddress, setSchedule, setInstructions, paySavedCard,
+    setMode, setAddress, setSchedule, setInstructions, setCookingInstructions, paySavedCard,
     applyCoupon, removeCoupon, applyVoucher, removeVoucher,
     applyLoyalty, removeLoyalty, setCharity,
 };

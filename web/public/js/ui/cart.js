@@ -831,6 +831,36 @@
         if (pCta) { pCta.textContent = ' · ' + fmtMoney(cart.grandtotal); }
     }
 
+    /**
+     * onSaveCooking
+     *
+     * What:  Persists the kitchen note (cart.remark) via
+     *        /cart/set-cooking-instructions. Separate endpoint from the
+     *        driver drop-off note — this one applies to Pickup too, so it
+     *        must NOT ride on the delivery-instructions save.
+     * Type:  WRITE.
+     */
+    function onSaveCooking(ev, btn) {
+        ev.preventDefault();
+        var box = document.querySelector('[data-ckt-cooking-note]');
+        if (!box) { return; }
+        btn.disabled = true;
+        postCart('/cart/set-cooking-instructions', { instructions: box.value.trim().slice(0, 250) })
+            .then(function (env) {
+                btn.disabled = false;
+                handleEnvelope(env);
+            });
+    }
+
+    // Live character counter — the textarea is capped at 250 (legacy's
+    // maxlength), and a silent cap reads as the field eating input.
+    document.addEventListener('input', function (ev) {
+        var box = ev.target && ev.target.closest && ev.target.closest('[data-ckt-cooking-note]');
+        if (!box) { return; }
+        var out = document.querySelector('[data-ckt-cooking-count]');
+        if (out) { out.textContent = String(box.value.length); }
+    });
+
     function saveCharity(amount, btn) {
         if (btn) { btn.disabled = true; }
         postCart('/cart/set-charity', { charity_amount: amount }).then(function (env) {
@@ -1414,6 +1444,7 @@
             case 'cart-remove-loyalty': return onRemoveLoyalty(ev, btn);
             case 'cart-charity':        return onCharity(ev, btn);
             case 'cart-charity-custom': return onCharityCustom(ev, btn);
+            case 'ckt-save-cooking':    return onSaveCooking(ev, btn);
             case 'cart-set-pay':        return onCartSetPay(ev, btn);
             case 'cart-checkout':       return onCartCheckout(ev, btn);
         }

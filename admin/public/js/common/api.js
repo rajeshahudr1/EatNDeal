@@ -21,8 +21,21 @@
     }
 
     // GET JSON; same envelope/fallback contract as post().
+    //
+    // Always hits the server. These GETs read data the admin has JUST
+    // changed (assign restaurants, then reopen the count popup), so a
+    // cached copy shows the OLD list and the change looks lost until a
+    // couple of page refreshes. Three layers, because on live a proxy/CDN
+    // sits in front and only one of them is under our control:
+    //   • cache: 'no-store'     — the browser's HTTP cache
+    //   • Cache-Control header  — asks intermediaries not to serve a copy
+    //   • _ts cache-buster      — defeats anything that ignores both
     function getJson(url) {
-        return fetch(url, { headers: { Accept: 'application/json' } })
+        var bust = (url.indexOf('?') === -1 ? '?' : '&') + '_ts=' + Date.now();
+        return fetch(url + bust, {
+            cache: 'no-store',
+            headers: { Accept: 'application/json', 'Cache-Control': 'no-cache' },
+        })
             .then(function (r) { return r.json().catch(function () { return { status: 0, msg: 'Bad response.' }; }); })
             .catch(function () { return { status: 0, msg: 'Could not reach the server.' }; });
     }

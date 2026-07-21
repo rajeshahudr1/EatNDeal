@@ -697,6 +697,7 @@ app.post('/cart/set-address',  CartController.setAddress);
 app.post('/cart/pay-saved-card', CartController.paySavedCard);
 app.post('/cart/set-schedule', CartController.setSchedule);
 app.post('/cart/set-instructions', CartController.setInstructions);
+app.post('/cart/set-cooking-instructions', CartController.setCookingInstructions);
 app.post('/cart/apply-coupon', CartController.applyCoupon);
 app.post('/cart/remove-coupon',CartController.removeCoupon);
 app.post('/cart/apply-voucher', CartController.applyVoucher);

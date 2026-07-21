@@ -197,6 +197,28 @@
                 <% } %>
             </section>
 
+            <%# ── Cooking instructions card ───────────────────────
+                Legacy parity (webordering checkout.php "Add Cooking
+                Instructions" → cart.remark). Deliberately OUTSIDE the
+                delivery card and shown for BOTH modes: the kitchen cooks
+                the food whether the customer collects it or not. The
+                driver drop-off row above stays delivery-only. %>
+            <section class="ckt-card" aria-label="Cooking instructions">
+                <header class="ckt-card__head">
+                    <h2 class="ckt-card__title">Cooking instructions</h2>
+                </header>
+                <div class="ckt-cook">
+                    <label class="ckt-cook__label" for="ckt-cooking-note">Anything the kitchen should know? (optional)</label>
+                    <textarea id="ckt-cooking-note" class="ckt-cook__input" rows="3" maxlength="250"
+                              placeholder="e.g. no onions, make it mild"
+                              data-ckt-cooking-note><%= cart.cookingInstructions || '' %></textarea>
+                    <div class="ckt-cook__foot">
+                        <span class="ckt-cook__count"><span data-ckt-cooking-count><%= (cart.cookingInstructions || '').length %></span>/250</span>
+                        <button type="button" class="ckt-cook__save" data-action="ckt-save-cooking">Save</button>
+                    </div>
+                </div>
+            </section>
+
             <%# ── Payment card ───────────────────────────────────── %>
             <section class="ckt-card" aria-label="Payment">
                 <header class="ckt-card__head">

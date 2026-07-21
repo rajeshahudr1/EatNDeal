@@ -1010,6 +1010,42 @@ async function setInstructions(req, res) {
 }
 
 /**
+ * setCookingInstructions
+ *
+ * What:  Saves the customer's note for the KITCHEN ("no onions", "make it
+ *        mild") onto the open cart. Legacy parity: webordering
+ *        OrderController.php:179 writes the checkout's
+ *        `cooking_instructions` textarea straight to `cart.remark`, so we
+ *        use the same column — orderPlace already folds cart.remark into
+ *        the order's remark.
+ * Why:   This is NOT the driver note. driver_instructions is a DELIVERY
+ *        drop-off preset ("leave at door") and is dropped on Pickup;
+ *        cooking instructions apply to both modes — the kitchen cooks the
+ *        food either way.
+ * Type:  WRITE.
+ *
+ * Body:   customer_id, instructions?  (max 250 — legacy's maxlength)
+ */
+async function setCookingInstructions(req, res) {
+    try {
+        const customerId = req.body.customer_id;
+
+        const { error } = await customers.loadMarketplaceCustomer(customerId);
+        if (error) { return H.errorResponse(res, error.msg, error.status); }
+
+        const open = await Cart.findOpenCart(customerId);
+        if (!open) { return H.errorResponse(res, 'Your cart is no longer available.', 404); }
+
+        const note = String(req.body.instructions || '').trim().slice(0, 250);
+        await db('cart').where({ id: open.id }).update({ remark: note || null });
+        return respondWithCart(res, open.id, customerId, 'Cooking instructions saved.');
+    } catch (err) {
+        H.log.error('cart.setCookingInstructions', err && err.message);
+        return H.errorResponse(res, MSG.server.oops, 500);
+    }
+}
+
+/**
  * applyCoupon
  *
  * What:  Validates a promo code against Helpers/coupons.validate() then,
@@ -1294,8 +1330,33 @@ async function count(req, res) {
         }
 
         const open = await Cart.findOpenCart(owner.scope);
-        const n = open ? (Number(open.total_qty) || 0) : 0;
-        return H.successResponse(res, { count: n });
+        if (!open) { return H.successResponse(res, { count: 0 }); }
+
+        // The badge must agree with what /cart actually RENDERS. It used to
+        // read cart.total_qty straight off the row, so a cart whose
+        // restaurant was since disabled/deleted showed "1" in the header
+        // while the page said "Your cart is empty" — the customer sees a
+        // phantom item they can't open. Re-derive the count the same way
+        // the page does: branch must still be live, and only lines whose
+        // product is still surfaceable count.
+        const branch = await M.loadActiveBranch(open.branch_id);
+        if (!branch) { return H.successResponse(res, { count: 0 }); }
+
+        const rows = await db('cart_details as cd')
+            .leftJoin('products as p', 'p.id', 'cd.product_id')
+            .where('cd.cart_id', open.id)
+            .andWhere('cd.is_deleted', 0)
+            // Surprise Box lines have no products row — keep them.
+            .andWhere(function () {
+                this.where('cd.is_surprise_item', 1)
+                    .orWhere(function () {
+                        this.where('p.show_marketplace', 1).whereIn('p.status', A.SURFACE_STATUSES);
+                    });
+            })
+            .sum({ qty: 'cd.product_qty' })
+            .first();
+
+        return H.successResponse(res, { count: Number(rows && rows.qty) || 0 });
     } catch (err) {
         H.log.error('cart.count', err && err.message);
         return H.errorResponse(res, MSG.server.oops, 500);
@@ -1479,4 +1540,4 @@ async function addSurpriseBox(req, res) {
     }
 }
 
-module.exports = { get, count, claim, promotions, add, addSurpriseBox, updateQty, removeItem, clear, setMode, setAddress, setSchedule, setInstructions, applyCoupon, removeCoupon, applyVoucher, removeVoucher, applyLoyalty, removeLoyalty, setCharity };
+module.exports = { get, count, claim, promotions, add, addSurpriseBox, updateQty, removeItem, clear, setMode, setAddress, setSchedule, setInstructions, setCookingInstructions, applyCoupon, removeCoupon, applyVoucher, removeVoucher, applyLoyalty, removeLoyalty, setCharity };

@@ -254,20 +254,32 @@ async function loadDetail(orderId, customerId) {
             const parts = String(order.remark || '').split('  |  ').map((s) => s.trim()).filter(Boolean);
             let dropOffLabel = '';
             let driverInstructions = '';
+            let cookingInstructions = '';
             const noteParts = [];
             parts.forEach((p) => {
+                // Current format — orderPlace labels each part.
+                const m = p.match(/^(Drop-off|Cooking):\s*([\s\S]*)$/);
+                if (m) {
+                    if (m[1] === 'Cooking') { cookingInstructions = m[2].trim(); }
+                    else { driverInstructions = m[2].trim(); }
+                    return;
+                }
+                // Legacy orders placed before the labels existed still carry
+                // the raw `[dropoff:…]` tag — keep decoding those so old
+                // order pages don't lose their drop-off line.
                 if (/^\[dropoff:/.test(p)) {
                     const dec = Cart.decodeDropOff(p);
                     dropOffLabel = dec.dropOffLabel;
                     driverInstructions = dec.instructions;
-                } else {
-                    noteParts.push(p);
+                    return;
                 }
+                noteParts.push(p);
             });
             return {
                 remark: noteParts.join(' · '),
                 dropOffLabel,
                 driverInstructions,
+                cookingInstructions,
             };
         })(),
         customerName:     ((order.customer_first_name || '') + ' ' + (order.customer_last_name || '')).trim(),

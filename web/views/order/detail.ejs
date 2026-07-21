@@ -124,7 +124,18 @@
                 <% }); %>
             </ol>
 
-            <%# Customer note -%>
+            <%# Instructions the customer left. Three DISTINCT things, shown
+                separately — they were being merged into one "Note" line:
+                  • Cooking  — for the kitchen, on both serve types
+                  • Drop-off — for the driver, delivery orders only
+                  • Note     — anything else on the order (legacy rows) -%>
+            <% if (order.cookingInstructions) { %>
+            <p class="order-detail__note"><strong>Cooking instructions:</strong> <%= order.cookingInstructions %></p>
+            <% } %>
+            <% if (order.serveType !== 2 && (order.dropOffLabel || order.driverInstructions)) { %>
+            <p class="order-detail__note"><strong>Driver instructions:</strong>
+                <%= [order.dropOffLabel, order.driverInstructions].filter(Boolean).join(' — ') %></p>
+            <% } %>
             <% if (order.remark) { %>
             <p class="order-detail__note"><strong>Note:</strong> <%= order.remark %></p>
             <% } %>

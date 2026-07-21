@@ -221,6 +221,16 @@ const cartSetInstructionsSchema = Joi.object({
         .messages({ 'string.max': 'Delivery instructions are too long.' }),
 });
 
+// ── POST /customer/cart/set-cooking-instructions ───────────────────
+// The KITCHEN note ("no onions"), stored on cart.remark. Separate from
+// the driver drop-off above — this one applies to Pickup too. 250 chars
+// matches legacy checkout.php's textarea maxlength.
+const cartSetCookingInstructionsSchema = Joi.object({
+    customer_id:  customerIdRule,
+    instructions: Joi.string().trim().max(250).allow('', null)
+        .messages({ 'string.max': 'Cooking instructions are too long (250 characters max).' }),
+});
+
 // ── POST /customer/cart/apply-voucher ──────────────────────────────
 // Customer-specific reward voucher. Code is up to 10 chars (legacy
 // customer_voucher.voucher_code max). Validation + discount math run in
@@ -295,6 +305,7 @@ module.exports = {
     cartSetAddressSchema,
     cartSetScheduleSchema,
     cartSetInstructionsSchema,
+    cartSetCookingInstructionsSchema,
     cartApplyCouponSchema,
     cartRemoveCouponSchema,
     cartApplyVoucherSchema,

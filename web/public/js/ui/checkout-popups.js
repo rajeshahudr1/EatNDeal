@@ -363,8 +363,19 @@
                 body: JSON.stringify({ code: code }),
             }).then(function (r) { return r.json().catch(function () { return null; }); })
               .then(function (env) {
-                  if (env && env.status === 200) { window.location.reload(); }
-                  else if (window.EatNDealUi && window.EatNDealUi.showToast) {
+                  if (env && env.status === 200) {
+                      // Close first — the popups region only refreshes while
+                      // no popup is open, and closing here doesn't depend on
+                      // anything the swap is about to replace.
+                      close();
+                      // Same rule as cart.js: swap when the server sent the
+                      // regions, reload only if it did not.
+                      if (!(env.data && env.data.html && window.CartRender && window.CartRender.swap(env.data.html))) {
+                          window.location.reload();
+                      }
+                      return;
+                  }
+                  if (window.EatNDealUi && window.EatNDealUi.showToast) {
                       window.EatNDealUi.showToast('error', (env && env.msg) || 'Could not apply that code.');
                   }
               });
@@ -394,7 +405,19 @@
             body: JSON.stringify({ drop_off_option: dropoff, instructions: instructions }),
         }).then(function (r) { return r.json().catch(function () { return null; }); })
           .then(function (env) {
-              if (env && env.status === 200) { window.location.reload(); return; }
+              if (env && env.status === 200) {
+                  if (sheet) { sheet.classList.remove('is-busy'); }
+                  // Close first — the popups region only refreshes while no
+                  // popup is open, and closing here doesn't depend on
+                  // anything the swap is about to replace.
+                  close();
+                  // Same rule as cart.js: swap when the server sent the
+                  // regions, reload only if it did not.
+                  if (!(env.data && env.data.html && window.CartRender && window.CartRender.swap(env.data.html))) {
+                      window.location.reload();
+                  }
+                  return;
+              }
               if (sheet) { sheet.classList.remove('is-busy'); }
               if (window.EatNDealUi && window.EatNDealUi.showToast) {
                   window.EatNDealUi.showToast('error', (env && env.msg) || 'Could not save instructions.');

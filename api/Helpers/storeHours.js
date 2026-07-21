@@ -27,6 +27,10 @@
  */
 
 const { db } = require('../config/db');
+// One clock for the whole app — opening hours, the trading day and every
+// displayed date/time. See config/params.js (the port of legacy params.php).
+const { TRADING_TZ } = require('../config/params');
+const DISPLAY_TZ = TRADING_TZ;
 
 const SERVICE = { TAKEAWAY: 2, DELIVERY: 3 };
 
@@ -42,8 +46,9 @@ function clockMin(t) {                       // "HH:MM[:SS]" → minutes-of-day
 // identical whether the api runs locally (e.g. IST) or on the live server
 // (UTC). Without this, the same restaurant shows "Open" on a UK/IST machine
 // but "Closed" on a UTC server (the `new Date()` clock differs). Override with
-// STORE_TZ if the brand ever operates outside the UK.
-const STORE_TZ = process.env.STORE_TZ || 'Europe/London';
+// config/params.js if the brand ever operates outside the UK — one constant,
+// so opening hours, the trading day and every displayed time share a clock.
+const STORE_TZ = TRADING_TZ;
 const _DOW = { Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 7 };
 // Current date/time parts in STORE_TZ, independent of the server clock.
 function nowParts() {
@@ -142,10 +147,6 @@ function reopenTimestamp(datePart, timePart) {
     const ts = Date.parse(d + 'T' + t);
     return Number.isFinite(ts) ? ts : null;
 }
-// Customer-facing dates/times are UK local — the business trades in the UK and
-// the Node process timezone is not something we control on every host.
-const DISPLAY_TZ = process.env.DISPLAY_TIMEZONE || 'Europe/London';
-
 function branchName(branch) { return (branch && (branch.name || branch.branch_name)) ? String(branch.name || branch.branch_name) : ''; }
 function defaultMsg(branch) {
     return (branchName(branch) || 'The restaurant') + ' is currently closed for online orders.';

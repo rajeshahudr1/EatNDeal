@@ -59,7 +59,10 @@ function fmtDate(d) {
 // with no zone follows whatever the Node process is set to, which silently
 // mis-stated every order time by the offset between that and London (and by an
 // hour again through BST). Europe/London handles GMT/BST automatically.
-const UK_TZ = process.env.DISPLAY_TIMEZONE || 'Europe/London';
+// Fixed, not configurable — the business trades in the UK, the same way
+// legacy hardcodes its trading constants in params.php. The api twin is
+// config/params.js TRADING_TZ; keep the two in step.
+const UK_TZ = 'Europe/London';
 
 /**
  * fmtDateTime / fmtTime — a UTC timestamp rendered in UK local time.

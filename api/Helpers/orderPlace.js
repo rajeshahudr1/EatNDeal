@@ -146,6 +146,60 @@ function deliveryEstimatedTime(branch, serveType) {
                                    : (branch.delivery_waiting_time || null);
 }
 
+/*
+ * ── Trading day ──────────────────────────────────────────────────────
+ * A restaurant's "day" does not end at midnight — it ends at SHOP_CLOSE_TIME
+ * (legacy params.php: 06:00:00), so a 2am order still belongs to the evening
+ * that produced it. Legacy's shopOpenCloseTime() builds that window; this is
+ * the same rule, evaluated in UK local time rather than the server's, since
+ * the boundary is a UK trading boundary.
+ */
+// From config/params.js — the port of legacy params.php, which is where
+// legacy reads SHOP_CLOSE_TIME from (Yii::$app->params). Not env, not
+// per-branch: one app-wide constant, same as legacy.
+const { SHOP_CLOSE_TIME, TRADING_TZ } = require('../config/params');
+
+function tradingWindow(now) {
+    const d = now || new Date();
+    // "now" as seen in the UK — both the date and the clock time.
+    const ymd  = d.toLocaleDateString('en-CA', { timeZone: TRADING_TZ });          // YYYY-MM-DD
+    const hms  = d.toLocaleTimeString('en-GB', { timeZone: TRADING_TZ, hour12: false });
+    const shift = (isoDate, days) => {
+        const t = new Date(isoDate + 'T00:00:00Z');
+        t.setUTCDate(t.getUTCDate() + days);
+        return t.toISOString().slice(0, 10);
+    };
+    // Before today's close time ⇒ we are still inside YESTERDAY's trading day.
+    const beforeClose = hms < SHOP_CLOSE_TIME;
+    const openDate  = beforeClose ? shift(ymd, -1) : ymd;
+    const closeDate = beforeClose ? ymd            : shift(ymd, 1);
+    return {
+        open:  openDate  + ' ' + SHOP_CLOSE_TIME,
+        close: closeDate + ' ' + SHOP_CLOSE_TIME,
+    };
+}
+
+/**
+ * nextInternalOrderId
+ *
+ * What:  The branch's next kitchen-facing order number for the CURRENT trading
+ *        day — legacy Commonquery::getOrderInternalId. MAX(+1) inside the
+ *        window, or 1 when the branch has no orders yet today.
+ *        `created_at` is timestamptz, so it is compared in UK local time to
+ *        match the window we just built.
+ * Type:  READ (inside the place-order transaction).
+ */
+async function nextInternalOrderId(trx, branchId, companyId) {
+    const w = tradingWindow(new Date());
+    const row = await trx('orders')
+        .where({ branch_id: branchId, company_id: companyId })
+        .andWhereRaw("(created_at AT TIME ZONE ?) >= ?::timestamp", [TRADING_TZ, w.open])
+        .andWhereRaw("(created_at AT TIME ZONE ?) <  ?::timestamp", [TRADING_TZ, w.close])
+        .max('internal_order_id as max')
+        .first();
+    return (Number(row && row.max) || 0) + 1;
+}
+
 /**
  * placeOrder
  *
@@ -189,14 +243,12 @@ async function placeOrder({ customer, cart, branch, items, paymentOption, custom
     const usedCashback = Math.round((Number(cart.used_cashback) || 0) * 100) / 100;
 
     return db.transaction(async (trx) => {
-        // ── 1. Sequential internal_order_id per branch. ─────────────
-        // (No inventory step — product availability is status-driven, not
-        // stock-counted, so there is nothing to decrement / reserve.)
-        const lastRow = await trx('orders')
-            .where('branch_id', branch.id)
-            .max('internal_order_id as max')
-            .first();
-        const internalOrderId = (Number(lastRow && lastRow.max) || 0) + 1;
+        // ── 1. Sequential internal_order_id — per branch, per TRADING DAY.
+        // Legacy Commonquery::getOrderInternalId scopes the MAX() to the
+        // shop's trading window (shopOpenCloseTime), so the counter restarts
+        // at 1 each day and the kitchen sees "order 7", not "order 507".
+        // Ours was an all-time MAX per branch, which never reset.
+        const internalOrderId = await nextInternalOrderId(trx, branch.id, cart.company_id);
 
         const orderNumber = generateOrderNumber(now);
         const orderStatus = resolveOrderStatus(branch, cart.serve_type);

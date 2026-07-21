@@ -43,7 +43,10 @@ const H    = require('./helper');
 // files sit beside its existing ones. Add a key here when a new feature needs
 // a folder — never hardcode a folder string at a call site.
 const FOLDERS = Object.freeze({
-    reviews:   'reviews',          // review / share screenshots (this task)
+    // Folder name is SINGULAR to match the legacy server's own layout
+    // (<company>/review/…). The key stays plural because that is what call
+    // sites already pass — only the folder on disk changed.
+    reviews:   'review',           // review / share screenshots
     products:  'products',         // product images (future)
     category:  'category',         // marketplace categories
     surprise:  'surprise_image',   // Surprise Box photo

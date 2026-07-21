@@ -1,0 +1,152 @@
+<%#
+  partials/cart/main.ejs
+
+  What:  Cart page LEFT column — Delivery/Pickup details, Cooking
+         instructions, Payment. Rendered both by views/cart/index.ejs on
+         first paint and by CartController.renderCartFragments() after every
+         AJAX action, so this file is the single source of that markup.
+  Why:   Split out of index.ejs so an AJAX update re-renders the real
+         template instead of a JS copy that could drift from it.
+%>
+<% var rest = (typeof cart_restaurant !== 'undefined' && cart_restaurant) ? cart_restaurant : null; %>
+        <div class="cart-page__main">
+
+            <%# ── Delivery details card ───────────────────────────── %>
+            <section class="ckt-card" aria-label="Delivery details">
+                <header class="ckt-card__head">
+                    <h2 class="ckt-card__title"><%= cart.serveType === 2 ? 'Pickup details' : 'Delivery details' %></h2>
+                    <%# Only show the modes THIS restaurant offers (config-level,
+                        from cart.canDelivery / cart.canPickup). A single-mode
+                        restaurant shows just its one tab (no toggle to a mode it
+                        doesn't do). Both default true when unknown. %>
+                    <% var __canDel = cart.canDelivery !== false; var __canPick = cart.canPickup !== false; %>
+                    <div class="ckt-mode<%= (__canDel && __canPick) ? '' : ' ckt-mode--single' %>" role="tablist" aria-label="Order type">
+                        <% if (__canDel) { %>
+                        <button type="button" class="ckt-mode__tab<%= cart.serveType === 3 ? ' is-active' : '' %>" data-action="cart-set-mode" data-mode="3" role="tab" aria-selected="<%= cart.serveType === 3 ? 'true' : 'false' %>">Delivery</button>
+                        <% } %>
+                        <% if (__canPick) { %>
+                        <button type="button" class="ckt-mode__tab<%= cart.serveType === 2 ? ' is-active' : '' %>" data-action="cart-set-mode" data-mode="2" role="tab" aria-selected="<%= cart.serveType === 2 ? 'true' : 'false' %>">Pickup</button>
+                        <% } %>
+                    </div>
+                </header>
+
+                <% if (cart.serveType === 3) { %>
+                <div class="ckt-row" data-cart-addresses>
+                    <span class="ckt-row__icon ckt-row__icon--pin" aria-hidden="true">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s7-7.5 7-13a7 7 0 0 0-14 0c0 5.5 7 13 7 13z"/><circle cx="12" cy="9" r="2.5"/></svg>
+                    </span>
+                    <div class="ckt-row__body">
+                        <p class="ckt-row__title"><%= (selected && (selected.label || (selected.addressType ? selected.addressType.charAt(0).toUpperCase() + selected.addressType.slice(1) : ''))) || cart.deliveryLabel || 'Delivery address' %></p>
+                        <p class="ckt-row__sub"><%= cart.deliveryAddress || 'Pick a delivery address to see the fee.' %></p>
+                    </div>
+                    <button type="button" class="ckt-row__edit" data-action="ckt-open-address">Edit</button>
+                </div>
+
+                <%# Drop-off / delivery instructions row — delivery only. %>
+                <div class="ckt-row" data-cart-instructions>
+                    <span class="ckt-row__icon" aria-hidden="true">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                    </span>
+                    <div class="ckt-row__body">
+                        <p class="ckt-row__title"><%= cart.dropOffLabel || 'Drop-off options' %></p>
+                        <p class="ckt-row__sub" data-ckt-instr-sub>
+                            <% if (cart.driverInstructions) { %><%= cart.driverInstructions %><% } else if (cart.dropOffLabel) { %>Add delivery instructions<% } else { %>Add delivery instructions<% } %>
+                        </p>
+                    </div>
+                    <button type="button" class="ckt-row__edit" data-action="ckt-open-instructions">Edit</button>
+                </div>
+                <% } else { %>
+                <div class="ckt-row">
+                    <span class="ckt-row__icon ckt-row__icon--pin" aria-hidden="true">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/></svg>
+                    </span>
+                    <div class="ckt-row__body">
+                        <p class="ckt-row__title">Collect from</p>
+                        <p class="ckt-row__sub"><%= rest && rest.address ? rest.address : (rest && rest.name) ? rest.name : 'Restaurant' %></p>
+                    </div>
+                </div>
+                <% } %>
+
+                <%# Schedule ("When") row — legacy parity: only shown when the
+                    restaurant is closed-now + accepts pre-orders + has slots
+                    (cart.canSchedule), or when a pre-order time is already set.
+                    An OPEN restaurant is ASAP-only, so this row is hidden. %>
+                <% if (cart.canSchedule || cart.isPreOrder) { %>
+                <div class="ckt-row" data-cart-sched>
+                    <span class="ckt-row__icon" aria-hidden="true">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>
+                    </span>
+                    <div class="ckt-row__body">
+                        <p class="ckt-row__title">When</p>
+                        <p class="ckt-row__sub" data-cart-sched-display>
+                            <% if (cart.isPreOrder && cart.preOrderTime) { %>
+                                Scheduled for <%= fmt.fmtDateTime(cart.preOrderTime) %>
+                            <% } else { %>
+                                <%= cart.serveType === 2 ? 'ASAP — pickup as soon as ready' : 'ASAP — deliver as soon as ready' %>
+                            <% } %>
+                        </p>
+                    </div>
+                    <button type="button" class="ckt-row__edit" data-action="ckt-open-schedule">Edit</button>
+                </div>
+                <% } %>
+            </section>
+
+            <%# ── Cooking instructions card ───────────────────────
+                Legacy parity (webordering checkout.php "Add Cooking
+                Instructions" → cart.remark). Deliberately OUTSIDE the
+                delivery card and shown for BOTH modes: the kitchen cooks
+                the food whether the customer collects it or not. The
+                driver drop-off row above stays delivery-only. %>
+            <section class="ckt-card" aria-label="Cooking instructions">
+                <header class="ckt-card__head">
+                    <h2 class="ckt-card__title">Cooking instructions</h2>
+                </header>
+                <div class="ckt-cook">
+                    <label class="ckt-cook__label" for="ckt-cooking-note">Anything the kitchen should know? (optional)</label>
+                    <textarea id="ckt-cooking-note" class="ckt-cook__input" rows="3" maxlength="250"
+                              placeholder="e.g. no onions, make it mild"
+                              data-ckt-cooking-note><%= cart.cookingInstructions || '' %></textarea>
+                    <div class="ckt-cook__foot">
+                        <span class="ckt-cook__count"><span data-ckt-cooking-count><%= (cart.cookingInstructions || '').length %></span>/250</span>
+                        <button type="button" class="ckt-cook__save" data-action="ckt-save-cooking">Save</button>
+                    </div>
+                </div>
+            </section>
+
+            <%# ── Payment card ───────────────────────────────────── %>
+            <section class="ckt-card" aria-label="Payment">
+                <header class="ckt-card__head">
+                    <h2 class="ckt-card__title">Payment</h2>
+                </header>
+
+                <%# Pay with Cash OR Card — an EXPLICIT choice; no card is
+                    auto-selected (legacy webordering shows Cash first too).
+                    Cash needs no popup; Card opens the card picker (and the
+                    card popup no longer carries a Cash row). JS reads
+                    [data-ckt-pay-mode] for the active selection. %>
+                <% var cashLbl = 'Pay on ' + (cart.serveType === 2 ? 'pickup' : 'delivery'); %>
+                <div class="ckt-paychoice" data-cart-pay data-stripe-key="<%= stripe_publishable_key %>" data-ckt-pay-mode="cash">
+                    <button type="button" class="ckt-paytile is-active" data-action="ckt-pick-cash" data-paytile="cash">
+                        <span class="ckt-paytile__icon" aria-hidden="true">
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="3"/></svg>
+                        </span>
+                        <span class="ckt-paytile__txt">
+                            <span class="ckt-paytile__label">Cash</span>
+                            <span class="ckt-paytile__sub"><%= cashLbl %></span>
+                        </span>
+                    </button>
+                    <% if (stripeOn) { %>
+                    <button type="button" class="ckt-paytile" data-action="ckt-open-payment" data-paytile="card">
+                        <span class="ckt-paytile__icon" aria-hidden="true">
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+                        </span>
+                        <span class="ckt-paytile__txt">
+                            <span class="ckt-paytile__label" data-ckt-pay-title>Card</span>
+                            <span class="ckt-paytile__sub" data-ckt-pay-sub>Choose a card</span>
+                        </span>
+                    </button>
+                    <% } %>
+                </div>
+            </section>
+
+        </div>

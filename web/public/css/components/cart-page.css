@@ -36,6 +36,12 @@
 .cart-page__main { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; }
 .cart-page__side { display: flex; flex-direction: column; gap: var(--space-3); position: sticky; top: 96px; min-width: 0; }
 
+/* Swap targets for the AJAX cart update — they must be layout-transparent so
+   the existing two-column grid still sees .cart-page__main / __side as its
+   direct children's box. */
+.cart-page__main-wrap,
+.cart-page__side-wrap { display: contents; }
+
 @media (max-width: 899px) {
     /* minmax(0, 1fr), NOT a bare 1fr — the single mobile column must be able
        to shrink to the viewport, else a long address stretches it wider than

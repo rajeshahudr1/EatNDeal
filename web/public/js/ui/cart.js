@@ -190,17 +190,28 @@
     // is the case we actually want to guard against (double-tap "Apply").
     var inFlight = {};
 
+    // DISCARDED — private sentinel for the two "say nothing, this was a
+    // deliberate no-op" outcomes below (duplicate call already in flight,
+    // or response superseded by a newer request). It is deliberately NOT
+    // the same value as a genuine failure: `null` is reserved for that.
+    // Do not collapse the two back into one value — handleEnvelope relies
+    // on telling them apart to decide whether to toast an error.
+    var DISCARDED = {};
+
     /**
-     * postCart — POST a cart action. Rejects (resolves null, no request
-     * sent) a repeat call for the same (url, body) while one is already
-     * running, and discards a response that a newer request has already
-     * superseded (per window.CartRender's stale-ticket check), so two
-     * taps can never land their responses out of order.
+     * postCart — POST a cart action. Resolves the DISCARDED sentinel (no
+     * request sent, and no error) for a repeat call for the same (url,
+     * body) while one is already running, and for a response that a newer
+     * request has already superseded (per window.CartRender's stale-ticket
+     * check), so two taps can never land their responses out of order.
+     * Resolves null — a genuine failure — when the network request itself
+     * fails (fetch rejects) or the response body can't be parsed as JSON
+     * (e.g. a 500 HTML error page, a truncated body).
      * Type: WRITE (network).
      */
     function postCart(path, body) {
         var key = path + '|' + JSON.stringify(body || {});
-        if (inFlight[key]) { return Promise.resolve(null); }
+        if (inFlight[key]) { return Promise.resolve(DISCARDED); }
         inFlight[key] = true;
         var ticket = window.CartRender ? window.CartRender.begin() : 0;
 
@@ -210,10 +221,11 @@
             headers:     { 'Content-Type': 'application/json', 'Accept': 'application/json' },
             body:        JSON.stringify(body || {}),
         }).then(function (r) {
+            // JSON parse failure is a genuine failure, not a discard.
             return r.json().catch(function () { return null; });
         }).then(function (env) {
             inFlight[key] = false;
-            if (window.CartRender && window.CartRender.isStale(ticket)) { return null; }
+            if (window.CartRender && window.CartRender.isStale(ticket)) { return DISCARDED; }
             return env;
         }).catch(function () {
             inFlight[key] = false;
@@ -227,10 +239,13 @@
         // The request has settled (it will reload, error, or conflict) — tell any
         // open checkout popup to drop its "busy" state so it never hangs.
         document.dispatchEvent(new CustomEvent('ckt:settle-done'));
-        // null = the request was skipped (already in flight for the same
-        // action) or its response was superseded by a newer one. Neither
-        // is an error — say nothing and just leave the screen as-is.
-        if (env === null) { return false; }
+        // DISCARDED = the request was skipped (already in flight for the
+        // same action) or its response was superseded by a newer one.
+        // Neither is an error — say nothing and just leave the screen as-is.
+        if (env === DISCARDED) { return false; }
+        // null (and any other falsy value) = a genuine failure: fetch()
+        // rejected, or the response body wasn't valid JSON. Keep toasting
+        // this exactly as before — do not fold it into the DISCARDED case.
         if (!env) { toast('error', 'Could not reach the server.'); return false; }
         if (env.status === 401) {
             // opts.authMessage — for small, optional tweaks (charity tier)
@@ -1064,6 +1079,11 @@
         // checkoutActions.confirm(). No saved cards on a direct charge (the
         // platform Stripe Customer can't be used on a connected account).
         payElementPromise = postCart('/payment/intent', {}).then(function (env) {
+            // This path doesn't go through handleEnvelope, so it never had a
+            // silent branch — DISCARDED must keep failing the same way `null`
+            // always did here, otherwise it would fall through and read
+            // properties off the {} sentinel as if it were a real envelope.
+            if (env === DISCARDED) { env = null; }
             if (!env || env.status !== 200 || !env.data || !env.data.clientSecret) {
                 throw new Error((env && env.msg) || 'Could not start the payment.');
             }
@@ -1287,6 +1307,9 @@
             var savedPromise = postCart('/cart/pay-saved-card', {
                 payment_method_id: mode.paymentMethodId,
             }).then(function (env) {
+                // Same reasoning as /payment/intent above: no handleEnvelope
+                // here, so fold DISCARDED back to the pre-existing null path.
+                if (env === DISCARDED) { env = null; }
                 if (!env) { throw new Error('Could not reach the server.'); }
                 if (env.status !== 200) { throw new Error(env.msg || 'That card was declined.'); }
                 var d = env.data || {};
@@ -1346,6 +1369,9 @@
             var body = { payment_option: 2 };
             if (savedCard) { body.payment_intent_id = paidId; } else { body.session_id = paidId; }
             return postCart('/order/place', body).then(function (env) {
+                // Same reasoning as /payment/intent above: no handleEnvelope
+                // here, so fold DISCARDED back to the pre-existing null path.
+                if (env === DISCARDED) { env = null; }
                 if (!env) { throw new Error('Could not reach the server.'); }
                 if (env.status === 401) {
                     window.location.href = '/signin?next=' + encodeURIComponent('/cart');
@@ -1386,6 +1412,9 @@
         var navigating = false;
         postCart('/order/place', body)
             .then(function (env) {
+                // Same reasoning as /payment/intent above: no handleEnvelope
+                // here, so fold DISCARDED back to the pre-existing null path.
+                if (env === DISCARDED) { env = null; }
                 if (!env) { toast('error', 'Could not reach the server.'); return; }
                 if (env.status === 401) {
                     navigating = true;

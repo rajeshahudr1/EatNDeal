@@ -328,7 +328,7 @@
         showError('');
         if (!validatePhone()) {
             ev.preventDefault();
-            showError('Please enter a valid mobile number (6–15 digits).');
+            showError('Please enter a valid mobile number (11–15 digits).');
             phoneInput.focus();
             return;
         }

@@ -552,7 +552,7 @@
             if (first) { first.focus(); }
             return;
         }
-        // Contact number — optional, but if entered must be 6-15 digits.
+        // Contact number — optional, but if entered must be 11-15 digits.
         // Stored as "+<dial> <number>" so the country code travels with
         // the row (mirrors the popup's storage format).
         var contactEl = form.querySelector('[data-af-contact]');
@@ -1082,7 +1082,7 @@
             var v = (phoneInput.value || '').trim();
             if (v && v.length < 6) {
                 ev.preventDefault();
-                if (window.EatNDealUi && window.EatNDealUi.showToast) { window.EatNDealUi.showToast('error', 'Please enter a valid mobile number (6–15 digits).'); }
+                if (window.EatNDealUi && window.EatNDealUi.showToast) { window.EatNDealUi.showToast('error', 'Please enter a valid mobile number (11–15 digits).'); }
                 phoneInput.focus();
                 return;
             }

@@ -185,54 +185,123 @@ async function fetchRestaurantForCart(req, companyId, customerId) {
 }
 
 /**
- * page — GET /cart
+ * buildCartLocals
  *
- * Renders the cart EJS view. Customer must be signed in (any guest is
- * sent to /signin?next=/cart). The cart payload + the saved-address
- * book are loaded server-side and passed as render locals so the first
- * paint is data-ready.
+ * What:  Everything views/cart/index.ejs (and its partials) need to render —
+ *        the cart data fetched server-side PLUS the derived view-model
+ *        (sym, addrList, payList, promoList, selected, schedDefault,
+ *        schedMin, stripeOn) that index.ejs used to compute for itself in a
+ *        <% %> block. ONE definition so the full page render and the future
+ *        AJAX fragment render can never drift apart — they read the same
+ *        locals from here.
+ * Type:  READ (also nudges req.session.cartCount to stay in sync).
+ *
+ * Output: { ok: true, locals } | { ok: false, redirect }
  */
-async function page(req, res, next) {
+async function buildCartLocals(req, res) {
+    // If they JUST signed in (e.g. landed back here from checkout login),
+    // adopt the cart they built as a guest before rendering.
+    await claimGuestCart(req);
+
+    const user  = (req.session && req.session.user) || null;
+    const owner = cartOwner(req);
+    if (!owner.customer_id && !owner.guest_id) {
+        return { ok: false, redirect: '/signin?next=' + encodeURIComponent('/cart') };
+    }
+    const isGuest = !owner.customer_id;
+
+    // Cart always; the customer-only extras (saved addresses / cards /
+    // promos) only when signed in — a guest has none, and login is asked
+    // at checkout, not while browsing.
+    const [env, addresses, paymentMethods, promotions] = await Promise.all([
+        fetchCart(req, owner),
+        isGuest ? Promise.resolve([]) : fetchAddresses(req, user.id),
+        isGuest ? Promise.resolve([]) : fetchPaymentMethods(req, user.id),
+        isGuest ? Promise.resolve([]) : fetchPromotions(req, user.id),
+    ]);
+    const cart     = (env && env.status === 200 && env.data && env.data.cart)     || null;
+    const warnings = (env && env.status === 200 && env.data && env.data.warnings) || [];
+
+    // Restaurant lookup depends on cart, so chain it after the
+    // first batch. Cheap: only fires when a cart exists.
+    const restaurant = cart && cart.companyId
+        ? await fetchRestaurantForCart(req, cart.companyId, user ? user.id : null)
+        : null;
+
+    // Keep the session-cached header count in sync with what we
+    // just fetched (cart=null means there's no open cart).
+    if (req.session) {
+        req.session.cartCount = cart ? (Number(cart.totalQty) || 0) : 0;
+    }
+
+    // ── Derived view-model (moved verbatim from views/cart/index.ejs) ──
+    // fmt/brand/stripe_publishable_key come from the same app-wide
+    // res.locals the template used to read directly (see web/index.js
+    // ensureBrand + the per-request locals middleware), so this is the
+    // identical source — stripeOn cannot change value by moving here.
+    const fmt   = (req.app && req.app.locals && req.app.locals.fmt) || {};
+    const brand = res.locals.brand;
+    const stripe_publishable_key = res.locals.stripe_publishable_key;
+
+    const sym      = fmt.currencySymbol(brand);
+    const addrList = addresses || [];
+    const payList  = paymentMethods || [];
+    const promoList = promotions || [];
+
+    // Build the datetime-local default value (carried inside the
+    // schedule popup): already-scheduled → that timestamp, else a
+    // sensible "now + 15 min" start so the picker isn't blank.
+    let schedDefault = '';
+    if (cart && cart.preOrderTime) {
+        try {
+            const d = new Date(cart.preOrderTime);
+            if (!isNaN(d.getTime())) {
+                const pad = (n) => n < 10 ? '0' + n : String(n);
+                schedDefault = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+            }
+        } catch (e) { /* ignore */ }
+    }
+    let schedMin = '';
     try {
-        // If they JUST signed in (e.g. landed back here from checkout login),
-        // adopt the cart they built as a guest before rendering.
-        await claimGuestCart(req);
+        const nMin = new Date(Date.now() + 15 * 60 * 1000);
+        const pad2 = (n) => n < 10 ? '0' + n : String(n);
+        schedMin = nMin.getFullYear() + '-' + pad2(nMin.getMonth() + 1) + '-' + pad2(nMin.getDate()) + 'T' + pad2(nMin.getHours()) + ':' + pad2(nMin.getMinutes());
+    } catch (e) { /* ignore */ }
 
-        const user  = (req.session && req.session.user) || null;
-        const owner = cartOwner(req);
-        if (!owner.customer_id && !owner.guest_id) {
-            return res.redirect('/signin?next=' + encodeURIComponent('/cart'));
+    // Which saved address is the cart ACTUALLY using? The cart only
+    // stores the formatted line + postcode (no address_id). We
+    // rebuild each saved address's formatted string the SAME way
+    // setAddress() builds cart.deliveryAddress and compare them
+    // (normalised). This is robust regardless of whether the
+    // address's postcode lives in its own field or inside the
+    // address line. Falls back to a postcode-only match, then to
+    // NOTHING (no isDefault fallback — that wrongly highlighted +
+    // locked the default when a different address was active).
+    let selected = null;
+    if (cart) {
+        const __norm = (s) => String(s || '').trim().toLowerCase().replace(/\s+/g, ' ');
+        const __fmt  = (a) => __norm([a.address, a.line1, a.line2, a.postTown, a.postCode]
+            .map((s) => String(s || '').trim()).filter(Boolean).join(', '));
+        const __actNorm = __norm(cart.deliveryAddress);
+        const __actPc   = String(cart.deliveryPostcode || '').trim().toLowerCase().replace(/\s+/g, '');
+        addrList.forEach((a) => { if (!selected && __actNorm && __fmt(a) === __actNorm) { selected = a; } });
+        if (!selected && __actPc) {
+            addrList.forEach((a) => {
+                if (selected) { return; }
+                const aPc = String(a.postCode || '').trim().toLowerCase().replace(/\s+/g, '');
+                if (aPc && aPc === __actPc) { selected = a; }
+            });
         }
-        const isGuest = !owner.customer_id;
+    }
 
-        // Cart always; the customer-only extras (saved addresses / cards /
-        // promos) only when signed in — a guest has none, and login is asked
-        // at checkout, not while browsing.
-        const [env, addresses, paymentMethods, promotions] = await Promise.all([
-            fetchCart(req, owner),
-            isGuest ? Promise.resolve([]) : fetchAddresses(req, user.id),
-            isGuest ? Promise.resolve([]) : fetchPaymentMethods(req, user.id),
-            isGuest ? Promise.resolve([]) : fetchPromotions(req, user.id),
-        ]);
-        const cart     = (env && env.status === 200 && env.data && env.data.cart)     || null;
-        const warnings = (env && env.status === 200 && env.data && env.data.warnings) || [];
+    const stripeOn = !!stripe_publishable_key;
 
-        // Restaurant lookup depends on cart, so chain it after the
-        // first batch. Cheap: only fires when a cart exists.
-        const restaurant = cart && cart.companyId
-            ? await fetchRestaurantForCart(req, cart.companyId, user ? user.id : null)
-            : null;
-
-        // Keep the session-cached header count in sync with what we
-        // just fetched (cart=null means there's no open cart).
-        if (req.session) {
-            req.session.cartCount = cart ? (Number(cart.totalQty) || 0) : 0;
-        }
-
-        // No page-specific JS — cart interactions live in the global
-        // /js/ui/cart.js module loaded by the layout, plus the new
-        // /js/ui/checkout-popups.js for the redesigned popup actions.
-        return res.render('cart/index', {
+    // No page-specific JS — cart interactions live in the global
+    // /js/ui/cart.js module loaded by the layout, plus the new
+    // /js/ui/checkout-popups.js for the redesigned popup actions.
+    return {
+        ok: true,
+        locals: {
             page_title:       'Your Cart',
             _layoutFile:      '../_layout',
             active_nav:       'cart',
@@ -244,7 +313,100 @@ async function page(req, res, next) {
             cart_payment_methods: paymentMethods,
             cart_restaurant:  restaurant,
             cart_promotions:  promotions,
+            sym, addrList, payList, promoList, selected,
+            schedDefault, schedMin, stripeOn,
+        },
+    };
+}
+
+/**
+ * renderCartFragments
+ *
+ * What:  Renders the cart's swappable regions (main, side, popups) to HTML
+ *        strings using the SAME partials and the SAME locals as the full
+ *        page render.
+ * Why:   The browser replaces these regions after every action instead of
+ *        reloading. Rendering server-side keeps the markup in EJS only.
+ * Type:  READ.
+ *
+ * Output: { main, side, popups } | null (no renderable cart — caller just
+ *         omits html)
+ */
+async function renderCartFragments(req, res) {
+    const built = await buildCartLocals(req, res);
+    if (!built.ok) { return null; }
+
+    // res.render's callback form returns the string instead of sending it.
+    // _layoutFile must be falsy or ejs-locals (the engine this app uses —
+    // see web/index.js `app.engine('ejs', ejsLocals)`) would wrap the
+    // fragment in the whole page shell.
+    const locals = Object.assign({}, built.locals, { _layoutFile: false, layout: false });
+
+    function render(view) {
+        return new Promise(function (resolve) {
+            res.render(view, locals, function (err, html) {
+                if (err) { console.error('[CartController] fragment render failed:', view, err && err.message); return resolve(''); }
+                resolve(html);
+            });
         });
+    }
+
+    const main   = await render('partials/cart/main');
+    const side   = await render('partials/cart/side');
+    // Popups carry state that an action changes too — the promo list's
+    // "applied" tick, the address list, the saved cards. Without this they
+    // stayed stale until a reload.
+    const popups = await render('partials/checkout-popups');
+    if (!main && !side) { return null; }
+    return { main: main, side: side, popups: popups };
+}
+
+/**
+ * relayWithFragments
+ *
+ * What:  relay(), plus the freshly rendered cart regions on a success so the
+ *        browser can swap them in without a second request.
+ * Why:   One round trip per action — the whole point of the AJAX cart.
+ *        Anything other than a 200 is relayed untouched: a failed action must
+ *        leave the screen exactly as it was.
+ * Type:  WRITE (response).
+ */
+async function relayWithFragments(req, res, apiRes) {
+    const body = apiRes && apiRes.body;
+    if (!body || body.status !== 200) { return relay(res, apiRes); }
+    const html = await renderCartFragments(req, res);
+    if (html) {
+        body.data = Object.assign({}, body.data, { html: html });
+    }
+    return res.status(200).json(body);
+}
+
+/**
+ * fragment — GET /cart/fragment
+ *
+ * What:  The two cart regions on demand, for resyncing without a reload
+ *        (returning to a backgrounded tab, recovering from a failed swap).
+ * Type:  READ.
+ */
+async function fragment(req, res) {
+    const html = await renderCartFragments(req, res);
+    if (!html) { return res.status(200).json({ status: 401, msg: 'Please sign in to use the cart.' }); }
+    return res.status(200).json({ status: 200, data: { html: html } });
+}
+
+/**
+ * page — GET /cart
+ *
+ * Renders the cart EJS view. Customer must be signed in (any guest is
+ * sent to /signin?next=/cart). The cart payload + the saved-address
+ * book are loaded server-side and passed as render locals so the first
+ * paint is data-ready.
+ */
+async function page(req, res, next) {
+    try {
+        const built = await buildCartLocals(req, res);
+        if (!built.ok) { return res.redirect(built.redirect); }
+        return res.render('cart/index', built.locals);
     } catch (err) {
         next(err);
     }
@@ -348,7 +510,7 @@ async function forwardWrite(req, res, apiPath) {
     const payload = Object.assign({}, req.body, { customer_id: user.id });
     const apiRes  = await callApi(req, 'POST', apiPath, payload);
     syncSessionCount(req, apiRes);
-    return relay(res, apiRes);
+    return relayWithFragments(req, res, apiRes);
 }
 
 /**
@@ -367,7 +529,7 @@ async function forwardGuestWrite(req, res, apiPath) {
     const payload = Object.assign({}, req.body, owner);
     const apiRes  = await callApi(req, 'POST', apiPath, payload);
     syncSessionCount(req, apiRes);
-    return relay(res, apiRes);
+    return relayWithFragments(req, res, apiRes);
 }
 
 // Cart-build actions — guest-allowed (login only at checkout).
@@ -423,7 +585,7 @@ const setMode = async (req, res) => {
     if (apiRes.body && apiRes.body.status === 200 && req.session) {
         req.session.userLocation = Object.assign({}, req.session.userLocation, { mode: wanted });
     }
-    return relay(res, apiRes);
+    return relayWithFragments(req, res, apiRes);
 };
 // Charge a saved card for the open cart. The api clones the card onto the
 // restaurant's connected account and confirms ON-SESSION, so the reply may be
@@ -465,7 +627,7 @@ async function setAddress(req, res) {
             });
         }
     }
-    return relay(res, apiRes);
+    return relayWithFragments(req, res, apiRes);
 }
 const setSchedule  = (req, res) => forwardWrite(req, res, '/api/v1/customer/cart/set-schedule');
 const setInstructions = (req, res) => forwardWrite(req, res, '/api/v1/customer/cart/set-instructions');
@@ -480,7 +642,8 @@ const removeLoyalty = (req, res) => forwardWrite(req, res, '/api/v1/customer/car
 const setCharity   = (req, res) => forwardWrite(req, res, '/api/v1/customer/cart/set-charity');
 
 module.exports = {
-    page, data, count, promotions,
+    buildCartLocals,
+    page, data, count, promotions, fragment,
     add,
     addSurpriseBox, updateQty, removeItem, clear,
     setMode, setAddress, setSchedule, setInstructions, setCookingInstructions, paySavedCard,

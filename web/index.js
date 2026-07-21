@@ -683,6 +683,7 @@ app.post('/favourite/toggle',   FavouriteController.toggle);
 // the JSON proxy for client-side refresh.
 app.get ('/cart',              CartController.page);
 app.get ('/cart/data',         CartController.data);
+app.get ('/cart/fragment',     CartController.fragment);
 app.get ('/cart/count',        CartController.count);
 app.get ('/cart/promotions',   CartController.promotions);
 app.post('/cart/add',          CartController.add);

@@ -55,6 +55,7 @@
 
     /**
      * restoreState — put back what captureState took. Type: WRITE (DOM).
+     * Entire restore is best-effort — no path must throw into swap().
      */
     function restoreState(state) {
         if (!state) { return; }
@@ -68,14 +69,14 @@
         var sel = f.action ? '[data-action="' + f.action + '"]'
                 : f.name   ? '[name="' + f.name + '"]' : '';
         if (!sel) { return; }
-        var next = document.querySelector('[data-cart-region] ' + sel);
-        if (!next) { return; }
         try {
+            var next = document.querySelector('[data-cart-region] ' + sel);
+            if (!next) { return; }
             next.focus();
             if (f.start != null && typeof next.setSelectionRange === 'function') {
                 next.setSelectionRange(f.start, f.start);
             }
-        } catch (e) { /* focus is a nicety — never break the swap over it */ }
+        } catch (e) { /* entire restore is best-effort — selector may be malformed or element missing */ }
     }
 
     /**
@@ -90,7 +91,7 @@
             if (typeof html[key] !== 'string' || !html[key]) { return; }
             var host = document.querySelector('[data-cart-region="' + key + '"]');
             if (!host) { return; }
-            host.innerHTML = host.innerHTML !== html[key] ? html[key] : host.innerHTML;
+            host.innerHTML = html[key];
             did = true;
         });
 

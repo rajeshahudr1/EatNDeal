@@ -206,7 +206,18 @@
 .ckt-basket__clearbtn:hover { color: var(--color-primary); text-decoration: underline; }
 .ckt-basket__chev { color: var(--color-text-soft); transition: transform 200ms ease; }
 .ckt-basket[open] .ckt-basket__chev { transform: rotate(180deg); }
-.ckt-basket .cart-items { list-style: none; margin: 0; padding: 0 var(--space-4) var(--space-3); display: flex; flex-direction: column; gap: var(--space-3); border-top: 1px solid var(--color-border-soft); padding-top: var(--space-3); }
+.ckt-basket .cart-items {
+    list-style: none; margin: 0; padding: 0 var(--space-4) var(--space-3);
+    display: flex; flex-direction: column; gap: var(--space-3);
+    border-top: 1px solid var(--color-border-soft); padding-top: var(--space-3);
+    /* Show ~4 items, then scroll the rest inside the basket — a long order
+       (18 items) otherwise pushed the payment/promo/totals far down the page.
+       max-height is a soft cap (≈4 rows); the list scrolls beyond it. The
+       padding-right keeps the scrollbar off the item content. */
+    max-height: 340px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+}
 
 /* Line items — visually compact. Keep the existing data-* hooks. */
 .cart-item {

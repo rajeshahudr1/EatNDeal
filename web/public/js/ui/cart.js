@@ -474,7 +474,14 @@
     function doQuickAdd(btn, replace) {
         var productId = btn.getAttribute('data-id');
         if (!productId) { return Promise.resolve(); }
-        var body = { product_id: productId, qty: 1, options: [], remark: '', serve_type: readOrderMode() };
+        // A BOGOF item must go in at its full buy+get quantity so the free
+        // unit is actually taken — leaving it at 1 on a "Buy 1 Get 1" silently
+        // forfeits the deal. The item sheet does the same; the quick-add card
+        // carries the rule in data-bogo-buy / data-bogo-get when one applies.
+        var bBuy = parseInt(btn.getAttribute('data-bogo-buy'), 10) || 0;
+        var bGet = parseInt(btn.getAttribute('data-bogo-get'), 10) || 0;
+        var addQty = (bBuy > 0 && bGet > 0) ? (bBuy + bGet) : 1;
+        var body = { product_id: productId, qty: addQty, options: [], remark: '', serve_type: readOrderMode() };
         if (replace) { body.replace_cart = true; }
         var name = btn.getAttribute('data-name') || 'Item';
         return postCart('/cart/add', body).then(function (env) {
@@ -1044,10 +1051,28 @@
     var payElement = null;         // the mounted Payment Element
     var payElementPromise = null;  // in-flight init (create intent + mount)
     var payIntentId = null;        // the pre-created PaymentIntent id (new card / wallet)
-    var checkoutEle = null;        // Stripe Checkout Elements SDK (legacy initCheckoutElementsSdk)
+    var checkoutEle = null;        // Stripe Checkout Elements SDK (legacy initCheckoutElementsSdk) — kept for
+                                    // historical reference only; the 'new-card' place-order branch that used it
+                                    // is now unreachable (see doCardCheckout) since "New card" converts to a
+                                    // saved-card selection at "Use this method" time. Left in place rather than
+                                    // removed — smaller, safer diff (see teardownPaymentElement's own vars too).
     var checkoutActions = null;    // its actions: updateEmail, confirm
     var paySessionId = null;       // the Checkout Session id — order is placed with this
     var stripeMethod = 'cash';     // 'cash' | 'card'
+
+    // ── Temporary new-card (SetupIntent + Card Element) ─────────────
+    // The cart's "New card" row now collects the card as a real, temporary
+    // Stripe PaymentMethod via a SetupIntent — the exact pattern account.js
+    // uses to save a card — instead of the Checkout-Session Payment Element
+    // above. Once confirmed it is selected as an ordinary card:<pmId>, so it
+    // survives cart swaps (a pmId, not mounted element state) and charges
+    // through the existing /cart/pay-saved-card route unchanged.
+    var tempCardStripe = null;         // Stripe.js instance bound to the PLATFORM key (no stripeAccount — a
+                                        // SetupIntent attaches to the platform customer, not a connected account)
+    var tempCardElements = null;       // Stripe.elements() bag for the Card Element
+    var tempCardElement = null;        // the mounted Card Element
+    var tempCardClientSecret = null;   // the SetupIntent's client secret
+    var tempCardPromise = null;        // in-flight/memoised init (create SetupIntent + mount)
     // The customer's data-ckt-pay-mode value as it stood immediately before a
     // region swap, so it can be re-applied to the fresh [data-cart-pay] node
     // once 'eatndeal:cart-updated' fires (see handleEnvelope + the listener
@@ -1241,12 +1266,147 @@
      */
     function teardownPaymentElementForSwap() {
         if (payElement || payElementPromise) { teardownPaymentElement(); }
+        if (tempCardElement || tempCardPromise) { teardownTempCardElement(); }
+    }
+
+    /**
+     * ensureTempCardElement
+     *
+     * What:  Starts a SetupIntent (POST /payment-method/setup) and mounts a
+     *        Stripe Card Element into [data-stripe-mount] — mirrors account.js's
+     *        ensureStripe/ensureCardElement (account.js:795-825), NOT the
+     *        connected-account Payment Element above. The Card Element is bound
+     *        to the PLATFORM Stripe instance (Stripe(key), no stripeAccount)
+     *        because confirmCardSetup attaches the PaymentMethod to the
+     *        platform customer, which is where /cart/pay-saved-card and the
+     *        saved-card list both look for it.
+     * Why:   A card typed here must survive a cart swap (add/remove item while
+     *        the popup is briefly closed) as a PaymentMethod id, not as
+     *        in-progress Element state — see the design doc for the bug this
+     *        replaces ("Your card number is incomplete.").
+     * Type:  WRITE (network + DOM mount). Memoised like ensurePaymentElement —
+     *        pass forceRecreate to rebuild (e.g. after teardownTempCardElement).
+     */
+    function ensureTempCardElement(forceRecreate) {
+        if (tempCardPromise && !forceRecreate) { return tempCardPromise; }
+        if (forceRecreate) { teardownTempCardElement(); }
+        var mount = document.querySelector('[data-stripe-mount]');
+        if (!mount || typeof window.Stripe !== 'function') { return Promise.resolve(null); }
+
+        setError('');
+        setPayLoading(true);   // spinner until the card field is mounted (or fails)
+
+        tempCardPromise = postCart('/payment-method/setup', {}, true).then(function (env) {
+            // This path doesn't go through handleEnvelope — fold DISCARDED
+            // back to the pre-existing failure path, same reasoning as the
+            // other direct postCart calls in this file.
+            if (env === DISCARDED) { env = null; }
+            if (!env || env.status !== 200 || !env.data || !env.data.clientSecret) {
+                throw new Error((env && env.msg) || 'Could not start the card setup.');
+            }
+            var key = env.data.publishableKey;
+            if (!key) { throw new Error('Card payments aren\'t ready. Please refresh and try again.'); }
+            tempCardClientSecret = env.data.clientSecret;
+            // PLATFORM instance — deliberately no { stripeAccount: ... } here;
+            // this is a SetupIntent on the platform customer, unrelated to the
+            // restaurant's connected account used for the Payment Element above.
+            tempCardStripe = window.Stripe(key);
+            tempCardElements = tempCardStripe.elements();
+            tempCardElement = tempCardElements.create('card', {
+                hidePostalCode: true,
+                style: {
+                    base:    { fontSize: '15px', color: '#0f172a', '::placeholder': { color: '#94a3b8' } },
+                    invalid: { color: '#e5252a' },
+                },
+            });
+            setPayLoading(false);   // reveal the card box, then mount into it
+            // A fresh element starts empty — clear any completeness left over
+            // from an earlier card (see the identical note in ensurePaymentElement).
+            var payRootEl = getPayRoot();
+            if (payRootEl) { payRootEl.setAttribute('data-pay-complete', '0'); }
+            tempCardElement.on('change', function (event) {
+                setError(event && event.error ? event.error.message : '');
+                var root = getPayRoot();
+                if (root) { root.setAttribute('data-pay-complete', (event && event.complete) ? '1' : '0'); }
+            });
+            tempCardElement.mount(mount);
+            return tempCardElement;
+        }).catch(function (err) {
+            setPayLoading(false);
+            setError((err && err.message) || 'Could not start the card setup.');
+            tempCardPromise = null;   // let the next open retry
+            return null;
+        });
+        return tempCardPromise;
+    }
+
+    /**
+     * teardownTempCardElement — mirrors teardownPaymentElement for the
+     * SetupIntent Card Element. Called before a forced rebuild and from
+     * teardownPaymentElementForSwap when a cart-region swap is about to
+     * detach the mounted [data-stripe-mount] node (i.e. the payment popup
+     * was NOT open — see teardownPaymentElementForSwap's own doc for why a
+     * swap while the popup IS open never reaches here: the popups region is
+     * skipped whenever any popup is open, so the mount node — and this
+     * element — are left untouched).
+     */
+    function teardownTempCardElement() {
+        try { if (tempCardElement) { tempCardElement.unmount(); } } catch (e) { /* ignore */ }
+        tempCardElement = null; tempCardElements = null; tempCardPromise = null;
+        tempCardClientSecret = null; tempCardStripe = null;
+    }
+
+    /**
+     * confirmNewCard
+     *
+     * What:  Confirms the mounted Card Element against its SetupIntent
+     *        (stripe.confirmCardSetup — the exact account.js:878 call), then
+     *        tells the server this PaymentMethod is the cart's TEMP card
+     *        (POST /cart/use-temp-card) so it's flagged + tracked for
+     *        detach-on-place/clear and excluded from the saved-cards list.
+     * Returns: Promise<{ paymentMethodId, brand, last4 }> on success;
+     *        rejects with an Error whose .message is safe to show the user
+     *        (declined card, expired setup, network failure).
+     * Called by: ui/checkout-popups.js applyPay() when pendingPayMode is
+     *        'new-card' — on success it commits the row as card:<pmId> (an
+     *        ordinary saved-card selection) instead of 'new-card', so
+     *        Place Order never sees an in-progress card again.
+     * Type:  WRITE (Stripe confirm + network).
+     */
+    function confirmNewCard() {
+        if (!tempCardStripe || !tempCardElement) {
+            return Promise.reject(new Error('Card form is not ready yet — please try again.'));
+        }
+        if (!tempCardClientSecret) {
+            return Promise.reject(new Error('Card setup expired — close and reopen to try again.'));
+        }
+        return tempCardStripe.confirmCardSetup(tempCardClientSecret, {
+            payment_method: { card: tempCardElement },
+        }).then(function (result) {
+            if (result.error) {
+                throw new Error(result.error.message || 'Card declined.');
+            }
+            var pmId = result.setupIntent && result.setupIntent.payment_method;
+            if (!pmId) { throw new Error('Could not save the card. Please try again.'); }
+            return postCart('/cart/use-temp-card', { payment_method_id: pmId }, true).then(function (env) {
+                if (env === DISCARDED) { env = null; }
+                if (!env || env.status !== 200 || !env.data) {
+                    throw new Error((env && env.msg) || 'Could not use this card. Please try again.');
+                }
+                return {
+                    paymentMethodId: env.data.paymentMethodId || pmId,
+                    brand: env.data.brand || 'Card',
+                    last4: env.data.last4 || '',
+                };
+            });
+        });
     }
 
     // Back-compat shim: checkout-popups.js calls ensureCardElement() to
-    // mount the field when "Add a new card" is picked. It now builds the
-    // full Payment Element. Fire-and-forget (mounts when the intent is ready).
-    function ensureCardElement() { return ensurePaymentElement(false); }
+    // mount the field when "New card" is picked. It now starts a SetupIntent
+    // and mounts a Card Element (ensureTempCardElement) rather than the
+    // Checkout-Session Payment Element. Fire-and-forget (mounts when ready).
+    function ensureCardElement() { return ensureTempCardElement(false); }
 
     function onCartSetPay(ev, btn) {
         ev.preventDefault();
@@ -1716,5 +1876,9 @@
         // Hook for ui/cart-render.js — see teardownPaymentElementForSwap's
         // own comment for why this must run before the popups region swaps.
         teardownPaymentElementForSwap: teardownPaymentElementForSwap,
+        // Confirms the mounted temp-card SetupIntent + flags it with the
+        // server. Called by ui/checkout-popups.js applyPay() on "Use this
+        // method" for the New card row.
+        confirmNewCard: confirmNewCard,
     };
 })();

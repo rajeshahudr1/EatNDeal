@@ -213,26 +213,45 @@
             return;
         }
 
-        // ── New card / other method path ───────────────────────────
-        // The card or wallet is collected in the Stripe Payment Element and
-        // charged at "Place order". Saving for future use is handled by the
-        // intent's setup_future_usage when "Save this card" is ticked — so
-        // there's no separate SetupIntent step here; just commit + close.
+        // ── New card path ──────────────────────────────────────────
+        // The card is collected in a Stripe Card Element bound to a
+        // SetupIntent (see ui/cart.js ensureTempCardElement — mirrors
+        // account.js's own "add a card" flow). "Use this method" confirms
+        // that SetupIntent RIGHT HERE — turning the typed card into a real,
+        // temporary PaymentMethod — then selects it exactly like a saved
+        // card (card:<pmId>). From this point on it survives cart swaps (a
+        // pmId, no mounted element) and Place Order goes through the
+        // existing saved-card route unchanged; the card is detached
+        // server-side after the order is placed or the cart is cleared.
         if (pendingPayMode === 'new-card') {
             // The details must actually be COMPLETE first. Stripe reports this
             // on the element's change event, which /js/ui/cart.js records as
             // data-pay-complete on this row.
-            // Without the check the sheet closed on a blank or half-typed card
-            // and the cart proudly showed "New card · Charged at checkout" —
-            // the customer only discovered it was never valid at Place order.
-            // Wallets (Apple/Google Pay) mark themselves complete on selection,
-            // so they still pass straight through.
+            // Without the check we'd send a blank or half-typed card to
+            // confirmCardSetup for no reason — catch it here with the same
+            // inline message as before.
             if (row.getAttribute('data-pay-complete') !== '1') {
                 showPayError('Please complete your card details.');
                 return;                       // stay open so they can fix it
             }
-            commitPayRow(row, 'new-card');
-            close();
+            if (!window.EatNDealCart || typeof window.EatNDealCart.confirmNewCard !== 'function') {
+                showPayError('Card payments aren\'t ready. Please refresh and try again.');
+                return;
+            }
+            var applyBtn = document.querySelector('[data-ckt-popup="payment"] [data-action="ckt-apply-pay"]');
+            if (applyBtn) { applyBtn.disabled = true; applyBtn.textContent = 'Confirming card…'; }
+            showPayError('');
+            window.EatNDealCart.confirmNewCard().then(function (result) {
+                if (applyBtn) { applyBtn.disabled = false; applyBtn.textContent = 'Use this method'; }
+                var mode  = 'card:' + result.paymentMethodId;
+                var title = (result.brand || 'Card') + ' •••• ' + (result.last4 || '');
+                commitPayRow(row, mode, { title: title, sub: 'Charged at checkout' });
+                close();
+            }).catch(function (err) {
+                if (applyBtn) { applyBtn.disabled = false; applyBtn.textContent = 'Use this method'; }
+                showPayError((err && err.message) || 'Could not save the card. Please try again.');
+                // stay open so they can retry or pick a different card
+            });
             return;
         }
 
@@ -272,13 +291,25 @@
         var saved;
         try { saved = window.sessionStorage.getItem(PAY_MODE_KEY); } catch (e) { saved = null; }
         if (!saved || saved === 'cash') { return; }          // cash is already the default
+        // 'new-card' is no longer a terminal selection — "Use this method" now
+        // converts it to card:<pmId> before it's ever remembered (see applyPay).
+        // A value of literally 'new-card' here can only be a stale leftover
+        // from a browser tab open across the deploy of this change; falling
+        // through would restore an in-progress card selection with nothing
+        // mounted, and doCardCheckout's now-dead 'card-new' branch would run
+        // against an empty Payment Element. Drop back to Cash instead.
+        if (saved === 'new-card') { return; }
         // A saved CARD is only re-selectable if that tile still exists (the
         // card may have been removed since). Otherwise leave it on Cash.
         if (saved.indexOf('card:') === 0 && !document.querySelector('[data-pay-mode="' + saved + '"]')) { return; }
         commitPayRow(row, saved);
     }
 
-    function commitPayRow(row, mode) {
+    // `label` — optional { title, sub } override for the card: branch, used
+    // ONLY when committing a just-confirmed temp card: it has no matching
+    // [data-pay-mode] tile in the popup list (it isn't a saved card the
+    // server rendered), so the normal tile-lookup below finds nothing.
+    function commitPayRow(row, mode, label) {
         rememberPayMode(mode);
         row.setAttribute('data-ckt-pay-mode', mode);
         var titleEl = row.querySelector('[data-ckt-pay-title]');
@@ -287,12 +318,17 @@
             if (titleEl) { titleEl.textContent = 'New card'; }
             if (subEl)   { subEl.textContent   = 'Charged at checkout'; }
         } else if (mode.indexOf('card:') === 0) {
-            var btn = document.querySelector('[data-pay-mode="' + mode + '"]');
-            if (btn) {
-                var t = btn.querySelector('.ckt-list__title');
-                var s = btn.querySelector('.ckt-list__sub');
-                if (titleEl && t) { titleEl.textContent = t.textContent; }
-                if (subEl   && s) { subEl.textContent   = s.textContent; }
+            if (label) {
+                if (titleEl) { titleEl.textContent = label.title || 'Card'; }
+                if (subEl)   { subEl.textContent   = label.sub   || ''; }
+            } else {
+                var btn = document.querySelector('[data-pay-mode="' + mode + '"]');
+                if (btn) {
+                    var t = btn.querySelector('.ckt-list__title');
+                    var s = btn.querySelector('.ckt-list__sub');
+                    if (titleEl && t) { titleEl.textContent = t.textContent; }
+                    if (subEl   && s) { subEl.textContent   = s.textContent; }
+                }
             }
         } else if (mode === 'cash') {
             if (titleEl) { titleEl.textContent = 'Card'; }

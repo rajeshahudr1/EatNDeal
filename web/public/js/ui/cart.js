@@ -296,7 +296,20 @@
             // No fragments came back (older response shape, or the render
             // failed server-side) — fall back to the reload so the customer
             // still sees a correct cart rather than a stale one.
-            if (!swapped) { window.location.reload(); }
+            if (!swapped) {
+                window.location.reload();
+            } else {
+                // The main/side swap deliberately skipped the popups region
+                // because a popup may be open (protecting Stripe / typed
+                // input). Tell the popup layer the write SUCCEEDED so it can
+                // close a pick-and-done popup (address / promo / schedule) and
+                // re-render the popup markup to the new state — otherwise the
+                // popup stays open on a reload-era assumption, and re-opening
+                // shows the OLD selection. Carries the fresh popups html.
+                document.dispatchEvent(new CustomEvent('ckt:settle-ok', {
+                    detail: { popups: (env.data && env.data.html && env.data.html.popups) || '' },
+                }));
+            }
         }
         return true;
     }

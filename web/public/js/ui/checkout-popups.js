@@ -442,6 +442,28 @@
     }
     document.addEventListener('ckt:settle-done', clearBusy);
 
+    // A cart write SUCCEEDED while a popup was open. A pick-and-done popup
+    // (address / promo / schedule) should now close and re-render to the new
+    // state — the old code relied on a full page reload to do this, which the
+    // AJAX swap no longer performs.
+    //
+    // The payment popup is EXCLUDED: it holds mounted Stripe Elements and the
+    // customer's in-progress card entry, so we never tear it down from under
+    // them. The confirm (review-order) popup is excluded too — placing an
+    // order navigates away on its own.
+    document.addEventListener('ckt:settle-ok', function (ev) {
+        if (!openName || openName === 'payment' || openName === 'confirm') { return; }
+        clearBusy();
+        close();
+        // The popups region was skipped by the main/side swap while this popup
+        // was open. Now that it's closed, re-apply it so the NEXT open reflects
+        // the change (e.g. the newly-selected delivery address shows selected).
+        // CartRender.swap tears down any mounted payment element first, so this
+        // is safe even if the payment popup had been opened earlier and hidden.
+        var popups = ev.detail && ev.detail.popups;
+        if (popups && window.CartRender) { window.CartRender.swap({ popups: popups }); }
+    });
+
     document.addEventListener('click', function (ev) {
         var t = ev.target;
         if (!t || !t.closest) { return; }

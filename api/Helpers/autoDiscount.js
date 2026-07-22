@@ -38,13 +38,25 @@
  */
 
 const { db } = require('../config/db');
+const M = require('./marketplace');   // matchDeliveryZone — postcode-zone restriction
 
-// Service-type mapping. discounts.service_type uses:
-//   0 = any / unrestricted
-//   1 = in-store     (we never match this on marketplace)
-//   2 = pickup       (legacy convention — matches our cart.serve_type=2)
-//   3 = delivery     (legacy convention — matches our cart.serve_type=3)
-const SERVICE_ANY = 0;
+// Service-type mapping — the EXACT legacy scheme from the POS discount form
+// (backend/modules/pos/views/discounts/_form.php) and matched by
+// Commonquery::validateAndApplyDiscount. discounts.service_type uses:
+//   1 = Both      → applies to any fulfilment mode
+//   2 = Delivery  → matches cart.serve_type = 3 (delivery)
+//   3 = Pickup    → matches cart.serve_type = 2 (pickup)
+// NOTE the numbers are CROSSED between the two columns: discount 2 (Delivery)
+// pairs with cart serve_type 3, and discount 3 (Pickup) with serve_type 2.
+// (Our earlier 0=any / direct-match reading never matched a "Both" discount,
+// so free items/auto-discounts silently never applied.)
+const SERVICE_BOTH = 1;
+
+// Platform mapping (same form): 1 = Both, 2 = Website, 3 = EPOS. The
+// marketplace IS the website, so an online cart matches Both or Website;
+// an EPOS-only (3) discount never applies here.
+const PLATFORM_BOTH    = 1;
+const PLATFORM_WEBSITE = 2;
 
 /**
  * parseClockMinutes
@@ -91,6 +103,13 @@ async function findBest(cart, branch) {
     const subTotal = Number(cart.sub_total) || 0;
     if (subTotal <= 0) { return null; }
     const serve = Number(cart.serve_type) || 0;
+    // Legacy only applies discounts to delivery (3) or pickup (2) carts — any
+    // other serve_type blocks every rule (Commonquery: allowCoupon = false).
+    if (serve !== 2 && serve !== 3) { return null; }
+    // The discount service_type that a Both rule aside also matches: a delivery
+    // cart (serve 3) matches Delivery discounts (service_type 2); a pickup cart
+    // (serve 2) matches Pickup discounts (service_type 3). Numbers are crossed.
+    const matchingServiceType = (serve === 3) ? 2 : 3;
 
     // One SQL pull for the candidate set — date window + status +
     // company + branch scope go in here. The lighter per-row filters
@@ -109,12 +128,14 @@ async function findBest(cart, branch) {
             qb.whereNull('end_date').orWhereRaw('end_date >= CURRENT_DATE');
         })
         .andWhere((qb) => {
-            qb.where('service_type', SERVICE_ANY).orWhere('service_type', serve);
+            // Both (1) applies to every mode; otherwise the crossed per-mode
+            // match above (delivery cart → service_type 2, pickup → 3).
+            qb.where('service_type', SERVICE_BOTH).orWhere('service_type', matchingServiceType);
         })
         .andWhere((qb) => {
-            // platform 0 = any, 1 = online. Anything else (2/3 = POS,
-            // app-only, etc.) is rejected.
-            qb.where('platform', 0).orWhere('platform', 1);
+            // The marketplace is the website: match Both (1) or Website (2).
+            // EPOS-only (3) discounts never apply to an online cart.
+            qb.where('platform', PLATFORM_BOTH).orWhere('platform', PLATFORM_WEBSITE);
         })
         .andWhere((qb) => {
             // Skip per-product rows — those are handled at the line level
@@ -146,6 +167,46 @@ async function findBest(cart, branch) {
         // Min order.
         const min = Number(d.min_order_value) || 0;
         if (min > 0 && subTotal < min) { continue; }
+
+        // Day-of-week restriction (discount_days). Legacy: only enforced when
+        // the rule HAS day rows — then today must be one of them. day_of_week
+        // uses ISO 1=Mon..7=Sun (legacy date('N')); JS getDay() is 0=Sun..6=Sat,
+        // so Sunday (0) maps to 7.
+        const dayRows = await db('discount_days').where({ discount_id: d.id }).select('day_of_week');
+        if (dayRows.length) {
+            const dow = (now.getDay() === 0) ? 7 : now.getDay();
+            if (!dayRows.some((r) => Number(r.day_of_week) === dow)) { continue; }
+        }
+
+        // Delivery-zone restriction (discount_postcode). Legacy: when the
+        // customer's postcode maps to a delivery-charge zone, the rule must
+        // list that zone. Enforced only when the rule HAS postcode rows (same
+        // optional-restriction shape as the day check — a rule with no zones is
+        // unrestricted). Delivery orders only; pickup has no postcode.
+        if (serve === 3 && cart.delivery_postcode) {
+            const pcRows = await db('discount_postcode').where({ discount_id: d.id }).select('delivery_charge_id');
+            if (pcRows.length) {
+                const zrows = await db('store_delivery_charge_setup')
+                    .where({ company_id: cart.company_id, branch_id: branch.id, status: 1 })
+                    .select('id', 'postcode');
+                const zone = M.matchDeliveryZone(String(cart.delivery_postcode).trim(), zrows);
+                const zoneId = zone ? Number(zone.id) : 0;
+                if (!zoneId || !pcRows.some((r) => Number(r.delivery_charge_id) === zoneId)) { continue; }
+            }
+        }
+
+        // First-time-user only (discounts.first_time_user = 1): the rule is
+        // barred once the customer has already placed an order that used THIS
+        // discount. Legacy Commonquery checks orders by discount_id + user_id
+        // (+ terminal); on marketplace the customer IS the user_id, so we match
+        // on that alone. Guests (no user_id) always pass, exactly like legacy's
+        // `!empty($orderData->user_id)` guard.
+        if (Number(d.first_time_user) === 1 && Number(cart.user_id) > 0) {
+            const prior = await db('orders')
+                .where({ discount_id: d.id, user_id: cart.user_id })
+                .first('id');
+            if (prior) { continue; }                    // already used it → not eligible
+        }
 
         const type  = Number(d.discount_type) || 0;
         const value = Number(d.discount_value) || 0;

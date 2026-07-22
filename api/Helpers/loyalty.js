@@ -703,7 +703,12 @@ async function reviewTypesFor(companyId, customerId) {
     const cmsBy = {}; cms.forEach((c) => { cmsBy[c.review_type_slug] = c; });
     const claimBy = {};
     if (customerId) {
-        const claims = await db('customer_review').where({ company_id: cid, customer_id: customerId }).select('review_type', 'admin_status', 'reject_reason');
+        // Keyed by APP_ID (rcid), not customer.id — that is what the submit
+        // writes (Controllers/Customer/ReviewController.js:247) and what the
+        // POS matches on. Reading by customer.id found no claim, so a fresh
+        // submission showed no "under verification" banner and the button
+        // stayed live, letting the customer submit into a 409.
+        const claims = await db('customer_review').where({ company_id: cid, customer_id: rcid }).select('review_type', 'admin_status', 'reject_reason');
         claims.forEach((c) => { claimBy[Number(c.review_type)] = c; });
     }
     const types = (masterOn ? REVIEW_TYPES.filter((t) => t.menu && ruleBy[t.id]) : []).map((t) => {
@@ -1950,11 +1955,39 @@ async function bogoMapFor(companyId) {
     return map;
 }
 
+/**
+ * productCashbackMapFor — per-product cashback for a WHOLE company's menu in
+ * one pass, for the "Cashback £X" badge (same idea as bogoMapFor). Returns
+ * Map<product_id, { amount }> where amount is the flat £ reward per unit that
+ * earnProductCashback grants (rule.cashback). Master-gated; empty when
+ * loyalty / product_cashback is off. First rule per product wins.
+ * Type:  READ.
+ */
+async function productCashbackMapFor(companyId) {
+    const map = new Map();
+    try {
+        if (!hasScope(companyId) || !(await isReady())) { return map; }
+        if (!(await ruleEnabled(companyId, 'product_cashback'))) { return map; }
+        if (!(await loadConfig(companyId))) { return map; }
+        const rows = await db('loyalty_product_cashback_rule as r')
+            .innerJoin('loyalty_product_cashback_items as i', 'i.product_cashback_rule_id', 'r.id')
+            .where('r.company_id', companyId)
+            .whereNull('r.deleted_at').whereNull('i.deleted_at')
+            .select('i.product_id', 'r.cashback');
+        rows.forEach((row) => {
+            const amt = Number(row.cashback) || 0;
+            const k = String(row.product_id);
+            if (amt > 0 && !map.has(k)) { map.set(k, { amount: amt }); }
+        });
+    } catch (e) { /* best-effort — no badges on error */ }
+    return map;
+}
+
 module.exports = {
     isReady, loadConfig, ruleEnabled, getCustomerTier, getFreeDelivery,
     earnForOrder, earnOrderStreak, earnStampCashback, earnProductCashback, earnSpecialOffer,
     earnReferral, earnEventCashback, earnSmartCampaign, earnCollectionCashback,
-    bogoForProduct, payableQtyFor, bogoMapFor,
+    bogoForProduct, payableQtyFor, bogoMapFor, productCashbackMapFor,
     balanceFor, cardsFor, historyFor, reviewTypesFor, reviewRestaurants, maxRedeemable, consumeForRedeem, burnUnusedStamps, reverseForOrder, streakProgressFor,
     // Dual redeem — the restaurant's pool + the marketplace's, on one order.
     redeemPoolsFor, consumeAcrossPools,

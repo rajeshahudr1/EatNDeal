@@ -17,11 +17,32 @@
     var money = fmt.money;
     var esc = fmt.esc;
     function rewardText(t) { return (t.value_type === '%') ? (money(t.reward) + '%') : (sym + money(t.reward)); }
-    // The claim-status pill (empty status = not submitted yet).
-    var STATUS = { pending: ['⏳', 'Pending approval'], approved: ['✓', 'Approved'], rejected: ['✕', 'Not approved'] };
+    // The claim-status banner (empty status = not submitted yet). Wording is
+    // the legacy one, verbatim — old EatNDeal showed these three as full-width
+    // alerts inside the form, not as a pill
+    // (webordering/views/site/review-type/index.php:377-401).
+    var STATUS = {
+        pending:  ['⏳', 'Your review is under verification. Please wait for admin approval.'],
+        approved: ['✓', 'Your review has been approved successfully. Cashback will be credited.'],
+        rejected: ['✕', 'Your review has been rejected.'],
+    };
     var diningQS = earn_dining ? ('&DiningMode=' + encodeURIComponent(earn_dining)) : '';
 %>
-<main class="earn">
+<section class="acct">
+
+    <%# Mobile-only top bar — focused app screen (sidebar hidden on phones),
+        matching the account dashboard. %>
+    <header class="acct-mobilebar">
+        <a class="acct-mobilebar__back" href="/account" aria-label="Back">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+        </a>
+        <h1 class="acct-mobilebar__title">Earn Cashback</h1>
+    </header>
+
+    <%- include('../partials/account-nav', { nav_active: 'earn' }) %>
+
+    <div class="acct-main">
+    <main class="earn">
 
     <header class="earn__head">
         <h1 class="earn__title">Earn <span>Cashback</span></h1>
@@ -61,21 +82,27 @@
 
                     <% if (t.description) { %><div class="ecard__desc"><%- t.description %></div><% } %>
 
+                    <%# Claim-status alert — the legacy banner, in the same place
+                        (inside the card, above the action) and with the same
+                        three messages. Rejected also spells out the admin's
+                        reason on its own line, as legacy did. %>
+                    <% if (st) { %>
+                    <div class="ecard__alert is-<%= t.status %>" role="status">
+                        <span class="ecard__alert-ic" aria-hidden="true"><%= st[0] %></span>
+                        <span><%= st[1] %><% if (t.status === 'rejected' && t.reject_reason) { %><br><strong>Reason:</strong> <%= esc(t.reject_reason) %><% } %></span>
+                    </div>
+                    <% } %>
+
                     <footer class="ecard__foot">
-                        <% if (st) { %>
-                        <span class="ecard__status is-<%= t.status %>"><span aria-hidden="true"><%= st[0] %></span> <%= st[1] %><% if (t.status === 'rejected' && t.reject_reason) { %> · <%= esc(t.reject_reason) %><% } %></span>
-                        <% } %>
-                        <%# ONE claim per review type — legacy parity. Once a claim
-                            exists the button is gone, whatever its status: legacy
-                            hides the whole form on `!empty($review->id)` alone
-                            (webordering/views/site/review-type/index.php:374,490),
-                            so pending AND rejected are both final there.
-                            The status pill to the left already says which. The api
-                            re-checks and answers 409 — the button is the courtesy,
-                            not the control. %>
-                        <% if (!t.status) { %>
+                        <%# Not submitted → submit. REJECTED → submit again (a
+                            departure from legacy, which killed the claim on the
+                            first rejection; the alert above says why it failed).
+                            Pending and approved stay closed. The api re-checks
+                            and answers 409 — the button is the courtesy, not the
+                            control (Controllers/Customer/ReviewController.js). %>
+                        <% if (!t.status || t.status === 'rejected') { %>
                         <button type="button" class="ecard__btn" data-earn-start>
-                            Submit <%= t.video ? 'video' : 'screenshot' %>
+                            <%= t.status === 'rejected' ? 'Submit again' : ('Submit ' + (t.video ? 'video' : 'screenshot')) %>
                         </button>
                         <% } else { %>
                         <button type="button" class="ecard__btn is-done" disabled>Submitted</button>
@@ -157,7 +184,9 @@
         <% } %>
     <% } %>
 
-</main>
+    </main>
+    </div>
+</section>
 
 <%# Lightbox for the example screenshots (reuses the simple zoom pattern). %>
 <div class="earn-zoom" data-earn-zoombox hidden>

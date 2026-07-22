@@ -215,18 +215,22 @@ async function submitCashbackReview(req, res) {
         const existing = await db('customer_review')
             .where({ customer_id: claimAppId, company_id: companyId, review_type: reviewType })
             .first('id', 'admin_status', 'reject_reason');
+        // DELIBERATE DEPARTURE FROM LEGACY (user request, 2026-07-21): legacy
+        // blocked every resubmit on row existence alone, so one rejection killed
+        // the claim for good. A REJECTED claim may now be sent again — the
+        // customer fixes whatever the admin flagged in reject_reason and retries.
+        // Approved and pending stay closed, as before.
+        let retryOf = null;
         if (existing) {
             const st = Number(existing.admin_status);
             if (st === 1) {
                 return H.errorResponse(res, 'You have already earned cashback for this review.', 409);
             }
-            if (st === 2) {
-                return H.errorResponse(res, existing.reject_reason
-                    ? ('Your review was not approved: ' + existing.reject_reason)
-                    : 'Your review was not approved.', 409);
+            if (st !== 2) {
+                return H.errorResponse(res,
+                    'Your review is already submitted and is waiting for approval.', 409);
             }
-            return H.errorResponse(res,
-                'Your review is already submitted and is waiting for approval.', 409);
+            retryOf = existing.id;
         }
 
         // Route the screenshot: marketplace (company 0) → our server, a
@@ -239,6 +243,25 @@ async function submitCashbackReview(req, res) {
             });
             if (!up.ok) { return H.errorResponse(res, up.message || 'Could not save your screenshot.', 502); }
             photo = up.ref;
+        }
+
+        // A retry REUSES the rejected row rather than inserting a second one:
+        // the POS queue, and reviewTypesFor's claim lookup, both assume at most
+        // one row per (customer, company, review_type). Clearing reject_reason
+        // matters — otherwise the stale reason would render over a claim that
+        // is pending again.
+        if (retryOf !== null) {
+            await db('customer_review').where('id', retryOf).update({
+                notes:         notes || null,
+                review_photo:  photo,
+                admin_status:  0,
+                reject_reason: null,
+                review_date:   db.raw('CURRENT_DATE'),
+                updated_at:    db.fn.now(),
+                updated_by:    claimAppId,   // app_id, like created_by
+            });
+            return H.successResponse(res, {},
+                'Thanks! Your review is submitted again for verification — cashback is added once the restaurant approves it.');
         }
 
         await db('customer_review').insert({

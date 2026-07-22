@@ -239,6 +239,14 @@
 .cart-item__remove:hover { color: var(--color-primary); }
 .cart-item__side { display: flex; align-items: center; }
 .cart-item__price { font-weight: 800; font-variant-numeric: tabular-nums; }
+/* Free gift (type-3 discount): a green "Free Item" tag in place of the qty
+   stepper / Remove — the customer can't change or drop an auto-granted gift. */
+.cart-item__free-tag {
+    display: inline-flex; align-items: center; gap: 4px; margin-top: 4px;
+    padding: 2px 8px; border-radius: 6px; background: #dcfce7; color: #166534;
+    font-size: 0.78rem; font-weight: 800;
+}
+.cart-item--free .cart-item__price { color: #166534; }
 .cart-stepper {
     display: inline-flex; align-items: center; gap: 0;
     background: var(--color-bg-alt, #f3f4f6); border-radius: 999px; padding: 3px;
@@ -404,9 +412,16 @@
     font-size: 0.88rem; font-weight: 700; color: var(--color-text-soft);
 }
 .ckt-popup__tab.is-active { background: #1a1a1a; color: #fff; }
+/* Closed restaurant → only the "Schedule" tab (ASAP isn't possible). It fills
+   the row and reads as a heading rather than a pick-one toggle. */
+.ckt-popup__tabs--single .ckt-popup__tab { cursor: default; }
 
 /* Form fields inside popups */
 .ckt-popup__field { display: flex; flex-direction: column; gap: 8px; }
+/* Pre-order Date + Time two-select, side by side (stacks on narrow phones). */
+.ckt-sched-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.ckt-sched-col { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+@media (max-width: 480px) { .ckt-sched-grid { grid-template-columns: 1fr; } }
 .ckt-popup__field--mt { margin-top: 16px; }   /* was inline style="margin-top:16px" (CSP #9) */
 .ckt-popup__label { font-size: 0.82rem; font-weight: 700; color: var(--color-text); }
 .ckt-popup__input {

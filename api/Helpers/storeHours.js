@@ -209,16 +209,28 @@ function branchClosure(branch, holidayToday) {
 }
 
 // Per-service "show option" gate (admin turned delivery/pickup off).
-function optionClosed(branch, kind) {
+//
+// DATE-AWARE. The three closure tabs mean different things for a TARGET date:
+//   tab 1 "Closed Today"       → closes ONLY today; future dates are open, so
+//                                pre-order for tomorrow onward still works.
+//   tab 2 "Closed Until <date>"→ closed for every date up to that date.
+//   tab 3 "Close Permanently"  → closed for every date.
+// `targetIsToday` defaults to true, so callers that only care about "now"
+// (availability/compute, today's slots) behave exactly as before. The
+// multi-day pre-order builder passes false for future days — without this,
+// "Closed Today" wrongly blanked out EVERY pre-order day.
+function optionClosed(branch, kind, targetIsToday) {
+    const isToday = (targetIsToday === undefined) ? true : !!targetIsToday;
     const opt = kind === 'delivery' ? Number(branch.show_delivery_option) : Number(branch.show_pickup_option);
     if (opt !== 0) { return false; }                       // option is ON
     const tab  = kind === 'delivery' ? Number(branch.show_delivery_option_tab) : Number(branch.show_pickup_option_tab);
     const util = kind === 'delivery' ? branch.delivery_closed_util_date : branch.pickup_closed_util_date;
+    if (tab === 1) { return isToday; }                     // "Closed Today" → today only
     if (tab === 2) {                                        // closed UNTIL a date
         const t = Date.parse(util);
         return Number.isFinite(t) ? t > Date.now() : true;
     }
-    return true;                                           // tab 1 (today) / 3 (permanent)
+    return true;                                           // tab 3 (permanent)
 }
 
 /**
@@ -535,7 +547,9 @@ const MONTH_SHORT   = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', '
 function buildSlotsForDate(branch, shifts, holiday, serveType, targetDate, isToday, leadMin) {
     const lead = Number.isFinite(leadMin) ? leadMin : SLOT_LEAD;
     const svcId = Number(serveType) === SERVICE.TAKEAWAY ? SERVICE.TAKEAWAY : SERVICE.DELIVERY;
-    if (optionClosed(branch, svcId === SERVICE.DELIVERY ? 'delivery' : 'pickup')) { return []; }
+    // Date-aware: "Closed Today" (tab 1) only blocks TODAY, so tomorrow's
+    // pre-order slots still generate. isToday is passed by scheduleDaysForBranch.
+    if (optionClosed(branch, svcId === SERVICE.DELIVERY ? 'delivery' : 'pickup', isToday)) { return []; }
     if (Number(branch.closed) === 1) { return []; }                              // permanently closed
     if (holiday && Number(holiday.is_special_hour) !== 1) { return []; }         // whole-day holiday
 
@@ -643,18 +657,22 @@ async function scheduleDaysForBranch(branch, serveType, opts) {
 }
 
 /**
- * isSchedulable — is a chosen pre-order value ('YYYY-MM-DDTHH:MM' or Date)
- * one of today's valid slots for this branch + mode? Used to reject
- * free-typed times that fall outside real opening hours.
+ * isSchedulable — is a chosen pre-order value ('YYYY-MM-DDTHH:MM' or Date) one
+ * of this branch+mode's valid slots ACROSS the multi-day schedule (today + the
+ * next days)? Used to reject free-typed times outside real opening hours. Must
+ * span all days, not just today — a "Closed Today" restaurant's only valid
+ * slots are on future days, and set-schedule would otherwise reject them.
  */
 async function isSchedulable(branch, serveType, when) {
     if (!branch || !when) { return false; }
-    const slots = await slotsForBranch(branch, serveType);
-    if (!slots.length) { return false; }
+    const days = await scheduleDaysForBranch(branch, serveType);
+    const values = new Set();
+    (days || []).forEach((d) => (d.slots || []).forEach((s) => values.add(s.value)));
+    if (!values.size) { return false; }
     const target = (when instanceof Date)
         ? ymd(when) + 'T' + pad2(when.getHours()) + ':' + pad2(when.getMinutes())
         : String(when).slice(0, 16);
-    return slots.some(s => s.value === target);
+    return values.has(target);
 }
 
 // ── Weekly opening-hours table (Restaurant Info popup) ───────────────

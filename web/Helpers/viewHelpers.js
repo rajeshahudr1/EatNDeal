@@ -22,6 +22,7 @@
 
 const CURRENCY_SYMBOL = '£';
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];   // Date.getDay()
 
 // The trading currency symbol for this render, honouring a per-brand override.
 function currencySymbol(brand) {
@@ -94,7 +95,12 @@ function fmtTime(d) {
  * Falls back to the bare time for older orders that carry no date.
  */
 function fmtSchedule(date, time) {
-    const t = String(time || '').slice(0, 5);
+    // 12-hour "10:54 AM" to match the legacy EatNDeal order display.
+    const hhmm = String(time || '').slice(0, 5);
+    const m = hhmm.match(/^(\d{1,2}):(\d{2})$/);
+    const t = m
+        ? (((Number(m[1]) % 12) || 12) + ':' + m[2] + ' ' + (Number(m[1]) < 12 ? 'AM' : 'PM'))
+        : hhmm;
     if (!date) { return t; }
     const dt = new Date(String(date).slice(0, 10) + 'T00:00:00');
     if (isNaN(dt.getTime())) { return t; }
@@ -102,7 +108,7 @@ function fmtSchedule(date, time) {
     const days = Math.round((dt - today) / 86400000);
     if (days <= 0)  { return 'Today, ' + t; }
     if (days === 1) { return 'Tomorrow, ' + t; }
-    return dt.getDate() + ' ' + MONTHS[dt.getMonth()] + ', ' + t;
+    return WEEKDAYS[dt.getDay()] + ' ' + dt.getDate() + ' ' + MONTHS[dt.getMonth()] + ', ' + t;
 }
 
 // First character of a name, uppercased; `fallback` (default '?') when empty.

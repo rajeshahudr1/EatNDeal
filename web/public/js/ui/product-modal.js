@@ -39,6 +39,7 @@
     // ── State (per-open) ────────────────────────────────────────────
     var product   = null;       // raw JSON from /product/json
     var bogo      = null;       // { buyQty, getQty } when this item has a BOGOF rule
+    var cashback  = null;       // { amount } when this item earns product cashback
     var groups    = [];         // top-level option groups
     var selections = {};        // { [groupId]: [optionId, optionId] }
     var qty       = 1;
@@ -170,6 +171,7 @@
               product = env.data.product;
               groups  = env.data.groups || [];
               bogo    = env.data.bogo || null;
+              cashback = env.data.cashback || null;
               selections = {};
               // A BOGOF item opens at the full buy+get quantity so the deal is
               // actually taken — leaving it at 1 on a "Buy 1 Get 1" silently
@@ -229,8 +231,10 @@
         if (img) {
             return '<img src="' + esc(img) + '" alt="' + esc(p.name) + '" data-img-fallback>';
         }
+        // No image → gray "no image" placeholder icon (matches the menu cards),
+        // not a first-letter tile.
         return '<span class="pm-hero__tile" data-tint="' + esc(p.tint || '') + '">' +
-                    '<span class="pm-hero__initial">' + esc(p.initial || '?') + '</span>' +
+                    '<span class="pm-hero__ph" aria-hidden="true"></span>' +
                '</span>';
     }
 
@@ -248,12 +252,22 @@
         var desc = p.description ? '<p class="pm-desc">' + esc(p.description) + '</p>' : '';
         var groupSections = groups.map(buildGroupSection).join('');
 
-        // Veg / non-veg surfaced as a subtle text badge under the
-        // price line — keeps the H1 clean.
-        var vegBadge = '<span class="pm-veg pm-veg--' + (p.veg ? 'veg' : 'nonveg') + '">' +
+        // Food-Type surfaced as a subtle text badge under the price line —
+        // keeps the H1 clean. p.veg is 'veg' | 'non-veg' | 'vegan' |
+        // 'gluten-free' | null; an unclassified item shows no badge at all.
+        var vegBadge = '';
+        var PM_VEG = {
+            'veg':         ['veg',        'Vegetarian'],
+            'non-veg':     ['nonveg',     'Non-vegetarian'],
+            'vegan':       ['vegan',      'Vegan'],
+            'gluten-free': ['glutenfree', 'Gluten free'],
+        };
+        if (p.veg && PM_VEG[p.veg]) {
+            vegBadge = '<span class="pm-veg pm-veg--' + PM_VEG[p.veg][0] + '">' +
                        '<span class="pm-veg__dot" aria-hidden="true"></span>' +
-                       (p.veg ? 'Vegetarian' : 'Non-vegetarian') +
+                       PM_VEG[p.veg][1] +
                        '</span>';
+        }
 
         // "Buy X Get Y Free" — same wording as the badge on the menu card, so
         // the customer sees the offer on the sheet they actually order from.
@@ -261,11 +275,18 @@
             ? '<p class="pm-bogo">Buy ' + esc(bogo.buyQty) + ' Get ' + esc(bogo.getQty) + ' Free</p>'
             : '';
 
+        // "Cashback £X" — the flat per-unit product-cashback reward, same as
+        // the menu-card badge, shown on the sheet they order from.
+        var cashbackBadge = (cashback && Number(cashback.amount) > 0)
+            ? '<p class="pm-cashback">Cashback ' + money(cashback.amount) + '</p>'
+            : '';
+
         return '' +
             '<div class="pm-info">' +
                 '<h1 class="pm-name">' + esc(p.name) + '</h1>' +
                 '<p class="pm-price" data-pm-price>' + money(p.basePrice) + '</p>' +
                 bogoBadge +
+                cashbackBadge +
                 vegBadge +
                 stockLine +
                 desc +

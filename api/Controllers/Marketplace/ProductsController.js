@@ -198,8 +198,9 @@ async function list(req, res) {
                 qb.andWhere('c.id', restaurantId);
             })
             // ── Diet (veg only) ───────────────────────────────────
-            // veg_non_veg = 1 → veg. Excludes null + non-veg.
-            .modify(function (qb) { if (vegOnly) { qb.andWhere('p.veg_non_veg', 1); } })
+            // Veg = Vegetarian (2) or Vegan (4). Excludes Non-Veg (1),
+            // Gluten Free (3) and not-set (0). (POS Food Type enum.)
+            .modify(function (qb) { if (vegOnly) { qb.whereIn('p.veg_non_veg', [2, 4]); } })
             // ── Recommended / Featured ───────────────────────────
             .modify(function (qb) { if (recOnly)  { qb.andWhere('p.is_recommended', 1); } })
             .modify(function (qb) { if (featOnly) { qb.andWhere('p.is_featured',    1); } })
@@ -260,7 +261,7 @@ async function list(req, res) {
                 pickupMinutes:   t.pickup,
                 restaurant:      String(r.company_name || '').trim(),
                 restaurantSlug:  r.company_domain ? M.slugify(r.company_domain) : M.slugify(r.company_name, r.company_id),
-                veg:             M.isVegProduct(r),
+                veg:             M.vegMarker(r),
                 tint:            M.tintFor(r.product_id),
                 initial:         M.initialFor(name),
                 // Build the full public URL via the shared helper —
@@ -585,7 +586,7 @@ async function detail(req, res) {
             // is the convenience boolean the web uses to disable Add.
             availability: avail,
             available:    avail.available,
-            veg:         M.isVegProduct(row),
+            veg:         M.vegMarker(row),
             image:       M.yiiImageUrl('product', row.company_id, row.image_url) || null,
             tint:        M.tintFor(row.product_id),
             initial:     M.initialFor(name),
@@ -634,7 +635,7 @@ async function detail(req, res) {
             .select('p.id', 'p.name', 'p.veg_non_veg', 'p.marketplace_price', 'p.online_platform_price', 'p.price_after_tax', 'pir.url as image_url');
         const related = relRows.map(r => ({
             id: String(r.id), name: String(r.name || '').trim(), slug: M.slugify(r.name), price: M.pickPrice(r),
-            veg: M.isVegProduct(r), image: M.yiiImageUrl('product', row.company_id, r.image_url) || null,
+            veg: M.vegMarker(r), image: M.yiiImageUrl('product', row.company_id, r.image_url) || null,
             tint: M.tintFor(r.id), initial: M.initialFor(r.name),
         }));
 
@@ -643,12 +644,17 @@ async function detail(req, res) {
         // (ProductController.php:81 returns `bogof`, products.js:170-174 shows
         // the container and sets the qty to buy_qty + get_qty).
         let bogo = null;
+        let cashback = null;
         try {
             const Loyalty = require('../../Helpers/loyalty');
             bogo = await Loyalty.bogoForProduct(productId, row.company_id);
-        } catch (e) { bogo = null; }
+            // Product-cashback badge for THIS item — reuse the whole-menu map
+            // (master-gated, one query) and pick this product out of it.
+            const cbMap = await Loyalty.productCashbackMapFor(row.company_id);
+            cashback = cbMap.get(String(productId)) || null;
+        } catch (e) { bogo = bogo || null; }
 
-        return H.successResponse(res, { product, groups, related, bogo });
+        return H.successResponse(res, { product, groups, related, bogo, cashback });
     } catch (err) {
         H.log.error('marketplace.products.detail', err && err.message);
         return H.errorResponse(res, MSG.server.oops, 500);

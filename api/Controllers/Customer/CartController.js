@@ -210,9 +210,33 @@ async function get(req, res) {
         // the cart's mode (store_business_hours), to populate the schedule
         // popup with real openings instead of a free datetime field.
         let availableSlots = [];
+        let scheduleDays = [];
         try {
-            if (branch) { availableSlots = await StoreHours.slotsForBranch(branch, v.cart.serve_type); }
-        } catch (e) { availableSlots = []; }
+            if (branch) {
+                // Multi-day pre-order schedule (today + the next days), Uber-style:
+                // the popup renders a Date select + a Time select driven off this,
+                // exactly like legacy. Also flattened into availableSlots as a
+                // {value,label} fallback list (older single-select path). Only days
+                // that actually have slots are offered as date chips.
+                const days = await StoreHours.scheduleDaysForBranch(branch, v.cart.serve_type);
+                scheduleDays = (days || [])
+                    .filter((day) => day.slots && day.slots.length)
+                    .map((day) => ({
+                        date:    day.date,
+                        isToday: day.isToday,
+                        label:   day.isToday ? 'Today' : (day.top + ', ' + day.sub),
+                        slots:   day.slots,
+                    }));
+                scheduleDays.forEach((day) => {
+                    day.slots.forEach((s) => {
+                        availableSlots.push({
+                            value: s.value,
+                            label: day.isToday ? s.label : (day.label + ' · ' + s.label),
+                        });
+                    });
+                });
+            }
+        } catch (e) { availableSlots = []; scheduleDays = []; }
 
         // Which fulfilment modes this restaurant offers (config-level) — so the
         // cart/checkout can hide the Pickup or Delivery tab for a single-mode
@@ -235,7 +259,7 @@ async function get(req, res) {
         } catch (e) { canSchedule = false; }
 
         const view  = Cart.publicCartView(v.cart, items, {
-            charityTiers, cardServiceCharge, rewardBalance, rewardMax, availableSlots,
+            charityTiers, cardServiceCharge, rewardBalance, rewardMax, availableSlots, scheduleDays,
             canDelivery: offered.delivery, canPickup: offered.pickup, canSchedule,
             rewardPools,
         });

@@ -109,4 +109,10 @@
         min-height: 44px;
         display: inline-flex; align-items: center; justify-content: center;
     }
+    /* On phones this is a focused screen inside the account shell — the
+       .acct-mobilebar already shows the "Loyalty Wallet" title, so hide the
+       page's own heading to avoid a duplicate. The .acct shell also drops in
+       a light-grey app background + bottom-nav padding. */
+    .wallet__head { display: none; }
+    .acct .wallet { max-width: 100%; padding-top: var(--space-3); }
 }

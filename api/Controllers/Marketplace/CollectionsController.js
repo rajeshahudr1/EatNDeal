@@ -189,10 +189,28 @@ async function featuredProductRows() {
             name:  String(r.product_name || '').trim(),
             price: M.pickPrice(r),
             image: M.yiiImageUrl('product', r.company_id, r.image_url) || null,
-            veg:   M.isVegProduct(r),
+            veg:   M.vegMarker(r),
         });
     });
-    return [...byCompany.values()].filter((row) => row.products.length);
+    const rowsOut = [...byCompany.values()].filter((row) => row.products.length);
+
+    // Offer badges — BOGO + product cashback, per company (one pass each), so
+    // the home rail cards carry the SAME badges as the restaurant menu.
+    const Loyalty = require('../../Helpers/loyalty');
+    for (const row of rowsOut) {
+        let bogoMap, cbMap;
+        try {
+            [bogoMap, cbMap] = await Promise.all([
+                Loyalty.bogoMapFor(row.companyId),
+                Loyalty.productCashbackMapFor(row.companyId),
+            ]);
+        } catch (e) { bogoMap = null; cbMap = null; }
+        row.products.forEach((p) => {
+            p.bogo     = (bogoMap && bogoMap.get(String(p.id))) || null;
+            p.cashback = (cbMap && cbMap.get(String(p.id))) || null;
+        });
+    }
+    return rowsOut;
 }
 
 // The admin-configured order of the 4 home-feed sections. Graceful default

@@ -486,11 +486,14 @@
      *        cards look identical to the server-rendered ones.
      */
     function vegMarkerHtml(vegType) {
-        if (vegType === 'pure-veg' || vegType === true) {
-            return '<span class="veg-marker veg-marker--veg" aria-label="Vegetarian" title="Vegetarian"></span>';
-        }
-        if (vegType === 'non-veg' || vegType === false) {
-            return '<span class="veg-marker veg-marker--non-veg" aria-label="Non-vegetarian" title="Non-vegetarian"></span>';
+        // Food-Type marker. Dishes pass 'veg' | 'non-veg' | 'vegan' |
+        // 'gluten-free' | null; restaurant cards pass 'pure-veg' | 'non-veg' |
+        // null. Anything else (unknown / not set) renders NO marker — never
+        // guess a type for an unclassified item.
+        var LBL = { 'veg': 'Vegetarian', 'non-veg': 'Non-vegetarian', 'vegan': 'Vegan', 'gluten-free': 'Gluten free' };
+        var t = (vegType === 'pure-veg') ? 'veg' : vegType;
+        if (t && LBL[t]) {
+            return '<span class="veg-marker veg-marker--' + t + '" aria-label="' + LBL[t] + '" title="' + LBL[t] + '"></span>';
         }
         return '';
     }
@@ -560,7 +563,7 @@
             '<li data-search-id="' + escHtml(d.id) + '">' +
               '<a class="dish-card" href="/?restaurant=' + encodeURIComponent(d.restaurantSlug) + '" data-action="pick-restaurant">' +
                 '<div class="dish-card__image" data-tint="' + escHtml(d.tint) + '">' +
-                  '<span class="dish-card__initial" aria-hidden="true">' + escHtml(d.initial) + '</span>' +
+                  '<span class="dish-card__ph" aria-hidden="true"></span>' +
                   photo + vegMarkerHtml(d.veg) +
                 '</div>' +
                 '<div class="dish-card__body">' +

@@ -232,14 +232,26 @@ function metaTable(order, cart, paymentLbl) {
      * so we name the real day once it's further out than tomorrow.
      */
     const scheduleLabel = function (ymd, time) {
-        if (!ymd) { return time; }
+        // 12-hour "10:54 AM" to match the legacy EatNDeal display.
+        const hm = String(time || '').match(/^(\d{1,2}):(\d{2})/);
+        const t  = hm ? (((Number(hm[1]) % 12) || 12) + ':' + hm[2] + ' ' + (Number(hm[1]) < 12 ? 'AM' : 'PM')) : String(time || '');
+        if (!ymd) { return t; }
         const d = new Date(ymd + 'T00:00:00');
-        if (!Number.isFinite(d.getTime())) { return time; }
+        if (!Number.isFinite(d.getTime())) { return t; }
         const today = new Date(); today.setHours(0, 0, 0, 0);
         const days  = Math.round((d - today) / 86400000);
-        if (days <= 0) { return 'Today, ' + time; }
-        if (days === 1) { return 'Tomorrow, ' + time; }
-        return d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }) + ', ' + time;
+        if (days <= 0) { return 'Today, ' + t; }
+        if (days === 1) { return 'Tomorrow, ' + t; }
+        return d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }) + ', ' + t;
+    };
+    // scheduled_date is a timestamptz written in server-local time — read it
+    // back the same way (a naive UTC slice lands on the wrong day). Returns ''.
+    const localYmd = function (v) {
+        if (!v) { return ''; }
+        const d = (v instanceof Date) ? v : new Date(v);
+        if (!Number.isFinite(d.getTime())) { return ''; }
+        const p = (n) => String(n).padStart(2, '0');
+        return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
     };
     const mrow = function (lbl, val, strong) {
         return '<tr><td style="color:#6b6b6b;padding:3px 0;">' + esc(lbl) + '</td><td align="right" style="padding:3px 0;' + (strong ? 'font-weight:700;' : '') + 'color:#1c1c1c;">' + val + '</td></tr>';
@@ -250,7 +262,7 @@ function metaTable(order, cart, paymentLbl) {
         // Show the DAY as well as the time — a bare "05:45" leaves both the
         // customer and the kitchen guessing which morning it's for.
         const when = String(o.scheduled_time || c.scheduled_time || '').trim();
-        const day  = String(o.scheduled_date || c.scheduled_date || '').slice(0, 10);
+        const day  = localYmd(o.scheduled_date || c.scheduled_date);
         arr.push(mrow('When', when ? esc(scheduleLabel(day, when)) : 'Scheduled for later'));
     }
     return infoBox('<table width="100%" cellpadding="0" cellspacing="0">' + arr.join('') + '</table>');

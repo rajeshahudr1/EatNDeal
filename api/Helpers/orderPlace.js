@@ -36,6 +36,7 @@
  */
 
 const { db }       = require('../config/db');
+const H            = require('./helper');   // shared logger (H.log) — see notifyLegacyOrderPlaced
 const Cart         = require('./cart');
 const OrderTime    = require('./orderTime');
 const PaymentOptions = require('./paymentOptions');   // enum → the restaurant's own paymentoptions row
@@ -294,6 +295,10 @@ async function placeOrder({ customer, cart, branch, items, paymentOption, custom
         const orderId = Number((seqRow.rows || seqRow)[0].id);
         const orderNumber = generateOrderNumber(now, orderId);
         const orderStatus = resolveOrderStatus(branch, cart.serve_type);
+        // queue_number — legacy OrderController: 1 when the branch auto-accepts
+        // off-orders (auto_acc_off_orders = 1), else 0. Kept in step with
+        // resolveOrderStatus, which gates on the same flag.
+        const queueNumber = Number(branch && branch.auto_acc_off_orders) === 1 ? 1 : 0;
 
         // Pre-order schedule → legacy splits it across TWO columns:
         // `scheduled_date` (DATE) + `scheduled_time` (TIME). Both exist on
@@ -324,6 +329,7 @@ async function placeOrder({ customer, cart, branch, items, paymentOption, custom
             internal_order_id: internalOrderId,
             order_number:      orderNumber,
             order_status:      orderStatus,
+            queue_number:      queueNumber,
             serve_type:        cart.serve_type,
             sub_total:         Number(cart.sub_total)     || 0,
             tax:               Number(cart.tax)           || 0,
@@ -566,7 +572,40 @@ async function placeOrder({ customer, cart, branch, items, paymentOption, custom
         }
 
         return order;
+    })
+    // ── AFTER COMMIT — push the order to the restaurant's legacy POS ──────
+    // Deliberately OUTSIDE the transaction: the legacy server reads this
+    // order from the SHARED database by its id, so it must be able to SEE the
+    // committed row. Firing inside the txn would hand it an id that isn't
+    // visible (or gets rolled back) yet. Best-effort + non-blocking: the
+    // customer's confirmation must never wait on — or fail because of — a
+    // restaurant's POS being slow or down (legacyApi.post never throws).
+    .then((order) => {
+        notifyLegacyOrderPlaced(order.id);
+        return order;
     });
+}
+
+/**
+ * notifyLegacyOrderPlaced
+ *
+ * What:  Fire-and-forget POST to the legacy `send-order` API with the placed
+ *        order's auto-increment id, so the restaurant's POS prints/queues it.
+ *        Not awaited by placeOrder — a committed order is done regardless of
+ *        whether the POS acknowledges. Failures are logged, never surfaced.
+ * Type:  WRITE (network, detached).
+ */
+function notifyLegacyOrderPlaced(orderId) {
+    if (!orderId) { return; }
+    const legacyApi = require('./legacyApi');
+    Promise.resolve()
+        .then(() => legacyApi.sendOrder({ orderId }))
+        .then((res) => {
+            if (!res || !res.ok) {
+                H.log.error('orderPlace.sendOrder', 'order ' + orderId + ': ' + ((res && res.message) || 'no response'));
+            }
+        })
+        .catch((e) => H.log.error('orderPlace.sendOrder', 'order ' + orderId + ': ' + (e && e.message)));
 }
 
 module.exports = {

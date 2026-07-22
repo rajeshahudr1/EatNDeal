@@ -1,0 +1,59 @@
+<%#
+  partials/account-nav.ejs
+
+  The shared account sidebar (left nav + Invite card). Rendered on the
+  account dashboard AND the standalone Loyalty Wallet / Earn Cashback pages
+  so every signed-in "account" screen carries the SAME navigation.
+
+  Locals:
+    nav_active — which item is current: 'profile' | 'addresses' | 'payment'
+                 | 'orders' | 'favourites' | 'rewards' | 'wallet' | 'earn'
+                 | 'notifications'. Anything else → nothing highlighted.
+
+  Hidden on mobile (≤767px) by the .acct-nav rule — phones use the focused
+  screen + .acct-mobilebar back bar instead. Keep this in step with the tab
+  list in views/account/index.ejs.
+-%>
+<% var __na = (typeof nav_active !== 'undefined') ? nav_active : ''; %>
+<aside class="acct-nav">
+    <nav class="acct-nav__list" aria-label="Account">
+        <a class="acct-nav__item<%= __na === 'profile' ? ' is-active' : '' %>" href="/account"<%= __na === 'profile' ? ' aria-current="page"' : '' %>>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg>
+            <span>My Profile</span>
+        </a>
+        <a class="acct-nav__item<%= __na === 'addresses' ? ' is-active' : '' %>" href="/account?tab=addresses">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s7-7.5 7-13a7 7 0 0 0-14 0c0 5.5 7 13 7 13z"/><circle cx="12" cy="9" r="2.5"/></svg>
+            <span>Addresses</span>
+        </a>
+        <a class="acct-nav__item<%= __na === 'payment' ? ' is-active' : '' %>" href="/account?tab=payment">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+            <span>Payment Methods</span>
+        </a>
+        <a class="acct-nav__item<%= __na === 'orders' ? ' is-active' : '' %>" href="/account?tab=orders">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2h-3"/><rect x="9" y="2" width="6" height="4" rx="1"/><line x1="8" y1="11" x2="16" y2="11"/><line x1="8" y1="15" x2="13" y2="15"/></svg>
+            <span>My Orders</span>
+        </a>
+        <a class="acct-nav__item<%= __na === 'favourites' ? ' is-active' : '' %>" href="/account?tab=favourites">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1.1L12 21l7.8-7.5 1-1.1a5.5 5.5 0 0 0 0-7.8z"/></svg>
+            <span>Favourites</span>
+        </a>
+        <a class="acct-nav__item<%= __na === 'rewards' ? ' is-active' : '' %>" href="/account?tab=rewards">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="8" width="18" height="13" rx="1"/><path d="M3 12h18M12 8v13M12 8S9 3 6.5 4.5 7 8 12 8zM12 8s3-5 5.5-3.5S17 8 12 8z"/></svg>
+            <span>Rewards</span>
+        </a>
+        <a class="acct-nav__item<%= __na === 'wallet' ? ' is-active' : '' %>" href="/wallet"<%= __na === 'wallet' ? ' aria-current="page"' : '' %>>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 7H5a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-3"/><path d="M21 11h-5a2 2 0 0 0 0 4h5v-4z"/><path d="M3 9V7a2 2 0 0 1 2-2h11"/></svg>
+            <span>Loyalty Wallet</span>
+        </a>
+        <a class="acct-nav__item<%= __na === 'earn' ? ' is-active' : '' %>" href="/earn"<%= __na === 'earn' ? ' aria-current="page"' : '' %>>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="8" width="18" height="4" rx="1"/><path d="M5 12v7a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-7"/><path d="M12 8V4M12 8c-1.5 0-4-.5-4-2.5S10.5 4 12 8zM12 8c1.5 0 4-.5 4-2.5S13.5 4 12 8z"/></svg>
+            <span>Earn Cashback</span>
+        </a>
+    </nav>
+
+    <div class="acct-invite">
+        <p class="acct-invite__title">Invite &amp; Earn</p>
+        <p class="acct-invite__sub">Invite your friends and earn exciting rewards</p>
+        <a class="acct-invite__btn" href="/account?tab=rewards">Invite Now</a>
+    </div>
+</aside>

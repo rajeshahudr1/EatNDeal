@@ -282,11 +282,22 @@
 }
 .hp-card:hover { box-shadow: 0 6px 18px rgba(15, 23, 42, .1); transform: translateY(-2px); }
 .hp-card__media { position: relative; width: 100%; aspect-ratio: 1 / 1; background: var(--color-bg-alt, #f1f5f9); display: flex; align-items: center; justify-content: center; }
-.hp-card__media img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.hp-card__ph { font-size: 1.8rem; opacity: .5; }
+.hp-card__media img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+/* No-image placeholder — gray image icon; base layer beneath the photo. */
+.hp-card__ph { position: absolute; inset: 0; background: #f3f4f6 url('/img/no-image.svg') center / 36% no-repeat; }
 .hp-card__veg { position: absolute; top: 6px; left: 6px; width: 12px; height: 12px; border: 2px solid #15803d; border-radius: 3px; background: #fff; }
 .hp-card__veg::after { content: ''; position: absolute; top: 2px; left: 2px; width: 4px; height: 4px; border-radius: 50%; background: #15803d; }
+/* Non-veg variant — red border + red dot (same box, flipped colour). */
+.hp-card__veg--nonveg { border-color: #dc2626; }
+.hp-card__veg--nonveg::after { background: #dc2626; }
 .hp-card__body { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px 10px; }
+/* Offer badges on a home-rail product card (BOGO + product cashback), same
+   look as the restaurant menu — wrap so two badges never overflow the card. */
+/* Offer chips overlay the bottom-left of the image so the body stays a fixed height. */
+.hp-card__offers { position: absolute; left: 6px; bottom: 6px; right: 6px; z-index: 2; display: flex; flex-direction: column; align-items: flex-start; gap: 3px; }
+.hp-card__offer { display: inline-block; max-width: 100%; padding: 2px 7px; border-radius: 6px; font-size: 0.64rem; font-weight: 800; line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-shadow: 0 1px 3px rgba(0,0,0,.18); }
+.hp-card__offer--bogo { background: #fef3c7; color: #92400e; }
+.hp-card__offer--cashback { background: #dcfce7; color: #166534; }
 .hp-card__name { font-size: 0.85rem; font-weight: 600; color: var(--color-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .hp-card__price { font-size: 0.85rem; font-weight: 700; color: var(--color-primary); }
 
@@ -607,7 +618,31 @@
    under the category rail. Mobile: block stack — only the welcome strip shows
    (the app card is desktop-only; you're already on a phone). ── */
 .home-topline { display: block; }
-.app-mini { display: none; }   /* desktop-only */
+.app-mini { display: none; }
+/* Mobile web browser — show the get-the-app card too (it is server-side
+   omitted inside our WebView wrapper, so this only ever hits real browsers).
+   Stacked full-width card under the welcome strip; same look as desktop. */
+@media (max-width: 767px) {
+    .app-mini {
+        position: relative; display: flex; align-items: center; gap: 14px;
+        width: 100%; margin: var(--space-4) 0 0; padding: 14px 16px; border-radius: 16px;
+        background: var(--color-bg); border: 1px solid var(--color-border); box-shadow: var(--shadow-1);
+    }
+    .app-mini__radio { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+    .app-mini__qr { position: relative; flex: 0 0 auto; width: 84px; height: 84px; border-radius: 10px; background: #fff; border: 1px solid var(--color-border); padding: 5px; overflow: hidden; }
+    .app-mini__img { position: absolute; inset: 5px; width: calc(100% - 10px); height: calc(100% - 10px); object-fit: contain; display: none; }
+    #app-ios:checked ~ .app-mini__qr .app-mini__img--ios         { display: block; }
+    #app-android:checked ~ .app-mini__qr .app-mini__img--android { display: block; }
+    .app-mini__body { min-width: 0; }
+    .app-mini__title { margin: 8px 0 0; font-weight: 800; font-size: 0.95rem; color: var(--color-text); }
+    .app-mini__sub { margin: 2px 0 0; font-size: 0.8rem; color: var(--color-text-muted); }
+    .app-mini__actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .app-mini__tabs { display: flex; gap: 8px; }
+    .app-mini__tab { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--color-border); background: var(--color-bg-alt, #f7f8fa); color: var(--color-text); font-weight: 700; font-size: 0.8rem; cursor: pointer; user-select: none; }
+    .app-mini__tab-ic { width: 15px; height: 15px; flex: 0 0 auto; }
+    #app-ios:checked ~ .app-mini__body .app-mini__tab[for="app-ios"],
+    #app-android:checked ~ .app-mini__body .app-mini__tab[for="app-android"] { background: #111; color: #fff; border-color: #111; }
+}
 @media (min-width: 768px) {
     /* Pull the promo zone (welcome strip + offer carousel) tighter to the
      * category rail — the shell's flex gap (space-8) PLUS the strips' own

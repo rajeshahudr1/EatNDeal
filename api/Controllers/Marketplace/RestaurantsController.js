@@ -192,13 +192,17 @@ async function list(req, res) {
         // marketplace-on products (the only ones a customer would
         // actually see) so a stale POS-only non-veg item can't flip
         // the restaurant's marketplace badge.
+        // POS Food Type enum: 1=Non-Veg, 2=Vegetarian, 3=Gluten Free, 4=Vegan.
+        // "Veg" = Vegetarian or Vegan (2,4); "Non-Veg" = 1. Items left at 0
+        // (not set) or 3 (Gluten Free) are UNKNOWN and count as neither, so an
+        // unclassified menu never wrongly blocks the "pure veg" badge.
         const hasVegSubq = db.raw(
             `EXISTS (
                 SELECT 1 FROM products vp
                 WHERE vp.company_id = c.id
                   AND vp.status = '1'
                   AND vp.show_marketplace = 1
-                  AND vp.veg_non_veg = 1
+                  AND vp.veg_non_veg IN (2, 4)
             ) AS has_veg`
         );
         const hasNonVegSubq = db.raw(
@@ -207,7 +211,7 @@ async function list(req, res) {
                 WHERE vp.company_id = c.id
                   AND vp.status = '1'
                   AND vp.show_marketplace = 1
-                  AND (vp.veg_non_veg IS NULL OR vp.veg_non_veg <> 1)
+                  AND vp.veg_non_veg = 1
             ) AS has_non_veg`
         );
 
@@ -852,15 +856,19 @@ async function detail(req, res) {
                 ...A.selectColumns(db, 'p'),
             );
 
-        // BOGOF map for the whole menu (one pass) → "Buy X Get Y" badges.
-        const bogoMap = await require('../../Helpers/loyalty').bogoMapFor(companyId);
+        // BOGOF + product-cashback maps for the whole menu (one pass each) →
+        // "Buy X Get Y" and "Cashback £X" badges.
+        const bogoMap     = await require('../../Helpers/loyalty').bogoMapFor(companyId);
+        const cashbackMap = await require('../../Helpers/loyalty').productCashbackMapFor(companyId);
 
         const mapProd = (r) => {
             const avail = A.evaluate(r);
             const disc  = M.discountedPrice(r);
             const bogo  = bogoMap.get(String(r.product_id)) || null;
+            const cashback = cashbackMap.get(String(r.product_id)) || null;
             return {
                 bogo:          bogo,   // { buyQty, getQty } | null
+                cashback:      cashback,   // { amount } (flat £ per unit) | null
                 id:            String(r.product_id),
                 name:          String(r.product_name || '').trim(),
                 slug:          M.slugify(r.product_name),
@@ -871,7 +879,7 @@ async function detail(req, res) {
                 // hides the badge (we don't show the restaurant's avg as a
                 // fake per-product rating).
                 rating:        null,
-                veg:           M.isVegProduct(r),
+                veg:           M.vegMarker(r),
                 isFeatured:    Number(r.is_featured) === 1,
                 isRecommended: Number(r.is_recommended) === 1,
                 // Availability — status-driven (no stock). Full verdict +

@@ -61,6 +61,15 @@
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
                         <%= order.serveType === 2 ? 'Picked up. Enjoy!' : 'Delivered. Enjoy!' %>
                     </p>
+                <% } else if (order.isPreOrder && order.scheduledTime) { %>
+                    <%# Pre-order → the customer chose a future slot, so a live
+                        "arriving in ~16 min" ETA is wrong. Show the scheduled
+                        day + time instead (legacy EatNDeal parity). %>
+                    <p class="order-track__eta order-track__eta--sched" data-order-eta-line>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>
+                        <%= order.serveType === 2 ? 'Pickup' : 'Delivery' %> scheduled for
+                        <strong><%= fmt.fmtSchedule(order.scheduledDate, order.scheduledTime) %></strong>
+                    </p>
                 <% } else if (order.etaMinutes != null) { %>
                     <p class="order-track__eta" data-order-eta-line>
                         <%= order.serveType === 2 ? 'Ready in' : 'Arriving in' %>

@@ -40,6 +40,9 @@ const H = require('./helper');
 // site ever hardcodes a URL fragment.
 const ACTIONS = Object.freeze({
     uploadFile: 'upload-file',      // DefaultController::actionUploadFile
+    sendOrder:  'send-order',       // DefaultController::actionSendOrder — push a
+                                    // placed marketplace order to the restaurant's
+                                    // legacy POS so it prints / enters the queue.
 });
 
 const DEFAULT_TIMEOUT_MS = 20000;
@@ -139,4 +142,20 @@ async function uploadFile({ uploadPath, fileName, imageBase64 }) {
     });
 }
 
-module.exports = { ACTIONS, post, uploadFile, url, isConfigured };
+/**
+ * sendOrder
+ *
+ * What:  Notify the restaurant's legacy POS that a marketplace order was
+ *        placed, so it can print the ticket / drop it into the kitchen queue.
+ *        Only the auto-increment order id crosses the wire — the legacy side
+ *        reads the full order from the SHARED database by that id.
+ * Type:  WRITE (network).
+ *
+ * Input:  { orderId } — orders.id (the auto-increment PK, e.g. 268).
+ * Output: { ok, data, message } — best-effort; never throws (see post()).
+ */
+async function sendOrder({ orderId }) {
+    return post(ACTIONS.sendOrder, { order_id: orderId });
+}
+
+module.exports = { ACTIONS, post, uploadFile, sendOrder, url, isConfigured };

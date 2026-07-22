@@ -181,16 +181,45 @@ function slugify(str, fallbackId) {
 /**
  * isVegProduct
  *
- * What:  Reads the `veg_non_veg` column. In the existing Yii schema
- *        the convention is:
- *          1 = veg
- *          2 = non-veg
- *          3 = egg / contains animal product but not meat
- *        We treat 1 as veg, everything else as non-veg.
+ * What:  Reads the `veg_non_veg` column. The POS "Food Type" dropdown
+ *        (backend/modules/pos/views/products/_form.php) stores:
+ *          0 = not set / Select
+ *          1 = Non-Vegetarian
+ *          2 = Vegetarian
+ *          3 = Gluten Free      (an allergen tag, NOT a veg/non-veg class)
+ *          4 = Vegan
+ *        "Veg" for our purposes = Vegetarian OR Vegan (2 or 4). Used by the
+ *        veg-only filters. (Earlier this checked `=== 1`, which is the exact
+ *        OPPOSITE — 1 is NON-veg — so the veg filter was inverted.)
  * Type:  READ (pure).
  */
 function isVegProduct(product) {
-    return Number(product && product.veg_non_veg) === 1;
+    const v = Number(product && product.veg_non_veg);
+    return v === 2 || v === 4;
+}
+
+/**
+ * vegMarker
+ *
+ * What:  Food-Type marker for a product card, mapped from the POS Food Type
+ *        value (see isVegProduct for the full enum). Each type gets its OWN
+ *        marker so Vegan / Gluten Free read distinctly (old EatNDeal only had
+ *        a text label and lumped everything non-1 into "Vegetarian"):
+ *          2 (Vegetarian)     → 'veg'          (green dot)
+ *          1 (Non-Vegetarian) → 'non-veg'      (red triangle)
+ *          4 (Vegan)          → 'vegan'         (green leaf)
+ *          3 (Gluten Free)    → 'gluten-free'   (amber "GF")
+ *          0 (not set)        → null            (no marker)
+ *        Callers that only care about veg-vs-not use isVegProduct instead.
+ * Type:  READ (pure).
+ */
+function vegMarker(product) {
+    const v = Number(product && product.veg_non_veg);
+    if (v === 2) { return 'veg'; }
+    if (v === 1) { return 'non-veg'; }
+    if (v === 4) { return 'vegan'; }
+    if (v === 3) { return 'gluten-free'; }
+    return null;
 }
 
 /**
@@ -656,6 +685,7 @@ module.exports = {
     cuisinesFor,
     slugify,
     isVegProduct,
+    vegMarker,
     yiiImageUrl,
     normaliseName,
     eligibleCompanyScope,

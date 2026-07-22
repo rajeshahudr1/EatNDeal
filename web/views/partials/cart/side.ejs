@@ -85,21 +85,27 @@
                 </summary>
                 <ol class="cart-items" role="list" aria-label="Items in your cart">
                     <% cart.items.forEach(function (it) { %>
-                        <li class="cart-item" data-cart-item="<%= it.id %>" data-product-id="<%= it.productId %>">
+                        <li class="cart-item<%= it.isFreeItem ? ' cart-item--free' : '' %>" data-cart-item="<%= it.id %>" data-product-id="<%= it.productId %>">
                             <div class="cart-item__body">
                                 <p class="cart-item__name"><%= it.name %></p>
                                 <% if (it.modifiers && it.modifiers.length) { %>
                                     <p class="cart-item__mods"><%= it.modifiers.map(function (m) { return m.name; }).filter(Boolean).join(' · ') %></p>
                                 <% } %>
                                 <% if (it.remark) { %><p class="cart-item__remark"><%= it.remark %></p><% } %>
-                                <div class="cart-item__controls">
-                                    <div class="cart-stepper" data-cart-stepper>
-                                        <button type="button" class="cart-stepper__btn" data-action="cart-qty-dec" aria-label="Decrease quantity">−</button>
-                                        <span class="cart-stepper__value" data-cart-qty><%= it.qty %></span>
-                                        <button type="button" class="cart-stepper__btn" data-action="cart-qty-inc" aria-label="Increase quantity">+</button>
+                                <%# A free gift (type-3 discount) is auto-granted by the cart — no qty
+                                    stepper or Remove, just a "Free Item" tag, matching legacy. %>
+                                <% if (it.isFreeItem) { %>
+                                    <span class="cart-item__free-tag">🎁 Free Item</span>
+                                <% } else { %>
+                                    <div class="cart-item__controls">
+                                        <div class="cart-stepper" data-cart-stepper>
+                                            <button type="button" class="cart-stepper__btn" data-action="cart-qty-dec" aria-label="Decrease quantity">−</button>
+                                            <span class="cart-stepper__value" data-cart-qty><%= it.qty %></span>
+                                            <button type="button" class="cart-stepper__btn" data-action="cart-qty-inc" aria-label="Increase quantity">+</button>
+                                        </div>
+                                        <button type="button" class="cart-item__remove" data-action="cart-remove" aria-label="Remove from cart">Remove</button>
                                     </div>
-                                    <button type="button" class="cart-item__remove" data-action="cart-remove" aria-label="Remove from cart">Remove</button>
-                                </div>
+                                <% } %>
                             </div>
                             <div class="cart-item__side">
                                 <span class="cart-item__price" data-cart-line-price><%= sym %><%= it.linePrice.toFixed(2) %></span>

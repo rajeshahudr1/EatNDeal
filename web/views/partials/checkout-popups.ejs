@@ -212,22 +212,53 @@
             <span class="ckt-popup__hint"></span>
         </header>
         <div class="ckt-popup__body">
-            <div class="ckt-popup__tabs" role="tablist">
+            <%# When the restaurant is CLOSED now (cart.canSchedule ⟹ closed +
+                pre-order + slots), "ASAP" is meaningless — you can't get it as
+                soon as ready when they're shut. Legacy hides ASAP and forces a
+                pre-order slot. So drop the ASAP tab entirely while closed and
+                make Schedule the only (active) option. Open restaurants keep
+                both tabs (ASAP default). %>
+            <% var __closedNow = !!cart.canSchedule; %>
+            <% var __schedActive = __closedNow || cart.isPreOrder; %>
+            <div class="ckt-popup__tabs<%= __closedNow ? ' ckt-popup__tabs--single' : '' %>" role="tablist">
+                <% if (!__closedNow) { %>
                 <button type="button" class="ckt-popup__tab<%= cart.isPreOrder ? '' : ' is-active' %>" data-action="cart-sched-asap" role="tab" aria-selected="<%= cart.isPreOrder ? 'false' : 'true' %>">ASAP</button>
-                <button type="button" class="ckt-popup__tab<%= cart.isPreOrder ? ' is-active' : '' %>" data-action="cart-sched-pick" role="tab" aria-selected="<%= cart.isPreOrder ? 'true' : 'false' %>">Schedule</button>
+                <% } %>
+                <button type="button" class="ckt-popup__tab<%= __schedActive ? ' is-active' : '' %>" data-action="cart-sched-pick" role="tab" aria-selected="<%= __schedActive ? 'true' : 'false' %>">Schedule</button>
             </div>
-            <div class="ckt-popup__field" data-cart-sched-panel<%= cart.isPreOrder ? '' : ' hidden' %>>
+            <div class="ckt-popup__field" data-cart-sched-panel<%= __schedActive ? '' : ' hidden' %>>
+                <% var __days  = (cart.scheduleDays && cart.scheduleDays.length) ? cart.scheduleDays : null; %>
                 <% var __slots = (cart.availableSlots && cart.availableSlots.length) ? cart.availableSlots : null; %>
-                <% if (__slots) { %>
-                    <%# Real opening-hours slots (today) for this restaurant +
-                        mode — 15-min steps from store_business_hours. %>
-                    <label for="ckt-sched-input" class="ckt-popup__label">Pick a time (today)</label>
+                <% if (__days) { %>
+                    <%# Legacy-style Date + Time two-step. The Date select lists
+                        each open day (Today / Tomorrow / Fri 25 Jul …); picking a
+                        date repopulates the Time select from that day's slots
+                        (data-sched-times JSON drives it client-side). The hidden
+                        input carries the final combined 'YYYY-MM-DDTHH:MM' value. %>
+                    <div class="ckt-sched-grid">
+                        <div class="ckt-sched-col">
+                            <label for="ckt-sched-date" class="ckt-popup__label">Date</label>
+                            <select id="ckt-sched-date" class="ckt-popup__input" data-cart-sched-date>
+                                <% __days.forEach(function (d, di) { %><option value="<%= di %>"><%= d.label %></option><% }); %>
+                            </select>
+                        </div>
+                        <div class="ckt-sched-col">
+                            <label for="ckt-sched-time" class="ckt-popup__label">Time</label>
+                            <select id="ckt-sched-time" class="ckt-popup__input" data-cart-sched-time-select>
+                                <% __days[0].slots.forEach(function (s) { %><option value="<%= s.value %>"><%= s.label %></option><% }); %>
+                            </select>
+                        </div>
+                    </div>
+                    <input type="hidden" data-cart-sched-input value="<%= __days[0].slots[0] ? __days[0].slots[0].value : '' %>">
+                    <script type="application/json" data-sched-times><%- JSON.stringify(__days.map(function (d) { return d.slots; })) %></script>
+                <% } else if (__slots) { %>
+                    <label for="ckt-sched-input" class="ckt-popup__label">Pick a time</label>
                     <select id="ckt-sched-input" class="ckt-popup__input" data-cart-sched-input>
                         <% __slots.forEach(function (s) { %><option value="<%= s.value %>"><%= s.label %></option><% }); %>
                     </select>
                 <% } else { %>
-                    <%# No slots today (closed / no hours configured) — fall back
-                        to a free datetime so scheduling still works. %>
+                    <%# No slots at all — fall back to a free datetime so scheduling
+                        still works (e.g. no hours configured). %>
                     <label for="ckt-sched-input" class="ckt-popup__label">Pick a date &amp; time</label>
                     <input type="datetime-local" id="ckt-sched-input" class="ckt-popup__input" data-cart-sched-input value="<%= schedDefault %>" min="<%= schedMin %>">
                 <% } %>

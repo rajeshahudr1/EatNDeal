@@ -39,37 +39,6 @@
     </button>
     <% } %>
 
-    <%# Reward-card balance — the signed-in customer's usable reward at THIS
-        restaurant (loyalty, per company_id). Tap → Rewards wallet. Only > 0. %>
-    <% var __rb = (typeof restaurant_reward_balance !== 'undefined' && restaurant_reward_balance) ? Number(restaurant_reward_balance) : 0; %>
-    <% if (__rb > 0) { %>
-    <a class="rd-rewardbar" href="/account?tab=rewards">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
-        <span>You have <strong><%= sym %><%= __rb.toFixed(2) %></strong> reward to use here</span>
-        <svg class="rd-rewardbar__chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
-    </a>
-    <% } %>
-
-    <%# Order-streak progress — nudge toward the next reward (loyalty
-        product_streak). Stamp-card dots: <target> dots, first <current>
-        filled. "ready" = the next order earns the reward. Only when a rule
-        exists for this restaurant. %>
-    <% var __rs = (typeof restaurant_reward_streak !== 'undefined' && restaurant_reward_streak) ? restaurant_reward_streak : null; %>
-    <% if (__rs && __rs.target > 0) { %>
-    <div class="rd-streakbar<%= __rs.ready ? ' rd-streakbar--ready' : '' %>">
-        <span class="rd-streakbar__icon" aria-hidden="true">🎁</span>
-        <div class="rd-streakbar__body">
-            <% if (__rs.ready) { %>
-                <p class="rd-streakbar__title">Reward ready — your next order earns <%= __rs.rewardLabel %>!</p>
-            <% } else { %>
-                <p class="rd-streakbar__title"><%= __rs.remaining %> more order<%= __rs.remaining === 1 ? '' : 's' %> → <%= __rs.rewardLabel %> reward</p>
-            <% } %>
-            <span class="rd-streakbar__dots" aria-hidden="true">
-                <% for (var __i = 0; __i < __rs.target; __i++) { %><span class="rd-streakbar__dot<%= (__rs.ready || __i < __rs.current) ? ' is-on' : '' %>"></span><% } %>
-            </span>
-        </div>
-    </div>
-    <% } %>
 
     <%# ── Hero ───────────────────────────────────────────────────── %>
     <section class="rd-hero">
@@ -406,9 +375,26 @@
                         <li class="rd-product<%= unavail ? ' is-soldout' : '' %>" data-slug="<%= p.slug %>">
                             <div class="rd-product__media" data-tint="<%= p.tint %>">
                                 <% if (unavail) { %><span class="rd-product__soldout"><%= av.soldOut ? 'Sold out' : 'Unavailable' %></span><% } %>
-                                <% if (p.image) { %><img src="<%= p.image %>" alt="" loading="lazy" data-img-fallback><% } else { %><span class="rd-product__initial" aria-hidden="true"><%= p.initial %></span><% } %>
-                                <% if (p.veg) { %><span class="veg-marker veg-marker--veg" aria-label="Vegetarian"></span><% } else { %><span class="veg-marker veg-marker--non-veg" aria-label="Non-vegetarian"></span><% } %>
+                                <%# No-image placeholder (gray image icon) sits at the base ALWAYS;
+                                    the real photo renders on top when present, and if it fails to
+                                    load data-img-fallback hides it so the placeholder shows through
+                                    — matching old EatNDeal (never a bare first-letter tile). %>
+                                <span class="rd-product__ph" aria-hidden="true"></span>
+                                <% if (p.image) { %><img src="<%= p.image %>" alt="" loading="lazy" data-img-fallback><% } %>
+                                <% var __vegLbl = { 'veg':'Vegetarian', 'non-veg':'Non-vegetarian', 'vegan':'Vegan', 'gluten-free':'Gluten free' }; %>
+                                <% if (p.veg && __vegLbl[p.veg]) { %><span class="veg-marker veg-marker--<%= p.veg %>" aria-label="<%= __vegLbl[p.veg] %>" title="<%= __vegLbl[p.veg] %>"></span><% } %>
                                 <% if (p.isFeatured) { %><span class="rd-product__badge">Bestseller</span><% } %>
+                                <%# Offer chips overlay the image corner so the body keeps a uniform height. %>
+                                <% if ((p.bogo && p.bogo.buyQty > 0 && p.bogo.getQty > 0) || (p.cashback && p.cashback.amount > 0)) { %>
+                                    <div class="rd-product__promos">
+                                        <% if (p.bogo && p.bogo.buyQty > 0 && p.bogo.getQty > 0) { %>
+                                            <span class="rd-product__bogo">🎁 Buy <%= p.bogo.buyQty %> Get <%= p.bogo.getQty %> Free</span>
+                                        <% } %>
+                                        <% if (p.cashback && p.cashback.amount > 0) { %>
+                                            <span class="rd-product__cashback">💸 Cashback <%= sym %><%= Number(p.cashback.amount).toFixed(2) %></span>
+                                        <% } %>
+                                    </div>
+                                <% } %>
                             </div>
                             <div class="rd-product__body">
                                 <h3 class="rd-product__name"><%= p.name %></h3>
@@ -430,9 +416,6 @@
                                         <%= av.label %>
                                     </span>
                                 <% } %>
-                                <% if (p.bogo && p.bogo.buyQty > 0 && p.bogo.getQty > 0) { %>
-                                    <span class="rd-product__bogo">🎁 Buy <%= p.bogo.buyQty %> Get <%= p.bogo.getQty %> Free</span>
-                                <% } %>
                                 <div class="rd-product__foot">
                                     <% if (typeof p.originalPrice === 'number' && p.originalPrice > 0) { %>
                                         <span class="rd-product__price-was"><%= sym %><%= p.originalPrice.toFixed(2) %></span>
@@ -444,7 +427,7 @@
                                         <%# data-rest is REQUIRED to look the item up (/product/json 404s on
                                             an id alone) — the quick-add handler uses it to check whether the
                                             product has required options before adding. %>
-                                        <button type="button" class="rd-product__add" data-action="rd-add" data-id="<%= p.id %>" data-rest="<%= r.slug %>" data-name="<%= p.name %>">
+                                        <button type="button" class="rd-product__add" data-action="rd-add" data-id="<%= p.id %>" data-rest="<%= r.slug %>" data-name="<%= p.name %>"<% if (p.bogo && p.bogo.buyQty > 0 && p.bogo.getQty > 0) { %> data-bogo-buy="<%= p.bogo.buyQty %>" data-bogo-get="<%= p.bogo.getQty %>"<% } %>>
                                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                                             Add
                                         </button>

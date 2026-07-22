@@ -109,15 +109,23 @@
    size) instead of letting the placeholder fill the whole pane —
    keeps the layout visually balanced when only an initial is shown. */
 .pm-hero__tile {
+    position: relative;
     width: 168px; height: 168px;
     background: rgba(0, 0, 0, 0.04);
     border: 1px solid var(--color-border-soft);
     border-radius: 18px;
     display: grid; place-items: center;
+    overflow: hidden;
 }
 .pm-hero__initial {
     font-size: 3.4rem; font-weight: 800; color: var(--color-text-soft);
     line-height: 1;
+}
+/* No-image placeholder — fills the tile with a neutral bg (covering any
+   data-tint) + the gray image icon, like old EatNDeal. */
+.pm-hero__ph {
+    position: absolute; inset: 0; border-radius: inherit;
+    background: #f3f4f6 url('/img/no-image.svg') center / 44% no-repeat;
 }
 @media (max-width: 480px) {
     .pm-hero__tile { width: 120px; height: 120px; border-radius: 16px; }
@@ -130,6 +138,12 @@
 .pm-bogo {
     display: inline-block; margin: 6px 0 4px; padding: 3px 10px;
     background: #fef3c7; color: #92400e; border-radius: 6px;
+    font-size: 0.75rem; font-weight: 800;
+}
+/* Product-cashback badge — green, mirrors the menu-card one. */
+.pm-cashback {
+    display: inline-block; margin: 6px 6px 4px 0; padding: 3px 10px;
+    background: #dcfce7; color: #166534; border-radius: 6px;
     font-size: 0.75rem; font-weight: 800;
 }
 
@@ -149,6 +163,10 @@
 .pm-veg--veg    .pm-veg__dot { background: #16a34a; }
 .pm-veg--nonveg { color: #b91c1c; }
 .pm-veg--nonveg .pm-veg__dot { background: var(--color-primary, #e5252a); }
+.pm-veg--vegan  { color: #15803d; }
+.pm-veg--vegan  .pm-veg__dot { background: #16a34a; border-radius: 0 100% 0 100%; transform: rotate(45deg); }
+.pm-veg--glutenfree { color: #b45309; }
+.pm-veg--glutenfree .pm-veg__dot { background: #b45309; }
 
 /* ── Info block ─────────────────────────────────────────────────── */
 .pm-info { padding: var(--space-4) var(--space-4) var(--space-3); display: flex; flex-direction: column; gap: 6px; }

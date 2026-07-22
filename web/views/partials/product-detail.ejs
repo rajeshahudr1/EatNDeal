@@ -45,7 +45,8 @@
         <%# ── Left: gallery ─────────────────────────────────────── %>
         <div class="pd__gallery">
             <div class="pd-gallery__main" data-tint="<%= p.tint %>" data-gallery-main>
-                <% if (imgs.length) { %><img src="<%= imgs[0] %>" alt="<%= p.name %>" loading="lazy" data-img-fallback><% } else { %><span class="pd-gallery__initial" aria-hidden="true"><%= p.initial %></span><% } %>
+                <span class="pd-gallery__ph" aria-hidden="true"></span>
+                <% if (imgs.length) { %><img src="<%= imgs[0] %>" alt="<%= p.name %>" loading="lazy" data-img-fallback><% } %>
             </div>
             <% if (imgs.length > 1) { %>
             <ul class="pd-gallery__thumbs" role="list">
@@ -62,7 +63,8 @@
 
         <%# ── Center: details + options ─────────────────────────── %>
         <div class="pd__main">
-            <span class="pd-veg <%= p.veg ? 'is-veg' : 'is-nonveg' %>" aria-label="<%= p.veg ? 'Vegetarian' : 'Non-vegetarian' %>"></span>
+            <% var __pdv = { 'veg':['is-veg','Vegetarian'], 'non-veg':['is-nonveg','Non-vegetarian'], 'vegan':['is-vegan','Vegan'], 'gluten-free':['is-glutenfree','Gluten free'] }; %>
+            <% if (p.veg && __pdv[p.veg]) { %><span class="pd-veg <%= __pdv[p.veg][0] %>" aria-label="<%= __pdv[p.veg][1] %>" title="<%= __pdv[p.veg][1] %>"></span><% } %>
             <h1 class="pd__name"><%= p.name %></h1>
             <% if (p.rating) { %>
             <p class="pd__rating">
@@ -156,7 +158,8 @@
                         <li class="pd-related__item">
                             <a class="pd-related__card" href="/?rest=<%= encodeURIComponent(p.restaurant.slug) %>&item=<%= encodeURIComponent(rp.slug || '') %>">
                                 <span class="pd-related__media" data-tint="<%= rp.tint %>">
-                                    <% if (rp.image) { %><img src="<%= rp.image %>" alt="" loading="lazy" data-img-fallback><% } else { %><span aria-hidden="true"><%= rp.initial %></span><% } %>
+                                    <span class="pd-imgph" aria-hidden="true"></span>
+                                    <% if (rp.image) { %><img src="<%= rp.image %>" alt="" loading="lazy" data-img-fallback><% } %>
                                 </span>
                                 <span class="pd-related__name"><%= rp.name %></span>
                                 <span class="pd-related__price"><%= sym %><%= (typeof rp.price === 'number' ? rp.price : 0).toFixed(2) %></span>
@@ -174,7 +177,8 @@
                 <h2 class="pd-order__title">Your order</h2>
                 <div class="pd-order__item">
                     <span class="pd-order__thumb" data-tint="<%= p.tint %>">
-                        <% if (p.image) { %><img src="<%= p.image %>" alt="" loading="lazy" data-img-fallback><% } else { %><span aria-hidden="true"><%= p.initial %></span><% } %>
+                        <span class="pd-imgph" aria-hidden="true"></span>
+                        <% if (p.image) { %><img src="<%= p.image %>" alt="" loading="lazy" data-img-fallback><% } %>
                     </span>
                     <div class="pd-order__info">
                         <p class="pd-order__name"><%= p.name %></p>

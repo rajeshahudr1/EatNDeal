@@ -35,7 +35,21 @@
     var filterQS  = wallet_filter ? ('&filter=' + encodeURIComponent(wallet_filter)) : '';
     var FILTERS = [['', 'All'], ['earned', 'Earned'], ['redeemed', 'Redeemed'], ['expired', 'Expired']];
 %>
-<main class="wallet">
+<section class="acct">
+
+    <%# Mobile-only top bar — focused app screen (sidebar hidden on phones),
+        matching the account dashboard. %>
+    <header class="acct-mobilebar">
+        <a class="acct-mobilebar__back" href="/account" aria-label="Back">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+        </a>
+        <h1 class="acct-mobilebar__title">Loyalty Wallet</h1>
+    </header>
+
+    <%- include('../partials/account-nav', { nav_active: 'wallet' }) %>
+
+    <div class="acct-main">
+    <main class="wallet">
 
     <header class="wallet__head">
         <h1 class="wallet__title">My <span>Loyalty Wallet</span></h1>
@@ -122,4 +136,6 @@
         <% } %>
     </section>
 
-</main>
+    </main>
+    </div>
+</section>

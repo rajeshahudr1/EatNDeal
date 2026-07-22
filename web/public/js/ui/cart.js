@@ -1019,6 +1019,41 @@
         if (out) { out.textContent = String(box.value.length); }
     });
 
+    // ── Pre-order Date + Time two-select ────────────────────────────────
+    // Picking a Date repopulates the Time select from that day's slots, and
+    // either select writes the combined 'YYYY-MM-DDTHH:MM' value into the
+    // hidden [data-cart-sched-input] that Save reads. Slots-per-day come from
+    // the <script data-sched-times> JSON the server rendered.
+    function schedTimesData(root) {
+        var tag = root && root.querySelector('[data-sched-times]');
+        if (!tag) { return null; }
+        try { return JSON.parse(tag.textContent || '[]'); } catch (e) { return null; }
+    }
+    function syncSchedHidden(root) {
+        var timeSel = root.querySelector('[data-cart-sched-time-select]');
+        var hidden  = root.querySelector('[data-cart-sched-input]');
+        if (timeSel && hidden) { hidden.value = timeSel.value || ''; }
+    }
+    document.addEventListener('change', function (ev) {
+        var t = ev.target;
+        if (!t || !t.closest) { return; }
+        var root = t.closest('[data-cart-sched]');
+        if (!root) { return; }
+        if (t.hasAttribute('data-cart-sched-date')) {
+            var days = schedTimesData(root);
+            var timeSel = root.querySelector('[data-cart-sched-time-select]');
+            if (days && timeSel) {
+                var slots = days[parseInt(t.value, 10)] || [];
+                timeSel.innerHTML = slots.map(function (s) {
+                    return '<option value="' + s.value + '">' + s.label + '</option>';
+                }).join('');
+            }
+            syncSchedHidden(root);
+        } else if (t.hasAttribute('data-cart-sched-time-select')) {
+            syncSchedHidden(root);
+        }
+    });
+
     document.addEventListener('focusin', function (ev) {
         var box = ev.target && ev.target.closest && ev.target.closest('[data-ckt-cooking-note]');
         if (box) { cookingBaseline = box.value; }
@@ -1419,9 +1454,16 @@
         if (!tempCardClientSecret) {
             return Promise.reject(new Error('Card setup expired — close and reopen to try again.'));
         }
+        // TEMP DEBUG — remove once the card flow is confirmed working.
+        try {
+            console.log('[tempcard] confirm start | hasStripe:', !!tempCardStripe,
+                '| hasElement:', !!tempCardElement,
+                '| secret:', String(tempCardClientSecret || '').slice(0, 18) + '…');
+        } catch (e) {}
         return tempCardStripe.confirmCardSetup(tempCardClientSecret, {
             payment_method: { card: tempCardElement },
         }).then(function (result) {
+            try { console.log('[tempcard] confirm result:', JSON.stringify(result && result.error ? result.error : { ok: true, si: result.setupIntent && result.setupIntent.status })); } catch (e) {}
             if (result.error) {
                 throw new Error(result.error.message || 'Card declined.');
             }

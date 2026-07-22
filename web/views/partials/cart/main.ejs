@@ -86,6 +86,9 @@
                         <p class="ckt-row__sub" data-cart-sched-display>
                             <% if (cart.isPreOrder && cart.preOrderTime) { %>
                                 Scheduled for <%= fmt.fmtDateTime(cart.preOrderTime) %>
+                            <% } else if (cart.canSchedule) { %>
+                                <%# Closed now → ASAP isn't possible; nudge to pick a slot. %>
+                                Closed now — pick a time to pre-order
                             <% } else { %>
                                 <%= cart.serveType === 2 ? 'ASAP — pickup as soon as ready' : 'ASAP — deliver as soon as ready' %>
                             <% } %>

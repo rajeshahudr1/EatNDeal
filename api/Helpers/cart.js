@@ -512,16 +512,34 @@ async function recomputeTotals(cartId) {
     }
 
     // ── Discount resolution ─────────────────────────────────────────
-    // Manual promo (coupon / voucher) wins — the apply-coupon handler
-    // wrote the amount on the cart row directly; we just clamp it to
-    // sub_total so a stale large discount can't drive grandtotal below
-    // the fee + charge components.
-    // Otherwise, re-evaluate the auto-discount catalogue against the
-    // CURRENT cart state (subtotal / mode / time). Whatever the best
-    // matching row is now wins; nothing matching → clear it.
-    let discount   = 0;
-    let discountId = Number(cart.discount_id) || 0;
+    // Ordered exactly like legacy Cart.php::updateCartTotals:
+    //   1. Evaluate the auto-discount catalogue (discounts table) against the
+    //      CURRENT cart — this is where a FREE ITEM (type 3) is granted and
+    //      where a percent/flat MONEY discount is computed. Legacy runs this on
+    //      EVERY recompute regardless of any coupon (it only skips it for a
+    //      manual STAFF discount, which marketplace carts don't have).
+    //   2. A coupon / voucher then OVERRIDES the money discount and clears the
+    //      auto-discount slot (discount_id = 0) — but it does NOT remove the
+    //      free gift. So a coupon and a free item coexist, matching legacy.
+    let discount      = 0;
+    let discountId    = Number(cart.discount_id) || 0;
+    let freeProductId = 0;   // the gift named by a matching type-3 discounts row
 
+    // Step 1 — auto-discount catalogue. Gated on `branch`: without it we can't
+    // evaluate the rules, and must not wipe an existing gift on a blind pass.
+    if (branch) {
+        const result = await AutoDiscount.findBest({ ...cart, sub_total: subTotal }, branch);
+        if (result) {
+            discountId    = result.discount.id;
+            discount      = result.amount;          // 0 for a free-item rule; may be overridden below
+            freeProductId = result.freeProductId || 0;
+        } else {
+            discountId = 0;
+            discount   = 0;
+        }
+    }
+
+    // Step 2 — manual promo (coupon / voucher) overrides the MONEY discount.
     const hasManualPromo = Number(cart.coupon_id) > 0 || Number(cart.voucher_id) > 0;
     if (hasManualPromo) {
         // RE-VALIDATE against the CURRENT basket, don't just carry the old
@@ -566,23 +584,16 @@ async function recomputeTotals(cartId) {
             // old behaviour rather than removing something on a hiccup.
             discount = Math.min(Number(cart.discount) || 0, subTotal);
         }
-        discountId = 0;  // auto-discount slot is cleared when a coupon is in play
-    } else if (branch) {
-        const result = await AutoDiscount.findBest({ ...cart, sub_total: subTotal }, branch);
-        if (result) {
-            discountId = result.discount.id;
-            discount   = result.amount;
-        } else {
-            discountId = 0;
-            discount   = 0;
-        }
-        // FREE ITEM (discount_type 3) — legacy checkFreeDiscount: wipe any
-        // free line first, then re-grant only if a rule still qualifies. It
-        // has to be re-derived on EVERY recompute, not just when granted:
-        // without that a customer who drops below the minimum keeps a gift
-        // they no longer qualify for. Skipped entirely while a coupon or
-        // voucher is applied, exactly as legacy does.
-        await syncFreeItem(cartId, result && result.freeProductId, cart);
+        discountId = 0;  // legacy coupon block clears the auto-discount slot — but NOT the free gift
+    }
+
+    // Step 3 — sync the FREE ITEM from the Step-1 verdict, ALWAYS (coupon or
+    // not). Legacy deletes every free line then re-adds the winning gift on
+    // each recompute, so the gift appears/disappears as the basket crosses the
+    // rule's minimum, and survives alongside a coupon. Gated on `branch` for
+    // the same reason as Step 1 (no verdict without one → don't wipe blindly).
+    if (branch) {
+        await syncFreeItem(cartId, freeProductId, cart);
     }
 
     // ── Loyalty redeem ──────────────────────────────────────────────
@@ -1611,6 +1622,9 @@ function publicCartView(cart, items, opts) {
         // Valid pre-order slots (today, this mode) for the schedule popup —
         // [{value:'YYYY-MM-DDTHH:MM', label:'5:15 PM'}]. Only on page-render.
         availableSlots:   (opts && Array.isArray(opts.availableSlots)) ? opts.availableSlots : [],
+        // Multi-day pre-order schedule — [{ date, isToday, label, slots:[{value,label}] }].
+        // Drives the Date + Time two-select picker (Uber/legacy style).
+        scheduleDays:     (opts && Array.isArray(opts.scheduleDays)) ? opts.scheduleDays : [],
         items: (items || []).map((it) => ({
             id:           String(it.id),
             productId:    String(it.product_id),
@@ -1618,6 +1632,11 @@ function publicCartView(cart, items, opts) {
             qty:          Number(it.product_qty) || 0,
             unitPrice:    Number(it.product_net_price) || 0,
             linePrice:    lineSubtotal(it),
+            // A free gift granted by a type-3 discount rule. The UI shows a
+            // "Free Item" tag, prices it at £0, and hides the qty / remove
+            // controls — the customer can't change or remove a gift the cart
+            // grants automatically (it appears/disappears with the subtotal).
+            isFreeItem:   Number(it.is_free_item) === 1,
             remark:       it.remark || '',
             modifiers: (it.modifiers || []).map((m) => ({
                 id:                String(m.id),

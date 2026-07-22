@@ -29,6 +29,20 @@ const reviews     = require('./reviews');
 // customer.id -> customer.app_id, the identity the legacy-shared tables use.
 const customers   = require('./customerLookup');
 
+/**
+ * ymdLocal — a Date/timestamp → 'YYYY-MM-DD' in SERVER-LOCAL time. Used for
+ * orders.scheduled_date, which is written from the picked pre-order slot in
+ * local time; reading it back the same way keeps "Tomorrow" correct. Returns
+ * null for empty/invalid input.
+ */
+function ymdLocal(v) {
+    if (!v) { return null; }
+    const d = (v instanceof Date) ? v : new Date(v);
+    if (isNaN(d.getTime())) { return null; }
+    const p = (n) => String(n).padStart(2, '0');
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+}
+
 // Status label/class come from the SINGLE source of truth in
 // orderStatus.js (getStatusMeta). They are thin delegates so the
 // orders list, detail header and merchant board all read one map.
@@ -240,8 +254,12 @@ async function loadDetail(orderId, customerId) {
         deliveryAddress:  order.delivery_address || '',
         scheduledTime:    order.scheduled_time || null,
         // The DAY the pre-order is for — without it "05:45" is ambiguous
-        // between today and tomorrow. Normalised to YYYY-MM-DD.
-        scheduledDate:    order.scheduled_date ? String(order.scheduled_date).slice(0, 10) : null,
+        // between today and tomorrow. `scheduled_date` is a timestamptz written
+        // from the picked slot in SERVER-LOCAL time (orderPlace builds it with
+        // getFullYear/getMonth/getDate), so a naive UTC slice(0,10) lands on the
+        // WRONG day (and often an unparseable "Tue Jul 22"), which is why the
+        // page fell back to a bare time. Read it back in the same local tz.
+        scheduledDate:    ymdLocal(order.scheduled_date),
         isPreOrder:       Number(order.is_pre_order) === 1,
         deliveryEstimatedTime:         order.delivery_estimated_time || null,
         advancedOrderWaitingTimeMin:   Number(order.advanced_order_waiting_time_minute) || 0,

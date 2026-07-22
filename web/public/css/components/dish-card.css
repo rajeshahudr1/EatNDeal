@@ -76,6 +76,12 @@
     letter-spacing: -0.02em;
     user-select: none;
 }
+/* No-image placeholder — gray image icon; base layer beneath the photo. */
+.dish-card__ph {
+    position: absolute;
+    inset: 0;
+    background: #f3f4f6 url('/img/no-image.svg') center / 34% no-repeat;
+}
 
 /* Real product photo layered on top of the placeholder. Same
  * approach as restaurant cards — absolute-positioned so a hidden
@@ -112,6 +118,8 @@
 }
 .veg-marker--veg          { border-color: var(--color-success); }
 .veg-marker--non-veg      { border-color: var(--color-primary);  }
+.veg-marker--vegan        { border-color: var(--color-success); }
+.veg-marker--gluten-free  { border-color: #b45309; }
 
 .veg-marker::after {
     content: '';
@@ -136,6 +144,24 @@
     border-right:  5px solid transparent;
     border-bottom: 8px solid var(--color-primary);
     transform: translate(-50%, -40%);
+}
+/* Vegan — green leaf (a teardrop: one rounded + one pointed corner). Same
+ * green as veg so it still reads "plant", but the leaf sets it apart. */
+.veg-marker--vegan::after {
+    width: 8px;
+    height: 8px;
+    background-color: var(--color-success);
+    border-radius: 0 100% 0 100%;
+    transform: translate(-50%, -50%) rotate(45deg);
+}
+/* Gluten Free — a small amber "GF" wordmark instead of a shape. */
+.veg-marker--gluten-free::after {
+    content: 'GF';
+    font-size: 7px;
+    font-weight: 800;
+    line-height: 1;
+    letter-spacing: -0.02em;
+    color: #b45309;
 }
 
 /* Back-compat alias — older calls (none now after this refactor)

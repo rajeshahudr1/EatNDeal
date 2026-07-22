@@ -31,7 +31,73 @@ const H         = require('../../Helpers/helper');
 const MSG       = require('../../Helpers/messages');
 const customers = require('../../Helpers/customerLookup');
 const D         = require('../../Helpers/distance');
+const Cart      = require('../../Helpers/cart');
+const M         = require('../../Helpers/marketplace');
 const { db }    = require('../../config/db');
+
+// norm — compare postcodes/labels ignoring spaces + case (matches the same
+// normalisation cart.js ensureDefaultDeliveryAddress uses).
+const norm = (s) => String(s || '').replace(/\s+/g, '').toUpperCase();
+
+/**
+ * cartUsesAddress
+ *
+ * What:  Does the customer's OPEN delivery cart currently deliver to `addr`?
+ *        The cart stores a TEXT SNAPSHOT of the address (no id link), so we
+ *        match on postcode — tightened with the label when both carry one, so
+ *        two saved addresses that share a postcode don't get confused.
+ * Type:  READ. Returns the open cart row when it matches, else null.
+ */
+async function cartUsesAddress(customerId, addr) {
+    const cart = await Cart.findOpenCart(customerId);
+    if (!cart || Number(cart.serve_type) !== 3) { return null; }
+    if (!cart.delivery_postcode || norm(cart.delivery_postcode) !== norm(addr.post_code)) { return null; }
+    // Label tie-break only when BOTH sides have one — otherwise postcode stands.
+    if (addr.label && cart.delivery_label && norm(cart.delivery_label) !== norm(addr.label)) { return null; }
+    return cart;
+}
+
+/**
+ * syncCartOnAddressEdit
+ *
+ * What:  Keeps an open delivery cart in step when the saved address it is
+ *        delivering to is EDITED. The cart holds a frozen text copy, so
+ *        without this an edit (e.g. fixing the postcode) would leave the cart
+ *        showing the OLD address — on screen AND after a reload. Re-applies the
+ *        NEW address so the snapshot + delivery fee are recomputed.
+ * Type:  WRITE (best-effort — never fails the address save).
+ */
+async function syncCartOnAddressEdit(customerId, oldAddr, newAddr) {
+    const cart = await cartUsesAddress(customerId, oldAddr);
+    if (!cart) { return; }
+    const branch = await M.loadActiveBranch(cart.branch_id);
+    if (!branch) { return; }
+    await Cart.setAddress(cart.id, newAddr, branch);
+    await Cart.recomputeTotals(cart.id);
+}
+
+/**
+ * clearCartOnAddressDelete
+ *
+ * What:  When the saved address a cart delivers to is DELETED, wipe the cart's
+ *        delivery snapshot so the next cart load re-attaches the header
+ *        location or the (new) default — instead of keeping a phantom address
+ *        that no longer exists.
+ * Type:  WRITE (best-effort).
+ */
+async function clearCartOnAddressDelete(customerId, oldAddr) {
+    const cart = await cartUsesAddress(customerId, oldAddr);
+    if (!cart) { return; }
+    await db('cart').where({ id: cart.id }).update({
+        delivery_address:  '',
+        delivery_postcode: '',
+        delivery_label:    '',
+        delivery_latitude:  null,
+        delivery_longitude: null,
+        delivery_building_type: null,
+    });
+    await Cart.recomputeTotals(cart.id);
+}
 
 const TABLE        = 'customer_address';
 const STATUS_ACTIVE  = 1;
@@ -180,6 +246,12 @@ async function save(req, res) {
             });
             saved = await db(TABLE).where({ id: b.id }).first();
             created = false;
+
+            // If the customer's open cart delivers to THIS address, re-apply
+            // the edit to the cart — its snapshot is a text copy, not a link.
+            // Best-effort: an editing hiccup must not fail the address save.
+            try { await syncCartOnAddressEdit(customerId, owned, saved); }
+            catch (e) { H.log.warn('address.cartSync', e && e.message); }
         } else {
             // INSERT.
             if (makeDefault) {
@@ -240,6 +312,12 @@ async function remove(req, res) {
             updated_by: customer_id,
             updated_at: db.fn.now(),
         });
+
+        // If the customer's open cart was delivering to the deleted address,
+        // clear the cart's snapshot so it re-attaches a valid address on the
+        // next load instead of keeping a phantom one. Best-effort.
+        try { await clearCartOnAddressDelete(customer_id, owned); }
+        catch (e) { H.log.warn('address.cartClear', e && e.message); }
 
         // Promote a new default if we just removed the default one.
         if (Number(owned.is_default) === 1) {

@@ -285,6 +285,40 @@
         try { window.sessionStorage.setItem(PAY_MODE_KEY, String(mode || '')); }
         catch (e) { /* private mode / quota — the row still holds it */ }
     }
+    // A temp card's tile label ("Visa •••• 4242") comes from the server's
+    // /cart/use-temp-card response, not from a rendered saved-card tile —
+    // the popup's saved-card list deliberately excludes temp cards. Without
+    // persisting the label alongside the mode, a swap or reload has no DOM
+    // node to copy it from and the tile falls back to the generic "Card /
+    // Choose a card" text even though data-ckt-pay-mode (and the charge it
+    // drives) still correctly points at the temp card. Keyed with the mode
+    // string itself so a stale label can never be applied to the wrong pmId.
+    var PAY_LABEL_KEY = 'eatndeal_pay_label';
+    function rememberPayLabel(mode, label) {
+        try {
+            window.sessionStorage.setItem(PAY_LABEL_KEY, JSON.stringify({
+                mode: mode, title: (label && label.title) || '', sub: (label && label.sub) || '',
+            }));
+        } catch (e) { /* private mode / quota */ }
+    }
+    function clearPayLabel() {
+        try { window.sessionStorage.removeItem(PAY_LABEL_KEY); } catch (e) { /* ignore */ }
+    }
+    function readPayLabel() {
+        var raw;
+        try { raw = window.sessionStorage.getItem(PAY_LABEL_KEY); } catch (e) { return null; }
+        if (!raw) { return null; }
+        try { return JSON.parse(raw); } catch (e) { return null; }
+    }
+    // Cart CLEAR must always drop back to Cash for the next order — forget
+    // both the remembered mode and any temp-card label so nothing stale
+    // gets restored into a fresh cart. Called from ui/cart.js's onCartClear
+    // success path.
+    function forgetPayModeAndLabel() {
+        try { window.sessionStorage.removeItem(PAY_MODE_KEY); } catch (e) { /* ignore */ }
+        clearPayLabel();
+    }
+
     function restorePayMode() {
         var row = $('[data-cart-pay]');
         if (!row) { return; }
@@ -299,9 +333,18 @@
         // mounted, and doCardCheckout's now-dead 'card-new' branch would run
         // against an empty Payment Element. Drop back to Cash instead.
         if (saved === 'new-card') { return; }
-        // A saved CARD is only re-selectable if that tile still exists (the
-        // card may have been removed since). Otherwise leave it on Cash.
-        if (saved.indexOf('card:') === 0 && !document.querySelector('[data-pay-mode="' + saved + '"]')) { return; }
+        if (saved.indexOf('card:') === 0 && !document.querySelector('[data-pay-mode="' + saved + '"]')) {
+            // No rendered tile for this pmId — either it's a temp card (never
+            // rendered in the saved-card list by design) or a real saved card
+            // that has since been removed. A persisted label for THIS exact
+            // mode is only ever written by our own commitPayRow when a temp
+            // card was confirmed, so it safely tells the two cases apart.
+            var label = readPayLabel();
+            if (label && label.mode === saved) {
+                commitPayRow(row, saved, { title: label.title, sub: label.sub });
+            }
+            return;   // card removed + no label → stay on Cash
+        }
         commitPayRow(row, saved);
     }
 
@@ -315,13 +358,18 @@
         var titleEl = row.querySelector('[data-ckt-pay-title]');
         var subEl   = row.querySelector('[data-ckt-pay-sub]');
         if (mode === 'new-card') {
+            clearPayLabel();
             if (titleEl) { titleEl.textContent = 'New card'; }
             if (subEl)   { subEl.textContent   = 'Charged at checkout'; }
         } else if (mode.indexOf('card:') === 0) {
             if (label) {
+                rememberPayLabel(mode, label);
                 if (titleEl) { titleEl.textContent = label.title || 'Card'; }
                 if (subEl)   { subEl.textContent   = label.sub   || ''; }
             } else {
+                // A REAL saved card was picked — any earlier temp-card label
+                // no longer applies to this mode/pmId.
+                clearPayLabel();
                 var btn = document.querySelector('[data-pay-mode="' + mode + '"]');
                 if (btn) {
                     var t = btn.querySelector('.ckt-list__title');
@@ -331,6 +379,7 @@
                 }
             }
         } else if (mode === 'cash') {
+            clearPayLabel();
             if (titleEl) { titleEl.textContent = 'Card'; }
             if (subEl)   { subEl.textContent   = 'Choose a card'; }
         }
@@ -600,7 +649,39 @@
         restorePayMode();
     }
 
+    // Re-paint a temp card's label after a cart-region SWAP (no full reload).
+    // ui/cart-render.js fires 'eatndeal:cart-updated' after every swap; ui/
+    // cart.js's OWN listener for that event (registered first — cart.js
+    // loads before this file, see _layout.ejs) already re-applies the
+    // data-ckt-pay-mode ATTRIBUTE from payModeBeforeSwap onto the fresh
+    // [data-cart-pay] node, so the CHARGE still targets the right pmId even
+    // before this runs. It has no concept of the tile's label text though,
+    // and the server always renders a fresh row with the generic "Card /
+    // Choose a card" copy — so without this a swap kept charging the temp
+    // card correctly but silently reverted what the customer saw. This
+    // module owns the label (rememberPayLabel/readPayLabel above), so it
+    // re-paints itself here rather than exposing a cart.js → checkout-popups
+    // hook for a single call site.
+    document.addEventListener('eatndeal:cart-updated', function () {
+        var row = $('[data-cart-pay]');
+        if (!row) { return; }
+        var mode = row.getAttribute('data-ckt-pay-mode');
+        if (!mode || mode.indexOf('card:') !== 0) { return; }
+        // A REAL saved card re-renders its own tile with the right label —
+        // nothing to patch. Only a temp card (no rendered tile) needs this.
+        if (document.querySelector('[data-pay-mode="' + mode + '"]')) { return; }
+        var label = readPayLabel();
+        if (label && label.mode === mode) {
+            commitPayRow(row, mode, { title: label.title, sub: label.sub });
+        }
+    });
+
     // Expose for any other module that needs to drive it programmatically.
     window.EatNDealUi = window.EatNDealUi || {};
-    window.EatNDealUi.checkoutPopups = { open: open, close: close };
+    window.EatNDealUi.checkoutPopups = {
+        open: open, close: close,
+        // ui/cart.js's onCartClear success path calls this so a cleared
+        // cart never restores a stale card selection (Fix 1).
+        forgetPayModeAndLabel: forgetPayModeAndLabel,
+    };
 })();

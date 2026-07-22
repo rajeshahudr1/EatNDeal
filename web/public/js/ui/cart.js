@@ -79,9 +79,20 @@
      *        fresh cart's restorePayMode() re-selected "New card" from the order
      *        just completed — the customer opened a new basket already showing a
      *        card they never re-picked.
+     *        Also drops any persisted temp-card label (checkout-popups.js
+     *        PAY_LABEL_KEY) via forgetPayModeAndLabel — same reasoning as
+     *        resetPayModeToCash below: a placed order's temp card is detached
+     *        server-side, so its label must not resurrect for the next cart.
      * Type:  WRITE (sessionStorage). Key mirrors checkout-popups.js PAY_MODE_KEY.
      */
     function clearPersistedPayMode() {
+        if (window.EatNDealUi && window.EatNDealUi.checkoutPopups
+            && typeof window.EatNDealUi.checkoutPopups.forgetPayModeAndLabel === 'function') {
+            window.EatNDealUi.checkoutPopups.forgetPayModeAndLabel();
+            return;
+        }
+        // checkout-popups.js not loaded on this page (shouldn't happen on
+        // /cart, but keep the original direct removal as a fallback).
         try { sessionStorage.removeItem('eatndeal_pay_mode'); } catch (e) { /* private mode */ }
     }
 
@@ -625,6 +636,33 @@
         });
     }
 
+    /**
+     * resetPayModeToCash
+     *
+     * What:  Forces the payment choice back to Cash — the sessionStorage key
+     *        (via checkout-popups.js's forgetPayModeAndLabel, which also
+     *        drops any persisted temp-card label) AND the live row's
+     *        data-ckt-pay-mode attribute, set BEFORE the caller's
+     *        handleEnvelope({reload:true}) swap runs.
+     * Why:   A cart CLEAR must always start the next order on Cash — the
+     *        user's own words: "always after an order OR clearing the cart,
+     *        when a new order starts, Cash should be selected". Order-place
+     *        already does this (clearPersistedPayMode); clear did not, so a
+     *        remembered card:<pmId> (real or temp) restored itself into the
+     *        emptied cart.
+     *        The attribute reset must happen BEFORE handleEnvelope's swap:
+     *        that swap captures payModeBeforeSwap from the CURRENT (pre-swap)
+     *        row and re-applies it to the fresh node afterwards (see the
+     *        'eatndeal:cart-updated' listener below) — capturing a stale
+     *        "card:<pmId>" here would silently undo the reset.
+     * Type:  WRITE (DOM attribute + sessionStorage, via checkout-popups.js).
+     */
+    function resetPayModeToCash() {
+        var row = getPayRoot();
+        if (row) { row.setAttribute('data-ckt-pay-mode', 'cash'); }
+        clearPersistedPayMode();   // drops both the mode key and any temp-card label
+    }
+
     function onCartClear(ev, btn) {
         ev.preventDefault();
         confirm({
@@ -635,6 +673,7 @@
             if (!ok) { return; }
             btn.disabled = true;
             return postCart('/cart/clear', {}).then(function (env) {
+                if (env && env.status === 200) { resetPayModeToCash(); }
                 handleEnvelope(env, { reload: true });
                 if (!env || env.status !== 200) { btn.disabled = false; }
             });

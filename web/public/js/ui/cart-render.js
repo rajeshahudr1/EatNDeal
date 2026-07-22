@@ -127,5 +127,33 @@
         return did;
     }
 
-    window.CartRender = { swap: swap, begin: begin, isStale: isStale };
+    /**
+     * updateHeaderLocation
+     *
+     * What:  Rewrites the header's location chip to match the cart's delivery
+     *        address. The chip lives OUTSIDE the swapped cart regions, so
+     *        picking an address in the cart updated the session + cart + order
+     *        but left the visible header showing the OLD location — which read
+     *        as "which address is this order actually going to?".
+     *        Mirrors the title/sub split in views/partials/header.ejs so the
+     *        live update matches what a reload would render.
+     * Type:  WRITE (DOM).
+     */
+    function updateHeaderLocation(cart) {
+        if (!cart || Number(cart.serveType) !== 3) { return; }   // delivery only
+        var label    = cart.deliveryLabel || cart.deliveryAddress || '';
+        var postcode = cart.deliveryPostcode || '';
+        if (!label && !postcode) { return; }
+        var parts = label.split(',').map(function (s) { return s.replace(/^\s+|\s+$/g, ''); })
+                         .filter(function (s) { return !!s; });
+        var title = parts[0] || label || postcode;
+        var sub   = parts.slice(1).join(', ');
+        if (!sub && postcode) { sub = postcode; }
+        var nameEl = document.querySelector('.site-header__location-name');
+        var subEl  = document.querySelector('.site-header__location-sub');
+        if (nameEl && title) { nameEl.textContent = title; }
+        if (subEl) { subEl.textContent = sub; }
+    }
+
+    window.CartRender = { swap: swap, begin: begin, isStale: isStale, updateHeaderLocation: updateHeaderLocation };
 })();

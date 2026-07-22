@@ -652,7 +652,14 @@
         if (!addressId) { return; }
         btn.disabled = true;
         postCart('/cart/set-address', { address_id: addressId }).then(function (env) {
-            handleEnvelope(env, { reload: true });
+            var ok = handleEnvelope(env, { reload: true });
+            // Choosing a delivery address IS choosing where the order goes, so
+            // move the header chip to match — the server already synced the
+            // session, but the chip sits outside the swapped regions and would
+            // otherwise keep showing the OLD location.
+            if (ok && env && env.data && env.data.cart && window.CartRender) {
+                window.CartRender.updateHeaderLocation(env.data.cart);
+            }
             if (!env || env.status !== 200) { btn.disabled = false; }
         });
     }

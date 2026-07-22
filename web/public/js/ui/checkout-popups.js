@@ -529,30 +529,20 @@
         var detSel = t.closest('[data-action="ckt-promo-detail-select"]');
         if (detSel) { ev.preventDefault(); applyPromoCode(detSel.getAttribute('data-code')); return; }
 
-        // The existing cart.js handles cart-set-address / cart-apply-
-        // coupon / cart-remove-coupon / cart-sched-* and reloads the
-        // whole page on success — which dismisses the popup naturally.
-        // We DON'T close the popup early (that would flash the stale
-        // page while the request is still in flight). Instead we mark
-        // the sheet busy so the customer sees progress; on failure the
-        // cart.js toast fires and the (still-open) popup lets them retry.
+        // cart.js handles cart-set-address / cart-apply-coupon /
+        // cart-remove-coupon / cart-sched-*. On success it fires 'ckt:settle-ok'
+        // and THIS module closes the popup (see that listener above). We no
+        // longer grey the sheet out with an 'is-busy' overlay while the request
+        // is in flight — on a normal connection the swap is near-instant, and
+        // the disabled-looking flash-then-close read as broken. The only case
+        // that still needs handling here is re-tapping the ALREADY-selected
+        // address: cart.js no-ops it (no request, so no 'ckt:settle-ok'), so
+        // close the popup directly or it would never dismiss.
         var settle = t.closest('[data-action="cart-set-address"], [data-action="cart-apply-coupon"], [data-action="cart-remove-coupon"], [data-action="cart-sched-save"], [data-action="cart-sched-asap"]');
         if (settle && openName) {
-            // Re-tapping the already-active address makes no API call (cart.js
-            // no-ops it → no reload), so close the popup here; otherwise it
-            // sticks on the "busy" state with nothing to dismiss it.
             if (settle.getAttribute('data-action') === 'cart-set-address' && settle.classList.contains('is-selected')) {
                 close();
-                return;
             }
-            var sheet = popupRoot(openName) && popupRoot(openName).querySelector('.ckt-popup__sheet');
-            if (sheet) { sheet.classList.add('is-busy'); }
-            // 'ckt:settle-done' (from cart.js) clears this the moment the request
-            // resolves — success reloads, errors/conflicts just drop the spinner
-            // so the popup never hangs. The timeout is only a safety net.
-            busySheet = sheet || null;
-            if (busyTimer) { window.clearTimeout(busyTimer); }
-            busyTimer = window.setTimeout(clearBusy, 8000);
             return;
         }
     });

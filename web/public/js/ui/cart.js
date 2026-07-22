@@ -276,7 +276,12 @@
             return false;
         }
         bumpCartBadge(env.data && env.data.cart);
-        if (opts.successToast !== false && env.msg) { toast('success', env.msg); }
+        // Success is SILENT by default. A cart action already SHOWS its result —
+        // the new totals, the applied-coupon badge, the selected address, the
+        // updated quantity — so a success toast on top is noise. Like adding to
+        // cart or bumping a quantity: only errors speak. A handler that genuinely
+        // needs a confirmation opts in with successToast:true.
+        if (opts.successToast === true && env.msg) { toast('success', env.msg); }
         // Swap the freshly rendered regions in. `opts.reload` is kept as the
         // flag name at the call sites: it still means "this action changed the
         // cart, refresh the view" — it just no longer costs a page load.

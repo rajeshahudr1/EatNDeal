@@ -777,7 +777,50 @@ async function addSurpriseItem({ cartId, branch, qty, unitPrice }) {
     return item;
 }
 
+/**
+ * findMatchingLine
+ *
+ * What:  An EXISTING cart line for the same product with the IDENTICAL set of
+ *        modifier options and the same per-item note — i.e. a line that a new
+ *        add should merge into (bump the quantity) rather than duplicate.
+ *        Different modifiers, or a different note, mean a different line.
+ * Why:   Adding "Veg Burger" twice should read as "Veg Burger x2", not two
+ *        separate rows — but "Veg Burger + cheese" must stay its own line.
+ *        Surprise-box lines never merge (they're pinned, one per box).
+ * Type:  READ. Returns the matching cart_details row, or null.
+ */
+async function findMatchingLine(cartId, productId, options, remark) {
+    const norm       = (s) => String(s == null ? '' : s).trim();
+    const wantOpts   = (options || []).map((o) => String(o.id)).sort().join(',');
+    const wantRemark = norm(remark);
+
+    const rows = await db('cart_details')
+        .where({ cart_id: cartId, product_id: productId, is_deleted: 0 })
+        .select('id', 'remark', 'is_surprise_item');
+
+    for (const row of rows) {
+        if (Number(row.is_surprise_item) === 1) { continue; }   // surprise boxes never merge
+        if (norm(row.remark) !== wantRemark) { continue; }
+        const subs = await db('cart_sub_details')
+            .where({ cart_details_id: row.id })
+            .pluck('modifier_option_id');
+        const haveOpts = subs.map((s) => String(s)).sort().join(',');
+        if (haveOpts === wantOpts) { return row; }
+    }
+    return null;
+}
+
 async function addItem({ cartId, product, qty, options, unitPrice, remark }) {
+    // Merge into an identical existing line instead of duplicating it — same
+    // product, same modifiers, same note → just bump the quantity. This is the
+    // ONE place every add path funnels through (product page, quick-add,
+    // reorder), so the rule holds everywhere.
+    const match = await findMatchingLine(cartId, product.id, options, remark);
+    if (match) {
+        await db('cart_details').where({ id: match.id }).increment('product_qty', Number(qty) || 1);
+        return db('cart_details').where({ id: match.id }).first();
+    }
+
     // category_id is informational (used by legacy reports). Pick the
     // first active link; null when the product isn't categorised yet.
     const ppc = await db('product_product_category')

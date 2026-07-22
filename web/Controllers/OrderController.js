@@ -18,6 +18,7 @@ const fs                     = require('node:fs');
 const path                   = require('node:path');
 const { callApi }            = require('../Helpers/apiClient');
 const { requireUser, relay } = require('../Helpers/authProxy');
+const CartController          = require('./CartController');   // detachTempCard after a placed order
 
 const needUser = (req, res) => requireUser(req, res, 'Please sign in to place an order.');
 
@@ -33,6 +34,11 @@ async function place(req, res) {
     if (!user) { return; }
     const payload = Object.assign({}, req.body, { customer_id: user.id });
     const apiRes  = await callApi(req, 'POST', '/api/v1/customer/order/place', payload);
+    // Order placed → the temp card (if any) has done its job; detach it so it
+    // never lingers as a saved card. Best-effort, after the charge succeeded.
+    if (apiRes && apiRes.body && apiRes.body.status === 200) {
+        await CartController.detachTempCard(req);
+    }
     return relay(res, apiRes);
 }
 
@@ -313,6 +319,12 @@ async function submitCashbackReview(req, res) {
     const body   = apiRes.body || {};
     if (req.flash) {
         req.flash(body.status === 200 ? 'success' : 'error', body.msg || (body.status === 200 ? 'Review submitted.' : 'Could not submit your review.'));
+    }
+    // Redirect only AFTER the session is on disk. The store is a FileStore, so
+    // the write is async: a bare res.redirect() races the browser's next GET,
+    // which then reads the pre-flash session file and shows no toast at all.
+    if (req.session && typeof req.session.save === 'function') {
+        return req.session.save(() => res.redirect(back));
     }
     return res.redirect(back);
 }

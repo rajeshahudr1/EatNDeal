@@ -603,7 +603,67 @@ const addSurpriseBox = (req, res) => {
 };
 const updateQty  = (req, res) => forwardGuestWrite(req, res, '/api/v1/customer/cart/update-qty');
 const removeItem = (req, res) => forwardGuestWrite(req, res, '/api/v1/customer/cart/remove-item');
-const clear      = (req, res) => forwardGuestWrite(req, res, '/api/v1/customer/cart/clear');
+
+/**
+ * detachTempCard
+ *
+ * What:  Removes the session's TEMPORARY card — a new card the customer entered
+ *        for one order (SetupIntent-attached, flagged temp) — from Stripe.
+ *        Called after the order is placed OR the cart is cleared. Best-effort:
+ *        clears the session key regardless so we never retry a bad id forever,
+ *        and a failed detach never fails the order/clear (a lingering temp card
+ *        is recoverable and stays hidden from the saved list by its flag).
+ * Type:  WRITE (network + session). No-op when there is no temp card.
+ */
+async function detachTempCard(req) {
+    const pmId = req.session && req.session.tempPaymentMethodId;
+    if (!pmId) { return; }
+    const user = req.session && req.session.user;
+    delete req.session.tempPaymentMethodId;
+    if (!user) { return; }
+    try {
+        await callApi(req, 'POST', '/api/v1/customer/payment-method/delete', {
+            customer_id: user.id, payment_method_id: pmId,
+        });
+    } catch (e) { /* best-effort */ }
+}
+
+/**
+ * useTempCard — POST /cart/use-temp-card
+ *
+ * What:  Records a just-added card (via SetupIntent) as the cart's TEMPORARY
+ *        payment method: flags it temp on the api (hidden from the saved list,
+ *        detached after place/clear) and remembers its id in the session.
+ *        Returns { brand, last4 } so the tile can show "Visa •••• 4242".
+ * Type:  WRITE (session + network).
+ */
+async function useTempCard(req, res) {
+    const user = needUser(req, res);
+    if (!user) { return; }
+    const pmId = String((req.body && req.body.payment_method_id) || '').trim();
+    if (!pmId) { return res.status(200).json({ status: 422, msg: 'Missing card.' }); }
+    const apiRes = await callApi(req, 'POST', '/api/v1/customer/payment-method/mark-temp', {
+        customer_id: user.id, payment_method_id: pmId,
+    });
+    if (apiRes && apiRes.body && apiRes.body.status === 200) {
+        req.session.tempPaymentMethodId = pmId;
+    }
+    return relay(res, apiRes);
+}
+
+/**
+ * clear — POST /cart/clear. forwardGuestWrite inline + detach any temp card so
+ * an emptied cart doesn't leave a temporary card attached in Stripe.
+ */
+async function clear(req, res) {
+    await claimGuestCart(req);
+    const owner = cartOwner(req);
+    if (!owner.customer_id && !owner.guest_id) { return needUser(req, res); }
+    const apiRes = await callApi(req, 'POST', '/api/v1/customer/cart/clear', Object.assign({}, req.body, owner));
+    syncSessionCount(req, apiRes);
+    if (apiRes && apiRes.body && apiRes.body.status === 200) { await detachTempCard(req); }
+    return relayWithFragments(req, res, apiRes);
+}
 /**
  * setMode
  *
@@ -724,4 +784,5 @@ module.exports = {
     setMode, setAddress, setSchedule, setInstructions, setCookingInstructions, paySavedCard,
     applyCoupon, removeCoupon, applyVoucher, removeVoucher,
     applyLoyalty, removeLoyalty, setCharity,
+    useTempCard, detachTempCard,
 };

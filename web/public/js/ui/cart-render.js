@@ -95,6 +95,20 @@
             did = true;
         });
 
+        // Keep the grid's layout in step with what was just swapped in. The
+        // empty state renders full-width (single column); a filled cart is the
+        // two-column grid. That modifier lives on '.cart-page__grid', a parent
+        // OUTSIDE the swapped regions, so without this an emptied cart kept the
+        // two-column layout and the empty card rendered in the narrow right
+        // column — small before a reload, full-width after.
+        if (did) {
+            var grid = document.querySelector('.cart-page__grid');
+            if (grid) {
+                var nowEmpty = !!document.querySelector('[data-cart-region="side"] .cart-empty');
+                grid.classList.toggle('cart-page__grid--empty', nowEmpty);
+            }
+        }
+
         // Popups are swapped only when NONE is open. Replacing the DOM under
         // an open popup would destroy mounted Stripe Elements and whatever the
         // customer was typing. A closed popup is safe and needs the refresh —

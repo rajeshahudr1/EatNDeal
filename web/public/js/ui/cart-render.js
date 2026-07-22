@@ -124,13 +124,22 @@
         // can't pay. Tear it down first so the next open remounts fresh.
         // Guarded: cart-render.js loads before cart.js, and on a page with
         // no payment popup at all EatNDealCart never defines the hook.
-        if (window.EatNDealCart && typeof window.EatNDealCart.teardownPaymentElementForSwap === 'function') {
-            window.EatNDealCart.teardownPaymentElementForSwap();
-        }
+        //
+        // CRITICAL: only tear the element down when we are ACTUALLY replacing
+        // the popups region (no popup open). The teardown used to run
+        // unconditionally here — so a cart write while the payment popup was
+        // OPEN destroyed the card field the customer was typing into, and the
+        // next confirm failed with a Stripe "processing error". Tie the
+        // teardown to the same `!anyOpen` gate as the region swap it protects.
         if (typeof html.popups === 'string' && html.popups) {
             var host = document.querySelector('[data-cart-region="popups"]');
             var anyOpen = !!document.querySelector('.ckt-popup:not([hidden]), [data-ckt-popup]:not([hidden])');
-            if (host && !anyOpen) { host.innerHTML = html.popups; }
+            if (host && !anyOpen) {
+                if (window.EatNDealCart && typeof window.EatNDealCart.teardownPaymentElementForSwap === 'function') {
+                    window.EatNDealCart.teardownPaymentElementForSwap();
+                }
+                host.innerHTML = html.popups;
+            }
         }
         if (did) {
             restoreState(state);

@@ -111,9 +111,10 @@
                     <textarea id="ckt-cooking-note" class="ckt-cook__input" rows="3" maxlength="250"
                               placeholder="e.g. no onions, make it mild"
                               data-ckt-cooking-note><%= cart.cookingInstructions || '' %></textarea>
+                    <%# No Save button — the note auto-saves when the field
+                        loses focus and rides onto the order at place time. %>
                     <div class="ckt-cook__foot">
                         <span class="ckt-cook__count"><span data-ckt-cooking-count><%= (cart.cookingInstructions || '').length %></span>/250</span>
-                        <button type="button" class="ckt-cook__save" data-action="ckt-save-cooking">Save</button>
                     </div>
                 </div>
             </section>

@@ -954,26 +954,15 @@
         if (pCta) { pCta.textContent = ' · ' + fmtMoney(cart.grandtotal); }
     }
 
-    /**
-     * onSaveCooking
-     *
-     * What:  Persists the kitchen note (cart.remark) via
-     *        /cart/set-cooking-instructions. Separate endpoint from the
-     *        driver drop-off note — this one applies to Pickup too, so it
-     *        must NOT ride on the delivery-instructions save.
-     * Type:  WRITE.
-     */
-    function onSaveCooking(ev, btn) {
-        ev.preventDefault();
-        var box = document.querySelector('[data-ckt-cooking-note]');
-        if (!box) { return; }
-        btn.disabled = true;
-        postCart('/cart/set-cooking-instructions', { instructions: box.value.trim().slice(0, 250) })
-            .then(function (env) {
-                btn.disabled = false;
-                handleEnvelope(env);
-            });
-    }
+    // ── Kitchen note (cooking instructions) — auto-saves, no button ──
+    // The note persists to cart.remark and rides onto the order at place time.
+    // There is no explicit Save: like typing a cart note, it saves silently
+    // when the field loses focus (which includes tapping "Continue to
+    // payment"), so it is already on the cart when the order is placed.
+    // Baseline captured on focus so an unchanged field never posts, and the
+    // save skips the region swap (handleEnvelope without reload) — nothing
+    // visible needs to change.
+    var cookingBaseline = null;
 
     // Live character counter — the textarea is capped at 250 (legacy's
     // maxlength), and a silent cap reads as the field eating input.
@@ -982,6 +971,19 @@
         if (!box) { return; }
         var out = document.querySelector('[data-ckt-cooking-count]');
         if (out) { out.textContent = String(box.value.length); }
+    });
+
+    document.addEventListener('focusin', function (ev) {
+        var box = ev.target && ev.target.closest && ev.target.closest('[data-ckt-cooking-note]');
+        if (box) { cookingBaseline = box.value; }
+    });
+
+    document.addEventListener('focusout', function (ev) {
+        var box = ev.target && ev.target.closest && ev.target.closest('[data-ckt-cooking-note]');
+        if (!box || box.value === cookingBaseline) { return; }   // unchanged → no request
+        cookingBaseline = box.value;
+        postCart('/cart/set-cooking-instructions', { instructions: box.value.trim().slice(0, 250) })
+            .then(function (env) { handleEnvelope(env); });       // silent, no swap
     });
 
     function saveCharity(amount, btn) {
@@ -1690,7 +1692,6 @@
             case 'cart-remove-loyalty': return onRemoveLoyalty(ev, btn);
             case 'cart-charity':        return onCharity(ev, btn);
             case 'cart-charity-custom': return onCharityCustom(ev, btn);
-            case 'ckt-save-cooking':    return onSaveCooking(ev, btn);
             case 'cart-set-pay':        return onCartSetPay(ev, btn);
             case 'cart-checkout':       return onCartCheckout(ev, btn);
         }

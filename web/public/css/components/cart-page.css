@@ -657,20 +657,10 @@
     resize: vertical;
 }
 .ckt-cook__input:focus-visible { outline: none; border-color: var(--color-primary); box-shadow: 0 0 0 3px rgba(229, 37, 42, 0.12); }
-.ckt-cook__foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 8px; }
+/* Counter sits at the end on its own now — the Save button was removed
+   (the note auto-saves on blur). */
+.ckt-cook__foot { display: flex; align-items: center; justify-content: flex-end; gap: 12px; margin-top: 8px; }
 .ckt-cook__count { font-size: 0.78rem; color: var(--color-text-soft); }
-.ckt-cook__save {
-    padding: 0.5rem 1.1rem;
-    border: 0;
-    border-radius: 999px;
-    background: #111;
-    color: #fff;
-    font-weight: 700;
-    font-size: 0.88rem;
-    cursor: pointer;
-}
-.ckt-cook__save:hover { background: #000; }
-.ckt-cook__save:disabled { opacity: 0.6; cursor: default; }
 
 .ckt-voucher {
     margin-top: 14px;

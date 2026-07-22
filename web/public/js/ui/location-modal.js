@@ -398,6 +398,9 @@
         if (readConsent() === 'accepted') { writeLocationCookie(location); }
         pushRecent(location);
         close();
+        // Tell any OTHER open tab (e.g. a cart tab) to pick up the new location
+        // before we reload THIS tab. The reload refreshes the current page.
+        if (window.CartSync) { window.CartSync.broadcast(); }
         window.location.reload();
     }
 
@@ -593,6 +596,10 @@
                 if (window.EatNDealUi) { window.EatNDealUi.showToast('success', body.msg || 'Address saved.'); }
                 showView('picker');
                 loadSaved();
+                // A saved address may be the cart's delivery address (or the
+                // default that feeds it), so keep an open cart in step — this
+                // tab directly, other tabs via the broadcast.
+                if (window.CartSync) { window.CartSync.broadcast(); window.CartSync.refresh(); }
             } else if (body && body.status === 401) {
                 if (window.EatNDealUi) { window.EatNDealUi.showToast('info', body.msg || 'Please sign in.'); }
             } else {
@@ -635,6 +642,9 @@
                 if (window.EatNDealUi) { window.EatNDealUi.showToast('success', body.msg || 'Address removed.'); }
                 showView('picker');
                 loadSaved();
+                // Deleting an address can change what the cart falls back to,
+                // so refresh an open cart here and in any other tab.
+                if (window.CartSync) { window.CartSync.broadcast(); window.CartSync.refresh(); }
             } else {
                 if (window.EatNDealUi) { window.EatNDealUi.showToast('error', (body && body.msg) || 'Could not delete the address.'); }
             }

@@ -288,6 +288,9 @@ async function listPaymentMethods({ customer }) {
         last4:    (pm.card && pm.card.last4)     || '',
         expMonth: (pm.card && pm.card.exp_month) || null,
         expYear:  (pm.card && pm.card.exp_year)  || null,
+        // Temp cards (entered for one order, pending detach) carry this flag —
+        // callers hide them from the saved-cards list.
+        isTemp:   !!(pm.metadata && String(pm.metadata.eatndeal_temp) === '1'),
     }));
 }
 
@@ -350,6 +353,20 @@ async function chargeSavedCard({ amount, paymentMethodId, account, applicationFe
 
 async function detachPaymentMethod(paymentMethodId) {
     return post('/payment_methods/' + encodeURIComponent(paymentMethodId) + '/detach', {});
+}
+
+/**
+ * setPaymentMethodMetadata
+ *
+ * What:  Writes metadata onto a PaymentMethod (e.g. { eatndeal_temp: '1' } to
+ *        mark a card that was entered for ONE order and must be detached after
+ *        — and hidden from the saved-cards list in the meantime).
+ * Type:  WRITE. Returns the updated PaymentMethod.
+ */
+async function setPaymentMethodMetadata(paymentMethodId, metadata) {
+    const body = {};
+    Object.keys(metadata || {}).forEach((k) => { body['metadata[' + k + ']'] = String(metadata[k]); });
+    return post('/payment_methods/' + encodeURIComponent(paymentMethodId), body);
 }
 
 /**
@@ -452,6 +469,7 @@ module.exports = {
     createSetupIntent,
     listPaymentMethods,
     detachPaymentMethod,
+    setPaymentMethodMetadata,
     clonePaymentMethodToAccount,
     chargeSavedCard,
     verifyWebhookSignature,

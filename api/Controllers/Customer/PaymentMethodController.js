@@ -53,7 +53,10 @@ async function list(req, res) {
         }
 
         const cards = await payments.listPaymentMethods({ customer: mapping.stripe_customer_id });
-        return H.successResponse(res, { paymentMethods: cards });
+        // Hide TEMP cards — a card entered for a single order (still attached,
+        // pending detach on place/clear) must not appear in the saved list.
+        const saved = cards.filter((c) => !c.isTemp);
+        return H.successResponse(res, { paymentMethods: saved });
     } catch (err) {
         H.log.error('paymentMethod.list', err && err.message);
         return H.errorResponse(res, MSG.server.oops, 500);
@@ -126,4 +129,40 @@ async function remove(req, res) {
     }
 }
 
-module.exports = { list, setupIntent, remove };
+/**
+ * markTemp — POST /payment-method/mark-temp
+ *
+ * What:  Flags a just-added PaymentMethod as TEMPORARY (entered for one order),
+ *        so list() hides it and it can be detached after the order is placed or
+ *        the cart is cleared. Returns the card's brand + last4 for the tile.
+ * Type:  WRITE.
+ *
+ * Body:  { customer_id, payment_method_id }
+ */
+async function markTemp(req, res) {
+    try {
+        const customerId = req.body.customer_id;
+        const pmId       = String(req.body.payment_method_id || '').trim();
+        if (!pmId) { return H.errorResponse(res, 'Missing payment_method_id.', 400); }
+
+        const { row: cust, error } = await customers.loadMarketplaceCustomer(customerId);
+        if (error) { return H.errorResponse(res, error.msg, error.status); }
+        if (!gateConfigured(res)) { return; }
+
+        const mapping = await stripeCustomer.find(cust.id);
+        if (!mapping) { return H.errorResponse(res, 'No payment profile.', 404); }
+
+        // The PM must belong to THIS customer — verify before flagging it.
+        const cards = await payments.listPaymentMethods({ customer: mapping.stripe_customer_id });
+        const card  = cards.find((c) => c.id === pmId);
+        if (!card) { return H.errorResponse(res, 'That card is no longer available.', 404); }
+
+        await payments.setPaymentMethodMetadata(pmId, { eatndeal_temp: '1' });
+        return H.successResponse(res, { paymentMethodId: pmId, brand: card.brand, last4: card.last4 });
+    } catch (err) {
+        H.log.error('paymentMethod.markTemp', err && err.message);
+        return H.errorResponse(res, MSG.server.oops, 500);
+    }
+}
+
+module.exports = { list, setupIntent, remove, markTemp };

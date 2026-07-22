@@ -975,6 +975,12 @@ router.post('/customer/payment-method/delete',
     validate(paymentMethodDeleteSchema),
     PaymentMethodCtl.remove);
 
+// Flag a just-added card as temporary (one-order use; detached after).
+// Reuses the delete schema — same { customer_id, payment_method_id } body.
+router.post('/customer/payment-method/mark-temp',
+    validate(paymentMethodDeleteSchema),
+    PaymentMethodCtl.markTemp);
+
 // ── Merchant dashboard (staff-allowlist gated) ──────────────────────
 // Phase 4 ships with an env-driven allowlist (Helpers/merchant.js); a
 // proper mp_merchant_staff table comes in Phase-5.

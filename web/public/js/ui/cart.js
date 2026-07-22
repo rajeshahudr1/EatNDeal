@@ -70,6 +70,21 @@
         });
     }
 
+    /**
+     * clearPersistedPayMode
+     *
+     * What:  Forgets the remembered payment choice (checkout-popups.js persists
+     *        it under 'eatndeal_pay_mode' so a Card pick survives cart writes).
+     * Why:   A PLACED order consumes that choice. Without clearing it, the next
+     *        fresh cart's restorePayMode() re-selected "New card" from the order
+     *        just completed — the customer opened a new basket already showing a
+     *        card they never re-picked.
+     * Type:  WRITE (sessionStorage). Key mirrors checkout-popups.js PAY_MODE_KEY.
+     */
+    function clearPersistedPayMode() {
+        try { sessionStorage.removeItem('eatndeal_pay_mode'); } catch (e) { /* private mode */ }
+    }
+
     function bumpCartBadge(cart) {
         // cart === null is the cart-cleared signal from the API.
         if (cart === null) { setCartBadge(0); return; }
@@ -1450,6 +1465,7 @@
                     throw new Error(env.msg || 'Could not place the order.');
                 }
                 bumpCartBadge(null);
+                clearPersistedPayMode();   // order placed → next cart starts on the default
                 var oid = (env.data && env.data.order && env.data.order.id) || '';
                 window.location.href = '/order/' + encodeURIComponent(oid) + '/confirm';
             });
@@ -1495,6 +1511,7 @@
                     return;
                 }
                 bumpCartBadge(null);
+                clearPersistedPayMode();   // order placed → next cart starts on the default
                 var oid = (env.data && env.data.order && env.data.order.id) || '';
                 navigating = true;
                 window.location.href = '/order/' + encodeURIComponent(oid) + '/confirm';

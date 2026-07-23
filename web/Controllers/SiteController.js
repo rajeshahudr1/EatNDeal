@@ -920,6 +920,18 @@ async function index(req, res, next) {
             finalFeatured = finalFeatured.filter((r) => !(r && r.id != null && shownIds.has(String(r.id))));
         }
     }
+    // Cap the HOME "Top restaurants near you" grid to ~3 rows (12 cards
+    // — 3×4 on desktop, 4×3 on narrower grids). Anything beyond the cap
+    // lives behind "View all" (/?view=restaurants), which still pulls
+    // the full 50-card page. Applies to the home surfaces only — the
+    // dedicated restaurants view and Pickup keep their full lists.
+    {
+        const HOME_GRID_CAP = 12;
+        if (!viewMode && !isPickup && Array.isArray(finalFeatured) && finalFeatured.length > HOME_GRID_CAP) {
+            finalFeatured = finalFeatured.slice(0, HOME_GRID_CAP);
+            featuredMore  = true;
+        }
+    }
     // Only the REAL marketplace categories (from the api) drive the cuisine row
     // + "Popular cuisines". On a fresh DB with none added, show NOTHING — never
     // the hardcoded demo list (which looked like categories nobody created).

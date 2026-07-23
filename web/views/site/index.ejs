@@ -285,7 +285,7 @@
                             <%- include('../partials/restaurant-card', { r: r, showOffer: true, metaIcons: true, showDelivery: true }) %>
                         <% }); %>
                     </ul>
-                    <%# Home shows the top ~24; the rest live behind "View all". %>
+                    <%# Home shows the top 12 (~3 rows); the rest live behind "View all". %>
                     <% if (typeof featured_more !== 'undefined' && featured_more) { %>
                         <div class="section__loadmore">
                             <a href="/?view=restaurants" class="btn btn--ghost btn--lg" data-action="view-all">View all restaurants</a>

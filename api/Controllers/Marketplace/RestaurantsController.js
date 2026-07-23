@@ -555,9 +555,15 @@ async function list(req, res) {
         if (priceBucket === 'high') { filtered = filtered.filter(r => r._priceHigh); }
 
         // ── Sort ──────────────────────────────────────────────────
-        // Default ('relevance' / unset) keeps the existing nearest-
-        // first ordering when we have a user location, else stable
-        // by id.
+        // Default ('relevance' / unset) = orderable-first: restaurants
+        // the customer can actually order from right now float to the
+        // top, nearest first within each band. Closed and "doesn't
+        // deliver to your area" cards sink to the bottom instead of
+        // occupying the first row. Bands (lower = higher on the page):
+        //   0 open + deliverable · 1 closed + deliverable ·
+        //   2 open + no delivery zone · 3 closed + no delivery zone.
+        // Explicit sorts (rating / time / distance) stay exactly what
+        // the user picked — no availability re-ranking.
         const byDistance = (a, b) => {
             const da = a.distanceKm == null ? Infinity : a.distanceKm;
             const db = b.distanceKm == null ? Infinity : b.distanceKm;
@@ -570,12 +576,21 @@ async function list(req, res) {
             if (rb !== ra) { return rb - ra; }
             return byDistance(a, b);
         };
+        // In Pickup mode the delivery zone is irrelevant — rank by
+        // open/closed only there.
+        const availBand = (r) => ((modeParam === 'pickup' || r.deliverable) ? 0 : 2) + (r.isOpen ? 0 : 1);
+        const byAvailability = (a, b) => {
+            const ba = availBand(a);
+            const bb = availBand(b);
+            if (ba !== bb) { return ba - bb; }
+            return byDistance(a, b);
+        };
         if (sort === 'rating') {
             filtered.sort(byRatingDesc);
         } else if (sort === 'time' || sort === 'distance') {
             filtered.sort(byDistance);
-        } else if (hasUserLocation) {
-            filtered.sort(byDistance);
+        } else {
+            filtered.sort(byAvailability);
         }
 
         // Pagination slice [offset, offset+limit). has_more says

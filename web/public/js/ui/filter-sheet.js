@@ -164,6 +164,10 @@
     }
 
     function clearAll() {
+        // cleared → the next Show results also drops the rail's
+        // ?cuisine (home.js reads this flag); "Clear all" resets
+        // everything, not just the sheet's own chips.
+        state.cleared     = true;
         state.sort        = 'relevance';
         state.time        = null;
         state.rating      = null;
@@ -203,6 +207,10 @@
                 detail: JSON.parse(JSON.stringify(state)),
             }));
         } catch (e) { /* no-op */ }
+        // The cleared flag is one-shot: it rides along on the apply
+        // that follows Clear all, then resets so later applies go back
+        // to preserving the rail's cuisine.
+        state.cleared = false;
         close();
     }
 

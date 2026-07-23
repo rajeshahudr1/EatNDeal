@@ -312,6 +312,10 @@
                 bindPagination();
                 bindFilterToggle();
                 bindRailArrows();
+                // The swap painted a fresh (unchecked) filter sidebar —
+                // re-tick its controls from the current URL so Clear all
+                // / Apply keep reflecting the real filter state.
+                if (window.EatNDealFilterSidebar) { window.EatNDealFilterSidebar.restore(); }
             }
 
             // Scroll handling:
@@ -876,7 +880,7 @@
             // beyond the sidebar's short list). When it IS representable,
             // an empty state means the user UNCHECKED it → drop it. This
             // is what lets "uncheck + Apply" actually clear the cuisine.
-            if (!next.has('cuisine')) {
+            if (!next.has('cuisine') && !detail.cleared) {
                 var urlCuisine = current.get('cuisine');
                 if (urlCuisine) {
                     var representable = false;

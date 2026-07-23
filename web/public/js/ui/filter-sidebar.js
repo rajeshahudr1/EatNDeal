@@ -29,7 +29,10 @@
     var root;
 
     function resolve() {
-        if (root) { return true; }
+        // Re-query when the cached node was replaced by an SPA swap —
+        // a stale (disconnected) root made Clear all / Apply dead after
+        // any full #app-main swap (open restaurant → back to home).
+        if (root && root.isConnected) { return true; }
         root = document.querySelector('.fsb');
         return !!root;
     }
@@ -97,10 +100,12 @@
         });
     }
 
-    function broadcast() {
+    function broadcast(extra) {
         try {
+            var detail = collectState();
+            if (extra) { Object.keys(extra).forEach(function (k) { detail[k] = extra[k]; }); }
             document.dispatchEvent(new CustomEvent('eatndeal:filters-changed', {
-                detail: collectState(),
+                detail: detail,
             }));
         } catch (e) { /* old browser */ }
     }
@@ -112,7 +117,10 @@
             r.checked = (r.name === 'sort-web' && r.value === 'relevance');
         });
         syncActiveClasses();
-        broadcast();
+        // cleared:true → home.js drops the rail's ?cuisine too. "Clear
+        // all" means EVERYTHING, including the cuisine picked on the
+        // top rail (which normal Apply intentionally preserves).
+        broadcast({ cleared: true });
     }
 
     /**
@@ -159,33 +167,44 @@
     }
 
     function bind() {
-        if (!resolve()) { return; }
-
-        root.addEventListener('click', function (ev) {
+        // Delegated on document (scoped to .fsb) so the handlers keep
+        // working after an SPA swap replaces the sidebar DOM. The
+        // mobile filter sheet has its own controller, so anything
+        // outside .fsb is ignored here.
+        document.addEventListener('click', function (ev) {
             var t = ev.target;
-            if (!t || !t.closest) { return; }
+            if (!t || !t.closest || !t.closest('.fsb') || !resolve()) { return; }
             if (t.closest('[data-action="filters-clear-all"]')) { ev.preventDefault(); clearAll(); return; }
             if (t.closest('[data-action="filters-apply"]'))     { ev.preventDefault(); broadcast(); return; }
         });
 
         // Any input change re-syncs the active classes (visual only;
         // the actual navigation happens on Apply).
-        root.addEventListener('change', function (ev) {
-            if (ev.target && ev.target.tagName === 'INPUT') { syncActiveClasses(); }
+        document.addEventListener('change', function (ev) {
+            var t = ev.target;
+            if (t && t.tagName === 'INPUT' && t.closest && t.closest('.fsb') && resolve()) { syncActiveClasses(); }
         });
 
         // Cuisine search live-filter.
-        var search = root.querySelector('[data-fsb-cuisine-search]');
-        if (search) {
-            search.addEventListener('input', function (e) { filterCuisineList(e.target.value); });
-        }
+        document.addEventListener('input', function (ev) {
+            var t = ev.target;
+            if (t && t.hasAttribute && t.hasAttribute('data-fsb-cuisine-search') && resolve()) {
+                filterCuisineList(t.value);
+            }
+        });
     }
 
     function init() {
-        if (!resolve()) { return; }
         bind();
-        restoreFromUrl();
+        if (resolve()) { restoreFromUrl(); }
     }
+
+    // Re-sync a freshly swapped-in sidebar (home.js calls this after a
+    // full #app-main swap — the new markup renders unchecked, so the
+    // controls must be re-ticked from the current URL).
+    window.EatNDealFilterSidebar = {
+        restore: function () { if (resolve()) { restoreFromUrl(); } },
+    };
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', init);
     } else {

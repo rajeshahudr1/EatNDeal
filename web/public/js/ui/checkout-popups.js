@@ -667,9 +667,20 @@
         if (!row) { return; }
         var mode = row.getAttribute('data-ckt-pay-mode');
         if (!mode || mode.indexOf('card:') !== 0) { return; }
-        // A REAL saved card re-renders its own tile with the right label —
-        // nothing to patch. Only a temp card (no rendered tile) needs this.
-        if (document.querySelector('[data-pay-mode="' + mode + '"]')) { return; }
+        // Re-paint the WHOLE payment row for any card mode — the fresh
+        // server markup always renders Cash as the active tile with the
+        // generic "Card / Choose a card" label, so patching only the temp
+        // card's label (as this used to) left a REAL saved card looking
+        // like Cash after every swap: the tiles flashed Cash and only
+        // recovered on the next full page load ("flickering" — qty bump /
+        // promo visually threw the customer back to Cash). commitPayRow
+        // re-selects the card tile + label; it runs inside the SAME
+        // synchronous 'eatndeal:cart-updated' dispatch as cart.js's
+        // attribute re-apply, so the browser never paints the Cash state.
+        if (document.querySelector('[data-pay-mode="' + mode + '"]')) {
+            commitPayRow(row, mode);            // real saved card — label from its tile
+            return;
+        }
         var label = readPayLabel();
         if (label && label.mode === mode) {
             commitPayRow(row, mode, { title: label.title, sub: label.sub });

@@ -95,11 +95,14 @@ async function createIntent(req, res) {
             return H.errorResponse(res, 'Card payment isn\'t set up for this restaurant yet.', 422);
         }
         const serviceCharge = Number(css.service_charge) || 0;
-        // Customer pays grand total + the restaurant's service charge.
-        const amount = Cart.round2(baseAmount + serviceCharge);
+        // The service charge is already INSIDE cart.grandtotal (recomputeTotals
+        // bakes it into every order, cash or card — legacy parity). Charge the
+        // grandtotal as-is; the fee formula re-adds the service charge itself,
+        // so hand it the service-less base to keep the maths identical.
+        const amount = Cart.round2(baseAmount);
         // Platform application fee = (grandAmount × commission%) + service_charge.
         const fee = StripeFee.computeStripeCharge({
-            grandtotal:    baseAmount,
+            grandtotal:    Cart.round2(baseAmount - serviceCharge),
             charityAmount: Number(cart.charity_amount) || 0,
             usedCashback:  Number(cart.used_cashback)  || 0,
             serviceCharge,
@@ -215,9 +218,11 @@ async function paySavedCard(req, res) {
         }
 
         const serviceCharge = Number(css.service_charge) || 0;
-        const amount = Cart.round2(baseAmount + serviceCharge);
+        // grandtotal already carries the service charge (recomputeTotals) —
+        // charge it as-is; the fee formula gets the service-less base.
+        const amount = Cart.round2(baseAmount);
         const fee = StripeFee.computeStripeCharge({
-            grandtotal:    baseAmount,
+            grandtotal:    Cart.round2(baseAmount - serviceCharge),
             charityAmount: Number(cart.charity_amount) || 0,
             usedCashback:  Number(cart.used_cashback)  || 0,
             serviceCharge,

@@ -41,6 +41,9 @@
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="8" width="18" height="13" rx="1"/><path d="M3 12h18M12 8v13M12 8S9 3 6.5 4.5 7 8 12 8zM12 8s3-5 5.5-3.5S17 8 12 8z"/></svg>
             <span>Rewards</span>
         </a>
+        <%# Loyalty surfaces hide when the super-admin has loyalty OFF for every
+            restaurant (legacy header gate) — res.locals.loyalty_enabled. %>
+        <% if (typeof loyalty_enabled === 'undefined' || loyalty_enabled !== false) { %>
         <a class="acct-nav__item<%= __na === 'wallet' ? ' is-active' : '' %>" href="/wallet"<%= __na === 'wallet' ? ' aria-current="page"' : '' %>>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 7H5a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-3"/><path d="M21 11h-5a2 2 0 0 0 0 4h5v-4z"/><path d="M3 9V7a2 2 0 0 1 2-2h11"/></svg>
             <span>Loyalty Wallet</span>
@@ -49,6 +52,7 @@
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="8" width="18" height="4" rx="1"/><path d="M5 12v7a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-7"/><path d="M12 8V4M12 8c-1.5 0-4-.5-4-2.5S10.5 4 12 8zM12 8c1.5 0 4-.5 4-2.5S13.5 4 12 8z"/></svg>
             <span>Earn Cashback</span>
         </a>
+        <% } %>
     </nav>
 
     <div class="acct-invite">

@@ -264,12 +264,13 @@ async function placeOrder({ customer, cart, branch, items, paymentOption, custom
         Number(cart.serve_type) === 2 ? 'pickup' : 'delivery',
     );
 
-    // Card-payment surcharge — only for card (payment_option 2), read from
-    // the same source as createIntent so the recorded total matches what
-    // Stripe actually charged. Cash orders carry 0.
+    // The flat service charge is already inside cart.grandtotal
+    // (recomputeTotals — legacy parity: charged on EVERY order, cash or
+    // card), so the recorded total is the grandtotal itself. cardCharge is
+    // kept only as the figure stored on the order's service-charge column.
     const isCard       = Number(paymentOption) === 2;
     const cardCharge   = isCard ? await Cart.cardServiceCharge(cart.company_id) : 0;
-    const grandTotal   = Math.round(((Number(cart.grandtotal) || 0) + cardCharge) * 100) / 100;
+    const grandTotal   = Math.round((Number(cart.grandtotal) || 0) * 100) / 100;
 
     // Loyalty redeem is ALREADY subtracted from cart.grandtotal by
     // recomputeTotals, so grandTotal above is the true payable. We record

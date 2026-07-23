@@ -202,46 +202,41 @@ function isMarketplaceScope(companyId) {
 }
 
 /*
- * ══ MARKETPLACE LOYALTY DISABLED 2026-07-20 (user request) ══════════════
+/*
+ * ══ LOYALTY IS PER-RESTAURANT ONLY (user decision 2026-07-23) ═══════════
  *
- * ONE switch for EatNDeal's own (company_id = 0) reward programme. While it is
- * false, company 0 is left out of every customer-facing figure:
- *     • wallet cards        (cardsFor)
- *     • wallet totals + history rows (historyFor)
- *     • checkout cap        (redeemPoolsFor)
- *     • checkout spend      (consumeAcrossPools)
- * so the totals, the cards, the history and the redeem cap all agree — an
- * "available" figure that can't be spent is worse than no figure at all.
- *
- * NOTHING is deleted: rows keep accruing in customer_rewards, and every
- * function still knows how to price the marketplace pool.
- * RESTORE: set this to true. That is the whole change — the call sites all
- * read it, so nothing else has to be touched.
+ * There is NO marketplace-owned (company_id = 0) reward programme — legacy
+ * has no such thing and neither do we. Every reward row, redeem, claim and
+ * card belongs to a real restaurant's company_id. The only place 0/null is
+ * legitimate is the customer row itself (a marketplace customer belongs to
+ * no restaurant). company-0 scope helpers (isMarketplaceScope etc.) remain
+ * only so old data rows are recognised and EXCLUDED.
  */
-const MARKETPLACE_LOYALTY_ENABLED = false;
 
 /*
  * rewardScopeWhere
  *
- * The scope filter shared by cardsFor + historyFor (totals AND rows) — kept in
- * one place so those three can never drift apart.
+ * The scope filter shared by cardsFor + historyFor (totals AND rows) — LIVE
+ * marketplace restaurants only, AND only restaurants whose loyalty is
+ * currently ON (company_loyalty.loyalty_status = 1). The legacy per-company
+ * gate (CustomerRewards::companyLoyalty) hides the whole wallet when the
+ * restaurant's loyalty is off — here that restaurant's card, balance and
+ * history rows all vanish the same way. Nothing is deleted: switch loyalty
+ * back on and the rows reappear.
  *
- * Enabled : marketplace rows (company_id = 0, which has NO company row) pass
- *           through explicitly, plus any LIVE marketplace restaurant.
- * Disabled: eligible restaurants only. company 0 needs no explicit exclusion —
- *           eligibleCompanyScope tests c.is_marketplace / c.is_active, and the
- *           LEFT JOIN leaves those NULL for a row with no company, so it drops
- *           out on its own.
+ * company 0 needs no explicit exclusion: eligibleCompanyScope tests
+ * c.is_marketplace / c.is_active, and the LEFT JOIN leaves those NULL for a
+ * row with no company, so it drops out.
  *
  * `qb` is the query builder (call it with the builder, not via `this`).
  */
 function rewardScopeWhere(qb) {
-    if (MARKETPLACE_LOYALTY_ENABLED) {
-        qb.where('cr.company_id', MARKETPLACE_COMPANY_ID)
-            .orWhere(function () { M.eligibleCompanyScope(this, 'c'); });
-        return;
-    }
     M.eligibleCompanyScope(qb, 'c');
+    qb.whereExists(function () {
+        this.select(db.raw('1')).from('company_loyalty as clg')
+            .whereRaw('clg.company_id = cr.company_id')
+            .andWhere('clg.loyalty_status', 1);
+    });
 }
 
 function round2(n) { return F.round2(n); }
@@ -263,6 +258,29 @@ async function isReady() {
         _ready = !!(row.a && row.b);
     } catch (e) { _ready = false; }
     return _ready;
+}
+
+/**
+ * anyLoyaltyOn
+ *
+ * What:  Is loyalty switched ON for AT LEAST ONE live marketplace restaurant
+ *        (company_loyalty.loyalty_status = 1)? Mirrors the legacy header gate
+ *        (webordering header.php: IS_LOYALTY_ON && companyLoyalty(company)) —
+ *        the multi-restaurant equivalent: when the super-admin has loyalty OFF
+ *        everywhere, the customer's Loyalty Wallet / Earn Cashback surfaces
+ *        hide entirely.
+ * Type:  READ.
+ */
+async function anyLoyaltyOn() {
+    try {
+        if (!(await isReady())) { return false; }
+        const row = await db(CONFIG + ' as cl')
+            .join('company as c', 'c.id', 'cl.company_id')
+            .where('cl.loyalty_status', 1)
+            .modify(M.eligibleCompanyScope, 'c')
+            .first('cl.id');
+        return !!row;
+    } catch (e) { return false; }
 }
 
 /**
@@ -527,13 +545,23 @@ async function hasRewardMpCol() {
  */
 async function balanceFor(customerId, companyId) {
     if (!customerId || !hasScope(companyId) || !(await isReady())) { return 0; }
+    // Restaurant's loyalty OFF → no usable balance anywhere (wallet chip,
+    // cart redeem, restaurant page) — legacy companyLoyalty gate.
+    if (!(await loadConfig(companyId))) { return 0; }
     const ids = await linkedRewardIds(customerId);   // app_ids — reward tables key on app_id
     if (!ids.length) { return 0; }
     const row = await db(REWARDS)
-        // is_redeemable = 1 only — LOCKED stamp rewards (is_redeemable = 0)
-        // aren't spendable yet, so they don't count toward the balance.
+        // Legacy semantics (webordering SiteController:2027 / OrderController:859):
+        // is_redeemable only gates STAMP rows (tier_type NOT NULL — locked until
+        // the stamp count unlocks them). Ordinary cashback rows are spendable
+        // regardless — the POS earn paths write them with is_redeemable = 0
+        // (CustomerRewards.php model default), so requiring 1 across the board
+        // made every POS-earned balance invisible here.
         .whereIn('customer_id', ids)
-        .andWhere({ company_id: companyId, is_expired: 0, is_redeemable: 1 })
+        .andWhere({ company_id: companyId, is_expired: 0 })
+        .andWhere(function () {
+            this.whereNull('tier_type').orWhere('is_redeemable', 1);
+        })
         .andWhere(function () {
             this.whereNull('expiry_date').orWhere('expiry_date', '>=', db.fn.now());
         })
@@ -561,9 +589,8 @@ async function cardsFor(customerId) {
         // LEFT join: a RESTAURANT card must be a LIVE marketplace company
         // (active, not deleted, not in maintenance) — points at a restaurant
         // that isn't on the marketplace are hidden (the customer can't order
-        // there to redeem them anyway). Whether the MARKETPLACE's own card
-        // (company_id = 0) is included is rewardScopeWhere's call — see
-        // MARKETPLACE_LOYALTY_ENABLED.
+        // there to redeem them anyway). Loyalty is per-restaurant only, so
+        // company-0 rows never pass rewardScopeWhere.
         .leftJoin('company as c', 'c.id', 'cr.company_id')
         .whereIn('cr.customer_id', ids)
         .where(function () { rewardScopeWhere(this); })
@@ -573,10 +600,19 @@ async function cardsFor(customerId) {
             'cr.company_id',
             'c.business_name',
             'c.domain_name',
-            db.raw("COALESCE(SUM(CASE WHEN cr.is_expired = 0 AND cr.is_redeemable = 1 AND (cr.expiry_date IS NULL OR cr.expiry_date >= NOW()) THEN cr.amount - COALESCE(cr.used_amount,0) ELSE 0 END), 0) as balance"),
+            db.raw("COALESCE(SUM(CASE WHEN cr.is_expired = 0 AND (cr.tier_type IS NULL OR cr.is_redeemable = 1) AND (cr.expiry_date IS NULL OR cr.expiry_date >= NOW()) THEN cr.amount - COALESCE(cr.used_amount,0) ELSE 0 END), 0) as balance"),
             db.raw('COALESCE(SUM(cr.amount), 0) as earned'),
             db.raw('COALESCE(SUM(cr.used_amount), 0) as used'),
             db.raw('MAX(cr.created_at) as last_at'),
+            // Legacy loyalty-wallet splits (SiteController:2010-2074): plain
+            // cashback vs stamp-card money, the unlocked stamp balance, the
+            // still-locked stamp pot and the live stamp count — per card.
+            db.raw('COALESCE(SUM(CASE WHEN cr.tier_type IS NULL THEN cr.amount ELSE 0 END), 0) as cash_earned'),
+            db.raw('COALESCE(SUM(CASE WHEN cr.tier_type IS NOT NULL THEN cr.amount ELSE 0 END), 0) as stamp_earned'),
+            db.raw('COALESCE(SUM(CASE WHEN cr.is_expired = 0 AND cr.is_redeemable = 1 AND cr.tier_type IS NOT NULL THEN cr.amount - COALESCE(cr.used_amount,0) ELSE 0 END), 0) as stamp_balance'),
+            db.raw('COALESCE(SUM(CASE WHEN cr.is_expired = 0 AND cr.is_redeemable = 0 AND cr.tier_type IS NOT NULL THEN cr.amount ELSE 0 END), 0) as locked_amount'),
+            db.raw('COALESCE(SUM(CASE WHEN cr.is_expired = 0 AND cr.tier_type IS NOT NULL THEN 1 ELSE 0 END), 0) as stamp_orders'),
+            db.raw('COALESCE(SUM(CASE WHEN cr.is_expired = 1 THEN cr.amount - COALESCE(cr.used_amount,0) ELSE 0 END), 0) as expired'),
         )
         .orderBy('balance', 'desc')
         .orderBy('last_at', 'desc');
@@ -596,21 +632,93 @@ async function cardsFor(customerId) {
             balance:   round2(r.balance),
             earned:    round2(r.earned),
             used:      round2(r.used),
+            expired:      round2(r.expired),
+            cashEarned:   round2(r.cash_earned),
+            stampEarned:  round2(r.stamp_earned),
+            stampBalance: round2(r.stamp_balance),
+            lockedAmount: round2(r.locked_amount),
+            stampOrders:  Number(r.stamp_orders) || 0,
         };
     });
 }
 
-// Friendly labels for the customer_rewards.entity_type values.
+/**
+ * stampJourneyFor
+ *
+ * What:  The legacy "Stamp Reward Journey" figures for ONE restaurant card —
+ *        completed/required stamp orders, how many more to unlock, and the
+ *        locked pot that unlocks then. Ported from webordering
+ *        SiteController:2031-2074 (completed = live-stamp-count % required;
+ *        a multiple with stamps > 0 shows as a FULL card, exactly legacy).
+ *        Required comes from the customer's tier cashback rule (order_count) —
+ *        legacy displays a global param, but the per-company rule is what the
+ *        unlock writer (earnStampCashback) actually counts against.
+ * Type:  READ. Returns null when the restaurant has no stamp rule/activity.
+ */
+async function stampJourneyFor(customerId, companyId) {
+    if (!customerId || !hasScope(companyId) || isMarketplaceScope(companyId)) { return null; }
+    const ids = await linkedRewardIds(customerId);
+    if (!ids.length) { return null; }
+
+    // Required count — the customer's tier rule; fall back to ANY rule the
+    // restaurant has so the journey still renders between tier flips.
+    let required = 0;
+    try {
+        const tier = await getCustomerTier(companyId, customerId, null);
+        let rule = await db('loyalty_cashback_rule')
+            .where({ company_id: companyId, tier_type: tier }).whereNull('deleted_at')
+            .orderBy('min_order_amount', 'asc').first('order_count');
+        if (!rule) {
+            rule = await db('loyalty_cashback_rule')
+                .where({ company_id: companyId }).whereNull('deleted_at')
+                .orderBy('min_order_amount', 'asc').first('order_count');
+        }
+        required = rule ? (parseInt(rule.order_count, 10) || 0) : 0;
+    } catch (e) { required = 0; }
+
+    const agg = await db(REWARDS)
+        .whereIn('customer_id', ids)
+        .andWhere({ company_id: companyId, is_expired: 0 })
+        .whereNotNull('tier_type')
+        .select(
+            db.raw('COUNT(*) as total'),
+            db.raw('COALESCE(SUM(CASE WHEN is_redeemable = 0 THEN amount ELSE 0 END), 0) as locked'),
+            db.raw('COALESCE(SUM(CASE WHEN is_redeemable = 1 THEN amount - COALESCE(used_amount,0) ELSE 0 END), 0) as unlocked'),
+        ).first();
+    const total = Number(agg && agg.total) || 0;
+    if (!required && !total) { return null; }   // no stamp programme here
+
+    // Legacy modulo display: on an exact multiple the card shows FULL.
+    let completed = required > 0 ? (total % required) : 0;
+    if (completed === 0 && total > 0 && required > 0) { completed = required; }
+    const remaining = required > 0 ? Math.max(0, required - completed) : 0;
+
+    return {
+        required,
+        totalStampOrders: total,
+        completed,
+        remaining,
+        lockedAmount:   round2(agg && agg.locked),
+        unlockedAmount: round2(agg && agg.unlocked),
+    };
+}
+
+// Friendly labels for the customer_rewards.entity_type values — the SAME
+// names the legacy loyalty wallet shows (common/config/params.php ruleNames),
+// so the marketplace history reads identically to the POS one.
 const REWARD_TYPE_LABELS = {
-    cash_king:           'Cashback',
-    cashback:            'Cashback',
-    product_cashback:    'Product cashback',
-    collection_cashback: 'Collection cashback',
-    referral:            'Referral bonus',
-    event_cashback:      'Bonus',
-    special_offer:       'Special offer',
-    smart_campaign:      'Campaign reward',
-    product_streak:      'Streak reward',
+    cash_king:           'Cash Reward',
+    cashback:            'Digital Stamp Card',
+    product_cashback:    'Product Perks',
+    collection_cashback: 'Pickup Reward',
+    referral:            'Referral Reward',
+    event_cashback:      'Tell Us About You reward',
+    special_offer:       'Celebration Reward',
+    smart_campaign:      'Performance Plus Reward',
+    product_streak:      'Streak Bonus',
+    review:              'Community Rewards',
+    membership_tier:     'Membership Tier',
+    reward_used:         'Used Reward',   // customer_used_rewards ledger rows
 };
 // Lifecycle status of one reward row (mirrors the legacy expired_from logic).
 function rewardStatus(r) {
@@ -662,37 +770,87 @@ async function historyFor(customerId, opts) {
         .where(function () { rewardScopeWhere(this); });
     if (hasScope(companyId)) { tq = tq.where('cr.company_id', companyId); }
     const t = await tq.select(
-        db.raw('COALESCE(SUM(cr.amount), 0) as earned'),
+        // Legacy split (SiteController:2010-2017): the headline EARNED figure
+        // counts ONLY plain cashback (tier_type NULL). Stamp-card money is
+        // reported separately ("+ £X stamp rewards earned") and never joins
+        // the main earned total — locked or unlocked.
+        db.raw('COALESCE(SUM(CASE WHEN cr.tier_type IS NULL THEN cr.amount ELSE 0 END), 0) as earned'),
+        db.raw('COALESCE(SUM(CASE WHEN cr.tier_type IS NOT NULL THEN cr.amount ELSE 0 END), 0) as stamp_earned'),
         db.raw('COALESCE(SUM(COALESCE(cr.used_amount,0)), 0) as used'),
         db.raw('COALESCE(SUM(CASE WHEN cr.is_expired = 1 THEN cr.amount - COALESCE(cr.used_amount,0) ELSE 0 END), 0) as expired'),
-        db.raw('COALESCE(SUM(CASE WHEN cr.is_expired = 0 AND cr.is_redeemable = 1 AND (cr.expiry_date IS NULL OR cr.expiry_date >= NOW()) THEN cr.amount - COALESCE(cr.used_amount,0) ELSE 0 END), 0) as available'),
+        db.raw('COALESCE(SUM(CASE WHEN cr.is_expired = 0 AND (cr.tier_type IS NULL OR cr.is_redeemable = 1) AND (cr.expiry_date IS NULL OR cr.expiry_date >= NOW()) THEN cr.amount - COALESCE(cr.used_amount,0) ELSE 0 END), 0) as available'),
     ).first();
     const totals = {
-        available: round2(t && t.available),
-        earned:    round2(t && t.earned),
-        used:      round2(t && t.used),
-        expired:   round2(t && t.expired),
+        available:    round2(t && t.available),
+        earned:       round2(t && t.earned),
+        stampEarned:  round2(t && t.stamp_earned),
+        used:         round2(t && t.used),
+        expired:      round2(t && t.expired),
     };
 
-    // Filtered, paginated history rows.
-    const base = () => {
+    // Filtered, paginated history rows — legacy shape (SiteController:1930-1976):
+    //   • EARN rows come from customer_rewards.
+    //   • A REDEEM shows as its OWN transaction from customer_used_rewards
+    //     (entity 'reward_used'), so the latest activity — including a spend —
+    //     always sits at the top.
+    //   • Ordered by created_at DESC (then id DESC), not earn-row id, exactly
+    //     like legacy ("jo last me bana wo upar").
+    const baseEarn = () => {
         let q = db(REWARDS + ' as cr')
             .leftJoin('company as c', 'c.id', 'cr.company_id')
             .whereIn('cr.customer_id', ids)
             .where(function () { rewardScopeWhere(this); });
         if (hasScope(companyId)) { q = q.where('cr.company_id', companyId); }
-        if (filter === 'earned')   { q = q.where('cr.is_expired', 0).where('cr.expired_from', 0); }
-        else if (filter === 'redeemed') { q = q.where('cr.expired_from', 3); }
+        if (filter === 'earned')        { q = q.where('cr.is_expired', 0).where('cr.expired_from', 0); }
         else if (filter === 'expired')  { q = q.where('cr.is_expired', 1).whereIn('cr.expired_from', [1, 4]); }
         else if (filter === 'reversed') { q = q.where('cr.expired_from', 2); }
         return q;
     };
-    const cnt = await base().count('cr.id as n').first();
-    const rows = await base()
-        .select('cr.id', 'cr.company_id', 'c.business_name', 'cr.entity_type', 'cr.amount',
-                'cr.used_amount', 'cr.is_expired', 'cr.expired_from', 'cr.is_redeemable',
-                'cr.expiry_date', 'cr.created_at')
-        .orderBy('cr.id', 'desc').limit(limit).offset(offset);
+    // The spend ledger — same aliases/scope so rewardScopeWhere applies as-is.
+    const baseUsed = () => {
+        let q = db('customer_used_rewards as cr')
+            .leftJoin('company as c', 'c.id', 'cr.company_id')
+            .whereIn('cr.customer_id', ids)
+            .where(function () { rewardScopeWhere(this); });
+        if (hasScope(companyId)) { q = q.where('cr.company_id', companyId); }
+        return q;
+    };
+    const EARN_COLS = ['cr.id', 'cr.company_id', 'c.business_name', 'cr.entity_type', 'cr.amount',
+                       'cr.used_amount', 'cr.is_expired', 'cr.expired_from', 'cr.is_redeemable',
+                       'cr.tier_type', 'cr.expiry_date', 'cr.created_at'];
+    // Same column list/aliases so the two selects UNION cleanly.
+    const USED_COLS = ['cr.id', 'cr.company_id', 'c.business_name',
+                       db.raw("'reward_used' as entity_type"), db.raw('0 as amount'),
+                       'cr.used_amount', db.raw('0 as is_expired'), db.raw('3 as expired_from'),
+                       db.raw('0 as is_redeemable'), db.raw('NULL as tier_type'),
+                       db.raw('NULL as expiry_date'), 'cr.created_at'];
+
+    let rows; let totalCount;
+    if (filter === 'redeemed') {
+        // Legacy's Redeemed tab = the spend ledger only.
+        const c1 = await baseUsed().count('cr.id as n').first();
+        totalCount = Number(c1 && c1.n) || 0;
+        rows = await baseUsed().select(USED_COLS)
+            .orderBy([{ column: 'cr.created_at', order: 'desc' }, { column: 'cr.id', order: 'desc' }])
+            .limit(limit).offset(offset);
+    } else if (filter === '') {
+        // All = earn rows ∪ spend rows, newest activity first.
+        const [c1, c2] = await Promise.all([
+            baseEarn().count('cr.id as n').first(),
+            baseUsed().count('cr.id as n').first(),
+        ]);
+        totalCount = (Number(c1 && c1.n) || 0) + (Number(c2 && c2.n) || 0);
+        rows = await baseEarn().select(EARN_COLS)
+            .unionAll(baseUsed().select(USED_COLS), true)
+            .orderByRaw('created_at DESC, id DESC')
+            .limit(limit).offset(offset);
+    } else {
+        const c1 = await baseEarn().count('cr.id as n').first();
+        totalCount = Number(c1 && c1.n) || 0;
+        rows = await baseEarn().select(EARN_COLS)
+            .orderBy([{ column: 'cr.created_at', order: 'desc' }, { column: 'cr.id', order: 'desc' }])
+            .limit(limit).offset(offset);
+    }
 
     const transactions = rows.map((r) => {
         // company_id 0 = the marketplace's own programme — no company row, so
@@ -706,14 +864,18 @@ async function historyFor(customerId, opts) {
             isMarketplace: isMp,
             restaurant:  name,
             entity_type: r.entity_type || '',
-            type_label:  REWARD_TYPE_LABELS[r.entity_type] || 'Cashback',
+            type_label:  REWARD_TYPE_LABELS[r.entity_type] || 'Reward',
             earned:      round2(r.amount),
             used:        round2(r.used_amount),
             status:      rewardStatus(r),
             expiry_date: r.expiry_date || null,
+            // Stamp-card flags — a LIVE stamp with is_redeemable = 0 renders
+            // the legacy "🔒 Reward Locked" badge + journey note in history.
+            is_stamp:    r.tier_type != null,
+            locked:      r.tier_type != null && Number(r.is_redeemable) === 0 && Number(r.is_expired) === 0,
         };
     });
-    return { totals, transactions, total_count: Number(cnt && cnt.n) || 0 };
+    return { totals, transactions, total_count: totalCount };
 }
 
 // ── Review / share cashback types (mirror the admin REVIEW_CMS_TYPES +
@@ -752,6 +914,9 @@ async function reviewTypesFor(companyId, customerId) {
     // company_id 0 (the marketplace's own programme) is a VALID scope — check
     // the scope BEFORE coercing, or `Number(0) || 0` would read as "missing".
     if (!hasScope(companyId)) { return { company: null, masterOn: false, types: [] }; }
+    // Restaurant's loyalty OFF → the earn page for it doesn't exist (legacy
+    // companyLoyalty gate) — same as the picker, wallet and balance.
+    if (!(await loadConfig(companyId))) { return { company: null, masterOn: false, types: [] }; }
     // These tables key on app_id (legacy), not our customer.id — see
     // customerLookup.appIdOf. award() translates on its own, so it still
     // takes customerId; only the direct queries below use rcid.
@@ -771,12 +936,14 @@ async function reviewTypesFor(companyId, customerId) {
     const cmsBy = {}; cms.forEach((c) => { cmsBy[c.review_type_slug] = c; });
     const claimBy = {};
     if (customerId) {
-        // Keyed by APP_ID (rcid), not customer.id — that is what the submit
-        // writes (Controllers/Customer/ReviewController.js:247) and what the
-        // POS matches on. Reading by customer.id found no claim, so a fresh
-        // submission showed no "under verification" banner and the button
-        // stayed live, letting the customer submit into a 409.
-        const claims = await db('customer_review').where({ company_id: cid, customer_id: rcid }).select('review_type', 'admin_status', 'reject_reason');
+        // Read claims across EVERY mobile-linked identity (marketplace app_id
+        // + the restaurant's own POS row) — a claim made on the POS side must
+        // show "under verification" here too, or the same person could submit
+        // the same review type from both sides and be paid twice.
+        const claimIds = await linkedRewardIds(customerId);
+        const claims = claimIds.length
+            ? await db('customer_review').where('company_id', cid).whereIn('customer_id', claimIds).select('review_type', 'admin_status', 'reject_reason')
+            : [];
         claims.forEach((c) => { claimBy[Number(c.review_type)] = c; });
     }
     const types = (masterOn ? REVIEW_TYPES.filter((t) => t.menu && ruleBy[t.id]) : []).map((t) => {
@@ -823,11 +990,16 @@ async function reviewRestaurants() {
         // "up to £X / N ways" matches what the customer can actually claim.
         .whereIn('r.type', C.REVIEW_TYPES.filter((t) => t.menu).map((t) => t.id))
         .andWhere(function () {
-            // marketplace (0) OR a live, marketplace-visible restaurant
-            this.where('r.company_id', MARKETPLACE_COMPANY_ID)
-                .orWhere(function () {
-                    this.where('c.is_marketplace', 1).andWhere('c.is_active', 1).whereNull('c.deleted_at');
-                });
+            // Live, marketplace-visible restaurants only — loyalty (incl.
+            // review cashback) is per-restaurant, never the marketplace itself.
+            this.where('c.is_marketplace', 1).andWhere('c.is_active', 1).whereNull('c.deleted_at');
+        })
+        // Restaurant's loyalty switched OFF → it disappears from the earn
+        // picker entirely (legacy companyLoyalty gate).
+        .whereExists(function () {
+            this.select(db.raw('1')).from('company_loyalty as clg')
+                .whereRaw('clg.company_id = r.company_id')
+                .andWhere('clg.loyalty_status', 1);
         })
         .whereExists(function () {
             this.select(db.raw('1')).from('loyalty_rules as lr')
@@ -904,21 +1076,11 @@ async function redeemPoolsFor({ customerId, companyId, subTotal }) {
     const sub = Number(subTotal) || 0;
     const restaurant = await maxRedeemable({ customerId, companyId, subTotal: sub });
 
-    // Only the cashback earned AT THE RESTAURANT BEING ORDERED FROM is
-    // spendable while MARKETPLACE_LOYALTY_ENABLED is false — the same switch
-    // that hides the marketplace card and keeps it out of the wallet totals.
-    // Gated HERE, in the one place that computes the cap, so every caller
-    // follows: the cart summary, the "Up to £X" hint, the redeem validator and
-    // the order-place path all read this. `combined` then collapses to the
-    // restaurant pool.
-    // The second lookup is also skipped when the cart IS the marketplace scope
-    // (can't happen today — a cart always belongs to a restaurant — but it
-    // keeps the maths honest).
-    const marketplace = (!MARKETPLACE_LOYALTY_ENABLED || isMarketplaceScope(companyId))
-        ? 0
-        : await maxRedeemable({ customerId, companyId: MARKETPLACE_COMPANY_ID, subTotal: sub });
-
-    const combined = round2(Math.min(sub, round2(restaurant + marketplace)));
+    // Loyalty is per-restaurant only — there is no marketplace pool. The
+    // `marketplace` key stays in the shape (always 0) so existing callers
+    // keep working unchanged.
+    const marketplace = 0;
+    const combined = round2(Math.min(sub, restaurant));
     return { restaurant, marketplace, combined };
 }
 
@@ -945,18 +1107,10 @@ async function consumeAcrossPools(trx, { customerId, companyId, orderId, amount 
     const out = { consumed: 0, byPool: {} };
     if (!trx || !customerId || remaining <= 0) { return out; }
 
-    // Restaurant pool, then the marketplace's. Deduped so a marketplace-scoped
-    // cart could never be consumed twice.
-    // While MARKETPLACE_LOYALTY_ENABLED is false the marketplace leg is skipped:
-    // redeemPoolsFor already caps the amount to the restaurant pool, so nothing
-    // should reach it anyway — but this is the code that actually MOVES money,
-    // and a caller passing a larger amount must never quietly burn EatNDeal's
-    // cashback. Belt and braces on purpose.
+    // Loyalty is per-restaurant only — the ONLY pool that can be spent is the
+    // cart's own restaurant. No marketplace (company 0) leg exists.
     const scopes = [];
-    if (hasScope(companyId)) { scopes.push(Number(companyId)); }
-    if (MARKETPLACE_LOYALTY_ENABLED && !scopes.includes(MARKETPLACE_COMPANY_ID)) {
-        scopes.push(MARKETPLACE_COMPANY_ID);
-    }
+    if (hasScope(companyId) && !isMarketplaceScope(companyId)) { scopes.push(Number(companyId)); }
 
     for (const scope of scopes) {
         if (remaining <= 0) { break; }
@@ -994,10 +1148,12 @@ async function consumeAcrossPools(trx, { customerId, companyId, orderId, amount 
 async function consumeForRedeem(trx, { customerId, companyId, orderId, amount }) {
     const want = round2(amount);
     if (!trx || !customerId || !hasScope(companyId) || want <= 0) { return { consumed: 0, breakdown: [] }; }
-    // These tables key on app_id (legacy), not our customer.id — see
-    // customerLookup.appIdOf. award() translates on its own, so it still
-    // takes customerId; only the direct queries below use rcid.
-    const rcid = await customers.appIdOf(customerId);
+    // Ledger identity — the RESTAURANT's own customer row for this mobile when
+    // one exists (rewardIdentityFor), else the marketplace app_id. The POS
+    // reads customer_used_rewards by ITS customer_id, so writing the
+    // marketplace identity left restaurant-side wallets blind to marketplace
+    // redemptions ("dono side me alag"). Same rule as earn.
+    const rcid = await rewardIdentityFor(customerId, companyId);
     if (rcid === null) { return { consumed: 0, breakdown: [] }; }
 
     // Spend across ALL of the person's mobile-linked accounts at this
@@ -1007,7 +1163,12 @@ async function consumeForRedeem(trx, { customerId, companyId, orderId, amount })
     if (!ids.length) { return { consumed: 0, breakdown: [] }; }
     const rows = await trx(REWARDS)
         .whereIn('customer_id', ids)
-        .andWhere({ company_id: companyId, is_expired: 0, is_redeemable: 1 })
+        .andWhere({ company_id: companyId, is_expired: 0 })
+        // Legacy consume filter (OrderController:859-870): stamp rows need
+        // is_redeemable = 1 (unlocked); ordinary rows spend regardless of it.
+        .andWhere(function () {
+            this.whereNull('tier_type').orWhere('is_redeemable', 1);
+        })
         .andWhere(function () {
             this.whereNull('expiry_date').orWhere('expiry_date', '>=', db.fn.now());
         })
@@ -1492,6 +1653,9 @@ async function streakProgressFor(customerId, companyId) {
  *         tierType?, isRedeemable?=1, jsonData?, expiryDays?=cfg, cfg }
  */
 async function award(opts) {
+    // Loyalty is per-restaurant only — a marketplace-scope (company 0) reward
+    // is never written. Every reward belongs to a real restaurant.
+    if (isMarketplaceScope(opts.companyId)) { return false; }
     const cfg = opts.cfg || await loadConfig(opts.companyId);
     if (!cfg) { return false; }
     const gross = round2(opts.amount);
@@ -1584,7 +1748,15 @@ async function award(opts) {
  * Type:  READ.
  */
 async function getCustomerTier(companyId, customerId, excludeOrderId) {
-    let q = db('orders').where({ company_id: companyId, user_id: customerId, status: '1', order_status: '' });
+    // orders.user_id lives in the APP_ID space (legacy: $cart->user_id =
+    // $customer->app_id) — and one person may have a separate POS row at this
+    // restaurant. Aggregate their mobile-linked identities, like every other
+    // loyalty read; passing our customer.id matched nothing and every
+    // marketplace customer was stuck at 'bronze'.
+    const uids = await linkedRewardIds(customerId);
+    if (!uids.length) { return 'bronze'; }
+    let q = db('orders').whereIn('user_id', uids)
+        .andWhere({ company_id: companyId, status: '1', order_status: '' });
     if (excludeOrderId) { q = q.andWhere('id', '!=', excludeOrderId); }
     const row = await q.sum({ s: 'sub_total' }).first();
     const totalSpent = Number(row && row.s) || 0;
@@ -1891,8 +2063,16 @@ async function getFreeDelivery(companyId, customerId) {
         if (!hasScope(companyId) || !customerId || !(await isReady())) { return false; }
         const cfg = await loadConfig(companyId);
         if (!cfg) { return false; }
+        // orders.user_id is APP_ID-space + one person spans mobile-linked
+        // accounts (marketplace row + the restaurant's own POS row) — same
+        // translation as getCustomerTier. Passing our customer.id found no
+        // orders, so the tier's free-delivery benefit never fired here while
+        // the legacy checkout (which passes app_id) showed FREE.
+        const uids = await linkedRewardIds(customerId);
+        if (!uids.length) { return false; }
         const row = await db('orders')
-            .where({ company_id: companyId, user_id: customerId, status: '1', order_status: '' })
+            .whereIn('user_id', uids)
+            .andWhere({ company_id: companyId, status: '1', order_status: '' })
             .sum({ s: 'sub_total' }).first();
         const totalSpent = Number(row && row.s) || 0;
         if (totalSpent <= 0) { return false; }
@@ -2062,11 +2242,15 @@ async function productCashbackMapFor(companyId) {
 }
 
 module.exports = {
-    isReady, loadConfig, ruleEnabled, getCustomerTier, getFreeDelivery,
+    isReady, anyLoyaltyOn, loadConfig, ruleEnabled, getCustomerTier, getFreeDelivery,
+    // Identity resolvers — the reward tables + customer_review + the spend
+    // ledger all key on app_id; rewardIdentityFor prefers the restaurant's OWN
+    // customer row for the mobile so both sides stay in sync.
+    rewardIdentityFor, linkedRewardIds,
     earnForOrder, earnOrderStreak, earnStampCashback, earnProductCashback, earnSpecialOffer,
     earnReferral, earnEventCashback, earnSmartCampaign, earnCollectionCashback,
     bogoForProduct, payableQtyFor, bogoMapFor, productCashbackMapFor,
-    balanceFor, cardsFor, historyFor, reviewTypesFor, reviewRestaurants, maxRedeemable, consumeForRedeem, burnUnusedStamps, reverseForOrder, streakProgressFor,
+    balanceFor, cardsFor, historyFor, reviewTypesFor, reviewRestaurants, maxRedeemable, consumeForRedeem, burnUnusedStamps, reverseForOrder, streakProgressFor, stampJourneyFor,
     // Dual redeem — the restaurant's pool + the marketplace's, on one order.
     redeemPoolsFor, consumeAcrossPools,
     linkedCustomerIds,

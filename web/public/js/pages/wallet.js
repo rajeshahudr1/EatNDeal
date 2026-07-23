@@ -22,11 +22,24 @@
         var amt = '';
         if (Number(tx.earned) > 0) { amt += '<span class="wh-amt wh-amt--earn">+' + sym + money(tx.earned) + '</span>'; }
         if (Number(tx.used) > 0)   { amt += '<span class="wh-amt wh-amt--used">−' + sym + money(tx.used) + '</span>'; }
+        // LOCKED stamp rows — "🔒 Reward Locked" + journey note (mirrors the
+        // EJS txRow; the api sends tx.locked + tx.stamp for these rows).
+        var lockHtml = '';
+        if (tx.locked) {
+            lockHtml += '<span class="wh-lock">🔒 Reward Locked</span>';
+            if (tx.stamp && Number(tx.stamp.required) > 0) {
+                lockHtml += '<span class="wh-lock__note">' + tx.stamp.completed + ' / ' + tx.stamp.required + ' stamp orders completed</span>';
+                if (Number(tx.stamp.remaining) > 0) {
+                    lockHtml += '<span class="wh-lock__note wh-lock__note--todo">' + tx.stamp.remaining + ' more order' + (tx.stamp.remaining === 1 ? '' : 's') + ' needed to unlock</span>';
+                }
+            }
+        }
         return '<div class="wh-row wh-row--' + tx.status + '">'
             + '<span class="wh-row__ic wh-row__ic--' + tx.status + '" aria-hidden="true">' + st[0] + '</span>'
             + '<div class="wh-row__main"><span class="wh-row__title">' + esc(tx.restaurant) + '</span>'
-            + '<span class="wh-row__meta">' + esc(tx.type_label || 'Cashback') + ' · ' + fmtDate(tx.date)
-            + (tx.expiry_date && tx.status === 'earned' ? ' · valid till ' + fmtDate(tx.expiry_date) : '') + '</span></div>'
+            + '<span class="wh-row__meta">' + esc(tx.type_label || 'Reward') + ' · ' + fmtDate(tx.date)
+            + (tx.expiry_date && tx.status === 'earned' ? ' · valid till ' + fmtDate(tx.expiry_date) : '') + '</span>'
+            + lockHtml + '</div>'
             + '<div class="wh-row__amt">' + amt + '<span class="wh-badge wh-badge--' + tx.status + '">' + st[1] + '</span></div>'
             + '</div>';
     }

@@ -835,22 +835,11 @@ async function updateAbout(req, res) {
                 updated_at:  db.fn.now(),
             })).returning('id');
 
-            // FIRST-TIME profile completion → event_cashback (event_type = 2).
-            // This is the ONE place legacy fires it (webordering SiteController:
-            // only when the customer_profile row is NEWLY created, passing
-            // related_id = profile.id) — never at order-place.
-            // Scope is the MARKETPLACE's own programme (company_id = 0): a
-            // marketplace profile isn't owned by any restaurant, and the profile
-            // row itself is written at company_id = 0 right above.
-            // Best-effort: a loyalty hiccup must never fail the profile save.
-            try {
-                await Loyalty.earnEventCashback({
-                    customerId: customer_id,
-                    companyId:  Loyalty.MARKETPLACE_COMPANY_ID,
-                    eventType:  2,                                   // profile completion
-                    relatedId:  created && (created.id || created),
-                });
-            } catch (e) { H.log.warn('auth.updateAbout.eventCashback', e && e.message); }
+            // NB: NO profile-completion cashback here. Loyalty is
+            // per-restaurant only (user decision 2026-07-23) — a marketplace
+            // profile isn't owned by any restaurant, so there is no company to
+            // fund the reward. (Legacy fires this per-company on ITS sites.)
+            void created;
         }
 
         const fresh = await db(profile.TABLE)

@@ -150,14 +150,17 @@ function claimView(row) {
 /**
  * listForCompany
  *
- * What:  ALL of a restaurant's (company's) reviews with sort, star filter
- *        and offset pagination — backs the restaurant page's reviews panel.
- *        Shows every review the legacy admin (pos/review-rating) lists, i.e.
- *        NOT gated on publish_online — per user request the storefront mirrors
- *        the admin (all active reviews, including admin-added ones). review_rating
- *        has no soft-delete column, so every row is active.
+ * What:  A restaurant's PUBLISHED reviews with sort, star filter and offset
+ *        pagination — backs the restaurant page's reviews panel.
+ *        publish_online = 1 only — EXACT legacy parity (webordering
+ *        actionReviews:1284-1292 filters list AND average on it). This is
+ *        also what every card's avg_rating subquery uses, so the ★4.5 on
+ *        the card, the popup headline and the legacy site all agree.
+ *        (An earlier iteration mirrored the admin's full list; that made
+ *        the popup say 3.8 while the card and legacy said 4.5 — reverted
+ *        2026-07-23 per user.)
  *        The header aggregates (average / count / per-star breakdown) are
- *        computed over the same full set so the totals match the admin.
+ *        computed over the same published set.
  * Type:  READ.
  *
  * Opts:   sort   — 'recent' (default) | 'best' (high→low) | 'worst' (low→high)
@@ -185,6 +188,7 @@ async function listForCompany(companyId, opts) {
     const pageQ = db(TABLE + ' as r')
         .leftJoin('customer as c', 'c.id', 'r.customer_id')
         .where('r.company_id', companyId)
+        .andWhere('r.publish_online', 1)   // legacy parity — published only
         .select('r.*', 'c.firstname as c_firstname');
     if (stars != null) { pageQ.andWhere('r.rating', stars); }
     const order = sort === 'best'  ? [{ column: 'r.rating', order: 'desc' }, { column: 'r.id', order: 'desc' }]
@@ -195,12 +199,12 @@ async function listForCompany(companyId, opts) {
     const hasMore = rows.length > limit;
     const page    = hasMore ? rows.slice(0, limit) : rows;
 
-    // Unfiltered header aggregates + per-star breakdown.
+    // Header aggregates + per-star breakdown — same published set as the page.
     const agg = await db(TABLE)
-        .where({ company_id: companyId })
+        .where({ company_id: companyId, publish_online: 1 })
         .count({ c: '*' }).avg({ a: 'rating' }).first();
     const brkRows = await db(TABLE)
-        .where({ company_id: companyId })
+        .where({ company_id: companyId, publish_online: 1 })
         .select('rating').count({ n: '*' }).groupBy('rating');
     const breakdown = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
     brkRows.forEach((r) => {

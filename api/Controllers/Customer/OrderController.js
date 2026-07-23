@@ -125,8 +125,10 @@ async function place(req, res) {
                     return H.errorResponse(res,
                         'That payment belongs to a different order. Please refresh and try again.', 422);
                 }
-                const cardCharge  = await Cart.cardServiceCharge(v.cart.company_id);
-                const wantMinor   = Math.round(((Number(v.cart.grandtotal) || 0) + cardCharge) * 100);
+                // grandtotal already includes the flat service charge
+                // (recomputeTotals — legacy parity), so the charged amount is
+                // the grandtotal itself; nothing is added at payment time.
+                const wantMinor   = Math.round((Number(v.cart.grandtotal) || 0) * 100);
                 if (Number(intent.amount) !== wantMinor) {
                     return H.errorResponse(res,
                         'Payment amount doesn\'t match your cart total. Please refresh and try again.', 422);
@@ -155,11 +157,11 @@ async function place(req, res) {
                         'Payment hasn\'t completed yet. Please try again.', 422,
                         { stripeStatus: session && session.payment_status });
                 }
-                // Customer pays grand total + the restaurant's card service charge
-                // — the SAME figure createIntent charged. Compare to the session
-                // total (pence) so a tampered amount can't slip through.
-                const cardCharge    = await Cart.cardServiceCharge(v.cart.company_id);
-                const expectedMinor = Math.round(((Number(v.cart.grandtotal) || 0) + cardCharge) * 100);
+                // Customer pays the grandtotal — the flat service charge is
+                // already inside it (recomputeTotals, legacy parity), the SAME
+                // figure createIntent charged. Compare to the session total
+                // (pence) so a tampered amount can't slip through.
+                const expectedMinor = Math.round((Number(v.cart.grandtotal) || 0) * 100);
                 if (Number(session.amount_total) !== expectedMinor) {
                     return H.errorResponse(res,
                         'Payment amount doesn\'t match your cart total. Please refresh and try again.', 422);

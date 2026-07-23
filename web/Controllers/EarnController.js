@@ -44,6 +44,8 @@ async function earnPage(req, res) {
     const slug = req.query.restaurant ? String(req.query.restaurant).trim().toLowerCase().replace(/[^a-z0-9-]/g, '') : '';
     const back = '/earn' + (slug ? '?restaurant=' + encodeURIComponent(slug) : '');
     if (!user) { return res.redirect('/signin?next=' + encodeURIComponent(back)); }
+    // Loyalty master OFF (super-admin) → surface hidden, same as the nav.
+    if (res.locals.loyalty_enabled === false) { return res.redirect('/account'); }
 
     const data = await fetchReviewTypes(req, user, slug);
 

@@ -25,6 +25,52 @@ const loyalty   = require('../../Helpers/loyalty');
 const M         = require('../../Helpers/marketplace');   // companyIdBySlug
 
 /**
+ * loyaltyEnabled
+ *
+ * What:  The customer-facing loyalty master flag — tables present AND at
+ *        least one live restaurant with loyalty ON (legacy header gate,
+ *        multi-restaurant form). Drives the web's Loyalty Wallet / Earn
+ *        Cashback menu visibility.
+ * Type:  READ.
+ */
+async function loyaltyEnabled() {
+    return (await loyalty.isReady()) && (await loyalty.anyLoyaltyOn());
+}
+
+/**
+ * enabled — GET /customer/loyalty/enabled
+ *
+ * Tiny public flag endpoint the web layer polls (cached) to decide whether
+ * the loyalty surfaces render at all. No customer context needed.
+ * Type: READ.
+ */
+async function enabled(req, res) {
+    try {
+        return H.successResponse(res, { enabled: await loyaltyEnabled() });
+    } catch (err) {
+        H.log.error('loyalty.enabled', err && err.message);
+        return H.errorResponse(res, MSG.server.oops, 500);
+    }
+}
+
+/**
+ * attachStampJourneys
+ *
+ * What:  Adds the legacy "Stamp Reward Journey" block (completed / required /
+ *        remaining orders + the locked pot it unlocks) to each RESTAURANT card
+ *        — `card.stamp`, null when that restaurant runs no stamp programme.
+ *        The wallet page shows it when the customer opens a card.
+ * Type:  READ (mutates the passed cards in place).
+ */
+async function attachStampJourneys(customerId, cards) {
+    for (const card of cards || []) {
+        if (card.isMarketplace) { card.stamp = null; continue; }
+        try { card.stamp = await loyalty.stampJourneyFor(customerId, card.companyId); }
+        catch (e) { card.stamp = null; }
+    }
+}
+
+/**
  * wallet — GET /customer/loyalty/wallet
  *
  * The customer's reward-card wallet: one card per restaurant they've earned
@@ -38,7 +84,8 @@ async function wallet(req, res) {
         if (guard.error) { return H.errorResponse(res, guard.error.msg, guard.error.status); }
 
         const cards = await loyalty.cardsFor(customer_id);
-        return H.successResponse(res, { cards, enabled: await loyalty.isReady() });
+        await attachStampJourneys(customer_id, cards);
+        return H.successResponse(res, { cards, enabled: await loyaltyEnabled() });
     } catch (err) {
         H.log.error('loyalty.wallet', err && err.message);
         return H.errorResponse(res, MSG.server.oops, 500);
@@ -85,15 +132,23 @@ async function history(req, res) {
         if (guard.error) { return H.errorResponse(res, guard.error.msg, guard.error.status); }
 
         const cards = await loyalty.cardsFor(customer_id);
+        await attachStampJourneys(customer_id, cards);
         const h = await loyalty.historyFor(customer_id, {
             companyId: company_id, filter, limit, offset,
         });
+        // Locked stamp rows carry their restaurant's journey figures so the
+        // history line can say "1/5 stamp orders completed · 4 more to unlock"
+        // exactly like the legacy wallet.
+        const stampByCo = new Map(cards.map((c) => [String(c.companyId), c.stamp]));
+        for (const tx of h.transactions) {
+            if (tx.locked) { tx.stamp = stampByCo.get(String(tx.companyId)) || null; }
+        }
         return H.successResponse(res, {
             cards,
             totals: h.totals,
             transactions: h.transactions,
             total_count: h.total_count,
-            enabled: await loyalty.isReady(),
+            enabled: await loyaltyEnabled(),
         });
     } catch (err) {
         H.log.error('loyalty.history', err && err.message);
@@ -143,4 +198,4 @@ async function reviewTypes(req, res) {
     }
 }
 
-module.exports = { wallet, balance, history, reviewTypes };
+module.exports = { wallet, balance, history, reviewTypes, enabled };

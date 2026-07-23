@@ -372,7 +372,11 @@
                             the menu but greyed with a badge + Add disabled. %>
                         <% var av = p.availability || { available: (p.available !== false), soldOut: false, label: 'Available' }; %>
                         <% var unavail = (av.available === false); %>
-                        <li class="rd-product<%= unavail ? ' is-soldout' : '' %>" data-slug="<%= p.slug %>">
+                        <%# data-id: the EXACT product row this card rendered. Without it the
+    modal resolves by name-slug, and a same-named duplicate product
+    (e.g. two "Mushroom Garlic Bread Cheese" rows) opened the WRONG one
+    — different price, missing image. %>
+<li class="rd-product<%= unavail ? ' is-soldout' : '' %>" data-slug="<%= p.slug %>" data-id="<%= p.id %>">
                             <div class="rd-product__media" data-tint="<%= p.tint %>">
                                 <% if (unavail) { %><span class="rd-product__soldout"><%= av.soldOut ? 'Sold out' : 'Unavailable' %></span><% } %>
                                 <%# No-image placeholder (gray image icon) sits at the base ALWAYS;

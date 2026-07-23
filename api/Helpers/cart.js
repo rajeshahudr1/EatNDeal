@@ -413,7 +413,7 @@ async function syncFreeItem(cartId, freeProductId, cart) {
  *           fix_charity_discount = (fix_charity_percentage / 100) × sub_total
  *                            — the COMPANY's auto-donation; shown in the
  *                            "DONATED" banner but NOT added to the total
- *           service_charge = service_charge_online_order             (flat from branch)
+ *           service_charge = company_stripe_settings.service_charge (flat, every order)
  *           delivery_fees  = kept as-is on cart (set by /cart/set-address)
  *           discount       = kept as-is on cart (coupon OR voucher)
  *           grandtotal     = sub_total + delivery_fees + service_charge_amount
@@ -483,12 +483,12 @@ async function recomputeTotals(cartId) {
     const fixCharityPct = branch ? (Number(branch.fix_charity_percentage) || 0) : 0;
     const fixCharity    = Math.round((subTotal * fixCharityPct / 100) * 100) / 100;
 
-    // Service charge — CARD-ONLY (not part of the payment-agnostic base
-    // total). Cash / COD orders carry NO service charge. When the customer
-    // pays by card, the surcharge is added at payment time from
-    // company_stripe_settings (see Cart.cardServiceCharge), shown in the
-    // review popup + on the order. So the base cart total here keeps it 0.
-    const serviceCharge = 0;
+    // Service charge — LEGACY PARITY (webordering CartController:1363-1373):
+    // company_stripe_settings.service_charge is a flat per-order charge on
+    // EVERY online order, cash or card, baked into the cart's grandtotal and
+    // shown as its own "Service charge" bill line. It is NOT a card surcharge
+    // — the payment paths must NOT add it again on top of grandtotal.
+    const serviceCharge = await cardServiceCharge(cart.company_id);
 
     // Keep the previously-set delivery_fees; recompute discount based
     // on what's active. The caller that DOES want to change
@@ -594,6 +594,23 @@ async function recomputeTotals(cartId) {
     // the same reason as Step 1 (no verdict without one → don't wipe blindly).
     if (branch) {
         await syncFreeItem(cartId, freeProductId, cart);
+        // The gift line may have just been added or removed, and total_qty
+        // was counted from the PRE-sync items — recount from the FINAL line
+        // set (and re-derive the bag charge that hangs off it). Without
+        // this, removing the last paid item left total_qty = 1 (the
+        // just-deleted gift), so the header badge showed an item on an
+        // empty cart.
+        const finalItems = await loadLineItems(cartId);
+        totalQty = 0;
+        finalItems.forEach((it) => { totalQty += Number(it.product_qty) || 0; });
+        bagCharge = 0;
+        if (Number(cart.serve_type) === 3) {
+            const perBag = Number(branch.online_per_bag_qty) || 0;
+            const charge = Number(branch.online_bag_charge)  || 0;
+            if (perBag > 0 && charge > 0 && totalQty > 0) {
+                bagCharge = Math.ceil(totalQty / perBag) * charge;
+            }
+        }
     }
 
     // ── Loyalty redeem ──────────────────────────────────────────────

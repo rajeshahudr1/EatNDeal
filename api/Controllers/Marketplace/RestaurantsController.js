@@ -216,9 +216,11 @@ async function list(req, res) {
         );
 
         // Average rating per company. Correlated subquery so we keep
-        // the main query a single round trip. NULL when the company
-        // has no published rating row yet (still appears in the list;
-        // a rating filter excludes it).
+        // the main query a single round trip. NULL when the company has no
+        // published rating row yet (still appears in the list; a rating
+        // filter excludes it). publish_online = 1 — exact legacy parity
+        // (webordering actionReviews), and the reviews panel filters the
+        // same way so the card and the popup always agree.
         const avgRatingSubq = db.raw(
             `(SELECT ROUND(AVG(rr.rating)::numeric, 1)
                 FROM review_rating rr
@@ -697,6 +699,7 @@ async function detail(req, res) {
                 'b.surprise_qty_updated_date',
                 // Detail-popup content: the box photo + what to do at the counter.
                 'b.surprise_image', 'b.collection_instructions',
+                // publish_online = 1 — legacy parity; matches the reviews panel.
                 db.raw(`(SELECT ROUND(AVG(rr.rating)::numeric, 1) FROM review_rating rr
                           WHERE rr.company_id = c.id AND rr.publish_online = 1) AS avg_rating`),
                 db.raw(`(SELECT COUNT(*) FROM review_rating rr

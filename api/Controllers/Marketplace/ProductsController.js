@@ -531,8 +531,12 @@ async function detail(req, res) {
                 .select('c.id', 'c.business_name', 'c.domain_name');
             const co = cands.find(c => (c.domain_name ? M.slugify(c.domain_name) : M.slugify(c.business_name, c.id)) === restSlug);
             if (co) {
+                // Same ordering as the restaurant menu (featured →
+                // recommended → id) so a duplicate-named product resolves
+                // to the SAME row the menu lists first, not an arbitrary one.
                 const prods = await db('products as p')
                     .where('p.company_id', co.id).andWhere('p.show_marketplace', 1).andWhere('p.status', '1')
+                    .orderBy([{ column: 'p.is_featured', order: 'desc' }, { column: 'p.is_recommended', order: 'desc' }, { column: 'p.id', order: 'asc' }])
                     .select('p.id', 'p.name');
                 const hit = prods.find(pr => M.slugify(pr.name) === itemSlug);
                 productId = hit ? hit.id : null;

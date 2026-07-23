@@ -23,6 +23,10 @@
 .wt-card__lbl { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--color-text-soft); }
 .wt-card__val { font-size: 1.4rem; font-weight: 800; color: var(--color-text); }
 .wt-card__sub { font-size: 0.74rem; font-weight: 600; color: var(--color-success); }
+/* Stamp Reward Journey tile (selected card) + the earned-split note. */
+.wt-card__sub--stamp { color: #7c3aed; }
+.wt-card__sub--strong { color: var(--color-text); font-weight: 700; }
+.wt-stamp-pill { display: inline-block; background: var(--color-success); color: #fff; border-radius: 999px; padding: 1px 8px; font-size: 0.74rem; font-weight: 800; }
 .wt-card--balance { background: linear-gradient(135deg, var(--color-primary), var(--color-primary-dark)); border-color: transparent; color: #fff; }
 .wt-card--balance .wt-card__lbl { color: rgba(255, 255, 255, .85); }
 .wt-card--balance .wt-card__val { color: #fff; }
@@ -42,6 +46,8 @@
 .rwcard__name { font-weight: 700; font-size: 0.95rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rwcard__bal { font-size: 1.35rem; font-weight: 800; color: var(--color-text); }
 .rwcard__foot { font-size: 0.74rem; color: var(--color-text-muted); }
+/* Stamp-card progress hint on a restaurant wallet card. */
+.rwcard__stamp { font-size: 0.74rem; font-weight: 700; color: #7c3aed; }
 
 /* History */
 .wallet__history { background: var(--color-bg); border: 1px solid var(--color-border); border-radius: var(--radius-lg); box-shadow: var(--shadow-1); overflow: hidden; }
@@ -91,6 +97,11 @@
 .wh-more__btn { border: 1px solid var(--color-border); background: var(--color-bg); color: var(--color-text); font: inherit; font-size: 0.86rem; font-weight: 700; padding: 9px 20px; border-radius: var(--radius-pill); cursor: pointer; }
 .wh-more__btn:hover { border-color: var(--color-primary); color: var(--color-primary); }
 .wh-more__btn:disabled { opacity: .6; cursor: default; }
+
+/* Locked stamp reward — legacy "🔒 Reward Locked" pill + journey notes. */
+.wh-lock { display: inline-flex; align-items: center; gap: 4px; align-self: flex-start; background: #f3f4f6; color: #374151; padding: 3px 10px; border-radius: 999px; font-size: 0.72rem; font-weight: 700; margin-top: 5px; }
+.wh-lock__note { display: block; font-size: 0.72rem; font-weight: 600; color: var(--color-text-muted); margin-top: 4px; }
+.wh-lock__note--todo { color: #0f766e; margin-top: 2px; }
 
 .wh-empty { padding: 40px 20px; text-align: center; color: var(--color-text-muted); }
 .wh-empty__ic { font-size: 2rem; display: block; margin-bottom: 8px; }

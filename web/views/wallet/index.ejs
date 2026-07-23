@@ -22,13 +22,32 @@
         var amt = '';
         if (Number(tx.earned) > 0) { amt += '<span class="wh-amt wh-amt--earn">+' + sym + money(tx.earned) + '</span>'; }
         if (Number(tx.used) > 0)   { amt += '<span class="wh-amt wh-amt--used">−' + sym + money(tx.used) + '</span>'; }
+        // LOCKED stamp rows — the legacy "🔒 Reward Locked" badge + the
+        // journey note ("1/5 stamp orders completed · 4 more needed").
+        var lockHtml = '';
+        if (tx.locked) {
+            lockHtml += '<span class="wh-lock">🔒 Reward Locked</span>';
+            if (tx.stamp && Number(tx.stamp.required) > 0) {
+                lockHtml += '<span class="wh-lock__note">' + tx.stamp.completed + ' / ' + tx.stamp.required + ' stamp orders completed</span>';
+                if (Number(tx.stamp.remaining) > 0) {
+                    lockHtml += '<span class="wh-lock__note wh-lock__note--todo">' + tx.stamp.remaining + ' more order' + (tx.stamp.remaining === 1 ? '' : 's') + ' needed to unlock</span>';
+                }
+            }
+        }
         return '<div class="wh-row wh-row--' + tx.status + '">'
             + '<span class="wh-row__ic wh-row__ic--' + tx.status + '" aria-hidden="true">' + st[0] + '</span>'
             + '<div class="wh-row__main"><span class="wh-row__title">' + esc(tx.restaurant) + '</span>'
-            + '<span class="wh-row__meta">' + esc(tx.type_label || 'Cashback') + ' · ' + fmtDate(tx.date)
-            + (tx.expiry_date && tx.status === 'earned' ? ' · valid till ' + fmtDate(tx.expiry_date) : '') + '</span></div>'
+            + '<span class="wh-row__meta">' + esc(tx.type_label || 'Reward') + ' · ' + fmtDate(tx.date)
+            + (tx.expiry_date && tx.status === 'earned' ? ' · valid till ' + fmtDate(tx.expiry_date) : '') + '</span>'
+            + lockHtml + '</div>'
             + '<div class="wh-row__amt">' + amt + '<span class="wh-badge wh-badge--' + tx.status + '">' + st[1] + '</span></div>'
             + '</div>';
+    }
+    // The selected restaurant card (when ?company= is active) — its stamp
+    // journey + earned split render as extra detail tiles, legacy-style.
+    var selCard = null;
+    if (wallet_company) {
+        selCard = (w.cards || []).find(function (c) { return String(c.companyId) === String(wallet_company); }) || null;
     }
     // Preserve the OTHER active filter when building a tab/card link.
     var companyQS = wallet_company ? ('&company=' + encodeURIComponent(wallet_company)) : '';
@@ -66,7 +85,29 @@
         <div class="wt-card">
             <span class="wt-card__lbl">Total Earned</span>
             <span class="wt-card__val"><%= sym %><%= money(tt.earned) %></span>
+            <%# Legacy note: stamp-card money is NOT part of the earned figure —
+                it shows here separately ("+ £X stamp rewards earned"), scoped
+                to the selected card when one is open. %>
+            <% var __stampEarned = selCard ? Number(selCard.stampEarned) : Number(tt.stampEarned || 0); %>
+            <% if (__stampEarned > 0) { %>
+            <span class="wt-card__sub wt-card__sub--stamp">+ <%= sym %><%= money(__stampEarned) %> stamp rewards earned</span>
+            <% } %>
         </div>
+        <%# Stamp Reward Journey — the legacy tile, shown for the SELECTED
+            restaurant card (multi-card wallet → per-card detail on click). %>
+        <% if (selCard && selCard.stamp && Number(selCard.stamp.required) > 0) { var sj = selCard.stamp; %>
+        <div class="wt-card wt-card--stamp">
+            <span class="wt-card__lbl">Stamp Reward Journey</span>
+            <span class="wt-card__val"><%= sj.completed %>/<%= sj.required %></span>
+            <span class="wt-card__sub">Stamp orders completed</span>
+            <% if (sj.remaining > 0 && Number(sj.lockedAmount) > 0) { %>
+            <span class="wt-card__sub wt-card__sub--strong"><%= sj.remaining %> more order<%= sj.remaining === 1 ? '' : 's' %> to unlock reward of
+                <b class="wt-stamp-pill"><%= sym %><%= money(sj.lockedAmount) %></b></span>
+            <% } else if (Number(sj.unlockedAmount) > 0) { %>
+            <span class="wt-card__sub wt-card__sub--strong"><b class="wt-stamp-pill"><%= sym %><%= money(sj.unlockedAmount) %></b> stamp reward unlocked — use it on your next order</span>
+            <% } %>
+        </div>
+        <% } %>
         <div class="wt-card">
             <span class="wt-card__lbl">Total Redeemed</span>
             <span class="wt-card__val"><%= sym %><%= money(tt.used) %></span>
@@ -104,7 +145,14 @@
                 <span class="rwcard__badge"><%= c.initial %></span>
                 <span class="rwcard__name"><%= c.name %></span>
                 <span class="rwcard__bal"><%= sym %><%= money(c.balance) %></span>
-                <span class="rwcard__foot">Earned <%= sym %><%= money(c.earned) %> · Used <%= sym %><%= money(c.used) %></span>
+                <%# cashEarned, not earned — legacy counts ONLY plain cashback in
+                    the earned figure; stamp money shows on the stamp line below. %>
+                <span class="rwcard__foot">Earned <%= sym %><%= money(c.cashEarned != null ? c.cashEarned : c.earned) %> · Used <%= sym %><%= money(c.used) %></span>
+                <%# Stamp-card progress hint (restaurants with a stamp rule) —
+                    click the card for the full journey tile above. %>
+                <% if (c.stamp && Number(c.stamp.required) > 0) { %>
+                <span class="rwcard__stamp">🎟️ Stamp card <%= c.stamp.completed %>/<%= c.stamp.required %><% if (Number(c.stamp.lockedAmount) > 0) { %> · <%= sym %><%= money(c.stamp.lockedAmount) %> locked<% } %></span>
+                <% } %>
             </a>
             <% }); %>
         </div>

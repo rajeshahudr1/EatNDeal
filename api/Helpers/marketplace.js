@@ -531,12 +531,15 @@ async function companyIdBySlug(slug) {
 /**
  * avgRatingSubq
  *
- * What:  Correlated subquery that yields a company's average published
+ * What:  Correlated subquery that yields a company's average PUBLISHED
  *        review rating (1-dp) as `avg_rating`, or NULL when it has no
  *        reviews. toRestaurantCard reads `row.avg_rating`, so EVERY card
  *        query (home grid, favourites rail, account favourites…) must
  *        SELECT this — otherwise the card silently shows no rating even
  *        for a restaurant that has reviews.
+ *        publish_online = 1 — EXACT legacy parity (webordering
+ *        actionReviews averages published rows only); the reviews panel
+ *        filters the same way so the two figures always agree.
  * Why:   One definition so a new card surface can't forget it (the
  *        favourites rail did, which hid real ratings).
  * Type:  READ (query fragment). `alias` is the company table alias.

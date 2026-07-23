@@ -477,6 +477,29 @@ async function ensureBrand(req, res, next) {
 
 app.use(ensureBrand);
 
+// ── Loyalty master flag ─────────────────────────────────────────
+// Mirrors the legacy header gate (IS_LOYALTY_ON && companyLoyalty): when the
+// super-admin has loyalty OFF for every restaurant, the Loyalty Wallet /
+// Earn Cashback nav entries + pages hide. Cached in-process (1 min) — one
+// cheap api call per minute, never per request.
+let cachedLoyaltyOn = true;
+let lastLoyaltyFetchMs = 0;
+const LOYALTY_REFRESH_MS = 60 * 1000;
+app.use(async (req, res, next) => {
+    const now = Date.now();
+    if ((now - lastLoyaltyFetchMs) > LOYALTY_REFRESH_MS) {
+        lastLoyaltyFetchMs = now;   // set FIRST so a slow api can't stampede
+        try {
+            const r = await callApi(req, 'GET', '/api/v1/customer/loyalty/enabled');
+            if (r && r.body && r.body.status === 200 && r.body.data) {
+                cachedLoyaltyOn = r.body.data.enabled !== false;
+            }
+        } catch (e) { /* keep last-known value */ }
+    }
+    res.locals.loyalty_enabled = cachedLoyaltyOn;
+    next();
+});
+
 // ── Header cart-count primer ────────────────────────────────────
 // Keeps `req.session.cartCount` populated so the header badge survives
 // page navigations. Strategy:

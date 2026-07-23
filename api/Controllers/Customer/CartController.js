@@ -164,9 +164,11 @@ async function get(req, res) {
         // Charity % tiers for the selector — branch-configured (quick_tips)
         // or the default 5/10/15. Only needed on the page-render path.
         const charityTiers = await Cart.getCharityTiers(open.branch_id, open.company_id);
-        // Card-payment surcharge for this company (added only when paying
-        // by card) — the page shows it + bumps the total when card picked.
-        const cardServiceCharge = await Cart.cardServiceCharge(open.company_id);
+        // The flat service charge now lives INSIDE the cart totals for every
+        // payment (recomputeTotals — legacy parity), rendered as its own
+        // "Service charge" bill line. The card-picked dynamic bump is
+        // therefore 0 — the web must not add anything on top of grandtotal.
+        const cardServiceCharge = 0;
 
         // Loyalty redeem — ONLY this restaurant's own cashback is spendable on
         // the order (see the disabled marketplace pool in Helpers/loyalty
@@ -1530,6 +1532,17 @@ async function addSurpriseBox(req, res) {
         if (existing && Number(existing.branch_id) !== Number(branch.id)) {
             await Cart.closeCart(existing.id);
         }
+        // 1b. The CART itself must be Pickup — the client-sent serve_type
+        // above is advisory only. getOrCreateCart reuses a same-branch open
+        // cart, and if that cart is on DELIVERY the box landed in a delivery
+        // order (URL / stale-tab / devtools all reached this). Authoritative
+        // check on the server: a delivery cart must switch to Pickup first.
+        if (existing && Number(existing.branch_id) === Number(branch.id)
+            && Number(existing.serve_type) !== 2) {
+            return H.errorResponse(res,
+                'Surprise Box items are available for Pickup only. Switch your order to Pickup first.',
+                422, { code: 'surprise.pickup_only' });
+        }
         const cart = await Cart.getOrCreateCart({
             owner:     owner.scope,
             customerId: owner.isGuest ? 0 : owner.customerId,
@@ -1538,6 +1551,13 @@ async function addSurpriseBox(req, res) {
             serveType: 2,                                  // pickup — enforced above
             localId:   b.local_id || null,
         });
+        // Belt-and-braces: whatever cart came back must be Pickup before a
+        // box line is written into it.
+        if (Number(cart.serve_type) !== 2) {
+            return H.errorResponse(res,
+                'Surprise Box items are available for Pickup only. Switch your order to Pickup first.',
+                422, { code: 'surprise.pickup_only' });
+        }
 
         // discount_price wins when set, else the full price (legacy :251-254).
         const unit = Number(branch.discount_price) > 0

@@ -23,6 +23,7 @@ const MSG       = require('../../Helpers/messages');
 const customers = require('../../Helpers/customerLookup');
 const reviews   = require('../../Helpers/reviews');
 const imageUpload = require('../../Helpers/imageUpload');
+const Loyalty   = require('../../Helpers/loyalty');
 const { db }    = require('../../config/db');
 
 /**
@@ -78,11 +79,11 @@ async function submit(req, res) {
         if (!reviewText) { return H.errorResponse(res, 'Review is required.', 422); }
 
         // customer_review.customer_id holds the APP_ID, not our customer.id —
-        // that is what legacy writes and what the restaurant's POS matches on
-        // when it approves (see Helpers/customerLookup.appIdOf). Writing our id
-        // here would hide the review from the POS, or attach it to whichever
-        // customer happens to own that number as an app_id.
-        const claimCustomerId = await customers.appIdOf(customer_id);
+        // and when this person ALSO has the restaurant's own customer row
+        // (same mobile), the claim must live under THAT identity so the POS
+        // sees it against its own customer (rewardIdentityFor — the same rule
+        // earn/redeem follow, keeping both sides in sync).
+        const claimCustomerId = await Loyalty.rewardIdentityFor(customer_id, order.company_id);
         if (claimCustomerId === null) {
             H.log.error('review.submit', 'customer ' + customer_id + ' has no app_id');
             return H.errorResponse(res, 'Could not submit your review.', 500);
@@ -91,8 +92,12 @@ async function submit(req, res) {
         // One live review per order — legacy's exact test. A REJECTED row
         // (admin_status 2) is deliberately not counted, so the customer can
         // write a fresh one after a rejection.
+        // Checked across every mobile-linked identity so an earlier claim made
+        // under the other side's customer row still blocks a duplicate.
+        const claimIds = await Loyalty.linkedRewardIds(customer_id);
         const existing = await db(reviews.CLAIM_TABLE)
-            .where({ order_id, customer_id: claimCustomerId, company_id: order.company_id })
+            .where({ order_id, company_id: order.company_id })
+            .whereIn('customer_id', claimIds.length ? claimIds : [claimCustomerId])
             .whereIn('admin_status', [reviews.PENDING, reviews.APPROVED])
             .first('id');
         if (existing) {
@@ -203,17 +208,22 @@ async function submitCashbackReview(req, res) {
         // marketplace (company 0) exactly as for a restaurant.
         // Checked BEFORE the upload: a rejected resubmit used to push a file to
         // the restaurant's server and only then get turned away.
-        // Keyed by APP_ID like every other customer_review row — that is what
-        // the restaurant's POS matches when it approves the claim and pays the
-        // cashback (Helpers/customerLookup.appIdOf).
-        const claimAppId = await customers.appIdOf(customerId);
+        // Keyed by APP_ID like every other customer_review row — and, for a
+        // restaurant scope, by the RESTAURANT's own customer identity when one
+        // exists for this mobile (rewardIdentityFor). That way the POS pays
+        // cashback to ITS customer, and the duplicate check below (which reads
+        // ALL mobile-linked identities) blocks the same person claiming the
+        // same review type once from the POS side and again from here.
+        const claimAppId = await Loyalty.rewardIdentityFor(customerId, companyId);
         if (claimAppId === null) {
             H.log.error('review.submitCashback', 'customer ' + customerId + ' has no app_id');
             return H.errorResponse(res, MSG.server.oops, 500);
         }
 
+        const claimIds = await Loyalty.linkedRewardIds(customerId);
         const existing = await db('customer_review')
-            .where({ customer_id: claimAppId, company_id: companyId, review_type: reviewType })
+            .where({ company_id: companyId, review_type: reviewType })
+            .whereIn('customer_id', claimIds.length ? claimIds : [claimAppId])
             .first('id', 'admin_status', 'reject_reason');
         // DELIBERATE DEPARTURE FROM LEGACY (user request, 2026-07-21): legacy
         // blocked every resubmit on row existence alone, so one rejection killed

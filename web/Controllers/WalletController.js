@@ -38,6 +38,9 @@ async function fetchHistory(req, user, q, offset) {
 async function walletPage(req, res) {
     const user = (req.session && req.session.user) || null;
     if (!user) { return res.redirect('/signin?next=' + encodeURIComponent('/wallet')); }
+    // Loyalty master OFF (super-admin) → the surface doesn't exist; the nav
+    // entry is hidden too (partials/account-nav.ejs, res.locals.loyalty_enabled).
+    if (res.locals.loyalty_enabled === false) { return res.redirect('/account'); }
 
     const q = {
         company: req.query.company ? String(req.query.company) : '',

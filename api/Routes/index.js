@@ -915,6 +915,10 @@ router.post('/customer/review-cashback',
 const LoyaltyCtl = require('../Controllers/Customer/LoyaltyController');
 const { walletSchema: loyaltyWalletSchema, balanceSchema: loyaltyBalanceSchema, historySchema: loyaltyHistorySchema, reviewTypesSchema: loyaltyReviewTypesSchema } = require('../Validators/loyalty');
 
+// Master flag — no params, no customer context; the web caches it to decide
+// whether the Loyalty Wallet / Earn Cashback surfaces render at all.
+router.get('/customer/loyalty/enabled', LoyaltyCtl.enabled);
+
 router.get('/customer/loyalty/wallet',
     validateQuery(loyaltyWalletSchema),
     LoyaltyCtl.wallet);

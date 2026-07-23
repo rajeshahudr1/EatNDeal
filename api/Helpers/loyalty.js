@@ -337,14 +337,19 @@ async function earnForOrder({ customerId, companyId, orderId, subtotal }) {
         const notifyDate = (days > 0 && notify > 0) ? new Date(Date.now() + (days - notify) * 86400000) : null;
 
         // customer_rewards keys on app_id (legacy: customer_id = orders.user_id
-        // = app_id), NOT our customer.id — see customerLookup.appIdOf. Without
-        // an app_id the row could not be matched by the POS, and might collide
-        // with another customer's, so skip rather than write a wrong identity.
-        const rewardCustomerId = await customers.appIdOf(customerId);
+        // = app_id), NOT our customer.id — see customerLookup.appIdOf. We credit
+        // the RESTAURANT's own customer identity for this mobile when it exists,
+        // else the marketplace customer's app_id (rewardIdentityFor). Without any
+        // app_id the row could not be matched by the POS, so skip rather than
+        // write a wrong identity.
+        const rewardCustomerId = await rewardIdentityFor(customerId, companyId);
         if (rewardCustomerId === null) {
             H.log.error('loyalty.earnForOrder', 'customer ' + customerId + ' has no app_id — cashback skipped');
             return;
         }
+        // Marketplace-channel earn — stamp is_marketplace = 1 where the column
+        // exists. created_via = 5 already marks the channel regardless.
+        const rewardMp = await hasRewardMpCol();
 
         const inserted = await db(REWARDS).insert({
             uuid:         crypto.randomUUID(),
@@ -361,6 +366,7 @@ async function earnForOrder({ customerId, companyId, orderId, subtotal }) {
             expiry_date:  expiryDate,
             notify_date:  notifyDate,
             created_via:  CREATED_VIA_MARKETPLACE,   // 5 — marketplace channel
+            ...(rewardMp ? { is_marketplace: 1 } : {}),
             created_at:   db.fn.now(),
             created_by:   rewardCustomerId,
         }).returning('id');
@@ -447,6 +453,68 @@ async function linkedCustomerIds(customerId) {
  */
 async function linkedRewardIds(customerId) {
     return customers.appIdsOf(await linkedCustomerIds(customerId));
+}
+
+/*
+ * rewardIdentityFor
+ *
+ * What:  The app_id a reward EARNED at restaurant `companyId` should be credited
+ *        to. Product rule:
+ *          • If this person has the restaurant's OWN customer row (same mobile,
+ *            company_id = X, not soft-deleted, with an app_id) → credit THAT
+ *            row's app_id, so the reward lives under the restaurant's customer
+ *            ("same rahe" — the restaurant tracks its own customer).
+ *          • Otherwise → the marketplace customer's own app_id (unchanged
+ *            behaviour). No new customer row is ever created; no duplicate.
+ * Why:   Loyalty aggregates by MOBILE on read (linkedRewardIds), so REDEEM works
+ *        either way — this only decides WHICH linked app_id a new reward accrues
+ *        to. Returns an app_id, or null only when the customer has no app_id at
+ *        all (same contract as customerLookup.appIdOf).
+ * NB:    Matches contact_no only (country_code excluded), exactly like
+ *        linkedCustomerIds.
+ * Type:  READ.
+ */
+async function rewardIdentityFor(customerId, companyId) {
+    // Fallback = the marketplace customer's own app_id (the current rule).
+    const fallback = await customers.appIdOf(customerId);
+
+    // Only a real restaurant scope can own a POS row (company 0 / no scope →
+    // there is no "restaurant customer" to prefer, so keep the fallback).
+    if (!hasScope(companyId) || Number(companyId) === MARKETPLACE_COMPANY_ID) {
+        return fallback;
+    }
+
+    // The caller's mobile — the key the restaurant's row is matched on.
+    const me = await db('customer').where({ id: customerId }).first('contact_no');
+    const contact = String((me && me.contact_no) || '').trim();
+    if (!contact) { return fallback; }   // no mobile → nothing to match at the restaurant
+
+    // The restaurant's OWN row for this mobile: same company, must have an
+    // app_id, not soft-deleted (status '2'); newest wins. contact_no only.
+    const posRow = await db('customer')
+        .where({ contact_no: contact, company_id: companyId })
+        .whereNotNull('app_id')
+        .andWhere(function () { this.whereNull('status').orWhere('status', '<>', '2'); })
+        .orderBy('id', 'desc')
+        .first('app_id');
+
+    return (posRow && posRow.app_id != null) ? Number(posRow.app_id) : fallback;
+}
+
+// Whether customer_rewards.is_marketplace exists yet (migration m260715_120000).
+// Column-gated (mirrors cart.hasUsedCashbackCol) so a pre-migration DB still
+// earns — created_via = 5 marks the marketplace channel regardless.
+let _hasRewardMpCol = null;
+async function hasRewardMpCol() {
+    if (_hasRewardMpCol !== null) { return _hasRewardMpCol; }
+    try {
+        const r = await db.raw(
+            "select 1 from information_schema.columns where table_name = 'customer_rewards' and column_name = 'is_marketplace' limit 1",
+        );
+        const n = r && (r.rows ? r.rows.length : (Array.isArray(r) ? r.length : 0));
+        _hasRewardMpCol = n > 0;
+    } catch (e) { _hasRewardMpCol = false; }
+    return _hasRewardMpCol;
 }
 
 /**
@@ -1430,15 +1498,24 @@ async function award(opts) {
     if (gross <= 0) { return false; }
 
     // Callers pass our customer.id; customer_rewards keys on app_id (legacy
-    // semantics — see customerLookup.appIdOf). Translate ONCE here so every
-    // caller — event, review, streak, product, special_offer, smart_campaign,
-    // referral — writes the identity the POS and the legacy wallet can match.
-    // No app_id ⇒ don't invent one: a wrong id credits the wrong person.
-    const rewardCustomerId = await customers.appIdOf(opts.customerId);
+    // semantics — see customerLookup.appIdOf). We credit the RESTAURANT's own
+    // identity for this mobile when it exists, else the marketplace app_id
+    // (rewardIdentityFor). No app_id ⇒ don't invent one: a wrong id credits the
+    // wrong person.
+    //
+    // rewardResolveByCompany === false OPTS OUT (the review-claim caller): its
+    // opts.customerId is the claim's own DUAL-identity id — customer.id for a
+    // marketplace claim, app_id for a legacy claim — so it must keep the plain
+    // appIdOf path and NOT be re-resolved against a company.
+    const rewardCustomerId = (opts.rewardResolveByCompany === false)
+        ? await customers.appIdOf(opts.customerId)
+        : await rewardIdentityFor(opts.customerId, opts.companyId);
     if (rewardCustomerId === null) {
         H.log.error('loyalty.award', 'customer ' + opts.customerId + ' has no app_id — reward skipped');
         return false;
     }
+    // Marketplace-channel earn — stamp is_marketplace = 1 where the column exists.
+    const rewardMp = await hasRewardMpCol();
 
     const commPct    = Number(cfg.loyalty_commission) || 0;
     const commission = commPct > 0 ? round2(gross * commPct / 100) : 0;
@@ -1464,6 +1541,7 @@ async function award(opts) {
         company_id:    opts.companyId,
         customer_id:   rewardCustomerId,   // app_id, not our customer.id
         created_via:   CREATED_VIA_MARKETPLACE,   // 5 — marketplace channel
+        ...(rewardMp ? { is_marketplace: 1 } : {}),
         entity_type:   opts.entityType,
         entity_id:     opts.entityId != null ? opts.entityId : null,
         related_id:    opts.relatedId != null ? opts.relatedId : null,

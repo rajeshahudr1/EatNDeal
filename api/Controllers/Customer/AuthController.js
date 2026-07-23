@@ -382,27 +382,26 @@ async function saveProfile(req, res) {
  *        auth lands in Phase 2 this endpoint switches to
  *        `req.auth.customerId` and ignores the body field.
  *
- *        Duplicate-phone guard: if the new (country_code, contact_no)
- *        already belongs to a DIFFERENT marketplace customer row, we
- *        refuse with 409 — preventing two accounts from sharing the
- *        same number. The same number CAN appear with non-NULL
- *        company_id (per-tenant POS customers) — that's a separate
- *        namespace and not our problem.
+ *        This endpoint edits NAME + EMAIL only. The PHONE is deliberately
+ *        NOT editable here — a number can only be changed through the
+ *        OTP-verified /auth/change-phone flow, so a number is always proven
+ *        before the customer's loyalty follows it. Any contact_no /
+ *        country_code sent in the body is ignored.
+ *
+ *        Duplicate-email guard: if the new email already belongs to a
+ *        DIFFERENT marketplace customer row, we refuse with 409 (the email is
+ *        how social-signin links accounts, so it must stay unique).
  * Type:  WRITE.
  *
  * Inputs:
  *   req.body.customer_id         — bigint id of the row to update
  *   req.body.firstname           — required
  *   req.body.lastname, email     — optional
- *   req.body.country_code        — optional; updates phone if present
- *   req.body.contact_no          — optional; updates phone if present
- *                                  (must be set/empty together with
- *                                  country_code)
  *
  * Output:
  *   200 success — { status:200, data:{ customer:{...} } }
- *   200 failure — 401 (dead session) | 403 (blocked) | 409 (phone taken)
- *                 | 422 (state mismatch / partial phone)
+ *   200 failure — 401 (dead session) | 403 (blocked) | 409 (email taken)
+ *                 | 422 (state mismatch)
  */
 async function updateProfile(req, res) {
     try {
@@ -520,13 +519,116 @@ async function changePhone(req, res) {
             if (clash) { return H.errorResponse(res, 'That mobile number is already used by another account.', 409); }
         }
 
-        await db('customer').where({ id: row.id }).update({
-            contact_no:        cleanContact,
-            country_code:      cleanCountry,
-            verify_at:         H.now(),
-            updated_at:        db.fn.now(),
-            server_updated_at: db.fn.now(),
+        const oldContact = String(row.contact_no || '').trim();
+        const merge = require('../../Helpers/customerMerge');
+
+        // Collected inside the transaction, written to the audit log after commit.
+        let action = 'update_only';       // update_only | propagate | merge
+        const siblingsMoved = [];         // [{ id, company_id }]
+        const merges = [];                // [{ company_id, survivor_id, duplicate_id, affected, total }]
+        let totalRecords = 0;
+
+        // "not soft-deleted" — status '2' is the soft-delete marker; NULL/other
+        // statuses are live. (A bare `status <> '2'` would drop NULL rows in SQL.)
+        const notDeleted = function () { this.whereNull('status').orWhere('status', '<>', '2'); };
+
+        await db.transaction(async (trx) => {
+            // 1. Move THIS marketplace row to the new (verified) number.
+            await trx('customer').where({ id: row.id }).update({
+                contact_no:        cleanContact,
+                country_code:      cleanCountry,
+                verify_at:         H.now(),
+                updated_at:        db.fn.now(),
+                server_updated_at: db.fn.now(),
+            });
+
+            // 2. Carry the person's OTHER rows (the same number elsewhere — POS
+            // rows at restaurants) to the new number, so their loyalty stays
+            // linked. Runs only on a real change from a non-empty old number.
+            if (oldContact && oldContact !== cleanContact) {
+                // POS rows only (company_id NOT NULL). The marketplace row is THIS
+                // customer (already moved in step 1); any OTHER marketplace-NULL row
+                // on the old number is a data anomaly we must never auto-merge or
+                // duplicate onto the new number — that's the 409 guard's job above.
+                const siblings = await trx('customer')
+                    .where({ contact_no: oldContact })
+                    .whereNot({ id: row.id })
+                    .whereNotNull('company_id')
+                    .andWhere(notDeleted)
+                    .select('id', 'app_id', 'company_id', 'contact_no', 'country_code');
+
+                for (const sib of siblings) {
+                    // Is the NEW number already held at the SAME restaurant by a
+                    // DIFFERENT customer row? If so it's the same person under two
+                    // rows — fold that duplicate INTO this sibling first.
+                    const dup = await trx('customer')
+                        .where({ contact_no: cleanContact })
+                        .andWhere('id', '!=', sib.id)
+                        .andWhere(notDeleted)
+                        .andWhere(function () {
+                            // Same company namespace — company_id is NULL for a
+                            // marketplace row, a number for a POS row; match either.
+                            if (sib.company_id === null || sib.company_id === undefined) {
+                                this.whereNull('company_id');
+                            } else {
+                                this.where({ company_id: sib.company_id });
+                            }
+                        })
+                        .first('id', 'app_id', 'company_id');
+
+                    if (dup) {
+                        // Re-point the duplicate's whole history onto this sibling
+                        // and soft-delete the duplicate (its number is blanked).
+                        const r = await merge.mergeDuplicateCustomer(trx, { survivor: sib, duplicate: dup });
+                        merges.push({
+                            company_id:   sib.company_id,
+                            survivor_id:  sib.id,
+                            duplicate_id: dup.id,
+                            affected:     r.affected,
+                            total:        r.total,
+                        });
+                        totalRecords += r.total;
+                        action = 'merge';
+                    }
+
+                    // Move the sibling itself to the new number (contact_no only —
+                    // country_code is left as-is; the loyalty match ignores it).
+                    await trx('customer').where({ id: sib.id }).update({
+                        contact_no:        cleanContact,
+                        updated_at:        db.fn.now(),
+                        server_updated_at: db.fn.now(),
+                    });
+                    siblingsMoved.push({ id: sib.id, company_id: sib.company_id });
+                    totalRecords += 1;
+                    if (action !== 'merge') { action = 'propagate'; }
+                }
+            }
         });
+
+        // 3. Audit the change — best-effort, AFTER commit, never blocks the flow.
+        // The whole story goes into ONE `details` JSON (table has only id,
+        // customer_id, details, created_at): from/to number + country codes, the
+        // action, how many records moved, which sibling rows moved, and each
+        // merge's per-table breakdown (orders / loyalty / review counts).
+        try {
+            await merge.logPhoneChange({
+                customerId: row.id,
+                details: {
+                    app_id:           row.app_id || null,
+                    old_number:       oldContact,
+                    new_number:       cleanContact,
+                    old_country_code: row.country_code || null,
+                    new_country_code: cleanCountry,
+                    action,                              // update_only | propagate | merge
+                    merged_count:     merges.length,
+                    total_records:    totalRecords,
+                    source:           'changePhone',
+                    siblings_moved:   siblingsMoved,     // [{ id, company_id }] rows carried to the new number
+                    merges,                              // [{ company_id, survivor_id, duplicate_id, affected:{table.col:count}, total }]
+                },
+            });
+        } catch (e) { H.log.warn('auth.changePhone.audit', e && e.message); }
+
         const fresh = await db('customer').where({ id: row.id }).first();
         return H.successResponse(res, { customer: customers.publicView(fresh) }, MSG.resource.updated);
     } catch (err) {

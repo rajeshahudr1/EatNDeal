@@ -219,14 +219,17 @@ scheduler.register('heartbeat', '0 * * * * *', async () => {
     H.log.info('heartbeat', `tick ts=${new Date().toISOString()} db=${dbOk ? 'ok' : 'down'}`);
 });
 
-// Loyalty expiry — daily at 02:00. Ports the legacy console command
-// CronController::actionNotifyRewardExpiry: flips rewards past their
-// expiry_date to is_expired=1 / expired_from=1. Without it the wallet's
-// "expired" total + the `expired` history filter under-report, because the
-// read queries hide lapsed rewards but nothing ever MARKS them.
-// Idempotent + never reduces a spendable balance — safe to re-run.
+// Loyalty expiry — DAILY at 02:00 (env LOYALTY_EXPIRY_CRON), matching the
+// legacy console command CronController::actionNotifyRewardExpiry, which runs
+// daily (its notify_date = TODAY step misses a day otherwise). Flips rewards
+// past their expiry_date to is_expired=1 / expired_from=1. Scope is the
+// MARKETPLACE's own programme only (company_id = 0) — a restaurant's rewards
+// expire via the legacy POS cron, and we pick that up from the shared DB.
+// Without this the wallet's "expired" total + the `expired` history filter
+// under-report, because the read queries hide lapsed rewards but nothing ever
+// MARKS them. Idempotent + never reduces a spendable balance — safe to re-run.
 // Manual one-shot: node scripts/loyalty-expiry.js [--dry-run]
-scheduler.register('loyalty-expiry', '0 2 * * *', async () => {
+scheduler.register('loyalty-expiry', process.env.LOYALTY_EXPIRY_CRON || '0 2 * * *', async () => {
     await require('./Services/jobs/loyaltyExpiry').run();
 });
 

@@ -965,6 +965,10 @@ async function reviewApprove(req, res) {
                     // -> legacy's wallet). Routed through the named resolver so
                     // this is a decision on the record, not an accident.
                     customerId: Loyalty.rewardCustomerIdFor(review),
+                    // OPT OUT of restaurant-identity resolution: this id is already
+                    // the correct dual-identity credit target (see above), so award()
+                    // must keep the plain appIdOf path and not re-resolve it.
+                    rewardResolveByCompany: false,
                     entityType: 'review',
                     entityId:   rule.id,
                     relatedId:  review.id,

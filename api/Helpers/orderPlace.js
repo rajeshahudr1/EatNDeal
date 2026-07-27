@@ -237,6 +237,42 @@ function dropOffText(raw) {
 }
 
 /**
+ * legacyDeliveryAddress
+ *
+ * What:  Serialises the cart's delivery_* columns into the JSON shape the
+ *        EPOS expects on orders.delivery_address (webordering delivery.js
+ *        addrObj → Commonquery::getFormatAddress/getDriverInstruction/
+ *        getPostCode). A plain-text value renders as NOTHING on the POS
+ *        order screen (json_decode fails → ''), which is why marketplace
+ *        delivery orders showed no address there.
+ *        The cart's delivery_address is one joined line that already ends
+ *        with the postcode — strip it into the separate `postcode` key the
+ *        formatter appends back, so the line doesn't print twice.
+ * Type:  READ (pure).
+ */
+function legacyDeliveryAddress(cart) {
+    const full = String(cart.delivery_address || '').trim();
+    if (!full) { return null; }
+    const pc = String(cart.delivery_postcode || '').trim();
+    let line = full;
+    if (pc) {
+        // Drop a trailing ", <postcode>" (any spacing/case) off the line.
+        const re = new RegExp('[,\\s]*' + pc.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s*') + '\\s*$', 'i');
+        line = full.replace(re, '').trim().replace(/,$/, '');
+        if (!line) { line = full; }
+    }
+    return JSON.stringify({
+        fulladdress:         line,
+        postcode:            pc,
+        latitude:            cart.delivery_latitude  != null ? String(cart.delivery_latitude)  : '',
+        longitude:           cart.delivery_longitude != null ? String(cart.delivery_longitude) : '',
+        building_type:       cart.delivery_building_type || '',
+        label:               cart.delivery_label || '',
+        driver_instructions: (Number(cart.serve_type) === 2) ? '' : dropOffText(cart.driver_instructions),
+    });
+}
+
+/**
  * placeOrder
  *
  * What:  See file header. Returns the inserted orders row on success.
@@ -342,7 +378,13 @@ async function placeOrder({ customer, cart, branch, items, paymentOption, custom
             grand_total:       grandTotal,
             paid_amount:       0,
             delivery_fees:     Number(cart.delivery_fees) || 0,
-            delivery_address:  cart.delivery_address || null,
+            // Stored in the LEGACY JSON shape ({fulladdress, postcode,
+            // latitude, ... , driver_instructions}) — the EPOS order screen
+            // renders this column through Commonquery::getFormatAddress /
+            // getDriverInstruction, which json_decode it and show NOTHING
+            // for a plain-text value. Our own readers go through
+            // format.formatDeliveryAddress, which handles both shapes.
+            delivery_address:  legacyDeliveryAddress(cart),
             bag_charge:        Number(cart.bag_charge)    || 0,
             service_charge_amount: Number(cart.service_charge_amount) || 0,
             service_charge_rate:   Number(cart.service_charge_rate)   || 0,
@@ -554,6 +596,11 @@ async function placeOrder({ customer, cart, branch, items, paymentOption, custom
                 company_id:    cart.company_id,
                 branch_id:     cart.branch_id,
                 delivery_fees: Number(cart.delivery_fees) || 0,
+                // The POS order screen prefers THIS row's address over
+                // orders.delivery_address (Orders::getOrderFullDetail →
+                // getFormatAddress(guest_customer_details)) — leaving it NULL
+                // rendered marketplace delivery orders with NO address there.
+                guest_customer_details: legacyDeliveryAddress(cart),
                 status:        '1',
                 created_by:    SYSTEM_ACTOR,   // legacy sentinel — see SYSTEM_ACTOR
             });

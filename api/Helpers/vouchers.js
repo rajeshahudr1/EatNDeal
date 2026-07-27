@@ -75,10 +75,15 @@ async function validate(rawCode, cart, customerId) {
     const linkedIds = await require('./loyalty').linkedCustomerIds(customerId);
     const ids = (linkedIds && linkedIds.length) ? linkedIds : [customerId];
 
+    // Case-INSENSITIVE code match. Legacy runs on MySQL whose default
+    // collation already matches 'abc' = 'ABC', so the EPOS accepts a code
+    // typed in any case; Postgres compares case-sensitively, which made an
+    // EPOS-issued lowercase code unredeemable here. UPPER both sides so
+    // the two platforms accept exactly the same input.
     const v = await db('customer_voucher')
         .whereIn('customer_id', ids)
+        .whereRaw('UPPER(voucher_code) = ?', [code])
         .andWhere({
-            voucher_code: code,
             branch_id:    cart.branch_id,
             company_id:   cart.company_id,
         })

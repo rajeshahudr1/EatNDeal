@@ -316,6 +316,10 @@
                 // re-tick its controls from the current URL so Clear all
                 // / Apply keep reflecting the real filter state.
                 if (window.EatNDealFilterSidebar) { window.EatNDealFilterSidebar.restore(); }
+                // Keep the filter trigger's applied-count badge in sync
+                // with the freshly pushState'd URL (cuisine pills etc
+                // change filters without firing filters-changed).
+                if (window.EatNDealUi && window.EatNDealUi.filterSheet) { window.EatNDealUi.filterSheet.refreshBadge(); }
             }
 
             // Scroll handling:

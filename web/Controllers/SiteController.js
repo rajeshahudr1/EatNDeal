@@ -461,6 +461,26 @@ async function index(req, res, next) {
                 liveMenuCategories = dd ? (dd.categories || []) : [];
                 liveSections       = dd ? (dd.sections   || []) : [];
                 liveOffers         = dd ? (dd.offers     || null) : null;
+                // ── Auto-switch service mode to what THIS restaurant offers ──
+                // Landing on a restaurant (search pick, card tap, shared link)
+                // whose config doesn't offer the current header mode flips the
+                // mode to the one it DOES offer — e.g. header says Delivery but
+                // the restaurant is pickup-only → switch to Pickup instead of
+                // showing a dead surface. Both-modes / both-missing → no change.
+                // Same undefined-defaults-true semantics as restaurant-detail.ejs.
+                if (liveRestaurant) {
+                    const offDel  = liveRestaurant.offersDelivery !== false;
+                    const offPick = liveRestaurant.offersPickup   !== false;
+                    let switched = null;
+                    if (orderMode !== 'pickup' && !offDel && offPick) { switched = 'pickup'; }
+                    else if (orderMode === 'pickup' && !offPick && offDel) { switched = 'delivery'; }
+                    if (switched) {
+                        orderMode = switched;
+                        if (req.session && req.session.userLocation) {
+                            req.session.userLocation.mode = switched;
+                        }
+                    }
+                }
                 // Published customer reviews for this restaurant (separate
                 // call — keeps the detail endpoint lean). Best-effort.
                 if (liveRestaurant && liveRestaurant.id) {

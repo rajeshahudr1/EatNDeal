@@ -113,6 +113,23 @@
             });
             syncSurpriseBox(mode);
             if (mode === 'group') { toast('info', 'Group ordering is coming soon.'); }
+            // Keep the HEADER Delivery/Pickup toggle in lockstep with the
+            // inner tab. Set `checked` directly (no synthetic change event —
+            // the header toggle's change handler navigates to the home feed,
+            // which must NOT happen from an inner tab tap) and persist the
+            // mode to the session so the cart + later pages agree too.
+            if (mode === 'delivery' || mode === 'pickup') {
+                var radio = document.querySelector('input[name="order-mode"][value="' + mode + '"]');
+                if (radio && !radio.checked) { radio.checked = true; }
+                try {
+                    fetch('/location/mode', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ mode: mode }),
+                        credentials: 'same-origin',
+                    }).catch(function () { /* best-effort */ });
+                } catch (e) { /* old browser — visual sync still done */ }
+            }
         });
     }
 

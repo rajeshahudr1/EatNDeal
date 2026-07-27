@@ -576,7 +576,7 @@ async function reportIssue(req, res) {
             complaint_details:  notes,
             customer_telephone: order.customer_number || null,
             customer_name:      name || null,
-            customer_address:   order.delivery_address || null,
+            customer_address:   require('../../Helpers/format').formatDeliveryAddress(order.delivery_address) || null,
             platform:           'web',
             status:             'awaiting_response',
             created_by:         customerId,

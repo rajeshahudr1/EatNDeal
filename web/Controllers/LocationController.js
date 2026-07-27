@@ -201,4 +201,31 @@ async function useDemo(req, res) {
     return respond();
 }
 
-module.exports = { save, clear, get, useDemo };
+/**
+ * saveMode
+ *
+ * What:   Persists JUST the fulfilment mode (delivery | pickup) onto the
+ *         saved session location, leaving the address untouched. Called
+ *         when the restaurant page's inner Delivery/Pickup tab is
+ *         switched, so the header toggle + cart + later navigations all
+ *         agree with the tab without a full page reload.
+ * Type:   WRITE (session).
+ * Inputs: req.body.mode — 'delivery' | 'pickup'.
+ * Used:   POST /location/mode (called by /js/pages/restaurant.js).
+ */
+function saveMode(req, res) {
+    if (!req.session || !req.session.userLocation) {
+        // No saved location yet — nothing to persist onto; the tab still
+        // works client-side, so this is a quiet no-op, not an error.
+        return res.status(200).json({ status: 200, show: false, msg: 'OK' });
+    }
+    const mode = (req.body && String(req.body.mode || '').toLowerCase() === 'pickup') ? 'pickup' : 'delivery';
+    req.session.userLocation.mode = mode;
+    const respond = () => res.status(200).json({ status: 200, show: false, msg: 'OK', data: { mode: mode } });
+    if (typeof req.session.save === 'function') {
+        return req.session.save(function () { return respond(); });
+    }
+    return respond();
+}
+
+module.exports = { save, clear, get, useDemo, saveMode };

@@ -31,6 +31,7 @@ const Orders       = require('../../Helpers/orders');
 const OrderStatus  = require('../../Helpers/orderStatus');
 const OrderAdvance = require('../../Helpers/orderAdvance');
 const { db }       = require('../../config/db');
+const F            = require('../../Helpers/format');
 
 // State → array of order_status codes filter (canonical legacy codes;
 // '' = completed). Defensive old codes (3/7/8/11/0) kept so any
@@ -112,7 +113,7 @@ async function list(req, res) {
             createdAt:    r.created_at || null,
             customerName: ((r.customer_first_name || '') + ' ' + (r.customer_last_name || '')).trim(),
             customerPhone: r.customer_number || '',
-            deliveryAddress: r.delivery_address || '',
+            deliveryAddress: F.formatDeliveryAddress(r.delivery_address),
             remark:       r.remark || '',
             isPreOrder:   Number(r.is_pre_order) === 1,
             scheduledTime: r.scheduled_time || null,

@@ -50,5 +50,10 @@
             <line x1="7"  y1="12" x2="17" y2="12"/>
             <line x1="10" y1="18" x2="14" y2="18"/>
         </svg>
+        <%# Active-filter count badge — filled in by /js/ui/filter-sheet.js
+            from the URL's filter params, hidden when nothing is applied.
+            Without it there is no cue that filters are active once the
+            sheet is closed. %>
+        <span class="mobile-search__filter-badge" data-filter-badge hidden></span>
     </button>
 </div>

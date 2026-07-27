@@ -262,7 +262,51 @@
         refreshFootState();
     }
 
+    /**
+     * refreshTriggerBadge
+     *
+     * What:  Counts the filter params currently on the URL and shows
+     *        that number in the badge on the filter trigger button
+     *        (data-filter-badge in partials/mobile-search.ejs).
+     *        Hidden when nothing is applied.
+     * Why:   Once the sheet closes there was no cue at all that
+     *        filters were active — the user couldn't tell a filtered
+     *        list from the full one.
+     */
+    function refreshTriggerBadge() {
+        var badge = document.querySelector('[data-filter-badge]');
+        if (!badge) { return; }
+        var q = new URLSearchParams(window.location.search);
+        var n = 0;
+        // One point per applied facet. ?sort only appears on the URL
+        // when it is NOT relevance, so its presence alone counts.
+        ['sort', 'rating', 'price', 'cuisine', 'max_min', 'max_km', 'browse'].forEach(function (k) {
+            if (q.get(k)) { n += 1; }
+        });
+        ['veg', 'offer', 'open_now', 'recommended', 'featured'].forEach(function (k) {
+            if (q.get(k) === '1') { n += 1; }
+        });
+        // Delivery-time bands are a comma list — each band counts.
+        if (q.get('delivery')) {
+            n += q.get('delivery').split(',').filter(function (s) { return s.trim(); }).length;
+        }
+        badge.textContent = n > 9 ? '9+' : String(n);
+        badge.hidden = n === 0;
+    }
+
     function bind() {
+        // Badge listeners live outside resolve() — the trigger button
+        // exists even on pages where the sheet partial may not.
+        // After Apply, home.js pushState's the new URL inside its own
+        // filters-changed listener; the timeout defers our read until
+        // that has happened regardless of listener order.
+        document.addEventListener('eatndeal:filters-changed', function () {
+            window.setTimeout(refreshTriggerBadge, 0);
+        });
+        window.addEventListener('popstate', function () {
+            window.setTimeout(refreshTriggerBadge, 0);
+        });
+
         if (!resolve()) { return; }
 
         // Open trigger — any element carrying data-action="open-filters".
@@ -335,11 +379,12 @@
 
     // Public surface.
     window.EatNDealUi = window.EatNDealUi || {};
-    window.EatNDealUi.filterSheet = { open: open, close: close };
+    window.EatNDealUi.filterSheet = { open: open, close: close, refreshBadge: refreshTriggerBadge };
 
     function init() {
         bind();
         applyStateFromUrl();
+        refreshTriggerBadge();
     }
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', init);

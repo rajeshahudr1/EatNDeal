@@ -167,8 +167,57 @@ function normalisePhone(raw) {
     return String(raw || '').replace(/[\s\-()]/g, '').replace(/^\+/, '');
 }
 
+/**
+ * formatDeliveryAddress
+ *
+ * What:  Turns an orders.delivery_address value into a display line.
+ *        Marketplace orders now store the LEGACY JSON shape ({fulladdress,
+ *        line1, line2, building_type extras, post_town, postcode, ...} —
+ *        the shape the EPOS Commonquery::getFormatAddress expects), so
+ *        this mirrors that PHP formatter. Plain-text values (orders placed
+ *        before the switch) pass through unchanged.
+ * Type:  READ (pure).
+ */
+function formatDeliveryAddress(raw) {
+    const s = String(raw == null ? '' : raw).trim();
+    if (!s) { return ''; }
+    if (s[0] !== '{') { return s; }              // old plain-text orders
+    let a;
+    try { a = JSON.parse(s); } catch (e) { return s; }
+    if (!a || typeof a !== 'object') { return s; }
+
+    const lines = [];
+    if (a.line1) { lines.push(String(a.line1)); }
+    if (a.line2) { lines.push(String(a.line2)); }
+    switch (String(a.building_type || '')) {
+        case 'house':
+            if (a.floorName) { lines.push(String(a.floorName)); }
+            break;
+        case 'apartment':
+            if (a.apartmentName) { lines.push(String(a.apartmentName)); }
+            if (a.aptNo)         { lines.push('Flat ' + a.aptNo); }
+            if (a.entryCode)     { lines.push('Entry Code: ' + a.entryCode); }
+            break;
+        case 'business':
+            if (a.businessName) { lines.push(String(a.businessName)); }
+            break;
+        case 'hotel':
+            if (a.hotelName) { lines.push(String(a.hotelName)); }
+            if (a.roomName)  { lines.push('Room: ' + a.roomName); }
+            break;
+        default: break;
+    }
+    if (a.post_town) { lines.push(String(a.post_town)); }
+    if (a.postcode)  { lines.push(String(a.postcode)); }
+    if (a.fulladdress != null && a.fulladdress !== '') {
+        return lines.length ? (a.fulladdress + ', ' + lines.join(', ')) : String(a.fulladdress);
+    }
+    return lines.join(', ');
+}
+
 module.exports = {
     CURRENCY_SYMBOL,
+    formatDeliveryAddress,
     round2,
     formatMoney,
     formatCurrency,

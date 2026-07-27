@@ -315,7 +315,7 @@ function buildCustomerHtml({ order, customer, items, cart, restBrand, paymentLbl
     const restaurantName = (restBrand && restBrand.name) || 'the restaurant';
     const first = esc((customer && (customer.firstname || customer.first_name)) || 'there');
     const serve = Number(order && order.serve_type) || Number(cart && cart.serve_type) || 0;
-    const addr  = (serve === 3) ? esc(((order && order.delivery_address) || (cart && cart.delivery_address)) || '') : '';
+    const addr  = (serve === 3) ? esc(F.formatDeliveryAddress((order && order.delivery_address) || (cart && cart.delivery_address))) : '';
     const body = ''
         + '<h1 style="font-size:20px;margin:0 0 6px;color:#1c1c1c;">Thank you for your order! &#127881;</h1>'
         + '<p style="margin:0 0 16px;color:#6b6b6b;">Hi ' + first + ', your order from <strong>' + esc(restaurantName) + '</strong> is confirmed.</p>'
@@ -334,7 +334,7 @@ function buildRestaurantHtml({ order, customer, items, cart, restBrand, paymentL
     const cName  = esc((((customer && (customer.firstname || customer.first_name)) || '') + ' ' + ((customer && (customer.lastname || customer.last_name)) || '')).trim() || 'Customer');
     const cPhone = esc((customer && customer.contact_no) || '');
     const serve  = Number(order && order.serve_type) || Number(cart && cart.serve_type) || 0;
-    const addr   = (serve === 3) ? esc(((order && order.delivery_address) || (cart && cart.delivery_address)) || '') : '';
+    const addr   = (serve === 3) ? esc(F.formatDeliveryAddress((order && order.delivery_address) || (cart && cart.delivery_address))) : '';
     const body = ''
         + '<h1 style="font-size:20px;margin:0 0 6px;color:' + RED + ';">&#128276; New order &mdash; #' + num + '</h1>'
         + '<p style="margin:0 0 16px;color:#6b6b6b;">A new order just came in. Please prepare it.</p>'

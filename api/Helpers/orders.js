@@ -24,6 +24,7 @@
 
 const { db } = require('../config/db');
 const M      = require('./marketplace');
+const F      = require('./format');
 const OrderStatus = require('./orderStatus');
 const reviews     = require('./reviews');
 // customer.id -> customer.app_id, the identity the legacy-shared tables use.
@@ -251,7 +252,9 @@ async function loadDetail(orderId, customerId) {
         freeDelivery:     Number(order.free_delivery) === 1,
         grandTotal:       Number(order.grand_total) || 0,
         totalQty:         Number(order.total_qty)   || 0,
-        deliveryAddress:  order.delivery_address || '',
+        // JSON (new orders, EPOS-compatible) or plain text (old ones) —
+        // the formatter renders both.
+        deliveryAddress:  F.formatDeliveryAddress(order.delivery_address),
         scheduledTime:    order.scheduled_time || null,
         // The DAY the pre-order is for — without it "05:45" is ambiguous
         // between today and tomorrow. `scheduled_date` is a timestamptz written

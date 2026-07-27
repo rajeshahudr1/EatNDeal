@@ -674,6 +674,7 @@ app.get('/restaurant-reviews', SiteController.restaurantReviews);
 // reflect the chosen area. Used by every future restaurant-search call.
 app.post('/location/save',  LocationController.save);
 app.post('/location/clear', LocationController.clear);
+app.post('/location/mode',  LocationController.saveMode);
 app.get ('/location',       LocationController.get);
 // Demo shortcut (backs the location page's currently-HIDDEN "Use a demo delivery
 // location" button) — picks a deliverable restaurant's location server-side and

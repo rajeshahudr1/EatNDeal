@@ -1576,6 +1576,9 @@ function publicCartView(cart, items, opts) {
         // COMBINED figures (both are spendable on one order); this is the split
         // so the UI can show "£X from <restaurant> + £Y from EatNDeal".
         rewardPools:      (opts && opts.rewardPools) || { restaurant: 0, marketplace: 0, combined: 0 },
+        // "You save via 3rd party platforms" banner figure (legacy
+        // third_party_discount) — > 0 shows the Congratulations banner.
+        thirdPartySavings: (opts && typeof opts.thirdPartySavings === 'number') ? opts.thirdPartySavings : 0,
         subTotal:         Number(cart.sub_total)      || 0,
         bagCharge:        Number(cart.bag_charge)     || 0,
         deliveryFees:     Number(cart.delivery_fees)  || 0,
@@ -1667,8 +1670,50 @@ function publicCartView(cart, items, opts) {
     };
 }
 
+/**
+ * thirdPartySavings
+ *
+ * What:  "You are saving via 3rd party platforms" figure — EXACT port of the
+ *        legacy webordering checkout (CartController.php: $Discount =
+ *        $totalOnlinePrice - $totalprice, shown when > 0):
+ *          • every NON-free line: qty × products.online_platform_price on the
+ *            3rd-party side, qty × the OUR-price on the other.
+ *          • our side uses the MARKETPLACE price (M.pickPrice — what this
+ *            platform actually charges) where legacy webordering used its own
+ *            price_before_tax; that's the only deliberate difference.
+ *          • modifiers/options are ignored on BOTH sides, exactly as legacy.
+ *        Also persisted onto cart.third_party_discount (same column legacy
+ *        writes) so the figure rides onto the order like legacy.
+ * Type:  READ (products) + WRITE (cart.third_party_discount).
+ */
+async function thirdPartySavings(cartId, items) {
+    const paid = (items || []).filter((it) => Number(it.is_free_item) !== 1 && Number(it.product_id) > 0);
+    const ids = [...new Set(paid.map((it) => it.product_id))];
+    if (!ids.length) { return 0; }
+    const rows = await db('products').whereIn('id', ids)
+        .select('id', 'online_platform_price', 'marketplace_price', 'price_after_tax');
+    const byId = {};
+    rows.forEach((p) => { byId[String(p.id)] = p; });
+
+    let totalOurs = 0, totalOnline = 0;
+    paid.forEach((it) => {
+        const p = byId[String(it.product_id)];
+        if (!p) { return; }
+        const qty = Number(it.product_qty) || 0;
+        totalOurs   += M.pickPrice(p) * qty;
+        totalOnline += (Number(p.online_platform_price) || 0) * qty;
+    });
+    const saving = round2(totalOnline - totalOurs);
+    // Legacy stamps the figure on the cart at checkout render — same here,
+    // best-effort (a failed write must never break the cart page).
+    try { await db('cart').where({ id: cartId }).update({ third_party_discount: saving > 0 ? saving : 0 }); }
+    catch (e) { /* column missing / race — the banner still renders */ }
+    return saving;
+}
+
 module.exports = {
     MARKETPLACE_FLAG,
+    thirdPartySavings,
     CART_OPEN,
     CART_DELETED,
     CART_ACTIVE,

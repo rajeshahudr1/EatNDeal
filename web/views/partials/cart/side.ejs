@@ -67,6 +67,26 @@
                 <span>Continue to payment</span>
             </button>
 
+            <%# "You save via 3rd party platforms" — legacy webordering checkout
+                parity (cart.thirdPartySavings = Σ online_platform_price − Σ
+                marketplace price over non-free lines, api Helpers/cart
+                thirdPartySavings). Shows only when the saving is positive. %>
+            <% if (cart.thirdPartySavings > 0) { %>
+            <div class="ckt-saving" role="status">
+                <div class="ckt-saving__left">
+                    <span class="ckt-saving__icon" aria-hidden="true">🎉</span>
+                    <div class="ckt-saving__text">
+                        <span class="ckt-saving__title">Congratulations!</span>
+                        <span class="ckt-saving__sub">You are saving via 3rd party platforms</span>
+                    </div>
+                </div>
+                <div class="ckt-saving__amount">
+                    <span class="ckt-saving__label">You save</span>
+                    <span class="ckt-saving__value"><%= sym %><%= cart.thirdPartySavings.toFixed(2) %></span>
+                </div>
+            </div>
+            <% } %>
+
             <%# Basket summary disclosure — collapsed by default. Wraps
                 the existing items list verbatim so stepper/remove
                 handlers keep firing through /js/ui/cart.js. A "Clear"
@@ -161,7 +181,10 @@
                 <% } else { %>
                     <p class="ckt-voucher__title">🎟️ Have a Voucher?</p>
                     <div class="ckt-voucher__row">
-                        <input type="text" class="ckt-voucher__input" data-cart-voucher-input placeholder="Enter voucher code" autocomplete="off" maxlength="10" spellcheck="false">
+                        <%# No maxlength — a longer code simply comes back
+                            "Invalid voucher code" from the api instead of the
+                            input silently refusing keystrokes at 10 chars. %>
+                        <input type="text" class="ckt-voucher__input" data-cart-voucher-input placeholder="Enter voucher code" autocomplete="off" spellcheck="false">
                         <button type="button" class="ckt-voucher__apply" data-action="cart-apply-voucher">Apply</button>
                     </div>
                 <% } %>

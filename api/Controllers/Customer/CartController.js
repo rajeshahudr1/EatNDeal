@@ -260,10 +260,16 @@ async function get(req, res) {
             }
         } catch (e) { canSchedule = false; }
 
+        // "You save via 3rd party platforms" — legacy checkout parity (see
+        // Helpers/cart.thirdPartySavings). Best-effort: never blocks the page.
+        let thirdPartySavings = 0;
+        try { thirdPartySavings = await Cart.thirdPartySavings(open.id, items); }
+        catch (e) { thirdPartySavings = 0; }
+
         const view  = Cart.publicCartView(v.cart, items, {
             charityTiers, cardServiceCharge, rewardBalance, rewardMax, availableSlots, scheduleDays,
             canDelivery: offered.delivery, canPickup: offered.pickup, canSchedule,
-            rewardPools,
+            rewardPools, thirdPartySavings,
         });
 
         // Surface any auto-reprice as a non-blocking notice so the customer

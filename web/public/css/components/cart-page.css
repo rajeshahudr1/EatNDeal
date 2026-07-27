@@ -822,3 +822,44 @@
     .cart-stepper__btn { width: 44px; height: 44px; }
     .cart-stepper__value { min-width: 40px; }
 }
+
+/* ── "You save via 3rd party platforms" banner (legacy checkout parity) ──
+ * Green celebratory strip at the top of the basket column: 🎉 + copy on
+ * the left, the "You save £X" amount pinned right. Rendered only when
+ * cart.thirdPartySavings > 0 (partials/cart/side.ejs). */
+.ckt-saving {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 16px;
+    border-radius: 14px;
+    background: linear-gradient(100deg, #16a34a 0%, #22c55e 55%, #4ade80 100%);
+    color: #fff;
+    box-shadow: 0 6px 16px rgba(22, 163, 74, 0.25);
+}
+.ckt-saving__left { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.ckt-saving__icon { font-size: 1.5rem; line-height: 1; flex-shrink: 0; }
+.ckt-saving__text { display: flex; flex-direction: column; min-width: 0; }
+.ckt-saving__title { font-weight: 800; font-size: 0.95rem; }
+.ckt-saving__sub { font-size: 0.78rem; opacity: 0.92; }
+.ckt-saving__amount {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    flex-shrink: 0;
+    text-align: right;
+}
+.ckt-saving__label {
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    opacity: 0.92;
+}
+.ckt-saving__value {
+    font-weight: 900;
+    font-size: 1.35rem;
+    line-height: 1.15;
+    font-variant-numeric: tabular-nums;
+}

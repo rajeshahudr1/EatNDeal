@@ -232,15 +232,16 @@ const cartSetCookingInstructionsSchema = Joi.object({
 });
 
 // ── POST /customer/cart/apply-voucher ──────────────────────────────
-// Customer-specific reward voucher. Code is up to 10 chars (legacy
-// customer_voucher.voucher_code max). Validation + discount math run in
-// Helpers/vouchers.validate().
+// Customer-specific reward voucher. No tight length cap (user request):
+// stored codes are varchar(10), so anything longer simply fails the lookup
+// with "Invalid voucher code" — friendlier than a length error. The 100
+// bound is only an abuse guard, never hit by real input.
 const cartApplyVoucherSchema = Joi.object({
     customer_id: customerIdRule,
-    code:        Joi.string().trim().min(1).max(10).required()
+    code:        Joi.string().trim().min(1).max(100).required()
         .messages({
             'string.empty': 'Enter a voucher code.',
-            'string.max':   'Voucher code is too long.',
+            'string.max':   'Invalid voucher code.',
             'any.required': 'Enter a voucher code.',
         }),
 });

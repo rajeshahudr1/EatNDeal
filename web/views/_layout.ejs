@@ -39,6 +39,18 @@
     <%# PWA manifest — installable on Android + iOS (limited) %>
     <link rel="manifest" href="/manifest.webmanifest">
 
+    <%# Preload the Poppins weights used above the fold BEFORE the CSS is
+        parsed. Without this the browser only discovers the font files after
+        downloading + parsing base.css, so every refresh painted fallback
+        text first and the page visibly jumped when Poppins swapped in
+        (font/page "flickering on refresh"). crossorigin is REQUIRED even
+        same-origin — font fetches are CORS-mode, a mismatch double-downloads.
+        No ?v= on fonts: the files never change, let them cache forever. -%>
+    <link rel="preload" href="/fonts/Poppins-Regular.woff2"  as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="/fonts/Poppins-Medium.woff2"   as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="/fonts/Poppins-SemiBold.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="/fonts/Poppins-Bold.woff2"     as="font" type="font/woff2" crossorigin>
+
     <%#
       External-only stylesheets (CSP rule #6 — no inline <style> blocks).
       Each component CSS is loaded as its own <link> rather than via an

@@ -209,8 +209,23 @@
         document.body.classList.toggle('ordf-open', !!open);
     }
 
+    // Keep the orders-filter date range sane while the user edits it:
+    // To can never sit before From (min follows From live), and a From
+    // moved past the current To drags To along. Future dates are already
+    // blocked by the max="today" the template renders on both inputs.
+    function bindOrdersDateRange() {
+        var from = document.getElementById('ordf-from');
+        var to   = document.getElementById('ordf-to');
+        if (!from || !to) { return; }
+        from.addEventListener('change', function () {
+            to.min = from.value || '';
+            if (from.value && to.value && to.value < from.value) { to.value = from.value; }
+        });
+    }
+
     // ── Field interactions: clear / CHANGE toggle / avatar ─────────
     function bindFieldActions() {
+        bindOrdersDateRange();
         // Esc closes the orders filter sheet if it's open.
         document.addEventListener('keydown', function (ev) {
             if (ev.key === 'Escape' && document.body.classList.contains('ordf-open')) {

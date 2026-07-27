@@ -448,7 +448,10 @@
      *        home.js isn't loaded on the pickup page.
      */
     function applyTints(scope) {
-        qa('[data-tint]', scope || document).forEach(function (el) {
+        // ONLY the placeholder surfaces — the <li class="pickup-card"> also
+        // carries data-tint (as DATA for the map popup, see openPopup), and
+        // the old catch-all selector painted the WHOLE card that colour.
+        qa('.pickup-card__media[data-tint], .pickup-popup__initial[data-tint]', scope || document).forEach(function (el) {
             var t = el.getAttribute('data-tint');
             if (t) { el.style.background = 'linear-gradient(135deg, rgba(255,255,255,0.45), transparent 60%), ' + t; }
         });

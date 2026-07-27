@@ -13,6 +13,23 @@
 
 /* ── Self-hosted fonts (Coding-Conventions rule #5 — no CDN) ────────── */
 
+/* Metric-matched FALLBACK for Poppins — shown for the instant before the
+ * woff2 arrives (font-display: swap). Without it the browser used raw
+ * Arial, whose glyphs are ~12% narrower and sit on different ascent/descent
+ * lines than Poppins — so every refresh painted the page "small", then the
+ * whole layout jumped when Poppins swapped in (the flicker on refresh).
+ * These overrides stretch Arial to Poppins' metrics (Poppins UPM 1000,
+ * ascent 1050, descent 350, avg-width ratio ≈ 1.121) so the swap is
+ * near-invisible: same line heights, same widths, no reflow. */
+@font-face {
+    font-family: 'Poppins-fallback';
+    src: local('Arial');
+    size-adjust: 112%;
+    ascent-override: 94%;
+    descent-override: 31%;
+    line-gap-override: 9%;
+}
+
 @font-face {
     font-family: 'Poppins';
     src: url('/fonts/Poppins-Regular.woff2') format('woff2'),
@@ -120,7 +137,10 @@
     --shadow-3: 0 10px 30px rgba(20, 20, 20, 0.10), 0 4px 10px rgba(20, 20, 20, 0.04);
 
     /* Type */
-    --font-sans: 'Poppins', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    /* 'Poppins-fallback' (metric-matched Arial, see @font-face above) sits
+       right after Poppins so the pre-swap paint has identical metrics —
+       no size jump / reflow when the real font arrives. */
+    --font-sans: 'Poppins', 'Poppins-fallback', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
 
     /* Layout */
     --header-height-desktop: 72px;

@@ -184,6 +184,12 @@ app.use(express.static(path.join(__dirname, 'public'), {
         } else if (filePath.endsWith(path.sep + 'manifest.json')) {
             // Small, unversioned, and read on install — a day is plenty.
             res.setHeader('Cache-Control', 'public, max-age=86400');
+        } else if (/\.(woff2?|ttf|otf)$/i.test(filePath)) {
+            // Fonts never change (no ?v= on their URLs) — cache them hard in
+            // EVERY env, dev included. The dev no-store below made the browser
+            // re-download Poppins on each refresh, so every reload flashed
+            // fallback text and the page visibly jumped ("font flickering").
+            res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
         } else if (ENV !== 'production') {
             // DEV: never let the browser cache CSS / JS / images. Combined
             // with the SW being disabled on localhost (see app.js), this

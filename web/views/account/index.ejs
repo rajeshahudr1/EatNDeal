@@ -116,14 +116,18 @@
                             <% }); %>
                         </div>
 
+                        <%# Orders live in the PAST — cap both pickers at today so a
+                            future date can't be picked. account.js additionally keeps
+                            To >= From while the user changes them. %>
+                        <% var ordfToday = new Date().toISOString().slice(0, 10); %>
                         <div class="ordf-sheet__dates">
                             <div>
                                 <label class="ordf-sheet__label" for="ordf-from">From</label>
-                                <input id="ordf-from" type="date" name="date_from" class="ordf-sheet__date" value="<%= of.date_from %>">
+                                <input id="ordf-from" type="date" name="date_from" class="ordf-sheet__date" value="<%= of.date_from %>" max="<%= ordfToday %>">
                             </div>
                             <div>
                                 <label class="ordf-sheet__label" for="ordf-to">To</label>
-                                <input id="ordf-to" type="date" name="date_to" class="ordf-sheet__date" value="<%= of.date_to %>">
+                                <input id="ordf-to" type="date" name="date_to" class="ordf-sheet__date" value="<%= of.date_to %>" max="<%= ordfToday %>"<%= of.date_from ? ' min="' + of.date_from + '"' : '' %>>
                             </div>
                         </div>
                     </div>

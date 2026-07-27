@@ -619,7 +619,12 @@
     display: inline-block; padding: 9px 16px; border-radius: 999px;
     border: 1.5px solid var(--color-border); font-size: 0.88rem; font-weight: 600; color: var(--color-text-muted); background: #fff;
 }
-.ordf-chip.is-on span, .ordf-chip input:checked + span {
+/* Highlight follows the RADIO's :checked state only. The server also stamps
+   .is-on on the applied chip, but styling that class too left TWO chips lit
+   the moment the user picked a different one (the old .is-on + the new
+   :checked) — the radio's checked attr is server-rendered on the same chip
+   anyway, so :checked alone is always correct. */
+.ordf-chip input:checked + span {
     background: var(--color-primary-soft); border-color: var(--color-primary); color: var(--color-primary);
 }
 .ordf-sheet__dates { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 6px; min-width: 0; }

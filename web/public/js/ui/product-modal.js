@@ -588,12 +588,33 @@
         return (Math.floor(n / block) * b) + Math.min(n % block, b);
     }
 
+    /**
+     * pageClosed — true when the surrounding restaurant page says the
+     * restaurant is closed (data-rd-open on the detail root). Closed means
+     * NO adds at all (pre-order included), so the sheet's Add button is
+     * disabled instead of letting the tap bounce off the server gate.
+     */
+    function pageClosed() {
+        var root = document.querySelector('[data-restaurant][data-rd-open]');
+        return !!root && root.getAttribute('data-rd-open') !== '1';
+    }
+
     function updateTotals() {
         var unit = lineUnitPrice();
         var total = unit * payableQty(qty);
         if (qtyEl)      { qtyEl.textContent = String(qty); }
         if (totalEl)    { totalEl.textContent = money(total); }
-        if (addLabelEl) { addLabelEl.textContent = 'Add ' + qty + ' to order'; }
+        if (addLabelEl) {
+            var addBtn = addLabelEl.closest ? addLabelEl.closest('[data-action="pm-add"]') : null;
+            if (pageClosed()) {
+                addLabelEl.textContent = 'Currently closed';
+                if (totalEl) { totalEl.textContent = ''; }
+                if (addBtn)  { addBtn.disabled = true; addBtn.classList.add('is-disabled'); }
+            } else {
+                addLabelEl.textContent = 'Add ' + qty + ' to order';
+                if (addBtn)  { addBtn.disabled = false; addBtn.classList.remove('is-disabled'); }
+            }
+        }
     }
 
     function step(delta) {
@@ -635,6 +656,7 @@
 
     function addToCart(btn) {
         if (!product) { return; }
+        if (pageClosed()) { toast('error', 'This restaurant is currently closed.'); return; }
         var av = product.availability || { available: (product.available !== false), soldOut: false };
         if (av.available === false) { toast('error', av.soldOut ? 'This item is sold out.' : 'This item is currently unavailable.'); return; }
         var miss = firstMissingRequiredGroup();

@@ -387,8 +387,11 @@ async function add(req, res) {
         if (availability) {
             const svc        = serveType === 2 ? availability.services.takeaway : availability.services.delivery;
             const modeOpen   = svc ? svc.status === 'open' : availability.isOpen;
-            const preOrderOk = Number(branch.pre_order) === 1;
-            if (!modeOpen && !preOrderOk) {
+            // Product decision (27 Jul 2026): a CLOSED restaurant takes NO
+            // adds at all — the old pre_order exception let a closed branch
+            // build a cart, which the user rejected. Scheduling/pre-order now
+            // only happens while the restaurant is open.
+            if (!modeOpen) {
                 // Prefer the branch's own closed wording (blanket closures set
                 // it); fall back to a plain, correctly-worded message for an
                 // out-of-hours close (storeHours leaves message null there).
@@ -459,7 +462,17 @@ async function add(req, res) {
         // marketplace cart at a time. Two different restaurants ⇒ ask.
         const existing = await Cart.findOpenCart(owner.scope);
         if (existing && Number(existing.branch_id) !== Number(branch.id)) {
-            if (!b.replace_cart) {
+            // An EMPTY open cart is no conflict — the customer already removed
+            // every item, so there is nothing to "clear". The row just stayed
+            // open pointing at the old branch, which made the Switch-restaurant
+            // popup appear over an empty basket. Close it silently and add.
+            const liveItems = await db('cart_details')
+                .where({ cart_id: existing.id, is_deleted: 0 })
+                .count('id as n')
+                .first();
+            if (!Number(liveItems && liveItems.n)) {
+                await Cart.closeCart(existing.id);
+            } else if (!b.replace_cart) {
                 // Standardised envelope: H.errorResponse nests under
                 // `data` so the client reads `env.data.code` like every
                 // other validator response.

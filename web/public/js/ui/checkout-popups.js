@@ -285,6 +285,24 @@
         try { window.sessionStorage.setItem(PAY_MODE_KEY, String(mode || '')); }
         catch (e) { /* private mode / quota — the row still holds it */ }
     }
+    // ── Server-render mirror (eatndeal_pay cookie) ──────────────────
+    // The cart page's payment tiles are re-rendered by the SERVER on every
+    // cart write (region swap) and on every full load — and the markup used
+    // to hardcode Cash as active, with this module re-selecting the card a
+    // beat later ("Cash→Card flicker" on qty +/-). The cookie carries the
+    // pick (+ label, for temp cards that have no saved-card tile) so
+    // buildCartLocals renders the right tile active from the first paint.
+    // Session cookie, deliberately not HttpOnly — it's a UI preference.
+    function writePayCookie(mode, title, sub) {
+        try {
+            if (mode && mode.indexOf('card:') === 0) {
+                var payload = { mode: mode, title: title || '', sub: sub || '' };
+                document.cookie = 'eatndeal_pay=' + encodeURIComponent(JSON.stringify(payload)) + '; path=/; SameSite=Lax';
+            } else {
+                document.cookie = 'eatndeal_pay=; path=/; Max-Age=0; SameSite=Lax';
+            }
+        } catch (e) { /* cookie blocked — JS restore still repaints */ }
+    }
     // A temp card's tile label ("Visa •••• 4242") comes from the server's
     // /cart/use-temp-card response, not from a rendered saved-card tile —
     // the popup's saved-card list deliberately excludes temp cards. Without
@@ -317,6 +335,7 @@
     function forgetPayModeAndLabel() {
         try { window.sessionStorage.removeItem(PAY_MODE_KEY); } catch (e) { /* ignore */ }
         clearPayLabel();
+        writePayCookie('cash');   // next render must show the Cash default
     }
 
     function restorePayMode() {
@@ -383,6 +402,11 @@
             if (titleEl) { titleEl.textContent = 'Card'; }
             if (subEl)   { subEl.textContent   = 'Choose a card'; }
         }
+        // Mirror the final state to the server-render cookie — card modes
+        // store mode+label, everything else clears back to the Cash default.
+        writePayCookie(mode,
+            titleEl ? titleEl.textContent : '',
+            subEl   ? subEl.textContent   : '');
         paintCartPayTiles(mode);
     }
 

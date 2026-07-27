@@ -296,6 +296,37 @@ async function buildCartLocals(req, res) {
 
     const stripeOn = !!stripe_publishable_key;
 
+    // ── Remembered payment method (eatndeal_pay cookie) ────────────────
+    // checkout-popups.js mirrors the customer's Cash/Card pick into this
+    // cookie so THIS render can paint the right tile active from the start.
+    // The JS-only restore repainted AFTER the fresh markup (which hardcodes
+    // Cash) — on a full load the customer saw the selection flick Cash→Card
+    // on every qty change. Validated against the saved-card list; a card
+    // that no longer exists (and carries no temp-card label in the cookie)
+    // falls back to the Cash default — same rules as restorePayMode().
+    let payPref = null;
+    try {
+        const hdr = req.headers.cookie || '';
+        const m = hdr.match(/(?:^|;\s*)eatndeal_pay=([^;]+)/);
+        if (m && stripeOn) {
+            const p = JSON.parse(decodeURIComponent(m[1]));
+            const mode = (p && typeof p.mode === 'string') ? p.mode : '';
+            if (mode.indexOf('card:') === 0) {
+                const pmId = mode.slice('card:'.length);
+                const hit = payList.find((c) => String(c.id) === pmId);
+                if (hit) {
+                    const brandLbl = String(hit.brand || 'card').replace(/\b\w/g, (s) => s.toUpperCase());
+                    const exp = (hit.expMonth && hit.expYear)
+                        ? (String(hit.expMonth).padStart(2, '0') + '/' + String(hit.expYear).slice(-2)) : '';
+                    payPref = { mode, title: brandLbl + ' •••• ' + hit.last4, sub: exp ? 'Expires ' + exp : '' };
+                } else if (p.title) {
+                    // Temp card — never in the saved list; label rides in the cookie.
+                    payPref = { mode, title: String(p.title), sub: String(p.sub || '') };
+                }
+            }
+        }
+    } catch (e) { /* corrupt cookie — Cash default */ }
+
     // No page-specific JS — cart interactions live in the global
     // /js/ui/cart.js module loaded by the layout, plus the new
     // /js/ui/checkout-popups.js for the redesigned popup actions.
@@ -314,7 +345,7 @@ async function buildCartLocals(req, res) {
             cart_restaurant:  restaurant,
             cart_promotions:  promotions,
             sym, addrList, payList, promoList, selected,
-            schedDefault, schedMin, stripeOn,
+            schedDefault, schedMin, stripeOn, payPref,
         },
     };
 }

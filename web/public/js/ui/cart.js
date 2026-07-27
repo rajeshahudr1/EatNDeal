@@ -94,6 +94,9 @@
         // checkout-popups.js not loaded on this page (shouldn't happen on
         // /cart, but keep the original direct removal as a fallback).
         try { sessionStorage.removeItem('eatndeal_pay_mode'); } catch (e) { /* private mode */ }
+        // Also drop the server-render cookie so the next cart render
+        // doesn't resurrect the old card pick.
+        try { document.cookie = 'eatndeal_pay=; path=/; Max-Age=0; SameSite=Lax'; } catch (e) { /* ignore */ }
     }
 
     function bumpCartBadge(cart) {
@@ -356,9 +359,10 @@
     function restaurantClosedMessage() {
         var root = document.querySelector('[data-restaurant][data-rd-open]');
         if (!root) { return null; }
-        var isOpen   = root.getAttribute('data-rd-open') === '1';
-        var preOrder = root.getAttribute('data-rd-preorder') === '1';
-        if (isOpen || preOrder) { return null; }
+        // Closed = no adds, full stop — the pre-order exception was removed
+        // (product decision: a closed restaurant takes no orders at all).
+        var isOpen = root.getAttribute('data-rd-open') === '1';
+        if (isOpen) { return null; }
         return 'This restaurant is currently closed.';
     }
 
@@ -1600,8 +1604,19 @@
         }
         // Validate the receipt email BEFORE any Stripe work — abort cleanly
         // (no inflight guard, no teardown) so the typed card survives.
-        var checkoutEmail = readCheckoutEmail();
-        if (!checkoutEmail) { return; }
+        // NEW-CARD ONLY: the email field lives inside the payment popup's
+        // new-card panel, which is HIDDEN on the saved-card path (review
+        // popup) — gating there showed the error in an invisible panel, so
+        // a phone-OTP customer (no email on file) clicked "Place order" and
+        // NOTHING visibly happened. A saved card doesn't read this field
+        // anyway (the api charges with the profile email and returns its
+        // own clear "add your email in My Profile" 422, which finishCardOrder
+        // toasts), so skip the client gate for it.
+        var checkoutEmail = '';
+        if (mode.kind !== 'card-saved') {
+            checkoutEmail = readCheckoutEmail();
+            if (!checkoutEmail) { return; }
+        }
         checkoutInFlight = true;
         btn.disabled = true;
         // The new CTA button is .ckt-cta (also .ckt-sticky-cta on mobile).

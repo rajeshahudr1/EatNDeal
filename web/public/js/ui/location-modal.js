@@ -519,12 +519,28 @@
         openForm(null);
     }
 
+    // True when the address being EDITED is the currently-active header
+    // location — set by openForm, read by onFormSubmit so a successful edit
+    // also refreshes the active location (header chip + session) to the new
+    // values. Without it the popup list updated but the header kept showing
+    // the pre-edit address.
+    var editingWasActive = false;
+
+    function isActiveAddress(a) {
+        if (!a || !a.id || !activeLoc) { return false; }
+        var normPc = function (s) { return String(s || '').replace(/\s+/g, '').toUpperCase(); };
+        if (activeLoc.label && (activeLoc.label === a.address || activeLoc.label === a.label)) { return true; }
+        var apc = normPc(a.postCode || a.post_code || a.postcode);
+        return !!apc && normPc(activeLoc.postcode) === apc;
+    }
+
     function openForm(a) {
         cacheNodes();
         if (!form) { return; }
         form.reset();
         closeAllSelects();
         a = a || {};
+        editingWasActive = isActiveAddress(a);
         afId.value      = a.id || '';
         afLat.value     = (a.latitude != null) ? a.latitude : ((activeLoc && activeLoc.lat != null) ? activeLoc.lat : '');
         afLng.value     = (a.longitude != null) ? a.longitude : ((activeLoc && activeLoc.lng != null) ? activeLoc.lng : '');
@@ -594,6 +610,21 @@
             var body = await resp.json();
             if (body && body.status === 200) {
                 if (window.EatNDealUi) { window.EatNDealUi.showToast('success', body.msg || 'Address saved.'); }
+                // The edited address was the ACTIVE header location — re-save
+                // it as active with the NEW values so the header chip (and the
+                // session location everything renders from) follows the edit.
+                // save() closes the modal, broadcasts and reloads this tab.
+                if (editingWasActive && payload.address) {
+                    editingWasActive = false;
+                    save({
+                        label:    payload.address,
+                        postcode: payload.post_code || '',
+                        lat:      payload.latitude  || null,
+                        lng:      payload.longitude || null,
+                        source:   'saved',
+                    });
+                    return;
+                }
                 showView('picker');
                 loadSaved();
                 // A saved address may be the cart's delivery address (or the

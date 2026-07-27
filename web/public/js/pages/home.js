@@ -318,8 +318,10 @@
                 if (window.EatNDealFilterSidebar) { window.EatNDealFilterSidebar.restore(); }
                 // Keep the filter trigger's applied-count badge in sync
                 // with the freshly pushState'd URL (cuisine pills etc
-                // change filters without firing filters-changed).
-                if (window.EatNDealUi && window.EatNDealUi.filterSheet) { window.EatNDealUi.filterSheet.refreshBadge(); }
+                // change filters without firing filters-changed). The
+                // badge lives in filter-sidebar.js now — the old mobile
+                // filter-sheet script is no longer loaded.
+                if (window.EatNDealFilterSidebar) { window.EatNDealFilterSidebar.refreshBadge(); }
             }
 
             // Scroll handling:
@@ -916,11 +918,12 @@
      *         freshly-painted shell starts in the right state).
      */
     function applyFilterCollapsed() {
-        var shell = document.querySelector('.home-shell');
-        if (!shell) { return; }
+        // The class lives on <html> (stamped pre-paint by
+        // /js/boot/filters-collapsed.js so the sidebar never flashes
+        // open on load); this just re-syncs it, e.g. after SPA swaps.
         var collapsed = false;
         try { collapsed = window.localStorage.getItem(FILTERS_KEY) === '1'; } catch (e) { /* ignore */ }
-        shell.classList.toggle('is-filters-collapsed', collapsed);
+        document.documentElement.classList.toggle('is-filters-collapsed', collapsed);
     }
 
     /**
@@ -959,10 +962,9 @@
                     document.body.classList.remove('is-mobile-filters-open');
                     return;
                 }
-                var shell = document.querySelector('.home-shell');
-                if (!shell) { return; }
-                var collapsed = !shell.classList.contains('is-filters-collapsed');
-                shell.classList.toggle('is-filters-collapsed', collapsed);
+                var docEl = document.documentElement;
+                var collapsed = !docEl.classList.contains('is-filters-collapsed');
+                docEl.classList.toggle('is-filters-collapsed', collapsed);
                 try { window.localStorage.setItem(FILTERS_KEY, collapsed ? '1' : '0'); } catch (e) { /* ignore */ }
                 window.dispatchEvent(new Event('resize'));
                 return;

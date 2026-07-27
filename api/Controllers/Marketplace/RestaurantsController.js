@@ -237,6 +237,7 @@ async function list(req, res) {
                 SELECT 1 FROM store_offer_banner_table sob
                  WHERE sob.company_id = c.id
                    AND sob.publish_online = 1
+                   AND sob.status = 1
                    AND (sob.start_date IS NULL OR sob.start_date <= CURRENT_DATE)
                    AND (sob.end_date   IS NULL OR sob.end_date   >= CURRENT_DATE)
               ) OR EXISTS (
@@ -299,7 +300,7 @@ async function list(req, res) {
                 // Close-flag + per-service columns for the real open/closed
                 // verdict (Helpers/storeHours), batched across the list.
                 'b.closed', 'b.closed_reopen_date', 'b.clossed_repoen_time', 'b.clossed_text',
-                'b.closed_for', 'b.closed_for_time',
+                'b.closed_for', 'b.closed_for_list', 'b.closed_for_time',
                 'b.show_delivery_option', 'b.show_delivery_option_tab', 'b.delivery_closed_util_date',
                 'b.show_pickup_option', 'b.show_pickup_option_tab', 'b.pickup_closed_util_date',
                 'b.delivery_waiting_time',
@@ -687,7 +688,7 @@ async function detail(req, res) {
                 // Close-flag + per-service columns — drive the real
                 // open/closed verdict (Helpers/storeHours), per legacy POS.
                 'b.closed', 'b.closed_reopen_date', 'b.clossed_repoen_time', 'b.clossed_text',
-                'b.closed_for', 'b.closed_for_time',
+                'b.closed_for', 'b.closed_for_list', 'b.closed_for_time',
                 'b.show_delivery_option', 'b.show_delivery_option_tab', 'b.delivery_closed_util_date',
                 'b.show_pickup_option', 'b.show_pickup_option_tab', 'b.pickup_closed_util_date',
                 'b.pre_order',

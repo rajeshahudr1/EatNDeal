@@ -38,7 +38,6 @@
  */
 
 const { db } = require('../config/db');
-const M = require('./marketplace');   // matchDeliveryZone — postcode-zone restriction
 
 // Service-type mapping — the EXACT legacy scheme from the POS discount form
 // (backend/modules/pos/views/discounts/_form.php) and matched by
@@ -137,15 +136,12 @@ async function findBest(cart, branch) {
             // EPOS-only (3) discounts never apply to an online cart.
             qb.where('platform', PLATFORM_BOTH).orWhere('platform', PLATFORM_WEBSITE);
         })
-        .andWhere((qb) => {
-            // Skip per-product rows — those are handled at the line level
-            // (not yet wired). EXCEPT free-item rules (type 3), where
-            // product_id is not a targeting filter at all: it names the GIFT
-            // to add. Excluding them here meant no free-item rule could ever
-            // be a candidate.
-            qb.where('product_id', 0).orWhereNull('product_id')
-              .orWhere('discount_type', 3);
-        })
+        // NO product_id filter — EXACT legacy parity. Legacy
+        // Commonquery::validateAndApplyDiscount never reads product_id on a
+        // percent/amount rule (it's only the GIFT on a type-3 free item), so a
+        // 10%-off rule that happens to carry a product_id still applies to the
+        // whole basket. Our earlier "skip product-specific rows" guess silently
+        // blocked every such discount (POS form saves product_id even on %).
         // Legacy order — Commonquery::validateAndApplyDiscount:2373
         //   ->orderBy(['min_order_value' => SORT_DESC, 'id' => SORT_DESC])
         // It walks this list and RETURNS on the first rule the basket
@@ -154,6 +150,23 @@ async function findBest(cart, branch) {
         .orderBy([{ column: 'min_order_value', order: 'desc' }, { column: 'id', order: 'desc' }]);
 
     const now = new Date();
+
+    // Delivery-zone resolution — EXACT legacy validateAndApplyDiscount
+    // (:380-397): computed whenever the cart HAS a postcode, regardless of
+    // serve type, by the legacy 3-char-prefix match
+    // (LOWER(LEFT(setup.postcode,3)) = first 3 chars of the customer's
+    // postcode), scoped to this company + branch + status=1.
+    let zoneId = 0;
+    const custPc = String(cart.delivery_postcode || '').trim();
+    if (custPc) {
+        try {
+            const zrow = await db('store_delivery_charge_setup')
+                .whereRaw('LOWER(LEFT(postcode, 3)) = ?', [custPc.slice(0, 3).toLowerCase()])
+                .andWhere({ status: 1, company_id: cart.company_id, branch_id: branch.id })
+                .first('id');
+            zoneId = zrow ? Number(zrow.id) : 0;
+        } catch (e) { zoneId = 0; }
+    }
     // Legacy discount_type enum: 1 = %, 2 = fixed £, 3 = free item.
     const TYPE_FREE_ITEM = 3;
     // FIRST match wins — legacy returns as soon as a rule qualifies, walking
@@ -178,21 +191,18 @@ async function findBest(cart, branch) {
             if (!dayRows.some((r) => Number(r.day_of_week) === dow)) { continue; }
         }
 
-        // Delivery-zone restriction (discount_postcode). Legacy: when the
-        // customer's postcode maps to a delivery-charge zone, the rule must
-        // list that zone. Enforced only when the rule HAS postcode rows (same
-        // optional-restriction shape as the day check — a rule with no zones is
-        // unrestricted). Delivery orders only; pickup has no postcode.
-        if (serve === 3 && cart.delivery_postcode) {
-            const pcRows = await db('discount_postcode').where({ discount_id: d.id }).select('delivery_charge_id');
-            if (pcRows.length) {
-                const zrows = await db('store_delivery_charge_setup')
-                    .where({ company_id: cart.company_id, branch_id: branch.id, status: 1 })
-                    .select('id', 'postcode');
-                const zone = M.matchDeliveryZone(String(cart.delivery_postcode).trim(), zrows);
-                const zoneId = zone ? Number(zone.id) : 0;
-                if (!zoneId || !pcRows.some((r) => Number(r.delivery_charge_id) === zoneId)) { continue; }
-            }
+        // Delivery-zone restriction (discount_postcode) — EXACT legacy
+        // (:457-469): when the customer's postcode RESOLVED to a zone above,
+        // the rule must have a discount_postcode row for that exact zone — a
+        // rule with NO postcode rows FAILS for that customer. When the
+        // postcode resolves to no zone (or there is no postcode), the check
+        // is skipped entirely and every rule passes it. Mirrored 1:1 on the
+        // user's instruction (27 Jul 2026) so both platforms behave the same.
+        if (zoneId) {
+            const pcHit = await db('discount_postcode')
+                .where({ discount_id: d.id, delivery_charge_id: zoneId })
+                .first('id');
+            if (!pcHit) { continue; }
         }
 
         // First-time-user only (discounts.first_time_user = 1): the rule is

@@ -215,12 +215,13 @@ async function get(req, res) {
         let scheduleDays = [];
         try {
             if (branch) {
-                // Multi-day pre-order schedule (today + the next days), Uber-style:
-                // the popup renders a Date select + a Time select driven off this,
-                // exactly like legacy. Also flattened into availableSlots as a
-                // {value,label} fallback list (older single-select path). Only days
-                // that actually have slots are offered as date chips.
-                const days = await StoreHours.scheduleDaysForBranch(branch, v.cart.serve_type);
+                // TODAY ONLY — EXACT legacy webordering: its picker is
+                // StoreBusinessHourShifts::getCurUpComingHourList(currentDay),
+                // i.e. the CURRENT day's upcoming 15-min times (from now+lead,
+                // or from the reopen time during a closed_for window). It never
+                // offers tomorrow/next days, so neither do we (user decision
+                // 27 Jul 2026 — the earlier 7-day Uber-style list is off).
+                const days = await StoreHours.scheduleDaysForBranch(branch, v.cart.serve_type, { days: 1 });
                 scheduleDays = (days || [])
                     .filter((day) => day.slots && day.slots.length)
                     .map((day) => ({
@@ -245,19 +246,15 @@ async function get(req, res) {
         // restaurant. Defaults to both when the branch didn't load.
         const offered = StoreHours.offeredServices(branch);
 
-        // Pre-order applicability (legacy parity) — the "When"/Schedule row only
-        // makes sense when the restaurant is CLOSED right now for this mode AND
-        // it accepts pre-orders (branch.pre_order=1) AND real slots exist. When
-        // it's open, the order is ASAP-only and no schedule card shows (matches
-        // legacy webordering, which surfaces pre-order ONLY while closed).
+        // Pre-order applicability — EXACT legacy Branch::getWebsiteStatus:
+        // `pre_order = 1` offers the Schedule picker WHENEVER bookable slots
+        // exist — open OR closed (the "advance order" feature; legacy's open
+        // path literally sets `$isPreOrder = true` whenever the toggle is on,
+        // Branch.php:965). An open restaurant just defaults to ASAP with
+        // Schedule as an option; a closed one requires picking a slot.
         let canSchedule = false;
         try {
-            if (branch && Number(branch.pre_order) === 1) {
-                const sched = await StoreHours.availabilityForBranch(branch);
-                const svc = sched ? (Number(v.cart.serve_type) === 2 ? sched.services.takeaway : sched.services.delivery) : null;
-                const modeOpen = svc ? svc.status === 'open' : (sched ? sched.isOpen : true);
-                canSchedule = !modeOpen && availableSlots.length > 0;
-            }
+            canSchedule = !!branch && Number(branch.pre_order) === 1 && availableSlots.length > 0;
         } catch (e) { canSchedule = false; }
 
         // "You save via 3rd party platforms" — legacy checkout parity (see
@@ -393,11 +390,12 @@ async function add(req, res) {
         if (availability) {
             const svc        = serveType === 2 ? availability.services.takeaway : availability.services.delivery;
             const modeOpen   = svc ? svc.status === 'open' : availability.isOpen;
-            // Product decision (27 Jul 2026): a CLOSED restaurant takes NO
-            // adds at all — the old pre_order exception let a closed branch
-            // build a cart, which the user rejected. Scheduling/pre-order now
-            // only happens while the restaurant is open.
-            if (!modeOpen) {
+            // Closed restaurant: adds are blocked UNLESS the branch takes
+            // pre-orders (branch.pre_order=1) — then the customer may build a
+            // cart and schedule it at checkout (final decision 27 Jul 2026;
+            // mirrors the PLACE-level rule in Helpers/cartValidate).
+            const preOrderOk = Number(branch.pre_order) === 1;
+            if (!modeOpen && !preOrderOk) {
                 // Prefer the branch's own closed wording (blanket closures set
                 // it); fall back to a plain, correctly-worded message for an
                 // out-of-hours close (storeHours leaves message null there).
@@ -940,12 +938,30 @@ async function setAddress(req, res) {
         const branch = await M.loadActiveBranch(open.branch_id);
         if (!branch) { return H.errorResponse(res, 'This restaurant is no longer available.', 404); }
 
-        // Address must belong to this customer AND be active (status=1).
-        const address = await db('customer_address')
-            .where({ id: b.address_id, customer_id: customerId, status: 1 })
-            .first();
-        if (!address) {
-            return H.errorResponse(res, 'That address is no longer available.', 404);
+        // Two shapes (legacy webordering parity):
+        //   • address_id — a SAVED customer_address row (must be theirs + active)
+        //   • address + post_code — a ONE-TIME manual address: the customer
+        //     filled the form but chose NOT to save it, so nothing is written
+        //     to customer_address — the cart alone carries it for this order.
+        let address;
+        if (b.address_id) {
+            address = await db('customer_address')
+                .where({ id: b.address_id, customer_id: customerId, status: 1 })
+                .first();
+            if (!address) {
+                return H.errorResponse(res, 'That address is no longer available.', 404);
+            }
+        } else {
+            address = {
+                address:               String(b.address || '').trim(),
+                post_code:             String(b.post_code || '').trim(),
+                latitude:              b.latitude  !== '' && b.latitude  != null ? b.latitude  : null,
+                longitude:             b.longitude !== '' && b.longitude != null ? b.longitude : null,
+                label:                 b.label || '',
+                address_type:          b.address_type || null,
+                additional_details:    b.additional_details || null,
+                delivery_instructions: b.delivery_instructions || null,
+            };
         }
 
         const result = await Cart.setAddress(open.id, address, branch);

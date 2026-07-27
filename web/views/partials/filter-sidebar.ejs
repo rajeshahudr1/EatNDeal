@@ -55,7 +55,10 @@
         <% var __timeWord = (typeof order_mode !== 'undefined' && order_mode === 'pickup') ? 'Pickup' : 'Delivery'; %>
         <section class="fsb__group">
             <h3 class="fsb__group-title">Sort by</h3>
-            <label class="fsb__radio"><input type="radio" name="sort-web" value="relevance" checked><span>Recommended</span></label>
+            <%# No default pick — Recommended (relevance) is the api's implicit
+                order, so nothing is pre-ticked; a radio only lights up when
+                the user actively chooses a sort. %>
+            <label class="fsb__radio"><input type="radio" name="sort-web" value="relevance"><span>Recommended</span></label>
             <label class="fsb__radio"><input type="radio" name="sort-web" value="rating"><span>Rating: High to Low</span></label>
             <label class="fsb__radio"><input type="radio" name="sort-web" value="time"><span><%= __timeWord %> Time: Low to High</span></label>
             <label class="fsb__radio"><input type="radio" name="sort-web" value="distance"><span>Distance: Low to High</span></label>

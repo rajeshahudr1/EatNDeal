@@ -45,6 +45,11 @@
         <button type="button" class="filters-show" data-action="toggle-filters" aria-label="Show filters" title="Show filters">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
             <span>Filters</span>
+            <%# Applied-filter count — filter-sheet.js#refreshTriggerBadge
+                fills every [data-filter-badge] from the URL params; hidden
+                when nothing is applied. A <b> (not <span>) so the collapsed
+                tile's label styling doesn't hit it. %>
+            <b class="filters-show__badge" data-filter-badge hidden></b>
         </button>
 
         <%# HERO removed per user — the home now opens straight at the
@@ -123,7 +128,7 @@
                 carries "EatNDealApp"): you're already in the app, so prompting
                 to install it is nonsense. It DOES show in a mobile web browser
                 (and on desktop) so browser visitors are nudged to install. %>
-            <!-- <% if (typeof is_app === 'undefined' || !is_app) { %>
+            <% if (typeof is_app === 'undefined' || !is_app) { %>
             <aside class="app-mini" aria-label="Download the <%= brand.name %> app">
                 <%# Default = Android (checked); tabs sit at the TOP of the body so it's
                     obvious you PICK a platform, then scan the QR that swaps in below. %>
@@ -166,7 +171,7 @@
                     <p class="app-mini__sub">Tap a store above, then scan to install</p>
                 </div>
             </aside>
-            <% } %> -->
+            <% } %>
         </div>
 
         <%# Offer-banner carousel — super-admin promo slider under the category

@@ -113,9 +113,9 @@
     function clearAll() {
         if (!root) { return; }
         root.querySelectorAll('input[type="checkbox"]').forEach(function (cb) { cb.checked = false; });
-        root.querySelectorAll('input[type="radio"]').forEach(function (r) {
-            r.checked = (r.name === 'sort-web' && r.value === 'relevance');
-        });
+        // Radios too — nothing stays ticked. Recommended is the api's
+        // implicit default order, so an unticked rail = default feed.
+        root.querySelectorAll('input[type="radio"]').forEach(function (r) { r.checked = false; });
         syncActiveClasses();
         // cleared:true → home.js drops the rail's ?cuisine too. "Clear
         // all" means EVERYTHING, including the cuisine picked on the
@@ -150,6 +150,42 @@
         if (q.get('max_km')) { check('input[data-filter="dist-' + q.get('max_km') + '"]'); }
         if (q.get('browse')) { check('input[name="browse-web"][data-filter="browse-' + q.get('browse') + '"]'); }
         syncActiveClasses();
+    }
+
+    /**
+     * refreshTriggerBadge
+     *
+     * What:  Counts the filter params on the current URL and reflects
+     *        them on every filter trigger: fills the [data-filter-badge]
+     *        count and toggles .has-filters on the trigger button so
+     *        CSS colours it red (applied) vs black (none).
+     * Why:   Lives HERE (not filter-sheet.js) because the old mobile
+     *        bottom sheet was removed from the layout — its script no
+     *        longer loads, so this file owns the badge for all pages.
+     */
+    function refreshTriggerBadge() {
+        var badges = document.querySelectorAll('[data-filter-badge]');
+        if (!badges.length) { return; }
+        var q = new URLSearchParams(window.location.search);
+        var n = 0;
+        // One point per applied facet. ?sort only appears on the URL
+        // when it is NOT relevance, so its presence alone counts.
+        ['sort', 'rating', 'price', 'cuisine', 'max_min', 'max_km', 'browse'].forEach(function (k) {
+            if (q.get(k)) { n += 1; }
+        });
+        ['veg', 'offer', 'open_now', 'recommended', 'featured'].forEach(function (k) {
+            if (q.get(k) === '1') { n += 1; }
+        });
+        // Delivery-time bands are a comma list — each band counts.
+        if (q.get('delivery')) {
+            n += q.get('delivery').split(',').filter(function (s) { return s.trim(); }).length;
+        }
+        badges.forEach(function (badge) {
+            badge.textContent = n > 9 ? '9+' : String(n);
+            badge.hidden = n === 0;
+            var trigger = badge.closest ? badge.closest('button, a') : null;
+            if (trigger) { trigger.classList.toggle('has-filters', n > 0); }
+        });
     }
 
     /**
@@ -192,18 +228,30 @@
                 filterCuisineList(t.value);
             }
         });
+
+        // Trigger badge/colour — recount after every apply/clear (the
+        // timeout defers past home.js's pushState in its own listener,
+        // whatever the listener order) and on back/forward.
+        document.addEventListener('eatndeal:filters-changed', function () {
+            window.setTimeout(refreshTriggerBadge, 0);
+        });
+        window.addEventListener('popstate', function () {
+            window.setTimeout(refreshTriggerBadge, 0);
+        });
     }
 
     function init() {
         bind();
         if (resolve()) { restoreFromUrl(); }
+        refreshTriggerBadge();
     }
 
     // Re-sync a freshly swapped-in sidebar (home.js calls this after a
     // full #app-main swap — the new markup renders unchecked, so the
     // controls must be re-ticked from the current URL).
     window.EatNDealFilterSidebar = {
-        restore: function () { if (resolve()) { restoreFromUrl(); } },
+        restore: function () { if (resolve()) { restoreFromUrl(); } refreshTriggerBadge(); },
+        refreshBadge: refreshTriggerBadge,
     };
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', init);

@@ -179,6 +179,7 @@ async function validate(cartId, owner, ctx) {
             .select(
                 'p.id', 'p.name', 'p.show_marketplace',
                 'p.marketplace_price', 'p.online_platform_price', 'p.price_after_tax',
+                'p.discount_type', 'p.discount_value',
                 ...A.selectColumns(db, 'p'),
             );
         const prodById = new Map(prods.map((p) => [String(p.id), p]));
@@ -235,7 +236,10 @@ async function validate(cartId, owner, ctx) {
             // admin re-priced mid-session; we warn at WRITE, block at PLACE.
             // £0 items are allowed end-to-end per product spec — drift is
             // only meaningful when both sides have a real price.
-            const current = M.pickPrice(p);
+            // Compare against the SAME unit add-to-cart stores: base price
+            // WITH the product's own discount. Raw pickPrice here flagged
+            // every discounted product as "price changed" forever.
+            const current = M.applyProductDiscount(M.pickPrice(p), p);
             const stored  = Number(it.product_net_price) || 0;
             if (current > 0 && stored > 0) {
                 const drift = Math.abs(current - stored) > 0.005;

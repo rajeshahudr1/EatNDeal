@@ -175,19 +175,16 @@
         state.price       = null;
         state.trust       = [];
         state.collections = [];
-        // Reset DOM — chips off, sort radio back to Relevance.
+        // Reset DOM — chips off, ALL sort radios unticked. Nothing is
+        // pre-selected after a clear; Recommended is the api's implicit
+        // default order so an empty group = default feed.
         sheet.querySelectorAll('.filter-sheet__chip.is-active').forEach(function (c) {
             c.classList.remove('is-active');
         });
         sheet.querySelectorAll('.filter-sheet__radio-item').forEach(function (r) {
             r.classList.remove('is-active');
             var input = r.querySelector('input[type="radio"]');
-            if (input && input.value === 'relevance') {
-                input.checked = true;
-                r.classList.add('is-active');
-            } else if (input) {
-                input.checked = false;
-            }
+            if (input) { input.checked = false; }
         });
         refreshFootState();
     }
@@ -274,8 +271,10 @@
      *        list from the full one.
      */
     function refreshTriggerBadge() {
-        var badge = document.querySelector('[data-filter-badge]');
-        if (!badge) { return; }
+        // ALL badges — the mobile search-row trigger AND the desktop
+        // collapsed "Filters" tile each carry data-filter-badge.
+        var badges = document.querySelectorAll('[data-filter-badge]');
+        if (!badges.length) { return; }
         var q = new URLSearchParams(window.location.search);
         var n = 0;
         // One point per applied facet. ?sort only appears on the URL
@@ -290,8 +289,14 @@
         if (q.get('delivery')) {
             n += q.get('delivery').split(',').filter(function (s) { return s.trim(); }).length;
         }
-        badge.textContent = n > 9 ? '9+' : String(n);
-        badge.hidden = n === 0;
+        badges.forEach(function (badge) {
+            badge.textContent = n > 9 ? '9+' : String(n);
+            badge.hidden = n === 0;
+            // Colour cue on the trigger itself: red when filters are
+            // applied, black when none (CSS keys off .has-filters).
+            var trigger = badge.closest ? badge.closest('button, a') : null;
+            if (trigger) { trigger.classList.toggle('has-filters', n > 0); }
+        });
     }
 
     function bind() {

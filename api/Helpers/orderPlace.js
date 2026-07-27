@@ -419,10 +419,14 @@ async function placeOrder({ customer, cart, branch, items, paymentOption, custom
             // two distinct instructions the customer actually wrote. The
             // labels also read correctly on the kitchen ticket, which prints
             // this column raw.
+            // LEGACY PARITY (user request 27 Jul 2026): the DRIVER/drop-off
+            // instruction is NOT folded in here any more — it already rides in
+            // the delivery_address JSON's driver_instructions key (see
+            // legacyDeliveryAddress above), which is where the EPOS reads it
+            // and shows it as its own line. remark carries the customer note +
+            // Cooking only, so the two instructions stay SEPARATE on the POS
+            // exactly like a legacy webordering order.
             remark:            [customerNote,
-                                (Number(cart.serve_type) === 2
-                                    ? ''
-                                    : labelled('Drop-off', dropOffText(cart.driver_instructions))),
                                 labelled('Cooking', cart.remark)]
                                    .map((s) => String(s || '').trim()).filter(Boolean)
                                    .join('  |  ') || null,
@@ -482,7 +486,16 @@ async function placeOrder({ customer, cart, branch, items, paymentOption, custom
         // ── 3. orders_items + orders_items_sub ──────────────────────
         // NB: legacy orders_items doesn't carry category_id — we keep
         // that on cart_details only.
+        // BOGO qty snapshot per line (legacy OrderController:591-600 stores
+        // bogo_buy_qty/get_qty on non-free lines) — the cashback engine later
+        // reads these to strip the FREE units out of the earn base, so
+        // skipping them let customers earn cashback on unpaid quantity.
+        // Best-effort: no rule / loyalty off → empty map → zeros.
+        let bogoMap = new Map();
+        try { bogoMap = await require('./loyalty').bogoMapFor(cart.company_id); }
+        catch (e) { bogoMap = new Map(); }
         for (const it of items) {
+            const bogo = (Number(it.is_free_item) === 1) ? null : bogoMap.get(String(it.product_id));
             const lineTotal = Cart.lineSubtotal(it);
             const [oi] = await trx('orders_items').insert({
                 order_id:          order.id,
@@ -510,6 +523,10 @@ async function placeOrder({ customer, cart, branch, items, paymentOption, custom
                 discount_type:     it.discount_type != null ? String(it.discount_type) : '0',
                 status:            '1',
                 is_free_item:      Number(it.is_free_item) || 0,
+                // BOGO snapshot (legacy parity) — read back by the cashback
+                // engine to exclude the free units from the earn base.
+                bogo_buy_qty:      bogo ? Number(bogo.buyQty) || 0 : 0,
+                bogo_get_qty:      bogo ? Number(bogo.getQty) || 0 : 0,
                 // Carry the Surprise Box flag through to the order. This is
                 // load-bearing, not decoration: remaining slots are counted as
                 // branch.qty MINUS orders_items where is_surprise_item = 1

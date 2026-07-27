@@ -582,6 +582,33 @@
             ev.preventDefault();
             var action = trig.getAttribute('data-action');
             var name = action.replace('ckt-open-', '');
+            // No saved addresses → skip the (empty) picker popup and ask for
+            // the full address straight away, legacy-webordering style: the
+            // location modal's address FORM opens with its "Save this
+            // address" tick (openForm reveals it on /cart for new entries).
+            function openAddressFlow() {
+                if (!document.querySelector('[data-cart-address-list] .ckt-list__row')
+                    && window.EatNDealUi && window.EatNDealUi.locationModal
+                    && typeof window.EatNDealUi.locationModal.openForm === 'function') {
+                    window.EatNDealUi.locationModal.openForm(null);
+                    return true;
+                }
+                return false;
+            }
+            if (name === 'address' && openAddressFlow()) { return; }
+            // Continue-to-payment on a DELIVERY cart with NO address — say WHY
+            // it can't proceed and take the customer straight into the address
+            // flow instead of a silent dead click.
+            if (name === 'confirm') {
+                var addrRow = document.querySelector('[data-cart-addresses]');
+                if (addrRow && addrRow.getAttribute('data-has-address') === '0') {
+                    if (window.EatNDealUi && window.EatNDealUi.showToast) {
+                        window.EatNDealUi.showToast('error', 'Please add a delivery address first.');
+                    }
+                    if (!openAddressFlow()) { open('address'); }
+                    return;
+                }
+            }
             // Card tile on a £0 bill — don't even open the payment sheet;
             // there is nothing to charge, so say so and keep them on Cash.
             if (name === 'payment' && zeroTotal()) {

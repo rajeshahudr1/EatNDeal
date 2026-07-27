@@ -48,6 +48,9 @@ async function bannersForCompany(companyId) {
     const rows = await db('store_offer_banner_table')
         .where('company_id', companyId)
         .andWhere('publish_online', 1)
+        // status 1 only — POS delete soft-deletes (status=2) WITHOUT touching
+        // publish_online, so deleted banners kept showing on the marketplace.
+        .andWhere('status', 1)
         .andWhere((qb) => withinWindow(qb, 'start_date', 'end_date'))
         .orderBy('id', 'desc')
         .select('id', 'offer_title', 'offer_details', 'offer_terms', 'category_id');
@@ -137,6 +140,7 @@ async function offersFeed(limit) {
     const rows = await db('store_offer_banner_table as o')
         .innerJoin('company as c', 'c.id', 'o.company_id')
         .where('o.publish_online', 1)
+        .andWhere('o.status', 1)          // hide soft-deleted (status=2) banners
         .andWhere('c.is_marketplace', 1)
         .andWhere((qb) => withinWindow(qb, 'o.start_date', 'o.end_date'))
         .orderBy('o.id', 'desc')
@@ -194,7 +198,7 @@ async function groupedOffers() {
 
     // Batched active offers.
     const banners = await db('store_offer_banner_table')
-        .whereIn('company_id', companyIds).andWhere('publish_online', 1)
+        .whereIn('company_id', companyIds).andWhere('publish_online', 1).andWhere('status', 1)
         .andWhere((qb) => withinWindow(qb, 'start_date', 'end_date'))
         .orderBy('id', 'desc')
         .select('company_id', 'offer_title', 'offer_details', 'offer_terms');
@@ -284,7 +288,7 @@ async function offerSummaries(pairs) {
     pairs.forEach((p) => { br2co[String(p.branchId)] = String(p.companyId); });
 
     const [banners, coupons, discounts] = await Promise.all([
-        db('store_offer_banner_table').whereIn('company_id', companyIds).andWhere('publish_online', 1)
+        db('store_offer_banner_table').whereIn('company_id', companyIds).andWhere('publish_online', 1).andWhere('status', 1)
             .andWhere((qb) => withinWindow(qb, 'start_date', 'end_date')).select('company_id'),
         db('coupons').whereIn('branch_id', branchIds).andWhere('is_active', 1).whereIn('platform', [1, 2])
             .andWhere((qb) => { qb.whereNull('expiry_date').orWhere('expiry_date', '>=', db.raw('CURRENT_DATE')); })
@@ -380,7 +384,7 @@ async function offersPageData() {
         db('discounts').whereIn('company_id', companyIds).andWhere('status', 1)
             .andWhere((qb) => withinWindow(qb, 'start_date', 'end_date'))
             .orderBy('id', 'desc').select('company_id', 'discount_type', 'discount_value', 'min_order_value', 'product_id', 'end_date'),
-        db('store_offer_banner_table').whereIn('company_id', companyIds).andWhere('publish_online', 1)
+        db('store_offer_banner_table').whereIn('company_id', companyIds).andWhere('publish_online', 1).andWhere('status', 1)
             .andWhere((qb) => withinWindow(qb, 'start_date', 'end_date'))
             .orderBy('id', 'desc').select('company_id', 'offer_title', 'offer_details', 'end_date'),
     ]);

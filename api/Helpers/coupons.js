@@ -146,12 +146,13 @@ async function validate(rawCode, cart) {
         return { ok: false, code: 'coupon.platform', error: 'This coupon isn\'t available for online orders.' };
     }
 
-    // Company / branch scope — when set, must match the cart's restaurant.
+    // Company scope — must match the cart's restaurant. NO branch gate —
+    // legacy Coupons::validate looks a coupon up by code + company_id only
+    // (the branch_id in its context is never used), so coupons are
+    // COMPANY-WIDE: a code created on one branch redeems at any branch of
+    // the same company. Mirrored exactly (user decision, 27 Jul 2026).
     if (Number(coupon.company_id) > 0 && Number(coupon.company_id) !== Number(cart.company_id)) {
         return { ok: false, code: 'coupon.scope', error: 'This coupon isn\'t valid for this restaurant.' };
-    }
-    if (Number(coupon.branch_id) > 0 && Number(coupon.branch_id) !== Number(cart.branch_id)) {
-        return { ok: false, code: 'coupon.scope', error: 'This coupon isn\'t valid for this branch.' };
     }
 
     // Order type — schema: 1 = All, 2 = Delivery, 3 = Pickup.
@@ -178,6 +179,21 @@ async function validate(rawCode, cart) {
             error: 'Add at least £' + minOrder.toFixed(2) + ' to use this coupon (current total £' + subTotal.toFixed(2) + ').',
         };
     }
+
+    // Day-of-week — EXACT legacy (Coupons::validate coupon_days block): only
+    // enforced when the coupon HAS coupon_days rows; then today's ISO day
+    // (1=Mon..7=Sun, PHP date('N')) must be among them. JS getDay() is
+    // 0=Sun..6=Sat, so Sunday maps to 7.
+    try {
+        const dayRows = await db('coupon_days').where({ coupon_id: coupon.id }).select('day_of_week');
+        if (dayRows.length) {
+            const jsDow = new Date().getDay();
+            const dow = jsDow === 0 ? 7 : jsDow;
+            if (!dayRows.some((r) => Number(r.day_of_week) === dow)) {
+                return { ok: false, code: 'coupon.day', error: 'This coupon is not valid today.' };
+            }
+        }
+    } catch (e) { /* coupon_days missing — treat as unrestricted, like a rule with no rows */ }
 
     // Usage limits — EXACT legacy webordering (Coupons::validate). Counted
     // from the `orders` table (no separate ledger). One-time = used by anyone

@@ -68,7 +68,9 @@
     border-radius: 50%;
     background-color: var(--color-bg-alt);
     border: 1px solid var(--color-border);
-    color: var(--color-primary);
+    /* Black icon when no filter is applied; filter-sheet.js flips
+     * .has-filters on (same cue as the count badge) → brand red. */
+    color: var(--color-text);
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -100,6 +102,7 @@
     box-sizing: content-box;
     pointer-events: none;
 }
+.mobile-search__filter.has-filters { color: var(--color-primary); }
 .mobile-search__filter:hover,
 .mobile-search__filter:focus-visible {
     background-color: #fff;

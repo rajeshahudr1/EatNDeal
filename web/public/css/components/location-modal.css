@@ -279,3 +279,24 @@
 .loc-form__save { background: var(--color-primary); color: #fff; border: 0; border-radius: 12px; padding: 12px 26px; font-weight: 800; cursor: pointer; }
 .loc-form__save:hover { background: var(--color-primary-dark); }
 .loc-form__save[disabled] { background: #e5e7eb; color: var(--color-text-soft); cursor: not-allowed; }
+
+/* ── "Save this address" tick (cart one-time-address flow) ─────────── */
+.loc-field--save {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--color-text);
+    user-select: none;
+}
+.loc-field--save input {
+    width: 18px;
+    height: 18px;
+    accent-color: var(--color-primary);
+    cursor: pointer;
+}
+
+/* Required-field marker (Building type etc.) */
+.loc-field__req { color: var(--color-primary); font-weight: 800; }

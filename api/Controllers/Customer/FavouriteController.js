@@ -76,7 +76,7 @@ async function list(req, res) {
                 'b.start_time', 'b.end_time', 'b.open_as_usual', 'b.closed_until',
                 // Close-flag + per-service columns → real open/closed (storeHours).
                 'b.closed', 'b.closed_reopen_date', 'b.clossed_repoen_time', 'b.clossed_text',
-                'b.closed_for', 'b.closed_for_time',
+                'b.closed_for', 'b.closed_for_list', 'b.closed_for_time',
                 'b.show_delivery_option', 'b.show_delivery_option_tab', 'b.delivery_closed_util_date',
                 'b.show_pickup_option', 'b.show_pickup_option_tab', 'b.pickup_closed_util_date',
                 'b.delivery_waiting_time',

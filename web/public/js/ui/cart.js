@@ -359,10 +359,12 @@
     function restaurantClosedMessage() {
         var root = document.querySelector('[data-restaurant][data-rd-open]');
         if (!root) { return null; }
-        // Closed = no adds, full stop — the pre-order exception was removed
-        // (product decision: a closed restaurant takes no orders at all).
-        var isOpen = root.getAttribute('data-rd-open') === '1';
-        if (isOpen) { return null; }
+        // Closed blocks adds UNLESS the restaurant takes pre-orders — then
+        // the customer builds a cart and schedules it at checkout (final
+        // decision 27 Jul 2026; matches the api's /cart/add gate).
+        var isOpen   = root.getAttribute('data-rd-open') === '1';
+        var preOrder = root.getAttribute('data-rd-preorder') === '1';
+        if (isOpen || preOrder) { return null; }
         return 'This restaurant is currently closed.';
     }
 
@@ -661,10 +663,19 @@
      *        "card:<pmId>" here would silently undo the reset.
      * Type:  WRITE (DOM attribute + sessionStorage, via checkout-popups.js).
      */
+    // One-time (unsaved) delivery address lives in sessionStorage until the
+    // order is placed or the cart is cleared — drop it at both lifecycle
+    // points so it can't resurface on the next order (location-modal.js owns
+    // the key; writing/reading happens there).
+    function clearTempAddress() {
+        try { sessionStorage.removeItem('eatndeal_temp_address'); } catch (e) { /* private mode */ }
+    }
+
     function resetPayModeToCash() {
         var row = getPayRoot();
         if (row) { row.setAttribute('data-ckt-pay-mode', 'cash'); }
         clearPersistedPayMode();   // drops both the mode key and any temp-card label
+        clearTempAddress();        // cart cleared → the one-time address dies with it
     }
 
     function onCartClear(ev, btn) {
@@ -1724,6 +1735,7 @@
                 }
                 bumpCartBadge(null);
                 clearPersistedPayMode();   // order placed → next cart starts on the default
+                clearTempAddress();        // one-time address was for THIS order only
                 var oid = (env.data && env.data.order && env.data.order.id) || '';
                 window.location.href = '/order/' + encodeURIComponent(oid) + '/confirm';
             });
@@ -1770,6 +1782,7 @@
                 }
                 bumpCartBadge(null);
                 clearPersistedPayMode();   // order placed → next cart starts on the default
+                clearTempAddress();        // one-time address was for THIS order only
                 var oid = (env.data && env.data.order && env.data.order.id) || '';
                 navigating = true;
                 window.location.href = '/order/' + encodeURIComponent(oid) + '/confirm';

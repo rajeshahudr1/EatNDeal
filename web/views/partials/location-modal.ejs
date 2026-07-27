@@ -177,7 +177,7 @@
 
                 <%# Building type — custom dropdown (consistent across browsers). %>
                 <div class="loc-field">
-                    <span class="loc-field__label">Building type</span>
+                    <span class="loc-field__label">Building type <span class="loc-field__req" aria-hidden="true">*</span></span>
                     <div class="loc-select" data-loc-select="type" data-placeholder="Select">
                         <button type="button" class="loc-select__btn" data-loc-select-btn aria-haspopup="listbox" aria-expanded="false">
                             <span class="loc-select__value is-placeholder" data-loc-select-value>Select</span>
@@ -237,6 +237,16 @@
                     <label class="loc-field__label" for="af-label">Address label</label>
                     <input id="af-label" class="loc-field__input" name="label" type="text" placeholder="Add a label (e.g. Home, Work)" maxlength="60">
                 </div>
+
+                <%# "Save this address" tick — CART checkout flow only (legacy
+                    webordering parity): unticked = the order delivers to this
+                    address but nothing is written to the address book.
+                    Hidden by default; location-modal.js reveals it when the
+                    form is opened for a NEW address from the cart page. %>
+                <label class="loc-field loc-field--save" data-af-save-wrap hidden>
+                    <input type="checkbox" name="save_address" data-af-save checked>
+                    <span>Save this address to my account</span>
+                </label>
             </form>
 
             <footer class="loc-form__foot">

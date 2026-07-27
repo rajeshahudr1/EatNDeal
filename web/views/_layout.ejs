@@ -65,6 +65,12 @@
 
       ASSET_VERSION query busts the browser cache on every server restart.
     -%>
+    <%# Pre-paint boot script (synchronous ON PURPOSE — no defer): stamps
+        the saved filter-sidebar collapsed state on <html> before the
+        body renders, so a collapsed sidebar never flash-opens on
+        reload / delivery↔pickup switches. %>
+    <script src="/js/boot/filters-collapsed.js?v=<%= ASSET_VERSION %>"></script>
+
     <link rel="stylesheet" href="/css/base.css?v=<%= ASSET_VERSION %>">
 
     <link rel="stylesheet" href="/css/components/header.css?v=<%= ASSET_VERSION %>">

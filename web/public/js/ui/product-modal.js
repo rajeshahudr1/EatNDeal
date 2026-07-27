@@ -596,7 +596,11 @@
      */
     function pageClosed() {
         var root = document.querySelector('[data-restaurant][data-rd-open]');
-        return !!root && root.getAttribute('data-rd-open') !== '1';
+        if (!root) { return false; }
+        // Pre-order restaurants keep Add live while closed — the cart builds
+        // now and the order is scheduled at checkout (matches /cart/add).
+        if (root.getAttribute('data-rd-preorder') === '1') { return false; }
+        return root.getAttribute('data-rd-open') !== '1';
     }
 
     function updateTotals() {
@@ -605,14 +609,16 @@
         if (qtyEl)      { qtyEl.textContent = String(qty); }
         if (totalEl)    { totalEl.textContent = money(total); }
         if (addLabelEl) {
+            // Closed → the label STAYS "Add N to order" (user request), the
+            // button is just disabled; a tap still can't fire (guard in
+            // addToCart + the server gate).
+            addLabelEl.textContent = 'Add ' + qty + ' to order';
             var addBtn = addLabelEl.closest ? addLabelEl.closest('[data-action="pm-add"]') : null;
-            if (pageClosed()) {
-                addLabelEl.textContent = 'Currently closed';
-                if (totalEl) { totalEl.textContent = ''; }
-                if (addBtn)  { addBtn.disabled = true; addBtn.classList.add('is-disabled'); }
-            } else {
-                addLabelEl.textContent = 'Add ' + qty + ' to order';
-                if (addBtn)  { addBtn.disabled = false; addBtn.classList.remove('is-disabled'); }
+            if (addBtn) {
+                var closed = pageClosed();
+                addBtn.disabled = closed;
+                addBtn.classList.toggle('is-disabled', closed);
+                addBtn.title = closed ? 'Currently closed' : '';
             }
         }
     }

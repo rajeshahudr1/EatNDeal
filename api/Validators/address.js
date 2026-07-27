@@ -70,8 +70,14 @@ const addressSaveSchema = Joi.object({
     post_town: Joi.string().trim().max(120).allow('', null),
     latitude:  latRule,
     longitude: lngRule,
-    address_type: Joi.string().trim().max(40).allow('', null)
-        .messages({ 'string.max': 'Building type is too long.' }),
+    // Building type is MANDATORY (user decision, 27 Jul 2026) — the driver
+    // needs to know what they're delivering to.
+    address_type: Joi.string().trim().max(40).required()
+        .messages({
+            'string.max':   'Building type is too long.',
+            'string.empty': 'Please select a building type.',
+            'any.required': 'Please select a building type.',
+        }),
     additional_details: Joi.string().trim().max(255).allow('', null)
         .messages({ 'string.max': 'Additional details are too long.' }),
     drop_off_option: Joi.string().trim().max(60).allow('', null),

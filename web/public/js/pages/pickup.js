@@ -56,6 +56,19 @@
     function isDesktopFilters() {
         return window.matchMedia && window.matchMedia('(min-width: 1024px)').matches;
     }
+    // Same localStorage key home.js uses — the collapsed choice is ONE
+    // preference shared across delivery and pickup. Without this the
+    // sidebar auto-reopened every time the user switched to pickup,
+    // and hiding it here was forgotten on the next page.
+    var FILTERS_KEY = 'eatndeal_filters_collapsed';
+    // The collapsed class lives on <html>, stamped pre-paint by
+    // /js/boot/filters-collapsed.js — no flash-open on page switches.
+    // Re-sync here in case storage changed since the head script ran.
+    (function restoreFilterCollapsed() {
+        var collapsed = false;
+        try { collapsed = window.localStorage.getItem(FILTERS_KEY) === '1'; } catch (e) { /* ignore */ }
+        document.documentElement.classList.toggle('is-filters-collapsed', collapsed);
+    })();
     document.addEventListener('click', function (ev) {
         var t = ev.target;
         if (!t || !t.closest) { return; }
@@ -71,8 +84,11 @@
                 document.body.classList.remove('is-mobile-filters-open');
                 return;
             }
-            var shell = document.querySelector('.home-shell');
-            if (shell) { shell.classList.toggle('is-filters-collapsed'); }
+            var docEl = document.documentElement;
+            var collapsed = !docEl.classList.contains('is-filters-collapsed');
+            docEl.classList.toggle('is-filters-collapsed', collapsed);
+            // Persist so delivery/home paint the same state on arrival.
+            try { window.localStorage.setItem(FILTERS_KEY, collapsed ? '1' : '0'); } catch (e) { /* ignore */ }
             return;
         }
         if (!isDesktopFilters() && t.closest('[data-action="filters-apply"]')) {

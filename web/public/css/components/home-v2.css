@@ -143,43 +143,70 @@
     align-items: center; gap: var(--space-2);
     background: #fff; border: 1px solid var(--color-border);
     border-radius: var(--radius-pill); padding: 0.45rem 0.9rem;
-    font-weight: 700; font-size: 0.85rem; color: var(--color-primary);
+    /* Black when no filter is applied; goes red via .has-filters, which
+     * filter-sheet.js toggles from the URL's applied-filter count. */
+    font-weight: 700; font-size: 0.85rem; color: var(--color-text);
     cursor: pointer;
 }
+.filters-show.has-filters { color: var(--color-primary); }
 .filters-show:hover { border-color: var(--color-primary); background: var(--color-bg-alt); }
+/* Applied-filter count badge — small red pill pinned to the tile's
+ * top-right corner. Filled/toggled by filter-sheet.js from the URL
+ * params; [hidden] wins over the grid display so it truly disappears
+ * when nothing is applied. Anchored on the button itself. */
+.filters-show { position: relative; }
+.filters-show__badge {
+    position: absolute; top: -6px; right: -6px;
+    min-width: 18px; height: 18px; padding: 0 5px;
+    border-radius: var(--radius-pill);
+    background: var(--color-primary); color: #fff;
+    font-size: 0.68rem; font-weight: 700; font-style: normal;
+    display: grid; place-items: center;
+}
+.filters-show__badge[hidden] { display: none; }
+@media (min-width: 1024px) {
+    /* Collapsed tile — sit the badge over the icon disc's corner. */
+    html.is-filters-collapsed .home-shell .filters-show__badge { top: -4px; right: 0; }
+}
 @media (min-width: 1024px) {
     /* The reopen icon floats ABSOLUTELY over the hero's top-left
      * corner (next to the FAST DELIVERY badge) instead of taking its
      * own row — so collapsing the sidebar reclaims the top space.
      * Out of flow ⇒ the hero sits flush at the content top. */
-    .home-shell.is-filters-collapsed .home-shell__content { position: relative; }
-    .home-shell.is-filters-collapsed .filters-show {
+    html.is-filters-collapsed .home-shell .home-shell__content { position: relative; }
+    html.is-filters-collapsed .home-shell .filters-show {
         position: absolute;
-        top: 0;
+        /* Match the cuisine rail's padding-top so the Filters disc and
+         * the category discs sit on the same line (the rail pads its
+         * top to give the hover-lift/ring room — see .cuisine-rail). */
+        top: var(--space-2);
         left: var(--space-1);
         z-index: 30;
         flex-direction: column;              /* icon on top, label below */
         gap: var(--space-1);
         width: 72px; height: auto; padding: 0;
         border: 0; background: transparent; box-shadow: none;
-        color: var(--color-primary);
+        /* Black icon+label by default; red only when .has-filters says
+         * filters are applied (same cue as the count badge). */
+        color: var(--color-text);
         margin: 0;
     }
+    html.is-filters-collapsed .home-shell .filters-show.has-filters { color: var(--color-primary); }
     /* The SVG becomes the disc (matches the cuisine tiles) and the "Filters"
        caption sits beneath it — same shape/label rhythm as Pizza / Sushi. */
-    .home-shell.is-filters-collapsed .filters-show svg {
+    html.is-filters-collapsed .home-shell .filters-show svg {
         width: 68px; height: 68px; padding: 22px;
         box-sizing: border-box;
         background: var(--color-bg-alt);
         border-radius: var(--radius-md);
         transition: transform 120ms ease, box-shadow 120ms ease;
     }
-    .home-shell.is-filters-collapsed .filters-show:hover { background: transparent; }
-    .home-shell.is-filters-collapsed .filters-show:hover svg {
+    html.is-filters-collapsed .home-shell .filters-show:hover { background: transparent; }
+    html.is-filters-collapsed .home-shell .filters-show:hover svg {
         transform: translateY(-3px); box-shadow: var(--shadow-2);
     }
     /* Show the label (was hidden in the old icon-only pill). */
-    .home-shell.is-filters-collapsed .filters-show span {
+    html.is-filters-collapsed .home-shell .filters-show span {
         display: block; font-weight: 700; font-size: 0.82rem;
     }
     /* The floating Filters icon sits over the top-left of the content.
@@ -189,7 +216,7 @@
      * it as you scroll (the first category gets clipped behind the icon).
      * A margin moves the viewport's left edge past the icon, so overflow
      * clips there and categories always start cleanly after the icon. */
-    .home-shell.is-filters-collapsed .rail-wrap { margin-left: 84px; }
+    html.is-filters-collapsed .home-shell .rail-wrap { margin-left: 84px; }
 
     /* PICKUP PAGE — the content does NOT start with the cuisine rail here: the
      * "Pickup nearby" heading comes first, so the tile (pinned to top:0 of the
@@ -200,10 +227,20 @@
      * pickup view sets (home-shell--pickup) rather than :has() — the button is
      * a PRECEDING sibling of .pickup, so no sibling combinator can reach it,
      * and :has() isn't safe to rely on here. */
-    .home-shell--pickup.is-filters-collapsed .filters-show { top: 62px; }
+    /* Derived from the pickup list's actual stack above the rail discs:
+     * list padding-top (space-5) + the "Pickup nearby" title line
+     * (1.6rem × body line-height 1.5) + head margin-bottom (space-4)
+     * + the rail's own padding-top (space-2) ≈ 82px. Keeps the Filters
+     * disc level with the category discs instead of a hand-tuned px. */
+    html.is-filters-collapsed .home-shell--pickup .filters-show {
+        top: calc(var(--space-5) + (1.6rem * 1.5) + var(--space-4) + var(--space-2));
+        /* Line the tile up with the list's left padding (space-6) so it
+         * shares the "Pickup nearby" title's left edge. */
+        left: var(--space-6);
+    }
     /* The rail lives inside .pickup__list on this page, so it needs the same
      * clear-the-icon margin the home rail gets above. */
-    .home-shell--pickup.is-filters-collapsed .rail-wrap { margin-left: 84px; }
+    html.is-filters-collapsed .home-shell--pickup .rail-wrap { margin-left: 84px; }
 }
 
 /* Sidebar hide button (chevron in the .fsb header). */
@@ -218,9 +255,9 @@
  * compact Filters pill appears. Toggled by /js/pages/home.js adding
  * .is-filters-collapsed on .home-shell. */
 @media (min-width: 1024px) {
-    .home-shell.is-filters-collapsed { grid-template-columns: 1fr; }
-    .home-shell.is-filters-collapsed .fsb { display: none; }
-    .home-shell.is-filters-collapsed .filters-show { display: inline-flex; }
+    html.is-filters-collapsed .home-shell { grid-template-columns: 1fr; }
+    html.is-filters-collapsed .home-shell .fsb { display: none; }
+    html.is-filters-collapsed .home-shell .filters-show { display: inline-flex; }
 }
 /* On mobile the sidebar is already hidden (bottom sheet is used), so
  * never show the reopen pill there. */

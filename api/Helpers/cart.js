@@ -285,8 +285,10 @@ async function loadLineItems(cartId) {
     // lost pennies: buy-2-get-4 at qty 6 came to £4.02, not £4.00.
     let payableOf = null;
     try {
-        const cartRow = await db('cart').where({ id: cartId }).first('company_id');
-        if (cartRow && cartRow.company_id) {
+        const cartRow = await db('cart').where({ id: cartId }).first('company_id', 'user_id');
+        // Legacy gePaybleQuantity requires a LOGGED-IN customer — guests pay
+        // full price, no BOGO (user decision 27 Jul 2026: mirror legacy).
+        if (cartRow && cartRow.company_id && Number(cartRow.user_id) > 0) {
             const Loyalty = require('./loyalty');
             const map = await Loyalty.bogoMapFor(cartRow.company_id);
             if (map && map.size) {
@@ -510,37 +512,34 @@ async function recomputeTotals(cartId) {
             if (freeAbove > 0 && subTotal > freeAbove) { deliveryFees = 0; }
         } catch (e) { /* keep the fee on any lookup hiccup */ }
     }
-
-    // ── Discount resolution ─────────────────────────────────────────
-    // Ordered exactly like legacy Cart.php::updateCartTotals:
-    //   1. Evaluate the auto-discount catalogue (discounts table) against the
-    //      CURRENT cart — this is where a FREE ITEM (type 3) is granted and
-    //      where a percent/flat MONEY discount is computed. Legacy runs this on
-    //      EVERY recompute regardless of any coupon (it only skips it for a
-    //      manual STAFF discount, which marketplace carts don't have).
-    //   2. A coupon / voucher then OVERRIDES the money discount and clears the
-    //      auto-discount slot (discount_id = 0) — but it does NOT remove the
-    //      free gift. So a coupon and a free item coexist, matching legacy.
-    let discount      = 0;
-    let discountId    = Number(cart.discount_id) || 0;
-    let freeProductId = 0;   // the gift named by a matching type-3 discounts row
-
-    // Step 1 — auto-discount catalogue. Gated on `branch`: without it we can't
-    // evaluate the rules, and must not wipe an existing gift on a blind pass.
-    if (branch) {
-        const result = await AutoDiscount.findBest({ ...cart, sub_total: subTotal }, branch);
-        if (result) {
-            discountId    = result.discount.id;
-            discount      = result.amount;          // 0 for a free-item rule; may be overridden below
-            freeProductId = result.freeProductId || 0;
-        } else {
-            discountId = 0;
-            discount   = 0;
-        }
+    // Membership-tier free delivery (loyalty free_delivery_lifetime) — legacy
+    // re-applies this on every checkout action, so the recompute honours it
+    // too (resolveDeliveryFee already does at address time; this covers a
+    // customer who crosses the tier mid-session). Best-effort.
+    if (deliveryFees > 0 && Number(cart.serve_type) === 3 && Number(cart.user_id) > 0) {
+        try {
+            if (await require('./loyalty').getFreeDelivery(cart.company_id, cart.user_id)) {
+                deliveryFees = 0;
+            }
+        } catch (e) { /* keep the fee */ }
     }
 
-    // Step 2 — manual promo (coupon / voucher) overrides the MONEY discount.
-    const hasManualPromo = Number(cart.coupon_id) > 0 || Number(cart.voucher_id) > 0;
+    // ── Discount resolution ─────────────────────────────────────────
+    // Ordered exactly like legacy (webordering CartController + helper
+    // checkFreeDiscount):
+    //   1. A manual promo (coupon / voucher) SUPPRESSES the auto-discount
+    //      engine entirely — money discount AND the type-3 free gift. Legacy
+    //      checkFreeDiscount() deletes every is_free_item line first and then
+    //      bails out when coupon_id/voucher_id is set, so a coupon and a free
+    //      item can never coexist. (This used to keep the gift alongside a
+    //      coupon here — double give-away, fixed to legacy behaviour.)
+    //   2. Otherwise the auto-discount catalogue (discounts table) is
+    //      evaluated against the CURRENT cart — money discount or free gift.
+    let discount      = 0;
+    let discountId    = 0;
+    let freeProductId = 0;   // the gift named by a matching type-3 discounts row
+
+    let hasManualPromo = Number(cart.coupon_id) > 0 || Number(cart.voucher_id) > 0;
     if (hasManualPromo) {
         // RE-VALIDATE against the CURRENT basket, don't just carry the old
         // number forward. The amount was computed when the promo was applied;
@@ -574,8 +573,12 @@ async function recomputeTotals(cartId) {
             // It no longer qualifies (below min order, wrong fulfilment mode,
             // expired, used up). Drop it rather than silently discount £0 —
             // a code shown as applied that takes nothing off is worse than no
-            // code at all.
+            // code at all. The auto-discount step below then runs again this
+            // same pass (hasManualPromo flips), restoring any catalogue
+            // discount / free gift immediately — like legacy's failed-coupon
+            // path re-running checkFreeDiscount.
             discount = 0;
+            hasManualPromo = false;
             await db('cart').where({ id: cartId }).update({
                 coupon_id: 0, voucher_id: 0, promocode: null, free_delivery: 0,
             });
@@ -584,14 +587,27 @@ async function recomputeTotals(cartId) {
             // old behaviour rather than removing something on a hiccup.
             discount = Math.min(Number(cart.discount) || 0, subTotal);
         }
-        discountId = 0;  // legacy coupon block clears the auto-discount slot — but NOT the free gift
+        discountId = 0;  // legacy coupon block clears the auto-discount slot
     }
 
-    // Step 3 — sync the FREE ITEM from the Step-1 verdict, ALWAYS (coupon or
-    // not). Legacy deletes every free line then re-adds the winning gift on
-    // each recompute, so the gift appears/disappears as the basket crosses the
-    // rule's minimum, and survives alongside a coupon. Gated on `branch` for
-    // the same reason as Step 1 (no verdict without one → don't wipe blindly).
+    // Step 2 — auto-discount catalogue, ONLY when no manual promo holds the
+    // cart (legacy checkFreeDiscount's coupon_id/voucher_id guard). Gated on
+    // `branch`: without it we can't evaluate the rules, and must not wipe an
+    // existing gift on a blind pass.
+    if (!hasManualPromo && branch) {
+        const result = await AutoDiscount.findBest({ ...cart, sub_total: subTotal }, branch);
+        if (result) {
+            discountId    = result.discount.id;
+            discount      = result.amount;          // 0 for a free-item rule
+            freeProductId = result.freeProductId || 0;
+        }
+    }
+
+    // Step 3 — sync the FREE ITEM. With a manual promo active freeProductId
+    // stays 0, so the sync REMOVES any gift (legacy: checkFreeDiscount deletes
+    // free lines before its coupon guard bails). Without a promo, the gift
+    // appears/disappears as the basket crosses the rule's minimum. Gated on
+    // `branch` for the same reason as Step 2 (no verdict → don't wipe blindly).
     if (branch) {
         await syncFreeItem(cartId, freeProductId, cart);
         // The gift line may have just been added or removed, and total_qty
@@ -682,14 +698,18 @@ async function repriceCart(cartId) {
 
     const prods = await db('products')
         .whereIn('id', ids)
-        .select('id', 'name', 'marketplace_price', 'online_platform_price', 'price_after_tax');
+        .select('id', 'name', 'marketplace_price', 'online_platform_price', 'price_after_tax',
+                'discount_type', 'discount_value');
     const byId = new Map(prods.map((p) => [String(p.id), p]));
 
     const changed = [];
     for (const it of items) {
         const p = byId.get(String(it.product_id));
         if (!p) { continue; }                              // missing product — cartValidate handles removal
-        const current = round2(M.pickPrice(p));
+        // Same unit as add-to-cart / reorder: base price WITH the product's
+        // own discount applied. Repricing on pickPrice alone silently put a
+        // discounted product back to full price on every cart refresh.
+        const current = round2(M.applyProductDiscount(M.pickPrice(p), p));
         const stored  = round2(it.product_net_price);
         // Only when BOTH sides have a real price and they truly differ — the
         // same condition the place-order drift check uses, so re-pricing here
@@ -1059,7 +1079,10 @@ async function setAddress(cartId, address, branch) {
     if (!cartId || !address) { return { fee: null, zone: null, deliverable: false }; }
 
     const postcode  = String(address.post_code || '').trim();
-    const lineParts = [address.address, address.line1, address.line2, address.post_town, postcode]
+    // additional_details ("Flat 3B", door codes…) is part of the address the
+    // driver needs — fold it into the delivery line for saved AND one-time
+    // addresses alike, so the full address travels onto the order/EPOS.
+    const lineParts = [address.address, address.additional_details, address.line1, address.line2, address.post_town, postcode]
         .map((s) => String(s || '').trim()).filter(Boolean);
 
     const patch = {
@@ -1135,26 +1158,54 @@ async function ensureDefaultDeliveryAddress(cartId, customerId, branch, browse) 
     // "delivers here?" check must follow it — not a stale DEFAULT saved address.
     const bpc = browse ? String(browse.postcode || browse.post_code || '').trim() : '';
     if (bpc) {
-        if (!cur) { await applyBrowse(); return; }            // empty → take the header pick
-        if (norm(cur) === norm(bpc)) { return; }              // already the header pick → nothing to do
+        // GUESTS keep the original header-wins behaviour — they have no
+        // address book, and checkout requires sign-in anyway.
+        if (!customerId) {
+            if (!cur) { await applyBrowse(); return; }
+            if (norm(cur) === norm(bpc)) { return; }
+            await applyBrowse();
+            return;
+        }
 
-        // The cart carries a DIFFERENT postcode. KEEP it only when it's an
-        // address the customer DELIBERATELY picked at checkout — i.e. one of
-        // their SAVED addresses that isn't merely the auto-attached default.
-        //
-        // Anything else is a LEFTOVER from an earlier header location, and must
-        // follow the location shown at the top of the site. Without this, a
-        // customer who changes their location still gets "doesn't deliver to
-        // <old postcode>" forever, because the stale value never matched their
-        // default and so was never replaced.
-        if (!customerId) { await applyBrowse(); return; }     // guest → no address book to protect
+        // SIGNED-IN (user decision 27 Jul 2026): the cart's delivery address
+        // is NEVER seeded from a raw header/browse location. It only
+        // auto-fills from the ADDRESS BOOK:
+        //   • header pick matches a saved address → use it
+        //   • else the saved DEFAULT address     → use that
+        //   • no saved address at all            → stay EMPTY — the customer
+        //     adds one explicitly ("Add address" → save or one-time).
         const saved = await db('customer_address')
             .where({ customer_id: customerId, status: 1 })
             .select('post_code', 'is_default');
+        const headerSaved = saved.find((a) => norm(a.post_code) === norm(bpc));
+
+        if (!cur) {
+            if (headerSaved) { await applyBrowse(); return; }
+            const defRow = await db('customer_address')
+                .where({ customer_id: customerId, status: 1, is_default: 1 })
+                .first();
+            if (defRow) { await setAddress(cartId, defRow, branch); }
+            return;                                        // nothing saved → empty
+        }
+        if (norm(cur) === norm(bpc)) { return; }           // already the header pick
+
+        // The cart carries a DIFFERENT postcode. KEEP it when it's an address
+        // the customer DELIBERATELY picked at checkout — a saved non-default
+        // pick, or their one-time manual address (which the web layer mirrors
+        // into the header, so it normally hits the equality branch above).
         const hit = saved.find((a) => norm(a.post_code) === norm(cur));
-        // non-default saved address ⇒ an explicit checkout pick ⇒ leave it alone
         const deliberate = !!hit && Number(hit.is_default) !== 1;
-        if (!deliberate) { await applyBrowse(); }
+        if (deliberate) { return; }
+        if (headerSaved) { await applyBrowse(); return; }
+        // Header is a RAW location (not in the address book) and the cart's
+        // address is a leftover → clear back to empty rather than seeding an
+        // address the customer never chose.
+        await db('cart').where({ id: cartId }).update({
+            delivery_address: null, delivery_postcode: null,
+            delivery_latitude: null, delivery_longitude: null,
+            delivery_label: '', delivery_building_type: null,
+            delivery_fees: 0,
+        });
         return;
     }
 
@@ -1340,12 +1391,11 @@ async function setCoupon(cartId, coupon, discount, freeDelivery) {
         free_delivery: freeDelivery ? 1 : 0,
     };
     if (freeDelivery) { patch.delivery_fees = 0; }
-    // ONE discount per order — cashback is the third member of that set, so a
-    // coupon drops it exactly as it drops a voucher. Legacy blocks the pairing
-    // at the checkout screen (checkout.php:2580) but can't clear it, because
-    // there cashback lives on the POST, not the cart; ours does, so it must be
-    // released here or the customer would silently pay both ways.
-    if (await hasUsedCashbackCol()) { patch.used_cashback = 0; }
+    // Cashback redeem is NOT cleared — legacy parity (user decision, 27 Jul
+    // 2026): the legacy order save subtracts used_cashback regardless of an
+    // applied coupon, so coupon + cashback stack there and stack here too.
+    // recomputeTotals still re-clamps used_cashback to the live balance and
+    // to the post-discount payable, so the pairing can't go negative.
     await db('cart').where({ id: cartId }).update(patch);
 }
 
@@ -1401,8 +1451,7 @@ async function setVoucher(cartId, voucher, discount) {
         discount:      round2(discount),
         free_delivery: 0,                 // vouchers don't waive delivery
     };
-    // …and so is cashback — one discount per order. See setCoupon above.
-    if (await hasUsedCashbackCol()) { patch.used_cashback = 0; }
+    // Cashback redeem stacks with a voucher too — legacy parity, see setCoupon.
     await db('cart').where({ id: cartId }).update(patch);
 }
 

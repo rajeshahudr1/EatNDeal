@@ -427,11 +427,14 @@
                                     <span class="rd-product__price<%= (typeof p.originalPrice === 'number' && p.originalPrice > 0) ? ' rd-product__price--off' : '' %>"><%= sym %><%= (typeof p.price === 'number' ? p.price : 0).toFixed(2) %></span>
                                     <% if (unavail) { %>
                                         <span class="rd-product__oos"><%= av.soldOut ? 'Sold out' : 'Unavailable' %></span>
-                                    <% } else if (!((typeof r.isOpen === 'undefined') || r.isOpen)) { %>
-                                        <%# Closed — ordering is impossible right now (pre-order included),
-                                            so the Add button is replaced by a Closed chip (matches the
-                                            server-side branch.closed gate on /cart/add). %>
-                                        <span class="rd-product__oos">Closed</span>
+                                    <% } else if (!((typeof r.isOpen === 'undefined') || r.isOpen) && !r.preOrder) { %>
+                                        <%# Closed AND no pre-order — Add stays visible but DISABLED.
+                                            A pre-order restaurant keeps the live Add (cart builds now,
+                                            schedule at checkout) — matches the /cart/add gate. %>
+                                        <button type="button" class="rd-product__add rd-product__add--disabled" disabled aria-disabled="true" title="Currently closed">
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                                            Add
+                                        </button>
                                     <% } else { %>
                                         <%# data-rest is REQUIRED to look the item up (/product/json 404s on
                                             an id alone) — the quick-add handler uses it to check whether the

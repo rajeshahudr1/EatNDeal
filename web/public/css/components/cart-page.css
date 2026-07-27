@@ -693,10 +693,10 @@
     border: 1px solid var(--color-border);
     border-radius: 10px;
     font-size: 0.95rem;
-    text-transform: uppercase;
+    /* No text-transform — the code shows exactly as typed (user request);
+       matching is case-insensitive server-side anyway (vouchers.js UPPER()). */
 }
 .ckt-voucher__input:focus-visible { outline: none; border-color: var(--color-primary); box-shadow: 0 0 0 3px rgba(229, 37, 42, 0.12); }
-.ckt-voucher__input::placeholder { text-transform: none; }
 .ckt-voucher__apply {
     flex: 0 0 auto;
     padding: 0.55rem 1.1rem;

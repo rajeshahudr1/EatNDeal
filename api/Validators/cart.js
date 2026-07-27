@@ -169,11 +169,33 @@ const cartSetModeSchema = Joi.object({
 // Attach a saved customer_address to the cart. Server verifies the row
 // belongs to this customer, then re-resolves the delivery zone for the
 // new postcode and updates the cart's delivery_fees.
+// Two shapes (legacy webordering parity):
+//   • address_id            — attach a SAVED customer_address row, OR
+//   • address + post_code   — a ONE-TIME manual address (customer chose not
+//     to save it; delivery uses it for THIS order only). Optional label /
+//     building type / instructions / lat-lng ride along.
 const cartSetAddressSchema = Joi.object({
     customer_id: customerIdRule,
-    address_id:  idRule.required().messages({
-        'any.required': 'Address is required.',
-    }),
+    address_id:  idRule,
+    address:     Joi.string().trim().max(500),
+    post_code:   Joi.string().trim().max(20)
+        .when('address', { is: Joi.exist(), then: Joi.required() })
+        .messages({ 'any.required': 'Postcode is required.' }),
+    label:                 Joi.string().trim().max(60).allow('', null),
+    additional_details:    Joi.string().trim().max(255).allow('', null),
+    // Building type mandatory on the manual (one-time) shape too — same rule
+    // as /address/save. Saved-address picks carry it on their row already.
+    address_type:          Joi.string().trim().max(30)
+        .when('address', { is: Joi.exist(), then: Joi.required() })
+        .messages({
+            'string.empty': 'Please select a building type.',
+            'any.required': 'Please select a building type.',
+        }),
+    delivery_instructions: Joi.string().trim().max(500).allow('', null),
+    latitude:  Joi.alternatives().try(Joi.number(), Joi.string().trim().max(30)).allow('', null),
+    longitude: Joi.alternatives().try(Joi.number(), Joi.string().trim().max(30)).allow('', null),
+}).or('address_id', 'address').messages({
+    'object.missing': 'Address is required.',
 });
 
 // ── POST /customer/cart/apply-coupon ───────────────────────────────

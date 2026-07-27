@@ -66,6 +66,60 @@ function nowParts() {
 function nowMinutes() { const t = nowParts(); return t.hour * 60 + t.minute; }
 function isoDow()     { return nowParts().dow; }           // 1=Mon..7=Sun (UK)
 function todayYmd()   { return nowParts().ymd; }           // YYYY-MM-DD (UK)
+
+// ── STORE-TZ wall-time parsing ────────────────────────────────────────
+// closed_for_time / closed_reopen_date are `timestamp without time zone`
+// columns holding the STORE's wall clock (legacy PHP runs with
+// timeZone=Europe/London). node-pg parses them as MACHINE-local Dates, so on
+// a non-UK dev box "16:09" became 16:09 IST — 5½ h early — and a live
+// closed_for window read as already expired. These helpers recover the raw
+// wall components and pin them to STORE_TZ, so the verdicts match legacy on
+// any server timezone.
+function wallParts(raw) {
+    if (raw == null) { return null; }
+    if (raw instanceof Date) {
+        if (!Number.isFinite(raw.getTime())) { return null; }
+        // pg parsed the stored wall values into LOCAL components — read them back.
+        return { y: raw.getFullYear(), mo: raw.getMonth() + 1, d: raw.getDate(),
+                 hh: raw.getHours(), mm: raw.getMinutes(), ss: raw.getSeconds() };
+    }
+    const m = String(raw).match(/(\d{4})-(\d{2})-(\d{2})[T ](\d{1,2}):(\d{2})(?::(\d{2}))?/);
+    if (m) { return { y: +m[1], mo: +m[2], d: +m[3], hh: +m[4], mm: +m[5], ss: +(m[6] || 0) }; }
+    const dm = String(raw).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (dm) { return { y: +dm[1], mo: +dm[2], d: +dm[3], hh: 0, mm: 0, ss: 0 }; }
+    return null;
+}
+// STORE_TZ's offset (wall − UTC, in ms) at a given instant.
+function tzOffsetMs(ms) {
+    const p = new Intl.DateTimeFormat('en-GB', {
+        timeZone: STORE_TZ, hour12: false, year: 'numeric', month: '2-digit',
+        day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit',
+    }).formatToParts(new Date(ms));
+    const v = (t) => Number((p.find((x) => x.type === t) || {}).value);
+    const wallUtc = Date.UTC(v('year'), v('month') - 1, v('day'), v('hour') % 24, v('minute'), v('second'));
+    return wallUtc - ms;
+}
+// STORE wall time → absolute ms (DST-safe: refine once across the edge).
+function storeWallToMs(raw) {
+    const p = wallParts(raw);
+    if (!p) { return null; }
+    const guess = Date.UTC(p.y, p.mo - 1, p.d, p.hh, p.mm, p.ss);
+    let ms = guess - tzOffsetMs(guess);
+    ms = guess - tzOffsetMs(ms);
+    return ms;
+}
+// Absolute ms → { ymd, minutes } as seen on the STORE clock.
+function storePartsAt(ms) {
+    const p = new Intl.DateTimeFormat('en-GB', {
+        timeZone: STORE_TZ, hour12: false, year: 'numeric', month: '2-digit',
+        day: '2-digit', hour: '2-digit', minute: '2-digit',
+    }).formatToParts(new Date(ms));
+    const v = (t) => (p.find((x) => x.type === t) || {}).value || '';
+    return {
+        ymd: `${v('year')}-${v('month')}-${v('day')}`,
+        minutes: (Number(v('hour')) % 24) * 60 + (Number(v('minute')) || 0),
+    };
+}
 function ymd(d) {
     const y = d.getFullYear(), m = String(d.getMonth() + 1).padStart(2, '0'), day = String(d.getDate()).padStart(2, '0');
     return `${y}-${m}-${day}`;
@@ -142,10 +196,17 @@ function dayWindowLabel(shifts) {
 // ── A blanket closure (branch flags + holiday) → verdict or null ─────
 function reopenTimestamp(datePart, timePart) {
     if (!datePart) { return null; }
-    const d = ymd(new Date(Date.parse(datePart)));
-    const t = (timePart && String(timePart).match(/(\d{1,2}):(\d{2})/)) ? String(timePart).slice(0, 5) : '00:00';
-    const ts = Date.parse(d + 'T' + t);
-    return Number.isFinite(ts) ? ts : null;
+    // Date + time are STORE wall values (see storeWallToMs above) — pin them
+    // to STORE_TZ instead of the machine clock.
+    const dp = wallParts(datePart);
+    if (!dp) { return null; }
+    const tm = timePart && String(timePart).match(/(\d{1,2}):(\d{2})/);
+    const hh = tm ? Number(tm[1]) : 0;
+    const mm = tm ? Number(tm[2]) : 0;
+    return storeWallToMs(
+        `${dp.y}-${String(dp.mo).padStart(2, '0')}-${String(dp.d).padStart(2, '0')} `
+        + `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:00`
+    );
 }
 function branchName(branch) { return (branch && (branch.name || branch.branch_name)) ? String(branch.name || branch.branch_name) : ''; }
 function defaultMsg(branch) {
@@ -195,8 +256,23 @@ function branchClosure(branch, holidayToday) {
     }
     // 3. Closed for a duration.
     if (Number(branch.closed_for) === 1 && branch.closed_for_time) {
-        const until = Date.parse(branch.closed_for_time);
-        if (Number.isFinite(until) && until > now) {
+        // Legacy Branch::getWebsiteStatus has TWO sub-cases here:
+        //   • closed_for_list = 'today' → closed for the WHOLE calendar day
+        //     the timestamp falls on (POS "Closed Today"), regardless of the
+        //     clock time stored. Was unhandled — a "Closed Today" branch
+        //     reopened here as soon as the stored set-time passed.
+        //   • otherwise ('1hour'/'4hours'/…) → closed until the timestamp.
+        // closed_for_time is STORE wall time — pin to STORE_TZ (storeWallToMs)
+        // rather than the machine clock, or a UK "4 hours" close read as
+        // already expired on a non-UK dev box.
+        const until = storeWallToMs(branch.closed_for_time);
+        if (String(branch.closed_for_list || '').trim().toLowerCase() === 'today') {
+            const wp = wallParts(branch.closed_for_time);
+            const wYmd = wp ? `${wp.y}-${String(wp.mo).padStart(2, '0')}-${String(wp.d).padStart(2, '0')}` : '';
+            if (wYmd && wYmd === todayYmd()) {
+                return { reason: 'temporary', message: defaultMsg(branch), reopenAt: null };
+            }
+        } else if (Number.isFinite(until) && until > now) {
             return { reason: 'temporary', message: fillMsg(branch, until), reopenAt: new Date(until).toISOString() };
         }
     }
@@ -553,21 +629,23 @@ function buildSlotsForDate(branch, shifts, holiday, serveType, targetDate, isTod
     if (Number(branch.closed) === 1) { return []; }                              // permanently closed
     if (holiday && Number(holiday.is_special_hour) !== 1) { return []; }         // whole-day holiday
 
-    const tYmd = ymd(targetDate);
+    // targetDate may be a Date (legacy callers) or a STORE-TZ 'YYYY-MM-DD'.
+    const tYmd = typeof targetDate === 'string' ? targetDate : ymd(targetDate);
     let startFloor = isToday ? (nowMinutes() + lead) : 0;
 
-    // closed_until / closed_for relative to THIS date.
+    // closed_until / closed_for relative to THIS date — both columns hold
+    // STORE wall time, and the reopen day/minutes must be read on the STORE
+    // clock too (storePartsAt), not the machine's.
     let reopenMs = null;
     if (Number(branch.closed_until) === 1 && branch.closed_reopen_date) {
         reopenMs = reopenTimestamp(branch.closed_reopen_date, branch.clossed_repoen_time);
     } else if (Number(branch.closed_for) === 1 && branch.closed_for_time) {
-        const t = Date.parse(branch.closed_for_time); reopenMs = Number.isFinite(t) ? t : null;
+        reopenMs = storeWallToMs(branch.closed_for_time);
     }
     if (reopenMs && reopenMs > Date.now()) {
-        const r = new Date(reopenMs);
-        const rYmd = ymd(r);
-        if (rYmd > tYmd) { return []; }                                          // reopens after this date
-        if (rYmd === tYmd) { startFloor = Math.max(startFloor, r.getHours() * 60 + r.getMinutes()); }
+        const rp = storePartsAt(reopenMs);
+        if (rp.ymd > tYmd) { return []; }                                        // reopens after this date
+        if (rp.ymd === tYmd) { startFloor = Math.max(startFloor, rp.minutes); }
     }
 
     // Holiday "special hours" replaces the day's window.
@@ -628,28 +706,35 @@ async function scheduleDaysForBranch(branch, serveType, opts) {
     const days = (opts && Number.isFinite(opts.days)) ? opts.days : 7;
     const lead = (opts && Number.isFinite(opts.leadMin)) ? opts.leadMin : SLOT_LEAD;
 
-    const first = new Date(); first.setHours(0, 0, 0, 0);
-    const last  = new Date(first); last.setDate(last.getDate() + days - 1);
+    // Anchor "today" on the STORE clock (UK), not the machine's — on a non-UK
+    // server the two dates differ around midnight and every slot value/day
+    // chip shifted by a day. UTC arithmetic on the STORE ymd keeps the walk
+    // DST-safe.
+    const t0 = todayYmd();
+    const base = new Date(t0 + 'T00:00:00Z');
+    const lastYmd = (() => { const l = new Date(base); l.setUTCDate(l.getUTCDate() + days - 1); return l.toISOString().slice(0, 10); })();
 
     const [allShifts, holidays] = await Promise.all([
         loadShiftsAllDays(companyId, branchId),
-        loadHolidaysRange(companyId, branchId, ymd(first), ymd(last)),
+        loadHolidaysRange(companyId, branchId, t0, lastYmd),
     ]);
     const shiftsByDow = {};
     allShifts.forEach((s) => { const k = Number(s.day_of_week); (shiftsByDow[k] = shiftsByDow[k] || []).push(s); });
 
     const out = [];
     for (let i = 0; i < days; i++) {
-        const d = new Date(first); d.setDate(d.getDate() + i);
-        const dow = d.getDay() === 0 ? 7 : d.getDay();
-        const dYmd = ymd(d);
+        const d = new Date(base); d.setUTCDate(d.getUTCDate() + i);
+        const dow = d.getUTCDay() === 0 ? 7 : d.getUTCDay();
+        const dYmd = d.toISOString().slice(0, 10);
         const holiday = holidays.find(h => String(h.from_date).slice(0, 10) <= dYmd && String(h.to_date).slice(0, 10) >= dYmd) || null;
-        const slots = buildSlotsForDate(branch, shiftsByDow[dow] || [], holiday, serveType, d, i === 0, lead);
+        const slots = buildSlotsForDate(branch, shiftsByDow[dow] || [], holiday, serveType, dYmd, i === 0, lead);
         out.push({
             date:    dYmd,
             isToday: i === 0,
-            top:     i === 0 ? 'Today' : (i === 1 ? 'Tomorrow' : WEEKDAY_SHORT[d.getDay()]),
-            sub:     d.getDate() + ' ' + MONTH_SHORT[d.getMonth()],
+            // UTC getters — `d` is anchored at UTC midnight of the STORE date,
+            // so local getters would drift a day on negative-offset servers.
+            top:     i === 0 ? 'Today' : (i === 1 ? 'Tomorrow' : WEEKDAY_SHORT[d.getUTCDay()]),
+            sub:     d.getUTCDate() + ' ' + MONTH_SHORT[d.getUTCMonth()],
             slots,
         });
     }

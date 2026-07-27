@@ -519,6 +519,24 @@
         openForm(null);
     }
 
+    // ── ONE-TIME (unsaved) cart address — temp store ────────────────
+    // When the customer delivers to an address WITHOUT saving it (cart flow,
+    // "Save this address" unticked), the fields are kept here so re-opening
+    // the form shows them filled and editable. sessionStorage = lives until
+    // the order is placed / the cart is cleared (ui/cart.js removes the key
+    // on both) or the tab closes.
+    var TEMP_ADDR_KEY = 'eatndeal_temp_address';
+    function readTempAddress() {
+        try { var raw = window.sessionStorage.getItem(TEMP_ADDR_KEY); return raw ? JSON.parse(raw) : null; }
+        catch (e) { return null; }
+    }
+    function writeTempAddress(p) {
+        try { window.sessionStorage.setItem(TEMP_ADDR_KEY, JSON.stringify(p)); } catch (e) { /* ignore */ }
+    }
+    function clearTempAddress() {
+        try { window.sessionStorage.removeItem(TEMP_ADDR_KEY); } catch (e) { /* ignore */ }
+    }
+
     // True when the address being EDITED is the currently-active header
     // location — set by openForm, read by onFormSubmit so a successful edit
     // also refreshes the active location (header chip + session) to the new
@@ -540,13 +558,38 @@
         form.reset();
         closeAllSelects();
         a = a || {};
+        var cartNew = window.location.pathname === '/cart' && !a.id;
+        // Re-opening the form for a ONE-TIME (unsaved) cart address — put the
+        // customer's earlier answers back so every field is filled + editable.
+        if (cartNew && !a.address) {
+            var temp = readTempAddress();
+            if (temp) {
+                a = {
+                    address: temp.address, postCode: temp.post_code,
+                    latitude: temp.latitude || null, longitude: temp.longitude || null,
+                    label: temp.label || '', addressType: temp.address_type || '',
+                    additionalDetails: temp.additional_details || '',
+                    // openForm splits "+44 76…" back into dial + number below —
+                    // without this the typed contact vanished on every re-edit.
+                    contactNo: temp.contact_no || '',
+                    deliveryInstructions: temp.delivery_instructions || '',
+                };
+            }
+        }
         editingWasActive = isActiveAddress(a);
         afId.value      = a.id || '';
         afLat.value     = (a.latitude != null) ? a.latitude : ((activeLoc && activeLoc.lat != null) ? activeLoc.lat : '');
         afLng.value     = (a.longitude != null) ? a.longitude : ((activeLoc && activeLoc.lng != null) ? activeLoc.lng : '');
         renderLocationMap(afLat.value, afLng.value);   // real Google Map for the chosen point
         afAddress.value = a.address || (a.id ? '' : (input && input.value ? '' : (activeLoc ? activeLoc.label : '')));
-        if (afPostcode) { afPostcode.value = a.postCode || a.post_code || a.postcode || ''; }
+        if (afPostcode) {
+            afPostcode.value = a.postCode || a.post_code || a.postcode || '';
+            // New cart address → seed the postcode from the header location
+            // (the one selected up top), same as the address line above.
+            if (cartNew && !afPostcode.value && activeLoc && activeLoc.postcode) {
+                afPostcode.value = activeLoc.postcode;
+            }
+        }
         setSelectValue(modal.querySelector('[data-loc-select="type"]'), a.addressType || '');
         setField('additional_details', a.additionalDetails || '');
         setField('delivery_instructions', a.deliveryInstructions || '');
@@ -564,6 +607,29 @@
         if (afContact) { afContact.value = num; }
 
         if (deleteBtn) { deleteBtn.hidden = !a.id; }
+        // Default: Back is visible — openFormFor (direct cart open) hides it
+        // AFTER this runs for its no-picker-behind case.
+        var backBtnEl = modal.querySelector('[data-action="loc-form-back"]');
+        if (backBtnEl) { backBtnEl.hidden = false; }
+
+        // "Save this address" tick — only offered for a NEW address entered
+        // from the CART page (legacy webordering: the customer can deliver to
+        // a one-time address without saving it). Editing a saved address, or
+        // adding one anywhere else, always saves — the tick stays hidden.
+        var saveWrap = modal.querySelector('[data-af-save-wrap]');
+        var saveTick = modal.querySelector('[data-af-save]');
+        if (saveWrap) {
+            saveWrap.hidden = !cartNew;
+            // Default = save (legacy); a re-opened TEMP address stays unticked
+            // (the customer already chose not to save it).
+            if (saveTick) { saveTick.checked = !readTempAddress() || !cartNew; }
+        }
+        // Cart flow — the DELIVERY INSTRUCTIONS field is hidden here (user
+        // request): the cart page has its own Drop-off options row for that,
+        // and showing both asked the same question twice.
+        var instrField = form.querySelector('[name="delivery_instructions"]');
+        var instrWrap  = instrField ? instrField.closest('.loc-field') : null;
+        if (instrWrap) { instrWrap.hidden = cartNew; }
         showView('form');
         window.setTimeout(function () { if (afAddress) { afAddress.focus(); } }, 120);
     }
@@ -576,12 +642,24 @@
     async function saveAddressForm() {
         if (!afAddress.value.trim()) { afAddress.focus(); if (window.EatNDealUi) { window.EatNDealUi.showToast('error', 'Please enter an address.'); } return; }
 
-        // Contact number — optional, but if entered it must be 6–15 digits.
+        // Building type — MANDATORY everywhere (save AND one-time paths; the
+        // api enforces the same on both endpoints).
+        if (!afType || !afType.value.trim()) {
+            if (window.EatNDealUi) { window.EatNDealUi.showToast('error', 'Please select a building type.'); }
+            var typeSel = modal.querySelector('[data-loc-select="type"] [data-loc-select-btn]');
+            if (typeSel) { try { typeSel.focus(); } catch (e) { /* ignore */ } }
+            return;
+        }
+
+        // Contact number — optional, but if entered it must pass the SAME
+        // rule as everywhere else (signin / account / legacy custom.js):
+        // /^[0-9]{11,15}$/ on the typed number. The old 6–15 here let a
+        // 9-digit number through that every other form rejects.
         // Stored as "+<dial> <number>" so the country code travels with it.
         var num = (afContact ? afContact.value : '').replace(/\D/g, '');
-        if (num && (num.length < 6 || num.length > 15)) {
+        if (num && !/^[0-9]{11,15}$/.test(num)) {
             if (afContact) { afContact.focus(); }
-            if (window.EatNDealUi) { window.EatNDealUi.showToast('error', 'Please enter a valid contact number (6–15 digits).'); }
+            if (window.EatNDealUi) { window.EatNDealUi.showToast('error', 'Please enter a valid mobile number (11–15 digits).'); }
             return;
         }
         var dial = (afDial && afDial.value) ? afDial.value : '44';
@@ -599,6 +677,56 @@
             latitude:              afLat.value || '',
             longitude:             afLng.value || '',
         };
+        // ── ONE-TIME address (cart flow, "Save this address" UNTICKED) ──
+        // Legacy webordering parity: the order delivers to what was typed,
+        // but nothing is written to the address book. The cart carries the
+        // address itself (POST /cart/set-address with the raw fields).
+        var saveWrapEl = modal.querySelector('[data-af-save-wrap]');
+        var saveTickEl = modal.querySelector('[data-af-save]');
+        var oneTimeOnly = !!(saveWrapEl && !saveWrapEl.hidden && saveTickEl && !saveTickEl.checked && !afId.value);
+        if (oneTimeOnly) {
+            if (afPostcode && !afPostcode.value.trim()) {
+                afPostcode.focus();
+                if (window.EatNDealUi) { window.EatNDealUi.showToast('error', 'Please enter a postcode.'); }
+                return;
+            }
+            if (saveBtn) { saveBtn.disabled = true; }
+            try {
+                var oresp = await fetch('/cart/set-address', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({
+                        address:               payload.address,
+                        post_code:             payload.post_code,
+                        label:                 payload.label,
+                        address_type:          payload.address_type,
+                        additional_details:    payload.additional_details,
+                        delivery_instructions: payload.delivery_instructions,
+                        latitude:              payload.latitude,
+                        longitude:             payload.longitude,
+                    }),
+                });
+                var obody = await oresp.json();
+                if (obody && obody.status === 200) {
+                    // Remember the answers so a later "Edit" re-opens the form
+                    // pre-filled (temp — lives until order placed / cart cleared).
+                    writeTempAddress(payload);
+                    if (window.EatNDealUi) { window.EatNDealUi.showToast('success', 'Delivering to this address for this order.'); }
+                    close();
+                    if (window.CartSync) { window.CartSync.broadcast(); }
+                    window.location.reload();   // cart re-renders with the new address + fee
+                } else {
+                    if (window.EatNDealUi) { window.EatNDealUi.showToast('error', (obody && obody.msg) || 'Could not use that address.'); }
+                }
+            } catch (e) {
+                if (window.EatNDealUi) { window.EatNDealUi.showToast('warn', 'Could not save right now — please check your connection.'); }
+            } finally {
+                if (saveBtn) { saveBtn.disabled = false; }
+            }
+            return;
+        }
+
         if (saveBtn) { saveBtn.disabled = true; }
         try {
             var resp = await fetch('/address/save', {
@@ -623,6 +751,27 @@
                         lng:      payload.longitude || null,
                         source:   'saved',
                     });
+                    return;
+                }
+                // NEW address added FROM THE CART ("Save" ticked) — deliver to
+                // it right away ("jo add kiya usi se delivery"): attach it to
+                // the open cart, then reload so the fee/address re-render.
+                var newAddr = body.data && body.data.address;
+                // The address is properly SAVED now — any earlier temp copy is
+                // superseded and must not resurface on the next form open.
+                clearTempAddress();
+                if (window.location.pathname === '/cart' && !payload.id && newAddr && newAddr.id) {
+                    try {
+                        await fetch('/cart/set-address', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+                            credentials: 'same-origin',
+                            body: JSON.stringify({ address_id: newAddr.id }),
+                        });
+                    } catch (e) { /* address is saved either way — cart keeps its current one */ }
+                    close();
+                    if (window.CartSync) { window.CartSync.broadcast(); }
+                    window.location.reload();
                     return;
                 }
                 showView('picker');
@@ -805,6 +954,11 @@
         document.body.style.overflow = 'hidden';
         openCount += 1;
         openForm(addr || null);
+        // Opened DIRECTLY on the form from the cart (no picker view behind
+        // it) — "Back" would land on an empty picker, so hide it here only.
+        // Every other route (picker → form, account tab) keeps Back.
+        var backBtn = modal.querySelector('[data-action="loc-form-back"]');
+        if (backBtn) { backBtn.hidden = window.location.pathname === '/cart'; }
     }
 
     window.EatNDealUi = window.EatNDealUi || {};

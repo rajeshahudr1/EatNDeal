@@ -36,15 +36,19 @@
                 </header>
 
                 <% if (cart.serveType === 3) { %>
-                <div class="ckt-row" data-cart-addresses>
+                <div class="ckt-row" data-cart-addresses data-has-address="<%= cart.deliveryAddress ? '1' : '0' %>">
                     <span class="ckt-row__icon ckt-row__icon--pin" aria-hidden="true">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s7-7.5 7-13a7 7 0 0 0-14 0c0 5.5 7 13 7 13z"/><circle cx="12" cy="9" r="2.5"/></svg>
                     </span>
                     <div class="ckt-row__body">
                         <p class="ckt-row__title"><%= (selected && (selected.label || (selected.addressType ? selected.addressType.charAt(0).toUpperCase() + selected.addressType.slice(1) : ''))) || cart.deliveryLabel || 'Delivery address' %></p>
-                        <p class="ckt-row__sub"><%= cart.deliveryAddress || 'Pick a delivery address to see the fee.' %></p>
+                        <p class="ckt-row__sub"><%= cart.deliveryAddress || 'No delivery address yet — add one to see the fee.' %></p>
                     </div>
-                    <button type="button" class="ckt-row__edit" data-action="ckt-open-address">Edit</button>
+                    <%# No address on the cart → the CTA reads "Add address" (legacy
+                        webordering wording); with one it reads Edit. Same action —
+                        checkout-popups opens the picker, or the full form when the
+                        address book is empty. %>
+                    <button type="button" class="ckt-row__edit" data-action="ckt-open-address"><%= cart.deliveryAddress ? 'Edit' : 'Add address' %></button>
                 </div>
 
                 <%# Drop-off / delivery instructions row — delivery only. %>

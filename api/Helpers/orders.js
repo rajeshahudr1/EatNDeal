@@ -296,6 +296,19 @@ async function loadDetail(orderId, customerId) {
                 }
                 noteParts.push(p);
             });
+            // Orders placed after the legacy-parity split (27 Jul 2026) no
+            // longer carry the drop-off in remark at all — it lives in the
+            // delivery_address JSON's driver_instructions key (the same place
+            // the EPOS reads it). Fall back to that so the marketplace order
+            // page keeps showing the delivery instruction as its own line.
+            if (!driverInstructions && !dropOffLabel && order.delivery_address) {
+                try {
+                    const da = JSON.parse(order.delivery_address);
+                    if (da && da.driver_instructions) {
+                        driverInstructions = String(da.driver_instructions).trim();
+                    }
+                } catch (e) { /* plain-text address — nothing to pull */ }
+            }
             return {
                 remark: noteParts.join(' · '),
                 dropOffLabel,

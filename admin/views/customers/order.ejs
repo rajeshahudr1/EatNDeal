@@ -1,0 +1,125 @@
+<%#
+  views/customers/order.ejs
+
+  Admin order View — everything the legacy POS /pos/default/view screen
+  shows for one order: status + placed time, items with modifiers, the
+  bill breakdown, payment, delivery address + instructions and the
+  customer contact. `pd` = { order, customer_id } or null.
+
+  Used: Controllers/CustomersController.order.
+-%>
+<%
+    var o = pd ? pd.order : null;
+    function money(n) { return '£' + (Number(n) || 0).toFixed(2); }
+    function dt(v) {
+        if (!v) { return '—'; }
+        var d = new Date(v);
+        if (isNaN(d.getTime())) { return String(v); }
+        return d.toLocaleDateString('en-GB') + ' ' + d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+    }
+    var serveNames = { 1: 'In-store', 2: 'Pickup', 3: 'Delivery' };
+%>
+<div class="pr cuo">
+
+    <div class="ly__head">
+        <div>
+            <h2 class="ly__title">📦 Order Details</h2>
+            <p class="ly__sub"><%= o ? o.number : '' %></p>
+        </div>
+        <div class="pr-head-act">
+            <% if (pd && pd.customer_id) { %><a href="/customers/history/<%= pd.customer_id %>" class="ly-btn ly-btn--ghost ly-btn--sm">← Order history</a><% } %>
+            <a href="/customers" class="ly-btn ly-btn--ghost ly-btn--sm">Customers</a>
+        </div>
+    </div>
+
+    <% if (load_error || !o) { %>
+        <div class="ly-empty"><span class="ly-empty__ic" aria-hidden="true">📦</span><p class="ly-empty__msg"><%= load_error || 'Order not found.' %></p></div>
+    <% } else { %>
+
+    <%# ── Status strip ─────────────────────────────────────────────── %>
+    <div class="cuo-status">
+        <div>
+            <span class="cu-st cu-st--<%= (o.statusClass || 'ongoing') %>"><%= o.statusLabel %></span>
+            <span class="cuo-status__meta">Placed <%= dt(o.createdAt) %> · <%= serveNames[o.serveType] || 'Delivery' %><% if (o.isPreOrder && o.scheduledTime) { %> · ⏰ Pre-order <%= o.scheduledDate || '' %> <%= o.scheduledTime %><% } %></span>
+        </div>
+        <div class="cuo-status__rest">🏪 <%= o.restaurant.name %><% if (o.restaurant.phone) { %> · <%= o.restaurant.phone %><% } %></div>
+    </div>
+
+    <div class="cuo-cols">
+        <div class="cuo-main">
+
+            <%# ── Items ────────────────────────────────────────────── %>
+            <section class="card ly-card">
+                <h3 class="card__title">Items (<%= o.totalQty %>)</h3>
+                <div class="cuo-items">
+                    <% o.items.forEach(function (it) { %>
+                    <div class="cuo-item">
+                        <div class="cuo-item__row">
+                            <span class="cuo-item__qty"><%= it.qty %>×</span>
+                            <span class="cuo-item__name"><%= it.name %></span>
+                            <span class="cuo-item__amt"><%= money(it.linePrice) %></span>
+                        </div>
+                        <% it.modifiers.forEach(function (m) { %>
+                        <div class="cuo-item__mod">
+                            <span>+ <%= m.name %><%= (m.qty && String(m.qty) !== '1') ? (' × ' + m.qty) : '' %></span>
+                            <span><%= Number(m.price) ? money(m.price) : '' %></span>
+                        </div>
+                        <% }); %>
+                        <% if (it.remark) { %><div class="cuo-item__note">📝 <%= it.remark %></div><% } %>
+                    </div>
+                    <% }); %>
+                </div>
+            </section>
+
+            <%# ── Notes (order-level) ──────────────────────────────── %>
+            <% if (o.cookingInstructions || o.driverInstructions || o.dropOffLabel || o.remark) { %>
+            <section class="card ly-card">
+                <h3 class="card__title">Notes</h3>
+                <% if (o.cookingInstructions) { %><p class="cuo-note">🍳 <strong>Cooking:</strong> <%= o.cookingInstructions %></p><% } %>
+                <% if (o.dropOffLabel) { %><p class="cuo-note">📦 <strong>Drop-off:</strong> <%= o.dropOffLabel %></p><% } %>
+                <% if (o.driverInstructions) { %><p class="cuo-note">🚚 <strong>Driver:</strong> <%= o.driverInstructions %></p><% } %>
+                <% if (o.remark) { %><p class="cuo-note">🗒️ <%= o.remark %></p><% } %>
+            </section>
+            <% } %>
+
+            <%# ── Customer + delivery ──────────────────────────────── %>
+            <section class="card ly-card">
+                <h3 class="card__title"><%= o.serveType === 3 ? 'Delivery' : 'Customer' %></h3>
+                <% if (o.serveType === 3 && o.deliveryAddress) { %>
+                <p class="cuo-note">📍 <%= o.deliveryAddress %></p>
+                <% } %>
+                <p class="cuo-note">👤 <%= o.customerName %><% if (o.customerNumber) { %> · 📞 <%= o.customerNumber %><% } %><% if (o.customerEmail) { %> · ✉️ <%= o.customerEmail %><% } %></p>
+                <% if (o.deliveryEstimatedTime) { %><p class="cuo-note">⏱ Estimated time: <%= o.deliveryEstimatedTime %></p><% } %>
+            </section>
+        </div>
+
+        <%# ── Bill summary (right rail) ────────────────────────────── %>
+        <div class="cuo-side">
+            <section class="card ly-card">
+                <h3 class="card__title">Bill summary</h3>
+                <div class="cuo-bill">
+                    <div class="cuo-bill__row"><span>Subtotal</span><span><%= money(o.subTotal) %></span></div>
+                    <% if (o.discount) { %><div class="cuo-bill__row cuo-bill__row--good"><span>Discount</span><span>−<%= money(o.discount) %></span></div><% } %>
+                    <% if (o.usedCashback) { %><div class="cuo-bill__row cuo-bill__row--good"><span>Cashback used</span><span>−<%= money(o.usedCashback) %></span></div><% } %>
+                    <% if (o.bagCharge) { %><div class="cuo-bill__row"><span>Bag charge</span><span><%= money(o.bagCharge) %></span></div><% } %>
+                    <% if (o.serveType === 3) { %><div class="cuo-bill__row"><span>Delivery<%= o.freeDelivery ? ' (free)' : '' %></span><span><%= o.freeDelivery ? money(0) : money(o.deliveryFees) %></span></div><% } %>
+                    <% if (o.serviceCharge) { %><div class="cuo-bill__row"><span>Service charge</span><span><%= money(o.serviceCharge) %></span></div><% } %>
+                    <% if (o.cardServiceCharge) { %><div class="cuo-bill__row"><span>Card charge</span><span><%= money(o.cardServiceCharge) %></span></div><% } %>
+                    <% if (o.charityAmount) { %><div class="cuo-bill__row"><span>Charity</span><span><%= money(o.charityAmount) %></span></div><% } %>
+                    <div class="cuo-bill__row cuo-bill__row--total"><span>Total</span><span><%= money(o.grandTotal) %></span></div>
+                </div>
+                <%# Payment line — same wording as the web order page:
+                    "Payment: Cash / Card". No Pending pill: a cash order is
+                    simply paid on delivery, and "Pending" read like a problem. %>
+                <% if (o.payment) { %>
+                <div class="cuo-payline">
+                    <span>Payment:</span>
+                    <span><%= /cash/i.test(o.payment.method) ? '💵' : '💳' %> <strong><%= o.payment.method %></strong></span>
+                </div>
+                <% } %>
+            </section>
+        </div>
+    </div>
+
+    <% } %>
+</div>

@@ -770,8 +770,13 @@
             <form method="post" action="/logout" class="acct-logout-form"><button type="submit" class="acct-btn acct-btn--logout">Log Out</button></form>
         </div>
 
-        <%# Delete my account — fully wired (POST /account/delete → soft-delete).
-            HIDDEN for now per product; remove the `hidden` attribute to show it. %>
+        <%# Delete your account — links to the PUBLIC request page
+            (/delete-account, the app-store flow: verify email/mobile →
+            "in review, deleted within 7 days"). The old instant
+            soft-delete button stays wired but hidden below. %>
+        <div class="acct-danger">
+            <a class="acct-btn acct-btn--danger" href="/delete-account">Delete your account</a>
+        </div>
         <div class="acct-danger" data-acct-danger hidden>
             <button type="button" class="acct-btn acct-btn--danger" data-action="delete-account">Delete my account</button>
         </div>

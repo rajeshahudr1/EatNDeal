@@ -78,7 +78,7 @@
                 var f = photoInput.files && photoInput.files[0];
                 if (!f) { return; }
                 if (!/^image\/(png|jpe?g|webp|gif)$/.test(f.type)) { toast('error', 'Please choose a PNG or JPG image.'); photoInput.value = ''; return; }
-                if (f.size > 4 * 1024 * 1024) { toast('error', 'Photo must be under 4 MB.'); photoInput.value = ''; return; }
+                if (f.size > 5 * 1024 * 1024) { toast('error', 'That photo is too large — the maximum is 5 MB. Please pick a smaller one.'); photoInput.value = ''; return; }
                 if (preview) { preview.src = URL.createObjectURL(f); preview.hidden = false; }
             });
         }

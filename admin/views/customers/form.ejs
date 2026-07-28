@@ -1,0 +1,109 @@
+<%#
+  views/customers/form.ejs
+
+  Edit a marketplace customer — the legacy POS _form's editable set:
+  first / last name, contact number, email, and the address parts
+  (postcode, door no, flat, street, city). A banned customer shows the
+  ban reason banner + an Unban button. `customer` = the row (or null),
+  `profile` = the About-You profile (or null).
+
+  Used: Controllers/CustomersController.form.
+-%>
+<% var p = customer || {}; %>
+<div class="ly">
+
+    <div class="ly__head">
+        <div>
+            <h2 class="ly__title">✎ Edit Customer</h2>
+            <p class="ly__sub"><%= p.name || 'Customer' %></p>
+        </div>
+        <div class="pr-head-act">
+            <% if (p.id) { %><a href="/customers/history/<%= p.id %>" class="ly-btn ly-btn--ghost ly-btn--sm">🧾 Order history</a><% } %>
+            <a href="/customers" class="ly-btn ly-btn--ghost ly-btn--sm">← Back to list</a>
+        </div>
+    </div>
+
+    <% if (load_error) { %>
+        <div class="ly-empty"><span class="ly-empty__ic" aria-hidden="true">🧑</span><p class="ly-empty__msg"><%= load_error %></p></div>
+    <% } else { %>
+
+    <% if (p.status === '3') { %>
+    <div class="cu-banned-note">
+        🚫 This customer is banned — <strong><%= p.banned_reason === 'Other' ? p.other_banned_reason : p.banned_reason %></strong>
+        <button type="button" class="ly-btn ly-btn--ghost ly-btn--sm" data-action="cu-unban" data-id="<%= p.id %>" data-name="<%= p.name %>" data-reload="1">♻️ Unban</button>
+    </div>
+    <% } %>
+
+    <form method="post" action="/customers/save" class="pr-form" id="cu-form">
+        <input type="hidden" name="id" value="<%= p.id %>">
+
+        <section class="card ly-card">
+            <h3 class="card__title">Customer details</h3>
+            <div class="ly-grid">
+                <div class="ly-field">
+                    <label for="cu-first">First name <span class="pr-req">*</span></label>
+                    <input id="cu-first" type="text" name="firstname" maxlength="255" value="<%= p.firstname || '' %>" required>
+                </div>
+                <div class="ly-field">
+                    <label for="cu-last">Last name</label>
+                    <input id="cu-last" type="text" name="lastname" maxlength="255" value="<%= p.lastname || '' %>">
+                </div>
+                <div class="ly-field">
+                    <label for="cu-phone">Contact number <span class="pr-req">*</span></label>
+                    <input id="cu-phone" type="tel" name="contact_no" maxlength="15" value="<%= p.contact_no || '' %>" required>
+                </div>
+                <div class="ly-field">
+                    <label for="cu-email">Email</label>
+                    <input id="cu-email" type="email" name="email" maxlength="255" value="<%= p.email || '' %>">
+                </div>
+            </div>
+        </section>
+
+        <section class="card ly-card">
+            <h3 class="card__title">Address</h3>
+            <div class="ly-grid">
+                <div class="ly-field">
+                    <label for="cu-postcode">Postcode</label>
+                    <input id="cu-postcode" type="text" name="postcode" maxlength="255" value="<%= p.postcode || '' %>">
+                </div>
+                <div class="ly-field">
+                    <label for="cu-door">Door no</label>
+                    <input id="cu-door" type="text" name="door_no" maxlength="255" value="<%= p.door_no || '' %>">
+                </div>
+                <div class="ly-field">
+                    <label for="cu-flat">Flat</label>
+                    <input id="cu-flat" type="text" name="house_no" maxlength="255" value="<%= p.house_no || '' %>">
+                </div>
+                <div class="ly-field">
+                    <label for="cu-street">Street</label>
+                    <input id="cu-street" type="text" name="street" maxlength="255" value="<%= p.street || '' %>">
+                </div>
+                <div class="ly-field">
+                    <label for="cu-city">City</label>
+                    <input id="cu-city" type="text" name="city" maxlength="255" value="<%= p.city || '' %>">
+                </div>
+            </div>
+        </section>
+
+        <% if (profile) { %>
+        <section class="card ly-card">
+            <h3 class="card__title">About the customer <span class="ly-field__hint">(filled by the customer — read only)</span></h3>
+            <div class="cu-profile cu-profile--inline" data-profile-static>
+                <% Object.keys(profile).forEach(function (k) {
+                       var v = profile[k];
+                       if (v == null || v === '' || (Array.isArray(v) && !v.length)) { return; }
+                       var label = k.replace(/_/g, ' ').replace(/^\w/, function (m) { return m.toUpperCase(); }); %>
+                <div class="cu-profile__row"><span class="cu-profile__k"><%= label %></span><span class="cu-profile__v"><%= Array.isArray(v) ? v.join(', ') : v %></span></div>
+                <% }); %>
+            </div>
+        </section>
+        <% } %>
+
+        <div class="pr-formfoot">
+            <a href="/customers" class="ly-btn ly-btn--ghost">Cancel</a>
+            <button type="submit" class="ly-btn ly-btn--primary">Save customer</button>
+        </div>
+    </form>
+
+    <% } %>
+</div>

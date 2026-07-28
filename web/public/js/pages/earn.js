@@ -40,7 +40,7 @@
         if (fileInput) { fileInput.value = ''; fileInput.disabled = isVideo; }
         if (videoInput) { videoInput.value = ''; videoInput.disabled = !isVideo; }
         var fileName = el('[data-earn-filename]');
-        if (fileName) { fileName.textContent = 'Choose an image (PNG / JPG, max 4 MB)'; }
+        if (fileName) { fileName.textContent = 'Choose an image (PNG / JPG, max 5 MB)'; }
         var notes = modal.querySelector('textarea[name="notes"]');
         if (notes) { notes.value = ''; }
 
@@ -78,7 +78,7 @@
         var t = ev.target;
         if (!t || !t.matches || !t.matches('[data-earn-file]')) { return; }
         var face = el('[data-earn-filename]');
-        if (face) { face.textContent = (t.files && t.files[0]) ? t.files[0].name : 'Choose an image (PNG / JPG, max 4 MB)'; }
+        if (face) { face.textContent = (t.files && t.files[0]) ? t.files[0].name : 'Choose an image (PNG / JPG, max 5 MB)'; }
     });
 
     // Guard the submit: proof must be attached. The native form POSTs after.
@@ -96,7 +96,7 @@
                 var f = el('[data-earn-file]');
                 ok = f && f.files && f.files.length > 0;
                 if (!ok) { ev.preventDefault(); flashHint(el('[data-earn-photofield]'), 'Please choose a screenshot to upload.'); return; }
-                if (f.files[0] && f.files[0].size > 4 * 1024 * 1024) { ev.preventDefault(); flashHint(el('[data-earn-photofield]'), 'That image is over 4 MB — please pick a smaller one.'); return; }
+                if (f.files[0] && f.files[0].size > 5 * 1024 * 1024) { ev.preventDefault(); flashHint(el('[data-earn-photofield]'), 'That image is too large — the maximum is 5 MB. Please pick a smaller one.'); return; }
             }
             if (ok) {
                 var btn = el('[data-earn-submit]');

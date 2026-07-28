@@ -1,0 +1,154 @@
+<%#
+  views/customers/history.ejs
+
+  A marketplace customer's order history — legacy actionHistory, redesigned:
+  a customer identity header, one "orders at a glance" stat rail (big total
+  + breakdown chips + spend highlight), a cashback wallet strip, and the
+  orders table with server-side pagination.
+  `pd` = { customer, orders[], total, page, limit, total_pages, summary,
+  rewards } or null.
+
+  Used: Controllers/CustomersController.history.
+-%>
+<%
+    var page = pd ? Number(pd.page) : 1;
+    var totalPages = pd ? Number(pd.total_pages) : 1;
+    var SIZES = [['all', 'All'], ['10', '10'], ['25', '25'], ['50', '50'], ['100', '100']];
+    function pageUrl(n) {
+        var qp = [];
+        if (search_q) { qp.push('q=' + encodeURIComponent(search_q)); }
+        qp.push('limit=' + cur_limit); qp.push('page=' + n);
+        return '/customers/history/' + cust_id + '?' + qp.join('&');
+    }
+    var cust = pd ? pd.customer : null;
+    // d-m-Y h:i A — the legacy history.php time format, split so the date
+    // and time can be styled separately in the cell.
+    function dDate(v) { var d = new Date(v); return isNaN(d.getTime()) ? String(v || '—') : d.toLocaleDateString('en-GB'); }
+    function dTime(v) { var d = new Date(v); return isNaN(d.getTime()) ? '' : d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }); }
+    var payIcon = function (p) { return /cash/i.test(p) ? '💵' : '💳'; };
+%>
+<div class="pr cuh">
+
+    <div class="ly__head">
+        <div>
+            <h2 class="ly__title">🧾 Order History</h2>
+        </div>
+        <div class="pr-head-act">
+            <% if (cust) { %><a href="/customers/edit/<%= cust.id %>" class="ly-btn ly-btn--ghost ly-btn--sm">✎ Edit customer</a><% } %>
+            <a href="/customers" class="ly-btn ly-btn--ghost ly-btn--sm">← Back to list</a>
+        </div>
+    </div>
+
+    <% if (load_error) { %>
+        <div class="ly-empty"><span class="ly-empty__ic" aria-hidden="true">🧾</span><p class="ly-empty__msg"><%= load_error %></p></div>
+    <% } else if (pd) { %>
+
+    <%# ── Customer identity header ─────────────────────────────────── %>
+    <div class="cuh-who">
+        <span class="cu-avatar cu-avatar--lg" aria-hidden="true"><%= ((cust.firstname || '?').charAt(0) || '?').toUpperCase() %></span>
+        <div class="cuh-who__txt">
+            <span class="cuh-who__name"><%= cust.name || ('Customer #' + cust.id) %>
+                <% if (cust.status === '3') { %><span class="cu-badge cu-badge--banned">Banned</span><% } %>
+            </span>
+            <span class="cuh-who__meta">
+                <% if (cust.contact_no) { %><span>📞 <%= cust.contact_no %></span><% } %>
+                <% if (cust.email) { %><span>✉️ <%= cust.email %></span><% } %>
+                <% if (cust.address) { %><span>📍 <%= cust.address %></span><% } %>
+            </span>
+        </div>
+    </div>
+
+    <%# ── Orders at a glance — one rail: big total, breakdown, spend ── %>
+    <div class="cuh-rail">
+        <div class="cuh-rail__total">
+            <span class="cuh-rail__n"><%= pd.total %></span>
+            <span class="cuh-rail__l">Total orders</span>
+        </div>
+        <div class="cuh-rail__break">
+            <div class="cuh-chiprow">
+                <span class="cuh-chip">🛵 Delivery <b><%= pd.summary.delivery %></b></span>
+                <span class="cuh-chip">🛍️ Pickup <b><%= pd.summary.pickup %></b></span>
+            </div>
+            <div class="cuh-chiprow">
+                <span class="cuh-chip cuh-chip--ok">✔ Completed <b><%= pd.summary.completed %></b></span>
+                <span class="cuh-chip cuh-chip--bad">✕ Cancelled <b><%= pd.summary.cancelled %></b></span>
+                <span class="cuh-chip cuh-chip--rf">↩ Refund <b><%= pd.summary.refunded %></b></span>
+            </div>
+        </div>
+        <div class="cuh-rail__spend">
+            <span class="cuh-rail__n">£<%= pd.summary.spend.toFixed(2) %></span>
+            <span class="cuh-rail__l">Total spend</span>
+        </div>
+    </div>
+
+    <%# ── Cashback wallet strip ────────────────────────────────────── %>
+    <div class="cuh-wallet">
+        <span class="cuh-wallet__ttl">💰 Cashback wallet</span>
+        <div class="cuh-wallet__vals">
+            <span class="cuh-wal"><b>£<%= pd.rewards.earned.toFixed(2) %></b>Earned</span>
+            <span class="cuh-wal cuh-wal--main"><b>£<%= pd.rewards.available.toFixed(2) %></b>Available</span>
+            <span class="cuh-wal"><b>£<%= pd.rewards.redeemed.toFixed(2) %></b>Redeemed</span>
+            <span class="cuh-wal cuh-wal--dim"><b>£<%= pd.rewards.expired.toFixed(2) %></b>Expired</span>
+        </div>
+    </div>
+
+    <%# ── Search + per-page toolbar ────────────────────────────────── %>
+    <div class="pr-toolbar">
+        <form method="get" action="/customers/history/<%= cust_id %>" class="pr-filter" id="pr-filter">
+            <div class="pr-search">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <input type="text" name="q" value="<%= search_q %>" placeholder="Search order no or restaurant…" autocomplete="off" data-live-search>
+                <% if (search_q) { %><a href="/customers/history/<%= cust_id %>" class="pr-search__clear" aria-label="Clear">✕</a><% } %>
+            </div>
+            <select name="limit" class="pr-filter-sel" data-filter-submit aria-label="Per page">
+                <% SIZES.forEach(function (s) { %><option value="<%= s[0] %>" <%= cur_limit === s[0] ? 'selected' : '' %>>Show <%= s[1] %></option><% }); %>
+            </select>
+        </form>
+    </div>
+
+    <% if (!pd.orders.length) { %>
+        <div class="ly-empty"><span class="ly-empty__ic" aria-hidden="true">🧾</span><p class="ly-empty__msg"><%= search_q ? 'No orders match your search.' : 'No marketplace orders yet.' %></p></div>
+    <% } else { %>
+    <div class="cu-tablewrap">
+        <table class="cu-table">
+            <thead>
+                <tr><th>#</th><th>Order</th><th>Restaurant</th><th>Time</th><th class="cu-td-r">Amount</th><th>Payment</th><th>Status</th><th>Type</th><th>Through</th><% if (pd.marketplace !== false) { %><th></th><% } %></tr>
+            </thead>
+            <tbody>
+                <% pd.orders.forEach(function (o) { %>
+                <tr>
+                    <td class="cu-td-dim"><%= o.internal_id || '—' %></td>
+                    <td><span class="cu-ordno"><%= o.number %></span></td>
+                    <td><%= o.restaurant %></td>
+                    <td><span class="cu-when"><b><%= dDate(o.created_at) %></b><i><%= dTime(o.created_at) %></i></span></td>
+                    <td class="cu-td-r"><span class="cu-amt">£<%= o.grand_total.toFixed(2) %></span></td>
+                    <td><span class="cu-pay"><%= payIcon(o.payment) %> <%= o.payment %></span></td>
+                    <td><span class="cu-st cu-st--<%= o.status.toLowerCase().replace(/\s+/g, '-') %>"><%= o.status %></span></td>
+                    <td class="cu-td-dim"><%= o.type %></td>
+                    <td class="cu-td-dim"><%= o.order_through %></td>
+                    <% if (pd.marketplace !== false) { %><td><a href="/customers/order/<%= o.id %>" class="cu-view">View</a></td><% } %>
+                </tr>
+                <% }); %>
+            </tbody>
+        </table>
+    </div>
+
+    <% if (totalPages > 1 || pd.total) { %>
+    <div class="pr-pager">
+        <span class="pr-pager__info"><%= pd.total %> order<%= pd.total === 1 ? '' : 's' %><% if (totalPages > 1) { %> · page <%= page %> of <%= totalPages %><% } %></span>
+        <% if (totalPages > 1) { %>
+        <div class="pr-pager__nav">
+            <% if (page > 1) { %><a class="pr-pager__btn" href="<%= pageUrl(page - 1) %>">‹ Prev</a><% } else { %><span class="pr-pager__btn is-disabled">‹ Prev</span><% } %>
+            <% var from = Math.max(1, page - 2), to = Math.min(totalPages, page + 2);
+               if (from > 1) { %><a class="pr-pager__btn" href="<%= pageUrl(1) %>">1</a><% if (from > 2) { %><span class="pr-pager__dots">…</span><% } } %>
+            <% for (var n = from; n <= to; n++) { %><a class="pr-pager__btn <%= n === page ? 'is-active' : '' %>" href="<%= pageUrl(n) %>"><%= n %></a><% } %>
+            <% if (to < totalPages) { if (to < totalPages - 1) { %><span class="pr-pager__dots">…</span><% } %><a class="pr-pager__btn" href="<%= pageUrl(totalPages) %>"><%= totalPages %></a><% } %>
+            <% if (page < totalPages) { %><a class="pr-pager__btn" href="<%= pageUrl(page + 1) %>">Next ›</a><% } else { %><span class="pr-pager__btn is-disabled">Next ›</span><% } %>
+        </div>
+        <% } %>
+    </div>
+    <% } %>
+    <% } %>
+
+    <% } %>
+</div>

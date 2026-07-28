@@ -1,0 +1,41 @@
+<%#
+  views/auth/delete-account.ejs
+
+  PUBLIC account-deletion request page (the URL app stores require —
+  reachable without signing in). The customer enters the email / mobile
+  on their account; /delete-account/request validates them (no writes)
+  and the page swaps to the "in review — deleted within 7 days" panel.
+
+  Used: Controllers/AuthController.deleteAccountPage.
+-%>
+<section class="delacct">
+    <div class="delacct__card" data-del-form-wrap>
+        <span class="delacct__icon" aria-hidden="true">🗑️</span>
+        <h1 class="delacct__title">Delete your account</h1>
+        <p class="delacct__sub">Enter the email or mobile number linked to your <%= brand.name %> account. We'll verify the details and start the deletion process.</p>
+
+        <%# ONE box — email OR mobile (user request 28 Jul 2026). The page
+            script works out which one was typed and validates it as that. %>
+        <form class="delacct__form" data-del-form novalidate>
+            <div class="delacct__field">
+                <label for="del-identity">Email or mobile number</label>
+                <input id="del-identity" type="text" name="identity" maxlength="255" placeholder="you@example.com or 07123 456789" autocomplete="username">
+            </div>
+            <p class="delacct__err" data-del-error hidden></p>
+            <button type="submit" class="delacct__btn" data-del-submit>
+                <span class="delacct__btn-label">Request account deletion</span>
+                <span class="delacct__btn-loader" hidden aria-hidden="true"></span>
+            </button>
+        </form>
+
+        <p class="delacct__note">Deleting your account removes your profile, saved addresses, order history and reward balances. This cannot be undone.</p>
+    </div>
+
+    <%# Success panel — shown in place of the form after a valid request. %>
+    <div class="delacct__card delacct__card--done" data-del-done hidden>
+        <span class="delacct__icon" aria-hidden="true">✅</span>
+        <h1 class="delacct__title">Request received</h1>
+        <p class="delacct__sub">Your account deletion request is in review. Your account will be deleted within <strong>7 days</strong>.</p>
+        <a class="delacct__btn delacct__btn--ghost" href="/">Back to home</a>
+    </div>
+</section>

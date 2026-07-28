@@ -276,7 +276,7 @@ const avatarUpload = multer({
             cb(null, uid + '-' + Date.now() + ext);
         },
     }),
-    limits: { fileSize: 3 * 1024 * 1024 },   // 3 MB
+    limits: { fileSize: 5 * 1024 * 1024 },   // 5 MB — legacy parity (Yii uses 5 MB for images)
     fileFilter: (req, file, cb) => cb(null, /^image\/(png|jpe?g|webp|gif)$/.test(file.mimetype)),
 });
 // Exposed so the route wiring below can use it.
@@ -299,7 +299,7 @@ const reviewUpload = multer({
             cb(null, 'rv-' + uid + '-' + Date.now() + ext);
         },
     }),
-    limits: { fileSize: 4 * 1024 * 1024 },   // 4 MB
+    limits: { fileSize: 5 * 1024 * 1024 },   // 5 MB — legacy parity (Yii uses 5 MB for images)
     // JPG / JPEG / PNG only — the legacy upload API (a restaurant's server)
     // rejects webp/gif with "Only JPG, JPEG, and PNG files are allowed"
     // (backend/controllers/api/DefaultController::actionUploadFile). Restricting
@@ -333,7 +333,7 @@ const communityUpload = multer({
             cb(null, 'cm-' + uid + '-' + Date.now() + ext);
         },
     }),
-    limits: { fileSize: 4 * 1024 * 1024 },   // 4 MB
+    limits: { fileSize: 5 * 1024 * 1024 },   // 5 MB — legacy parity (Yii uses 5 MB for images)
     fileFilter: (req, file, cb) => cb(null, /^image\/(png|jpe?g|webp|gif)$/.test(file.mimetype)),
 });
 
@@ -530,6 +530,45 @@ app.use(async (req, res, next) => {
 //   • Only when the user is signed in.
 //   • Never on /api/* / /js/* / /css/* / static asset paths.
 //   • Cached for the whole session once set — write paths refresh.
+// ── Session guard — auto-logout blocked accounts ───────────────
+// If the super admin bans / deletes / disables a customer, their live
+// web session must die by itself (user request 28 Jul 2026). On page
+// requests for a signed-in session we ask the api's ultra-light
+// /auth/state (one PK SELECT) — at most every 30 seconds — and when the
+// answer is "blocked" we clear the login, flash the reason and land on
+// /signin. Their NEXT sign-in attempt gets the same reason-ful message
+// from the api itself (verifyOtp / socialSignin guards).
+const STATE_CHECK_MS = 30 * 1000;
+app.use(async (req, res, next) => {
+    try {
+        const user = req.session && req.session.user;
+        if (!user) { return next(); }
+        if (req.method !== 'GET') { return next(); }
+        if (/^\/(api|js|css|images?|fonts?|favicon|yii-uploads|sw\.js|service-worker|signin|logout)/i.test(req.path)) {
+            return next();
+        }
+        const last = Number(req.session.stateCheckedAt) || 0;
+        if (Date.now() - last < STATE_CHECK_MS) { return next(); }
+        req.session.stateCheckedAt = Date.now();
+
+        const apiRes = await callApi(req, 'GET',
+            '/api/v1/auth/state?customer_id=' + encodeURIComponent(user.id));
+        const body = apiRes && apiRes.body;
+        if (body && body.status === 200 && body.data && body.data.state === 'blocked') {
+            // Keep the (now guest) session alive so the flash survives the
+            // redirect — only the login-related keys are cleared.
+            req.session.user = null;
+            req.session.cartCount = 0;
+            req.session.stateCheckedAt = 0;
+            req.flash('error', body.data.message || 'Your account can no longer sign in. Please contact support.');
+            return res.redirect('/signin');
+        }
+    } catch (_) {
+        // Network blip — never mass-logout over a hiccup.
+    }
+    next();
+});
+
 app.use(async (req, res, next) => {
     try {
         const user = req.session && req.session.user;
@@ -571,8 +610,15 @@ app.use((req, res, next) => {
     // True when the page is loaded inside the mobile app's WebView (the app
     // sets a custom User-Agent containing "EatNDealApp"). Views use it to
     // adapt — e.g. the sign-in page routes Google/Facebook through the
-    // Custom-Tab + deep-link handoff (adds ?app=1) instead of a web redirect.
-    res.locals.is_app           = /EatNDealApp/i.test(String(req.headers['user-agent'] || ''));
+    // Custom-Tab + deep-link handoff (adds ?app=1) instead of a web redirect,
+    // and the home page hides the "Get the app" QR card.
+    // ?is_app=1 on ANY url is an equivalent signal (apps whose WebView does
+    // not set the custom UA open with it) — it is SAVED on the session so
+    // every later page in the same visit stays in app mode without having
+    // to carry the parameter (user request 28 Jul 2026).
+    if (req.session && String(req.query.is_app || '') === '1') { req.session.isApp = true; }
+    res.locals.is_app           = /EatNDealApp/i.test(String(req.headers['user-agent'] || ''))
+                                  || !!(req.session && req.session.isApp);
     res.locals.google_maps_key  = process.env.GOOGLE_MAPS_BROWSER_KEY || '';   // Embed API (browser key)
     res.locals.page_title       = '';
     res.locals.active_nav       = '';
@@ -793,6 +839,9 @@ app.post('/account/phone/send-otp', AuthController.changePhoneSendOtp);
 app.post('/account/phone/verify',   AuthController.changePhoneVerify);
 // Delete my account (soft-delete) — then the client redirects home.
 app.post('/account/delete',         AuthController.deleteAccount);
+// PUBLIC delete-account request page (app-store requirement — no login).
+app.get ('/delete-account',         AuthController.deleteAccountPage);
+app.post('/delete-account/request', AuthController.deleteAccountRequest);
 
 // Loyalty Wallet — multi-restaurant cards + transaction history.
 app.get ('/wallet',              WalletController.walletPage);
@@ -845,7 +894,7 @@ app.post('/community/post', (req, res) => {
     communityUpload.single('image')(req, res, (err) => {
         if (err) {
             const msg = err.code === 'LIMIT_FILE_SIZE'
-                ? 'Photo must be under 4 MB.'
+                ? 'That photo is too large — the maximum is 5 MB. Please upload a smaller one.'
                 : 'Could not upload that photo. Please try a PNG or JPG.';
             return res.status(200).json({ status: 400, show: true, msg });
         }
@@ -860,7 +909,7 @@ app.post('/account/avatar', (req, res) => {
     avatarUpload.single('avatar')(req, res, (err) => {
         if (err) {
             const msg = err.code === 'LIMIT_FILE_SIZE'
-                ? 'Image must be under 3 MB.'
+                ? 'That image is too large — the maximum is 5 MB. Please upload a smaller one.'
                 : 'Could not upload that image. Please try a PNG or JPG.';
             return res.status(200).json({ status: 400, show: true, msg });
         }
@@ -875,7 +924,7 @@ app.post('/order/:id/review', (req, res) => {
     reviewUpload.single('photo')(req, res, (err) => {
         if (err) {
             const msg = err.code === 'LIMIT_FILE_SIZE'
-                ? 'Photo must be under 4 MB.'
+                ? 'That photo is too large — the maximum is 5 MB. Please upload a smaller one.'
                 : 'Could not upload that photo. Please try a PNG or JPG.';
             return res.status(200).json({ status: 400, show: true, msg });
         }
@@ -887,7 +936,10 @@ app.post('/order/:id/review', (req, res) => {
 app.post('/review-cashback', (req, res) => {
     reviewUpload.single('photo')(req, res, (err) => {
         if (err) {
-            if (req.flash) { req.flash('error', 'Could not upload that screenshot. Use a PNG/JPG under 4 MB.'); }
+            const msg = err.code === 'LIMIT_FILE_SIZE'
+                ? 'That screenshot is too large — the maximum is 5 MB. Please upload a smaller one.'
+                : 'Could not upload that screenshot. Please use a PNG or JPG.';
+            if (req.flash) { req.flash('error', msg); }
             return res.redirect(req.get('referer') || '/');
         }
         return OrderController.submitCashbackReview(req, res);

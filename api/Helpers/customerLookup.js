@@ -386,9 +386,35 @@ async function appIdsOf(customerIds) {
     return out;
 }
 
+/**
+ * blockMessage
+ *
+ * What:  The user-facing sentence for a blocked account, WITH the ban
+ *        reason (user request 28 Jul 2026): a banned customer must see
+ *        WHY on their next sign-in attempt, and a deleted account says
+ *        so plainly instead of pretending not to exist.
+ * Type:  READ (pure).
+ */
+function blockMessage(row, state) {
+    if (state === 'banned') {
+        const raw = row
+            ? (String(row.banned_reason || '').trim() === 'Other'
+                ? row.other_banned_reason
+                : row.banned_reason)
+            : '';
+        const reason = String(raw || '').trim();
+        return 'Your account has been banned' + (reason ? (' — reason: ' + reason) : '') + '. Please contact support.';
+    }
+    if (state === 'deleted') {
+        return 'This account has been deleted. Please contact support.';
+    }
+    return 'This account has been disabled. Please contact support.';
+}
+
 module.exports = {
     findByPhone,
     classify,
+    blockMessage,
     publicView,
     normalisePhone,
     loadMarketplaceCustomer,

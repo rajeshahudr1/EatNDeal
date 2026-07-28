@@ -63,6 +63,7 @@ const CommunityController         = require('./Controllers/CommunityController')
 const WelcomeBannerController      = require('./Controllers/WelcomeBannerController');
 const OfferBannerController        = require('./Controllers/OfferBannerController');
 const ReviewsController            = require('./Controllers/ReviewsController');
+const CustomersController          = require('./Controllers/CustomersController');
 
 const app    = express();
 const ENV    = process.env.APP_ENV || 'development';
@@ -582,6 +583,19 @@ function mpCatImgMw(req, res, next) {
 }
 
 // Marketplace Categories (global master — super admin).
+// Customers — legacy POS customer module minus vouchers: list, edit,
+// ban/unban, delete, order history, profile. Super admin: "All companies"
+// = marketplace customers, a picked company = its POS customers. Company
+// logins see (only) their own customers — the api forces the scope.
+app.get ('/customers',              requireAdmin, companyContext, CustomersController.list);
+app.get ('/customers/edit/:id',     requireAdmin, companyContext, CustomersController.form);
+app.post('/customers/save',         requireAdmin, companyContext, CustomersController.save);
+app.get ('/customers/history/:id',  requireAdmin, companyContext, CustomersController.history);
+app.get ('/customers/order/:id',    requireAdmin, companyContext, CustomersController.order);
+app.post('/customers/ban',          requireAdmin, companyContext, CustomersController.ban);
+app.post('/customers/unban',        requireAdmin, companyContext, CustomersController.unban);
+app.post('/customers/delete',       requireAdmin, companyContext, CustomersController.remove);
+
 app.get ('/marketplace-categories',           requireAdmin, companyContext, requireSuperPage, MpCategoriesController.list);
 app.get ('/marketplace-categories/arrange',   requireAdmin, companyContext, requireSuperPage, MpCategoriesController.arrange);
 app.get ('/marketplace-categories/new',       requireAdmin, companyContext, requireSuperPage, MpCategoriesController.form);

@@ -124,17 +124,22 @@ app.use(compression({
 // MUST sit before the dev logger so the logger can include the id.
 app.use(requestId);
 
-// ── Body parsing (JSON + urlencoded, 2 MB cap) ────────────────────
+// ── Body parsing (JSON + urlencoded, 8 MB cap) ────────────────────
+// 8 MB, NOT 2: image uploads (review screenshots, avatars, community
+// photos) arrive from the web layer as base64 inside JSON, and base64
+// inflates a file ~1.37×. The web accepts images up to 5 MB (legacy
+// parity), so the JSON body can legitimately reach ~7 MB — the old
+// 2 MB cap made any image over ~1.4 MB die here as a generic 500.
 // `verify` stashes the raw bytes on req.rawBody so Stripe webhook
 // signature verification (Helpers/payments.verifyWebhookSignature) can
 // recompute the HMAC over the exact payload Stripe signed. Without
 // this Express would only give us the parsed JSON and the signature
 // check would never match.
 app.use(express.json({
-    limit: '2mb',
+    limit: '8mb',
     verify: (req, res, buf) => { req.rawBody = buf; },
 }));
-app.use(express.urlencoded({ extended: true, limit: '2mb' }));
+app.use(express.urlencoded({ extended: true, limit: '8mb' }));
 
 // ── Static serve: logo + favicon under /brand/* ───────────────────
 // The brand assets live in api/public/brand/. The web PWA + Flutter

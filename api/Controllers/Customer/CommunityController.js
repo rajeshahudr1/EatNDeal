@@ -119,6 +119,17 @@ async function feed(req, res) {
         const group = await db(G).where({ id: groupId, status: 1 }).where('type', CC.TYPE.USER).first('id', 'name', 'description', 'image', 'type');
         if (!group) { return H.errorResponse(res, 'Group not found.', 404); }
 
+        // Location scope — the SAME rule the list applies (user request
+        // 28 Jul 2026): a group outside the customer's area must not open
+        // via a direct /community/g/<id> URL either. No locations = global;
+        // otherwise the caller's coords must fall inside one of the radii.
+        // Answer 404 (not 403) so an out-of-area group looks exactly like a
+        // group that doesn't exist.
+        const locs = await db(GL).where('group_id', groupId).select('lat', 'lng', 'radius_km');
+        if (!scope.withinAnyLocation(req.query.lat, req.query.lng, locs)) {
+            return H.errorResponse(res, 'Group not found.', 404);
+        }
+
         // ONLY approved posts show in the feed — held (pending/rejected) posts
         // stay hidden until a moderator approves them, even from their author.
         const modWhere = (qb) => qb.where('moderation_status', CC.STATUS.APPROVED);
@@ -319,7 +330,15 @@ async function deleteComment(req, res) {
             return H.errorResponse(res, 'You can only delete your own comment.', 403);
         }
         await db(C).where({ id: commentId }).update({ status: CC.ROW.DELETED });   // soft-delete (status = 2)
-        await db(P).where({ id: c.post_id }).where('comments_count', '>', 0).decrement('comments_count', 1);
+        // Deleting a TOP-LEVEL comment takes its whole thread with it —
+        // replies to a deleted comment would otherwise linger as orphans
+        // (invisible in the thread render but still in the count).
+        let removed = 1;
+        if (await hasParentCol()) {
+            removed += await db(C).where({ parent_id: commentId }).where('status', '!=', CC.ROW.DELETED)
+                .update({ status: CC.ROW.DELETED });
+        }
+        await db(P).where({ id: c.post_id }).where('comments_count', '>=', removed).decrement('comments_count', removed);
         const cntRow = await db(P).where({ id: c.post_id }).first('comments_count');
         return H.successResponse(res, { deleted: 1, comments: Number(cntRow && cntRow.comments_count) || 0 }, 'Comment deleted.');
     } catch (err) {

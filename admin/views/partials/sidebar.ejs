@@ -24,6 +24,11 @@
         <a class="admin-nav__item <%= nav === 'products' ? 'is-active' : '' %>" href="/products">
             <span class="admin-nav__ic" aria-hidden="true">🍽️</span><span>Products</span>
         </a>
+        <%# Customers — every login: super admin sees marketplace (or a
+            picked company's) customers, a company login sees its own. %>
+        <a class="admin-nav__item <%= nav === 'customers' ? 'is-active' : '' %>" href="/customers">
+            <span class="admin-nav__ic" aria-hidden="true">🧑</span><span>Customers</span>
+        </a>
         <% if (scc.isSuper) { %>
         <a class="admin-nav__item <%= nav === 'mp-categories' ? 'is-active' : '' %>" href="/marketplace-categories">
             <span class="admin-nav__ic" aria-hidden="true">🗂️</span><span>Marketplace Categories</span>

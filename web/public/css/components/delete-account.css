@@ -1,0 +1,53 @@
+/*
+ * components/delete-account.css — the public "Delete your account" page
+ * (/delete-account): one centred card with the email/phone form, its
+ * loader button, and the post-submit "in review" panel.
+ */
+
+.delacct {
+    display: flex; flex-direction: column; align-items: center;
+    padding: 48px 16px 72px; min-height: 60vh;
+}
+.delacct__card {
+    width: 100%; max-width: 460px; text-align: center;
+    background: var(--color-surface, #fff);
+    border: 1px solid var(--color-border, #eee);
+    border-radius: 18px; padding: 34px 28px;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.06);
+}
+.delacct__icon { font-size: 2.2rem; }
+.delacct__title { margin: 10px 0 0; font-size: 1.45rem; font-weight: 800; }
+.delacct__sub { margin: 8px 0 0; font-size: 0.9rem; color: var(--color-text-muted, #666); line-height: 1.5; }
+
+.delacct__form { margin-top: 22px; text-align: left; }
+.delacct__field label { display: block; margin: 0 0 4px; font-size: 0.8rem; font-weight: 700; }
+.delacct__field input {
+    width: 100%; padding: 11px 14px; font: inherit;
+    border: 1.5px solid var(--color-border, #ddd); border-radius: 10px;
+}
+.delacct__field input:focus { outline: none; border-color: var(--color-primary, #e5252a); }
+.delacct__err { margin: 12px 0 0; font-size: 0.82rem; color: #c0392b; }
+
+.delacct__btn {
+    display: flex; align-items: center; justify-content: center;
+    width: 100%; margin-top: 18px; padding: 13px 16px; min-height: 48px;
+    background: var(--color-primary, #e5252a); color: #fff;
+    border: 0; border-radius: 999px; font: inherit; font-weight: 800;
+    cursor: pointer; text-decoration: none;
+}
+.delacct__btn:disabled { opacity: 0.75; cursor: wait; }
+.delacct__btn--ghost { background: transparent; color: var(--color-primary, #e5252a); border: 1.5px solid var(--color-primary, #e5252a); margin-top: 22px; }
+.delacct__btn-loader {
+    width: 20px; height: 20px; border-radius: 50%;
+    border: 3px solid rgba(255, 255, 255, 0.4); border-top-color: #fff;
+    animation: delacct-spin 0.7s linear infinite;
+}
+@keyframes delacct-spin { to { transform: rotate(360deg); } }
+
+.delacct__note { margin: 18px 0 0; font-size: 0.75rem; color: var(--color-text-soft, #999); line-height: 1.5; }
+.delacct__card--done .delacct__sub { font-size: 0.95rem; }
+
+@media (max-width: 480px) {
+    .delacct { padding-top: 24px; }
+    .delacct__card { padding: 26px 18px; }
+}

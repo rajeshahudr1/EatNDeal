@@ -451,10 +451,17 @@ async function searchCustomers(req, res) {
     try {
         const q = String(req.query.q || '').trim();
         if (q.length < 2) { return H.successResponse(res, { customers: [] }); }
-        const rows = await db(CUST).where(function () {
-            this.where('firstname', 'ilike', '%' + q + '%').orWhere('lastname', 'ilike', '%' + q + '%')
-                .orWhere('email', 'ilike', '%' + q + '%').orWhere('contact_no', 'ilike', '%' + q + '%');
-        }).orderBy('id', 'desc').limit(15).select('id', 'firstname', 'lastname', 'email', 'contact_no');
+        // MARKETPLACE customers only (company_id IS NULL) — the community is
+        // a marketplace feature, and the same person also exists as a
+        // restaurant's POS row with the same phone, which made every match
+        // show twice in the picker. Soft-deleted rows are skipped too.
+        const rows = await db(CUST)
+            .whereNull('company_id')
+            .whereNot('status', '2')
+            .where(function () {
+                this.where('firstname', 'ilike', '%' + q + '%').orWhere('lastname', 'ilike', '%' + q + '%')
+                    .orWhere('email', 'ilike', '%' + q + '%').orWhere('contact_no', 'ilike', '%' + q + '%');
+            }).orderBy('id', 'desc').limit(15).select('id', 'firstname', 'lastname', 'email', 'contact_no');
         const ids = rows.map((r) => r.id);
         const blocked = ids.length ? await db(BLK).whereIn('customer_id', ids).pluck('customer_id') : [];
         const bset = new Set(blocked.map(String));

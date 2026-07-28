@@ -39,7 +39,7 @@
         <div class="cgroups" data-main-list>
             <% groups.forEach(function (g) { %>
             <article class="cgroup-card" data-group-id="<%= g.id %>" data-group-name="<%= g.name %>">
-                <a class="cgroup-card__link" href="/community/g/<%= g.id %>">
+                <a class="cgroup-card__link" href="/community/g/<%= g.eid %>">
                     <div class="cgroup-card__cover <%= g.image_url ? '' : ('cgroup-card__cover--t' + g.tint) %>">
                         <% if (g.image_url) { %>
                             <img src="<%= g.image_url %>" alt="" loading="lazy">

@@ -12,11 +12,22 @@
 (function () {
     'use strict';
 
+    // Expired session → the server answers {status:401, redirect:'/login'}
+    // (Middlewares/auth.js). Bounce to the login page instead of leaving a
+    // dead console that toasts errors forever.
+    function sessionGate(body) {
+        if (body && body.status === 401 && body.redirect) {
+            window.location.href = body.redirect;
+        }
+        return body;
+    }
+
     // POST a JSON body; resolves to the parsed envelope, or a {status:0} shape
     // on a bad/unreachable response (never rejects).
     function post(url, body) {
         return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify(body) })
             .then(function (r) { return r.json().catch(function () { return { status: 0, msg: 'Bad response.' }; }); })
+            .then(sessionGate)
             .catch(function () { return { status: 0, msg: 'Could not reach the server.' }; });
     }
 
@@ -37,6 +48,7 @@
             headers: { Accept: 'application/json', 'Cache-Control': 'no-cache' },
         })
             .then(function (r) { return r.json().catch(function () { return { status: 0, msg: 'Bad response.' }; }); })
+            .then(sessionGate)
             .catch(function () { return { status: 0, msg: 'Could not reach the server.' }; });
     }
 

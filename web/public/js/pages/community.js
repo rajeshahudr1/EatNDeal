@@ -152,7 +152,7 @@
         photoInput && photoInput.addEventListener('change', function () {
             var f = photoInput.files && photoInput.files[0];
             if (!f) { return; }
-            if (f.size > 4 * 1024 * 1024) { toast('error', 'Photo must be under 4 MB.'); photoInput.value = ''; return; }
+            if (f.size > 5 * 1024 * 1024) { toast('error', 'That photo is too large — the maximum is 5 MB. Please pick a smaller one.'); photoInput.value = ''; return; }
             previewImg.src = URL.createObjectURL(f);
             preview.hidden = false;
         });
@@ -292,7 +292,15 @@
                 postJson('/community/comment-delete', { comment_id: cmt.getAttribute('data-comment-id') }).then(function (env) {
                     if (env.status === 401) { bounceToSignin(); return; }
                     if (env.status !== 200) { toast('error', env.msg || 'Could not delete.'); return; }
-                    cmt.remove();
+                    // A top-level comment takes its whole block with it —
+                    // replies, the Reply button and the reply composer.
+                    // Removing only the bubble left orphan "Reply" rows.
+                    var blk2 = cmt.closest('[data-comment-block]');
+                    if (blk2 && blk2.getAttribute('data-comment-block') === cmt.getAttribute('data-comment-id')) {
+                        blk2.remove();
+                    } else {
+                        cmt.remove();
+                    }
                     var n = card.querySelector('[data-comments-n]'); if (n && env.data) { n.textContent = env.data.comments; }
                     toast('success', 'Comment deleted.');
                 });

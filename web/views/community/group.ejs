@@ -8,7 +8,9 @@
 
   Inputs: group, posts[], total, has_more, next_offset, can_post, user_session.
 -%>
-<section class="cgroup" data-community-group="<%= group.id %>" data-can-post="<%= can_post ? '1' : '0' %>"
+<%# data-community-group carries the ENCODED token — the raw id never
+    reaches the markup; web proxies decode it (Helpers/idCodec). %>
+<section class="cgroup" data-community-group="<%= group_eid %>" data-can-post="<%= can_post ? '1' : '0' %>"
     data-me-id="<%= user_session ? user_session.id : 0 %>"
     data-me-name="<%= user_session ? [user_session.firstname, user_session.lastname].filter(Boolean).join(' ') : '' %>"
     data-me-initial="<%= (user_session && user_session.firstname) ? user_session.firstname.charAt(0).toUpperCase() : 'Y' %>"
@@ -73,7 +75,7 @@
                 </form>
             <% } else { %>
                 <div class="cfeed__signin">
-                    <p>Join the conversation — <a href="/signin?next=<%= encodeURIComponent('/community/g/' + group.id) %>">sign in</a> to post, like and comment.</p>
+                    <p>Join the conversation — <a href="/signin?next=<%= encodeURIComponent('/community/g/' + group_eid) %>">sign in</a> to post, like and comment.</p>
                 </div>
             <% } %>
 

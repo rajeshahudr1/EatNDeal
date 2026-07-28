@@ -213,6 +213,10 @@ router.post('/auth/change-phone',
     validate(changePhoneSchema),
     AuthCtl.changePhone);
 
+// PUBLIC "delete my account" request form (app-store requirement) —
+// validates the details only, writes nothing.
+router.post('/auth/delete-request', AuthCtl.deleteRequest);
+
 // Soft-delete the customer's own account (status = '2').
 router.post('/auth/delete-account',
     validate(deleteAccountSchema),
@@ -221,6 +225,12 @@ router.post('/auth/delete-account',
 router.get('/auth/me',
     validateQuery(meSchema),
     AuthCtl.me);
+
+// Session guard — web checks a signed-in customer is still allowed in
+// (auto-logout on ban / delete / disable from the admin).
+router.get('/auth/state',
+    validateQuery(meSchema),
+    AuthCtl.accountState);
 
 router.post('/auth/update-avatar',
     validate(updateAvatarSchema),
@@ -587,6 +597,21 @@ router.get ('/admin/marketplace-categories/companies',   authenticate, requireRo
 router.get ('/admin/marketplace-categories/restaurants', authenticate, requireRole('admin'), requireSuperAdmin, AdminMpCatCtl.restaurants);
 router.post('/admin/marketplace-categories/assign',      authenticate, requireRole('admin'), requireSuperAdmin, AdminMpCatCtl.assign);
 router.post('/admin/marketplace-categories/reorder',     authenticate, requireRole('admin'), requireSuperAdmin, AdminMpCatCtl.reorder);
+
+// ── Admin: customers ─────────────────────────────────────────────────
+// Legacy POS customer module minus vouchers: list/search, edit, ban with
+// reason, unban, soft delete, order history + About-You profile.
+// Super admin with no company picked = marketplace customers; a picked
+// company (or a company login, forced by adminScope) = that company's own.
+const AdminCustomersCtl = require('../Controllers/Admin/CustomersController');
+router.get ('/admin/customers',        authenticate, requireRole('admin'), AdminCustomersCtl.list);
+router.get ('/admin/customers/get',    authenticate, requireRole('admin'), AdminCustomersCtl.getCustomer);
+router.get ('/admin/customers/orders', authenticate, requireRole('admin'), AdminCustomersCtl.orders);
+router.get ('/admin/customers/order',  authenticate, requireRole('admin'), AdminCustomersCtl.orderDetail);
+router.post('/admin/customers/save',   authenticate, requireRole('admin'), AdminCustomersCtl.save);
+router.post('/admin/customers/ban',    authenticate, requireRole('admin'), AdminCustomersCtl.ban);
+router.post('/admin/customers/unban',  authenticate, requireRole('admin'), AdminCustomersCtl.unban);
+router.post('/admin/customers/delete', authenticate, requireRole('admin'), AdminCustomersCtl.remove);
 
 // ── Admin: marketplace collections (curated home-feed rows) ─────────
 const AdminCollectionsCtl = require('../Controllers/Admin/CollectionsController');

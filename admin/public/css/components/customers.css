@@ -1,0 +1,189 @@
+/*
+ * components/customers.css — the super-admin marketplace Customers screens
+ * (list badges + row layout, ban modal fields, About-profile grid, the
+ * order-history summary cards + table). Piggybacks on the shared .pr-* /
+ * .ly-* system from products.css.
+ */
+
+/* ── List rows ─────────────────────────────────────────────────── */
+.cu-avatar {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 40px; height: 40px; border-radius: 50%;
+    background: #fde8e8; color: #c0392b; font-weight: 800; font-size: 1rem;
+    flex: 0 0 auto;
+}
+.cu-sub { display: block; margin-top: 2px; font-size: 0.78rem; color: var(--color-text-muted, #777); font-weight: 400; }
+.cu-sub > span { margin-right: 10px; white-space: nowrap; }
+.cu-badge {
+    display: inline-block; margin-left: 6px; padding: 1px 8px; border-radius: 999px;
+    font-size: 0.68rem; font-weight: 700; vertical-align: middle;
+}
+.cu-badge--banned { background: #fdecea; color: #c0392b; }
+.cu-badge--off    { background: #f0f0f0; color: #777; }
+.cu-orders { font-size: 0.78rem; color: var(--color-text-muted, #777); white-space: nowrap; }
+
+/* ── Ban modal fields ──────────────────────────────────────────── */
+.cu-ban__reason { width: 100%; margin-top: 10px; }
+.cu-ban__other {
+    width: 100%; margin-top: 8px; padding: 8px 10px;
+    border: 1px solid var(--color-border, #ddd); border-radius: 8px; font: inherit;
+}
+
+/* ── Banned banner (edit form) ─────────────────────────────────── */
+.cu-banned-note {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    margin: 0 0 14px; padding: 10px 14px; border-radius: 10px;
+    background: #fdecea; color: #8c2f24; font-size: 0.9rem;
+}
+
+/* ── About-profile grid (modal + form section) ─────────────────── */
+.cu-profile { max-height: 55vh; overflow: auto; margin-top: 10px; }
+.cu-profile--inline { max-height: none; }
+.cu-profile__row {
+    display: flex; gap: 12px; justify-content: space-between;
+    padding: 7px 2px; border-bottom: 1px solid var(--color-border, #eee);
+    font-size: 0.85rem;
+}
+.cu-profile__row:last-child { border-bottom: 0; }
+.cu-profile__k { color: var(--color-text-muted, #777); flex: 0 0 45%; }
+.cu-profile__v { text-align: right; font-weight: 600; overflow-wrap: anywhere; }
+.cu-profile__loading { padding: 14px 0; text-align: center; color: var(--color-text-muted, #777); font-size: 0.85rem; }
+
+/* ── Order-history page (cuh-*) ────────────────────────────────── */
+
+/* Customer identity header */
+.cu-avatar--lg { width: 52px; height: 52px; font-size: 1.35rem; }
+.cuh-who {
+    display: flex; align-items: center; gap: 14px;
+    background: var(--color-surface, #fff); border: 1px solid var(--color-border, #E5E8EE);
+    border-radius: 14px; padding: 14px 18px; margin: 0 0 12px;
+}
+.cuh-who__txt { min-width: 0; }
+.cuh-who__name { display: block; font-size: 1.05rem; font-weight: 800; }
+.cuh-who__meta { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 3px; font-size: 0.8rem; color: var(--color-text-muted, #5B6472); }
+
+/* Orders-at-a-glance rail: big total | breakdown chips | spend */
+.cuh-rail {
+    display: flex; align-items: stretch; gap: 0;
+    background: var(--color-surface, #fff); border: 1px solid var(--color-border, #E5E8EE);
+    border-radius: 14px; margin: 0 0 12px; overflow: hidden;
+}
+.cuh-rail__total, .cuh-rail__spend {
+    flex: 0 0 auto; display: flex; flex-direction: column; justify-content: center;
+    padding: 16px 26px; text-align: center;
+}
+.cuh-rail__spend { background: var(--color-primary-soft, #FDE7E8); }
+.cuh-rail__spend .cuh-rail__n { color: var(--color-primary, #E5252A); }
+.cuh-rail__n { font-size: 1.6rem; font-weight: 800; line-height: 1.1; }
+.cuh-rail__l { margin-top: 2px; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-text-muted, #5B6472); }
+.cuh-rail__break {
+    flex: 1 1 auto; display: flex; flex-direction: column; justify-content: center; gap: 8px;
+    padding: 14px 18px; border-left: 1px solid var(--color-border-soft, #EFF1F5);
+    border-right: 1px solid var(--color-border-soft, #EFF1F5); min-width: 0;
+}
+.cuh-chiprow { display: flex; flex-wrap: wrap; gap: 8px; }
+.cuh-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 12px; border-radius: 999px; font-size: 0.78rem;
+    background: var(--color-bg-alt, #F7F8FB); border: 1px solid var(--color-border-soft, #EFF1F5);
+    color: var(--color-text-muted, #5B6472);
+}
+.cuh-chip b { color: var(--color-text, #1C1C1C); font-weight: 800; }
+.cuh-chip--ok  { background: #EAF7EF; border-color: #D5EEDF; color: #15803D; }
+.cuh-chip--ok b  { color: #15803D; }
+.cuh-chip--bad { background: #FDECEA; border-color: #F8D7D4; color: #C0392B; }
+.cuh-chip--bad b { color: #C0392B; }
+.cuh-chip--rf  { background: #EDE7F6; border-color: #DFD3F0; color: #5E35B1; }
+.cuh-chip--rf b  { color: #5E35B1; }
+
+/* Cashback wallet strip */
+.cuh-wallet {
+    display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+    background: linear-gradient(90deg, #F0FAF3, #FFFFFF 55%);
+    border: 1px solid #D5EEDF; border-radius: 14px;
+    padding: 12px 18px; margin: 0 0 14px;
+}
+.cuh-wallet__ttl { font-size: 0.82rem; font-weight: 800; color: #15803D; white-space: nowrap; }
+.cuh-wallet__vals { display: flex; flex-wrap: wrap; gap: 8px 26px; }
+.cuh-wal { display: flex; flex-direction: column; font-size: 0.7rem; color: var(--color-text-muted, #5B6472); }
+.cuh-wal b { font-size: 1rem; font-weight: 800; color: var(--color-text, #1C1C1C); }
+.cuh-wal--main b { color: #15803D; font-size: 1.15rem; }
+.cuh-wal--dim b { color: var(--color-text-soft, #939AA6); }
+
+/* Orders table */
+.cu-tablewrap {
+    overflow-x: auto; border: 1px solid var(--color-border, #E5E8EE);
+    border-radius: 14px; background: var(--color-surface, #fff);
+}
+.cu-table { width: 100%; border-collapse: collapse; font-size: 0.83rem; min-width: 820px; }
+.cu-table th, .cu-table td { padding: 10px 14px; text-align: left; white-space: nowrap; }
+.cu-table thead th {
+    position: sticky; top: 0; background: var(--color-bg-alt, #F7F8FB);
+    font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--color-text-muted, #5B6472); border-bottom: 1px solid var(--color-border, #E5E8EE);
+}
+.cu-table tbody td { border-bottom: 1px solid var(--color-border-soft, #EFF1F5); }
+.cu-table tbody tr:last-child td { border-bottom: 0; }
+.cu-table tbody tr:hover td { background: var(--color-bg-alt, #F7F8FB); }
+.cu-td-r { text-align: right !important; }
+.cu-td-dim { color: var(--color-text-muted, #5B6472); }
+.cu-ordno { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.78rem; font-weight: 600; }
+.cu-when { display: flex; flex-direction: column; line-height: 1.25; }
+.cu-when b { font-weight: 600; }
+.cu-when i { font-style: normal; font-size: 0.72rem; color: var(--color-text-muted, #5B6472); }
+.cu-amt { font-weight: 800; }
+.cu-pay { font-size: 0.8rem; }
+/* View button — compact outline pill that fills brand-red on hover. */
+.cu-view {
+    display: inline-block; padding: 5px 16px; border-radius: 999px;
+    border: 1.5px solid var(--color-primary, #E5252A);
+    color: var(--color-primary, #E5252A);
+    font-size: 0.78rem; font-weight: 700; text-decoration: none;
+    line-height: 1; transition: background 0.15s, color 0.15s;
+}
+.cu-view:hover, .cu-view:focus-visible { background: var(--color-primary, #E5252A); color: #fff; }
+.cu-st { padding: 2px 10px; border-radius: 999px; font-size: 0.72rem; font-weight: 700; background: #f0f0f0; color: #555; }
+.cu-st--completed { background: #EAF7EF; color: #15803D; }
+.cu-st--on-going, .cu-st--active, .cu-st--pending { background: #FFF4D6; color: #9A6B00; }
+.cu-st--cancelled, .cu-st--void { background: #FDECEA; color: #C0392B; }
+.cu-st--refund { background: #EDE7F6; color: #5E35B1; }
+
+/* ── Order View page (cuo-*) ───────────────────────────────────── */
+.cuo-status {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
+    background: var(--color-surface, #fff); border: 1px solid var(--color-border, #E5E8EE);
+    border-radius: 14px; padding: 12px 18px; margin: 0 0 12px;
+}
+.cuo-status__meta { margin-left: 10px; font-size: 0.8rem; color: var(--color-text-muted, #5B6472); }
+.cuo-status__rest { font-size: 0.85rem; font-weight: 600; }
+.cuo-cols { display: grid; grid-template-columns: 1fr 320px; gap: 12px; align-items: start; }
+.cuo-main { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.cuo-item { padding: 10px 0; border-bottom: 1px solid var(--color-border-soft, #EFF1F5); }
+.cuo-item:last-child { border-bottom: 0; }
+.cuo-item__row { display: flex; gap: 10px; align-items: baseline; }
+.cuo-item__qty { flex: 0 0 auto; font-weight: 800; color: var(--color-primary, #E5252A); }
+.cuo-item__name { flex: 1 1 auto; font-weight: 600; }
+.cuo-item__amt { flex: 0 0 auto; font-weight: 800; }
+.cuo-item__mod { display: flex; justify-content: space-between; padding: 2px 0 0 30px; font-size: 0.8rem; color: var(--color-text-muted, #5B6472); }
+.cuo-item__note { margin: 4px 0 0 30px; font-size: 0.78rem; color: var(--color-text-muted, #5B6472); }
+.cuo-note { margin: 6px 0; font-size: 0.85rem; }
+.cuo-bill__row { display: flex; justify-content: space-between; padding: 5px 0; font-size: 0.85rem; }
+.cuo-bill__row--good { color: #15803D; }
+.cuo-bill__row--total {
+    margin-top: 6px; padding-top: 10px; border-top: 1px dashed var(--color-border, #E5E8EE);
+    font-size: 1rem; font-weight: 800;
+}
+.cuo-payline {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-top: 10px; padding: 8px 12px; border-radius: 10px;
+    background: var(--color-bg-alt, #F7F8FB); font-size: 0.85rem; font-weight: 600;
+}
+@media (max-width: 860px) { .cuo-cols { grid-template-columns: 1fr; } }
+
+/* Mobile — the rail stacks, chips wrap, subtext wraps. */
+@media (max-width: 720px) {
+    .cuh-rail { flex-direction: column; }
+    .cuh-rail__break { border-left: 0; border-right: 0; border-top: 1px solid var(--color-border-soft, #EFF1F5); border-bottom: 1px solid var(--color-border-soft, #EFF1F5); }
+    .cuh-rail__total, .cuh-rail__spend { padding: 12px 16px; }
+    .cu-sub > span { white-space: normal; }
+}

@@ -182,17 +182,14 @@ async function verifyOtp(req, res) {
         const row    = await customers.findByPhone({ countryCode: country_code, contactNo: contact_no });
         const state  = customers.classify(row);
 
-        // Account-block branches first — these end the flow.
-        if (state === 'deleted') {
-            // Mirror Yii: deleted rows behave as "not found" rather than
-            // surfacing the soft-delete to the user.
-            return H.errorResponse(res, MSG.auth.accountDisabled, 403);
+        // Account-block branches first — these end the flow. Banned and
+        // deleted accounts say so (with the ban reason) — user request
+        // 28 Jul 2026; the old behaviour hid the soft-delete.
+        if (state === 'deleted' || state === 'banned') {
+            return H.errorResponse(res, customers.blockMessage(row, state), 403);
         }
         if (state === 'disabled') {
             return H.errorResponse(res, MSG.auth.accountDisabled, 403);
-        }
-        if (state === 'banned') {
-            return H.errorResponse(res, MSG.auth.accountBanned, 403);
         }
 
         // Stamp verify_at on a pending row so we know the user passed
@@ -277,11 +274,11 @@ async function saveProfile(req, res) {
         const row   = await customers.findByPhone({ countryCode: country_code, contactNo: contact_no });
         const state = customers.classify(row);
 
-        if (state === 'deleted' || state === 'disabled') {
-            return H.errorResponse(res, MSG.auth.accountDisabled, 403);
+        if (state === 'deleted' || state === 'banned') {
+            return H.errorResponse(res, customers.blockMessage(row, state), 403);
         }
-        if (state === 'banned') {
-            return H.errorResponse(res, MSG.auth.accountBanned, 403);
+        if (state === 'disabled') {
+            return H.errorResponse(res, MSG.auth.accountDisabled, 403);
         }
         if (state === 'existing') {
             // Already done — front-end shouldn't have called this, but
@@ -423,11 +420,11 @@ async function updateProfile(req, res) {
         }
 
         const state = customers.classify(row);
-        if (state === 'deleted' || state === 'disabled') {
-            return H.errorResponse(res, MSG.auth.accountDisabled, 403);
+        if (state === 'deleted' || state === 'banned') {
+            return H.errorResponse(res, customers.blockMessage(row, state), 403);
         }
-        if (state === 'banned') {
-            return H.errorResponse(res, MSG.auth.accountBanned, 403);
+        if (state === 'disabled') {
+            return H.errorResponse(res, MSG.auth.accountDisabled, 403);
         }
         if (state !== 'existing') {
             // 'pending' rows should go through /auth/save-profile first.
@@ -499,8 +496,8 @@ async function changePhone(req, res) {
         const row = await db('customer').where({ id: customer_id }).whereNull('company_id').first();
         if (!row) { return H.errorResponse(res, MSG.auth.sessionExpired, 401); }
         const state = customers.classify(row);
-        if (state === 'deleted' || state === 'disabled') { return H.errorResponse(res, MSG.auth.accountDisabled, 403); }
-        if (state === 'banned') { return H.errorResponse(res, MSG.auth.accountBanned, 403); }
+        if (state === 'deleted' || state === 'banned') { return H.errorResponse(res, customers.blockMessage(row, state), 403); }
+        if (state === 'disabled') { return H.errorResponse(res, MSG.auth.accountDisabled, 403); }
 
         // Verify the code for the NEW number (consumes it on success).
         const check = await otp.verify({ countryCode: country_code, contactNo: contact_no, otp: code });
@@ -702,8 +699,8 @@ async function updateAvatar(req, res) {
         const row = await db('customer').where({ id: customer_id }).whereNull('company_id').first();
         if (!row) { return H.errorResponse(res, MSG.auth.sessionExpired, 401); }
         const state = customers.classify(row);
-        if (state === 'deleted' || state === 'disabled') { return H.errorResponse(res, MSG.auth.accountDisabled, 403); }
-        if (state === 'banned') { return H.errorResponse(res, MSG.auth.accountBanned, 403); }
+        if (state === 'deleted' || state === 'banned') { return H.errorResponse(res, customers.blockMessage(row, state), 403); }
+        if (state === 'disabled') { return H.errorResponse(res, MSG.auth.accountDisabled, 403); }
 
         await db('customer').where({ id: row.id }).update({
             image:             image || null,
@@ -738,11 +735,93 @@ async function me(req, res) {
         const row = await db('customer').where({ id: customer_id }).whereNull('company_id').first();
         if (!row) { return H.errorResponse(res, MSG.auth.sessionExpired, 401); }
         const state = customers.classify(row);
-        if (state === 'deleted' || state === 'disabled') { return H.errorResponse(res, MSG.auth.accountDisabled, 403); }
-        if (state === 'banned') { return H.errorResponse(res, MSG.auth.accountBanned, 403); }
+        if (state === 'deleted' || state === 'banned') { return H.errorResponse(res, customers.blockMessage(row, state), 403); }
+        if (state === 'disabled') { return H.errorResponse(res, MSG.auth.accountDisabled, 403); }
         return H.successResponse(res, { customer: customers.publicView(row) });
     } catch (err) {
         H.log.error('auth.me', err && err.message);
+        return H.errorResponse(res, MSG.server.oops, 500);
+    }
+}
+
+/**
+ * accountState
+ *
+ * What:  Ultra-light session guard — "is this customer still allowed in?".
+ *        The web layer calls this on page requests for a signed-in session
+ *        and destroys the session when the answer is blocked, so banning
+ *        or deleting a customer in the admin logs them out automatically
+ *        (user request 28 Jul 2026). One PK SELECT, no joins.
+ * Type:  READ.
+ *
+ * Inputs:  req.query.customer_id
+ * Output:  200 { state: 'ok' } | { state: 'blocked', message }
+ */
+async function accountState(req, res) {
+    try {
+        const { customer_id } = req.query;
+        const row = await db('customer')
+            .where({ id: customer_id }).whereNull('company_id')
+            .first('id', 'status', 'banned_reason', 'other_banned_reason');
+        const state = customers.classify(row);
+        if (!row || state === 'deleted' || state === 'banned' || state === 'disabled') {
+            return H.successResponse(res, {
+                state:   'blocked',
+                message: row ? customers.blockMessage(row, state) : customers.blockMessage(null, 'deleted'),
+            });
+        }
+        return H.successResponse(res, { state: 'ok' });
+    } catch (err) {
+        H.log.error('auth.accountState', err && err.message);
+        // On an internal error say "ok" — a hiccup must never mass-logout.
+        return H.successResponse(res, { state: 'ok' });
+    }
+}
+
+/**
+ * deleteRequest
+ *
+ * What:  The PUBLIC "delete my account" request form (the URL app stores
+ *        require). Validates that the given email / mobile belong to a
+ *        real marketplace customer and answers { valid: true } — it
+ *        deliberately WRITES NOTHING (user request 28 Jul 2026): the page
+ *        only tells the customer their account is in review and will be
+ *        deleted within 7 days.
+ * Type:  READ.
+ *
+ * Inputs:  req.body.email?, req.body.contact_no?  (at least one)
+ * Output:  200 { valid: true } | 404 no matching account | 422 empty form
+ */
+async function deleteRequest(req, res) {
+    try {
+        const email   = String((req.body && req.body.email) || '').trim();
+        const phone   = customers.normalisePhone(String((req.body && req.body.contact_no) || ''));
+        if (!email && !phone) {
+            return H.errorResponse(res, 'Enter your email or mobile number.', 422);
+        }
+        if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+            return H.errorResponse(res, 'Enter a valid email address.', 422);
+        }
+
+        // Match a live marketplace account (company_id NULL — plus the
+        // handful of legacy rows that carry 0 instead). EITHER detail
+        // matching is enough: the form says "email or mobile", so a valid
+        // phone must pass even if the email typed alongside is wrong.
+        const row = await db('customer')
+            .where(function () { this.whereNull('company_id').orWhere('company_id', 0); })
+            .whereNot('status', '2')
+            .where(function () {
+                if (phone) { this.orWhere('contact_no', phone); }
+                if (email) { this.orWhereRaw('LOWER(email) = LOWER(?)', [email]); }
+            })
+            .first('id');
+        if (!row) {
+            return H.errorResponse(res, 'No account matches these details. Please check and try again.', 404);
+        }
+        return H.successResponse(res, { valid: true },
+            'Your account deletion request is in review. Your account will be deleted within 7 days.');
+    } catch (err) {
+        H.log.error('auth.deleteRequest', err && err.message);
         return H.errorResponse(res, MSG.server.oops, 500);
     }
 }
@@ -938,13 +1017,13 @@ async function socialSignin(req, res) {
 
         const state = customers.classify(row);
 
-        // Same wording as verifyOtp — never leak which of the three
-        // blocked-states actually hit.
-        if (state === 'deleted' || state === 'disabled') {
-            return H.errorResponse(res, MSG.auth.accountDisabled, 403);
+        // Same wording as verifyOtp — banned/deleted say so (with reason),
+        // disabled keeps the generic sentence.
+        if (state === 'deleted' || state === 'banned') {
+            return H.errorResponse(res, customers.blockMessage(row, state), 403);
         }
-        if (state === 'banned') {
-            return H.errorResponse(res, MSG.auth.accountBanned, 403);
+        if (state === 'disabled') {
+            return H.errorResponse(res, MSG.auth.accountDisabled, 403);
         }
 
         if (row) {
@@ -1019,4 +1098,4 @@ async function socialSignin(req, res) {
     }
 }
 
-module.exports = { sendOtp, verifyOtp, saveProfile, updateProfile, updateAvatar, me, getAbout, updateAbout, socialSignin, changePhone, deleteAccount };
+module.exports = { sendOtp, verifyOtp, saveProfile, updateProfile, updateAvatar, me, accountState, getAbout, updateAbout, socialSignin, changePhone, deleteAccount, deleteRequest };

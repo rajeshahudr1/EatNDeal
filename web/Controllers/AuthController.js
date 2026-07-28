@@ -1018,6 +1018,42 @@ async function deleteAccount(req, res) {
 }
 
 /**
+ * deleteAccountPage
+ *
+ * What:  GET /delete-account — the PUBLIC account-deletion request page
+ *        (the URL app stores require; works signed-out). The customer
+ *        enters their email / mobile; deleteAccountRequest validates them.
+ * Type:  READ.
+ */
+function deleteAccountPage(req, res) {
+    return res.render('auth/delete-account', {
+        page_title:       'Delete your account',
+        _layoutFile:      '../_layout',
+        active_nav:       '',
+        extra_js:         '/js/pages/delete-account.js',
+        show_promo_strip: false,
+    });
+}
+
+/**
+ * deleteAccountRequest
+ *
+ * What:  POST /delete-account/request (JSON) — forwards the email/mobile
+ *        to the api's validate-only endpoint. Nothing is written anywhere;
+ *        a valid match just gets the "in review — deleted within 7 days"
+ *        message back for the page to show.
+ * Type:  READ (proxy).
+ */
+async function deleteAccountRequest(req, res) {
+    const payload = {
+        email:      String((req.body && req.body.email) || '').trim(),
+        contact_no: String((req.body && req.body.contact_no) || '').trim(),
+    };
+    const apiRes = await callApi(req, 'POST', '/api/v1/auth/delete-request', payload);
+    return relay(res, apiRes);
+}
+
+/**
  * signOut
  *
  * What:  Signs the customer out and bounces home — but KEEPS the chosen
@@ -1060,5 +1096,7 @@ module.exports = {
     changePhoneSendOtp,
     changePhoneVerify,
     deleteAccount,
+    deleteAccountPage,
+    deleteAccountRequest,
     signOut,
 };

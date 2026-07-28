@@ -24,6 +24,13 @@
 
 const { callApi }            = require('../Helpers/apiClient');
 const { requireUser, relay } = require('../Helpers/authProxy');
+// Group ids never appear raw in URLs / markup — they travel as opaque
+// tokens ("g" prefix) and are decoded server-side (Helpers/idCodec).
+const { encodeId, decodeId } = require('../Helpers/idCodec');
+const gid = {
+    enc: (id) => encodeId('g', id),
+    dec: (tok) => decodeId('g', tok),
+};
 
 // GET /community — the groups grid (works for guests).
 async function groupsPage(req, res) {
@@ -40,6 +47,9 @@ async function groupsPage(req, res) {
         if (body && body.status === 200 && body.data) { groups = body.data.groups || []; }
     } catch (e) { /* render an empty state rather than a 500 */ }
 
+    // Cards link by TOKEN, not raw id.
+    groups.forEach((g) => { g.eid = gid.enc(g.id); });
+
     return res.render('community/index', {
         page_title:       'Community',
         _layoutFile:      '../_layout',
@@ -52,11 +62,16 @@ async function groupsPage(req, res) {
 
 // GET /community/g/:id — one group's feed (first page SSR; works for guests).
 async function groupPage(req, res) {
-    const groupId = Number(req.params.id) || 0;
+    const groupId = gid.dec(req.params.id);
     const user = (req.session && req.session.user) || null;
 
     const qs = new URLSearchParams({ group_id: String(groupId), limit: '15', offset: '0' });
     if (user) { qs.set('customer_id', String(user.id)); }
+    // Location rides along so the api can 404 a group whose coverage areas
+    // don't include the customer — the direct URL must not bypass the
+    // same filter the /community list applies.
+    const gpLoc = (req.session && req.session.userLocation) || null;
+    if (gpLoc && gpLoc.lat != null && gpLoc.lng != null) { qs.set('lat', String(gpLoc.lat)); qs.set('lng', String(gpLoc.lng)); }
 
     let body = null;
     try {
@@ -89,6 +104,7 @@ async function groupPage(req, res) {
         extra_js:         '/js/pages/community.js',
         show_promo_strip: false,
         group:            data.group,
+        group_eid:        gid.enc(groupId),
         posts,
         total:            Number(data.total) || posts.length,
         has_more:         !!data.has_more,
@@ -102,11 +118,15 @@ async function groupPage(req, res) {
 async function feedData(req, res) {
     const user = (req.session && req.session.user) || null;
     const qs = new URLSearchParams({
-        group_id: String(req.query.group_id || ''),
+        group_id: String(gid.dec(req.query.group_id) || ''),
         offset:   String(req.query.offset || 0),
         limit:    String(req.query.limit || 15),
     });
     if (user) { qs.set('customer_id', String(user.id)); }
+    // Same location scope as groupPage — without the coords a located
+    // group's load-more would 404 even inside its own area.
+    const fdLoc = (req.session && req.session.userLocation) || null;
+    if (fdLoc && fdLoc.lat != null && fdLoc.lng != null) { qs.set('lat', String(fdLoc.lat)); qs.set('lng', String(fdLoc.lng)); }
     const apiRes = await callApi(req, 'GET', '/api/v1/customer/community/feed?' + qs.toString());
     return relay(res, apiRes);
 }
@@ -117,7 +137,7 @@ async function myPostsData(req, res) {
     const user = requireUser(req, res, 'Please sign in.');
     if (!user) { return; }
     const qs = new URLSearchParams({ customer_id: String(user.id) });
-    if (req.query.group_id) { qs.set('group_id', String(req.query.group_id)); }
+    if (req.query.group_id) { qs.set('group_id', String(gid.dec(req.query.group_id) || '')); }
     if (req.query.status) { qs.set('status', String(req.query.status)); }
     const apiRes = await callApi(req, 'GET', '/api/v1/customer/community/my-posts?' + qs.toString());
     return relay(res, apiRes);
@@ -136,7 +156,7 @@ async function createPost(req, res) {
     if (!user) { return; }
     const payload = {
         customer_id: user.id,
-        group_id:    req.body.group_id,
+        group_id:    gid.dec(req.body.group_id),
         body:        req.body.body || '',
     };
     // Store the photo as a "/upload/community/<file>" path. The file lands in

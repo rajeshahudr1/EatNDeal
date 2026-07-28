@@ -1056,7 +1056,7 @@
     async function uploadAvatar(file) {
         if (!file) { return; }
         if (!/^image\/(png|jpe?g|webp|gif)$/.test(file.type)) { toastA('error', 'Please choose a PNG or JPG image.'); return; }
-        if (file.size > 3 * 1024 * 1024) { toastA('error', 'Image must be under 3 MB.'); return; }
+        if (file.size > 5 * 1024 * 1024) { toastA('error', 'That image is too large — the maximum is 5 MB. Please pick a smaller one.'); return; }
 
         var fd = new FormData();
         fd.append('avatar', file);

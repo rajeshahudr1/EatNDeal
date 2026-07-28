@@ -14,7 +14,7 @@
 <%
     var SORTS = [['newest', 'Newest'], ['oldest', 'Oldest'], ['name_asc', 'Name A–Z'], ['name_desc', 'Name Z–A']];
     var SIZES = [['all', 'All'], ['10', '10'], ['25', '25'], ['50', '50'], ['100', '100'], ['500', '500'], ['1000', '1000']];
-    var STATUS_F = [['', 'All status'], ['active', 'Active'], ['banned', 'Banned'], ['inactive', 'Inactive']];
+    var STATUS_F = [['', 'All status'], ['active', 'Active'], ['banned', 'Banned'], ['inactive', 'Inactive'], ['deleted', 'Deleted']];
     function pageUrl(n) {
         var qp = [];
         if (search_q) { qp.push('q=' + encodeURIComponent(search_q)); }
@@ -81,6 +81,7 @@
                         <%= c.name || ('Customer #' + c.id) %>
                         <% if (c.status === '3') { %><span class="cu-badge cu-badge--banned" title="<%= c.banned_reason === 'Other' ? c.other_banned_reason : c.banned_reason %>">Banned</span><% } %>
                         <% if (c.status === '0') { %><span class="cu-badge cu-badge--off">Inactive</span><% } %>
+                        <% if (c.status === '2') { %><span class="cu-badge cu-badge--banned">Deleted</span><% } %>
                         <span class="cu-sub">
                             <% if (c.contact_no) { %><span>📞 <%= c.contact_no %></span><% } %>
                             <% if (c.email) { %><span>✉️ <%= c.email %></span><% } %>
@@ -91,6 +92,10 @@
                 <div class="pr-item__controls">
                     <span class="cu-orders" title="Marketplace orders"><%= c.total_orders %> order<%= c.total_orders === 1 ? '' : 's' %></span>
                     <span class="pr-item__act">
+                        <% if (c.status === '2') { %>
+                            <%# Deleted row — only Restore makes sense here. %>
+                            <button type="button" class="ly-iconbtn" data-action="cu-restore" data-id="<%= c.id %>" data-name="<%= c.name %>" title="Restore">♻️</button>
+                        <% } else { %>
                         <a href="/customers/history/<%= c.id %>" class="ly-iconbtn" title="Order history">🧾</a>
                         <a href="/customers/edit/<%= c.id %>" class="ly-iconbtn" title="Edit">✎</a>
                         <% if (c.status === '3') { %>
@@ -99,6 +104,7 @@
                         <button type="button" class="ly-iconbtn" data-action="cu-ban" data-id="<%= c.id %>" data-name="<%= c.name %>" title="Ban">🚫</button>
                         <% } %>
                         <button type="button" class="ly-iconbtn ly-iconbtn--danger" data-action="cu-delete" data-id="<%= c.id %>" data-name="<%= c.name %>" title="Delete">🗑</button>
+                        <% } %>
                     </span>
                 </div>
             </div>

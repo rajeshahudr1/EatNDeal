@@ -93,6 +93,12 @@
                 postThenReload('/customers/unban', { id: id });
                 return;
             }
+
+            if (a === 'cu-restore') {
+                e.preventDefault();
+                postThenReload('/customers/restore', { id: id });
+                return;
+            }
         }
         // Click the backdrop (not the panel) to dismiss.
         var open = e.target.closest('.pr-modal');

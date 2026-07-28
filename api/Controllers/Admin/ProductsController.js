@@ -241,18 +241,26 @@ async function updateStatus(req, res) {
             ? (pad2(until.getHours()) + ':' + pad2(until.getMinutes()) + ':00')
             : null;
 
+        // Unavailable Today (4) — LEGACY PARITY (Yii ProductsController:278-286):
+        // it is stored as "unavailable until TODAY 23:59:59" in
+        // product_availability, which is what lets it auto-clear at midnight.
+        const today = new Date();
+        const tDate = today.getFullYear() + '-' + pad2(today.getMonth() + 1) + '-' + pad2(today.getDate());
+        const upDate = status === 4 ? tDate : aDate;
+        const upTime = status === 4 ? '23:59:59' : aTime;
+
         for (const id of ids) {
             const owned = await db('products').where({ id, company_id: cid }).andWhereRaw("status <> '2'").first();
             if (!owned) { continue; }
             await db('products').where('id', id).update({ status, updated_at: nowStr(), updated_by: got.actorId });
-            if (status === 5 && aDate) {
+            if ((status === 5 || status === 4) && upDate) {
                 const av = await db('product_availability').where('product_id', id).first();
                 if (av) {
                     await db('product_availability').where('id', av.id)
-                        .update({ availability_date: aDate, availability_time: aTime, updated_at: nowStr(), updated_by: got.actorId });
+                        .update({ availability_date: upDate, availability_time: upTime, updated_at: nowStr(), updated_by: got.actorId });
                 } else {
                     await db('product_availability').insert({
-                        product_id: id, availability_date: aDate, availability_time: aTime,
+                        product_id: id, availability_date: upDate, availability_time: upTime,
                         company_id: cid, created_at: nowStr(), created_by: got.actorId,
                     });
                 }

@@ -115,7 +115,12 @@ async function list(req, res) {
         let page       = Math.max(1, Number(req.query.page) || 1);
         const cid      = scopeCid(req);
 
-        const base = () => scoped(cid).modify((qb) => {
+        // 'deleted' filter shows ONLY soft-deleted rows (so they can be
+        // restored); every other filter keeps excluding them as before.
+        const base = () => db(T).modify((qb) => {
+            if (cid) { qb.where(T + '.company_id', cid); } else { qb.whereNull(T + '.company_id'); }
+            if (statusF === 'deleted') { qb.andWhere(T + '.status', '2'); }
+            else { qb.andWhere(T + '.status', '!=', '2'); }
             if (q) {
                 qb.andWhere(function () {
                     this.whereRaw('LOWER(firstname) LIKE ?', ['%' + q + '%'])
@@ -300,6 +305,24 @@ async function unban(req, res) {
     } catch (err) {
         console.error('[admin.customers.unban]', err && err.message);
         return H.errorResponse(res, 'Could not unban the customer.', 500);
+    }
+}
+
+/** restore — POST /api/v1/admin/customers/restore { id } — bring a
+ *  soft-deleted customer back (status '2' → '1'). */
+async function restore(req, res) {
+    try {
+        const id = Number(req.body.id) || 0;
+        const cid = scopeCid(req);
+        const row = await db(T)
+            .modify((qb) => { if (cid) { qb.where('company_id', cid); } else { qb.whereNull('company_id'); } })
+            .where({ id, status: '2' }).first();
+        if (!row) { return H.errorResponse(res, 'Customer not found.', 404); }
+        await db(T).where('id', id).update({ status: '1', updated_at: nowStr() });
+        return H.successResponse(res, { restored: true }, 'Customer restored.');
+    } catch (err) {
+        console.error('[admin.customers.restore]', err && err.message);
+        return H.errorResponse(res, 'Could not restore the customer.', 500);
     }
 }
 
@@ -506,4 +529,4 @@ async function orderDetail(req, res) {
     }
 }
 
-module.exports = { list, getCustomer, save, ban, unban, remove, orders, orderDetail };
+module.exports = { list, getCustomer, save, ban, unban, remove, restore, orders, orderDetail };

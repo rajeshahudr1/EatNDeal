@@ -162,8 +162,9 @@ function ajaxProxy(path) {
         return res.status(200).json((apiRes && apiRes.body) || { status: 0, msg: 'No response.' });
     };
 }
-const ban    = ajaxProxy('/api/v1/admin/customers/ban');
-const unban  = ajaxProxy('/api/v1/admin/customers/unban');
-const remove = ajaxProxy('/api/v1/admin/customers/delete');
+const ban     = ajaxProxy('/api/v1/admin/customers/ban');
+const unban   = ajaxProxy('/api/v1/admin/customers/unban');
+const remove  = ajaxProxy('/api/v1/admin/customers/delete');
+const restore = ajaxProxy('/api/v1/admin/customers/restore');
 
-module.exports = { list, form, save, history, order, ban, unban, remove };
+module.exports = { list, form, save, history, order, ban, unban, remove, restore };

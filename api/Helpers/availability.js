@@ -135,9 +135,16 @@ function evaluate(row, now) {
         return { available: false, soldOut: false, state: 'unavailable', label: 'Unavailable', reason: 'unavailable' };
     }
 
-    // Unavailable today — blocked for the whole of the merchant's local
-    // day; the POS auto-clears it back to Available the next day.
+    // Unavailable today — stored (legacy parity) as an availability row of
+    // TODAY 23:59:59, so it AUTO-CLEARS: once that moment passes the item
+    // is available again without anyone touching the status. Blocking
+    // unconditionally here left "today" items off FOREVER after midnight.
+    // No stored row (old data) keeps the old always-blocked behaviour.
     if (status === STATUS.UNAVAILABLE_TODAY) {
+        const till = parseUntil(row && row.unavailable_until);
+        if (till && now.getTime() >= till.getTime()) {
+            return { available: true, soldOut: false, state: 'available', label: 'Available', reason: null };
+        }
         return { available: false, soldOut: false, state: 'unavailable_today', label: 'Unavailable today', reason: 'unavailable_today' };
     }
 

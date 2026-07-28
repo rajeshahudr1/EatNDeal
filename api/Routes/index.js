@@ -612,6 +612,7 @@ router.post('/admin/customers/save',   authenticate, requireRole('admin'), Admin
 router.post('/admin/customers/ban',    authenticate, requireRole('admin'), AdminCustomersCtl.ban);
 router.post('/admin/customers/unban',  authenticate, requireRole('admin'), AdminCustomersCtl.unban);
 router.post('/admin/customers/delete', authenticate, requireRole('admin'), AdminCustomersCtl.remove);
+router.post('/admin/customers/restore', authenticate, requireRole('admin'), AdminCustomersCtl.restore);
 
 // ── Admin: marketplace collections (curated home-feed rows) ─────────
 const AdminCollectionsCtl = require('../Controllers/Admin/CollectionsController');

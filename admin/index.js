@@ -600,6 +600,7 @@ app.get ('/customers/order/:id',    requireAdmin, companyContext, CustomersContr
 app.post('/customers/ban',          requireAdmin, companyContext, CustomersController.ban);
 app.post('/customers/unban',        requireAdmin, companyContext, CustomersController.unban);
 app.post('/customers/delete',       requireAdmin, companyContext, CustomersController.remove);
+app.post('/customers/restore',      requireAdmin, companyContext, CustomersController.restore);
 
 app.get ('/marketplace-categories',           requireAdmin, companyContext, requireSuperPage, MpCategoriesController.list);
 app.get ('/marketplace-categories/arrange',   requireAdmin, companyContext, requireSuperPage, MpCategoriesController.arrange);

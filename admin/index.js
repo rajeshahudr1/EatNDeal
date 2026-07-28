@@ -346,8 +346,13 @@ app.post('/select-company', requireAdmin, (req, res) => {
 app.get('/', requireAdmin, companyContext, DashboardController.index);
 
 // ── Account pages (topbar menu) ────────────────────────────────────
-app.get ('/profile',         requireAdmin, companyContext, AuthController.profilePage);
-app.post('/profile',         requireAdmin, companyContext, AuthController.updateProfile);
+// ══ DISABLED 2026-07-28 (user request) ═══════════════════════════
+// My Profile is switched OFF for every admin login — menu item removed
+// (partials/topbar.ejs) AND the URL hard-404s here, so typing /profile
+// gets nothing. RESTORE: swap the 404 handlers back to
+// AuthController.profilePage / updateProfile and unhide the menu item.
+app.get ('/profile',         requireAdmin, companyContext, (req, res) => res.status(404).render('errors/404', { page_title: 'Page not found', _layoutFile: '../_layout', bare: true }));
+app.post('/profile',         requireAdmin, companyContext, (req, res) => res.status(404).json({ status: 404, msg: 'Not found.' }));
 app.get ('/change-password', requireAdmin, companyContext, AuthController.changePasswordPage);
 app.post('/change-password', requireAdmin, companyContext, AuthController.doChangePassword);
 

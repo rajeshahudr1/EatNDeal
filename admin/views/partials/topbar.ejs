@@ -83,10 +83,15 @@
                 <svg class="admin-menu__chev" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
             </button>
             <div class="admin-menu__panel" data-admin-menu-panel role="menu" hidden>
+                <%# ══ DISABLED 2026-07-28 (user request) — My Profile removed;
+                    /profile also hard-404s in index.js. `if (false)` (not an
+                    EJS comment — the block contains output tags). %>
+                <% if (false) { %>
                 <a class="admin-menu__item" href="/profile" role="menuitem">
                     <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg>
                     My Profile
                 </a>
+                <% } %>
                 <a class="admin-menu__item" href="/change-password" role="menuitem">
                     <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
                     Change Password

@@ -388,13 +388,16 @@
                                 <% var __vegLbl = { 'veg':'Vegetarian', 'non-veg':'Non-vegetarian', 'vegan':'Vegan', 'gluten-free':'Gluten free' }; %>
                                 <% if (p.veg && __vegLbl[p.veg]) { %><span class="veg-marker veg-marker--<%= p.veg %>" aria-label="<%= __vegLbl[p.veg] %>" title="<%= __vegLbl[p.veg] %>"></span><% } %>
                                 <% if (p.isFeatured) { %><span class="rd-product__badge">Bestseller</span><% } %>
-                                <%# Offer chips overlay the image corner so the body keeps a uniform height. %>
-                                <% if ((p.bogo && p.bogo.buyQty > 0 && p.bogo.getQty > 0) || (p.cashback && p.cashback.amount > 0)) { %>
+                                <%# Offer chips overlay the image corner so the body keeps a uniform height.
+                                    Cashback is a SIGNED-IN perk (it lands on the account's wallet), so
+                                    guests don't see the badge — user request 28 Jul 2026. %>
+                                <% var __showCb = !!(typeof user_session !== 'undefined' && user_session) && p.cashback && p.cashback.amount > 0; %>
+                                <% if ((p.bogo && p.bogo.buyQty > 0 && p.bogo.getQty > 0) || __showCb) { %>
                                     <div class="rd-product__promos">
                                         <% if (p.bogo && p.bogo.buyQty > 0 && p.bogo.getQty > 0) { %>
                                             <span class="rd-product__bogo">🎁 Buy <%= p.bogo.buyQty %> Get <%= p.bogo.getQty %> Free</span>
                                         <% } %>
-                                        <% if (p.cashback && p.cashback.amount > 0) { %>
+                                        <% if (__showCb) { %>
                                             <span class="rd-product__cashback">💸 Cashback <%= sym %><%= Number(p.cashback.amount).toFixed(2) %></span>
                                         <% } %>
                                     </div>

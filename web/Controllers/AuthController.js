@@ -202,7 +202,13 @@ async function startOtp(req, res) {
     if (!apiRes.body || apiRes.body.status !== 200) {
         const msg = (apiRes.body && apiRes.body.msg) || 'Could not send the verification code. Please try again.';
         req.flash('error', msg);
-        return res.redirect('/signin' + (next !== '/' ? '?next=' + encodeURIComponent(next) : ''));
+        // Save BEFORE redirecting — the file-backed session store writes
+        // async, so a bare redirect races the next GET /signin and the
+        // flash (the banned/disabled reason!) was often lost — the page
+        // just reloaded with no message at all.
+        return req.session.save(function () {
+            res.redirect('/signin' + (next !== '/' ? '?next=' + encodeURIComponent(next) : ''));
+        });
     }
 
     req.session.pendingAuth = {

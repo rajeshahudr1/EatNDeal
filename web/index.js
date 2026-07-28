@@ -707,6 +707,11 @@ app.get('/product/json', async (req, res) => {
         if (!r || !r.body) {
             return res.status(200).json({ status: 502, show: true, msg: 'Could not load the item.' });
         }
+        // Cashback is a signed-in perk — strip it for guests so the item
+        // popup matches the cards (which hide the badge when logged out).
+        if (!(req.session && req.session.user) && r.body.data) {
+            r.body.data.cashback = null;
+        }
         return res.status(200).json(r.body);
     } catch (err) {
         return res.status(200).json({ status: 500, show: true, msg: 'Could not load the item.' });

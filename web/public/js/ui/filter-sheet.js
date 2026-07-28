@@ -279,7 +279,9 @@
         var n = 0;
         // One point per applied facet. ?sort only appears on the URL
         // when it is NOT relevance, so its presence alone counts.
-        ['sort', 'rating', 'price', 'cuisine', 'max_min', 'max_km', 'browse'].forEach(function (k) {
+        // ?cuisine is deliberately NOT counted — the category rail owns
+        // it (active pill shows the state); it isn't a "Filters" pick.
+        ['sort', 'rating', 'price', 'max_min', 'max_km', 'browse'].forEach(function (k) {
             if (q.get(k)) { n += 1; }
         });
         ['veg', 'offer', 'open_now', 'recommended', 'featured'].forEach(function (k) {

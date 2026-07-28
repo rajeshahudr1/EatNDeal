@@ -61,9 +61,12 @@
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
             </button>
             <ul class="cuisine-rail" role="list" data-rail>
-                <% cuisines.forEach(function (c) { var key = c.searchName || (c.name||'').toLowerCase(); %>
-                    <li class="cuisine-rail__item<%= (__sel && __sel === String(key).toLowerCase()) ? ' is-active-filter' : '' %>">
-                        <a class="cuisine-rail__link" href="/?mode=pickup&cuisine=<%= encodeURIComponent(key) %>">
+                <% cuisines.forEach(function (c) { var key = c.searchName || (c.name||'').toLowerCase();
+                       var isActive = __sel && __sel === String(key).toLowerCase(); %>
+                    <%# Active pill links back WITHOUT the cuisine — tapping it
+                        again toggles the category off (same as the home rail). %>
+                    <li class="cuisine-rail__item<%= isActive ? ' is-active-filter' : '' %>">
+                        <a class="cuisine-rail__link" href="<%= isActive ? '/?mode=pickup' : ('/?mode=pickup&cuisine=' + encodeURIComponent(key)) %>">
                             <span class="cuisine-rail__disc">
                                 <% if (c.icon) { %><img src="<%= c.icon %>" alt="" loading="lazy" data-img-fallback><% } else { %><%= c.initial || '🍽️' %><% } %>
                             </span>

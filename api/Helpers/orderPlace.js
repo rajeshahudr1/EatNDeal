@@ -216,20 +216,6 @@ async function nextInternalOrderId(trx, branchId, companyId) {
  *        Empty in, empty out.
  * Type:  READ (pure).
  */
-/**
- * labelled
- *
- * What:  "Cooking" + "no onions" → "Cooking: no onions"; empty text → ''.
- *        Prefixes each remark part so loadDetail can split the composite
- *        column back into its own fields (and so the printed ticket says
- *        what the note IS).
- * Type:  READ (pure).
- */
-function labelled(label, text) {
-    const t = String(text || '').trim();
-    return t ? (label + ': ' + t) : '';
-}
-
 function dropOffText(raw) {
     const d = Cart.decodeDropOff(raw);
     if (d.dropOffLabel && d.instructions) { return d.dropOffLabel + ' — ' + d.instructions; }
@@ -423,13 +409,15 @@ async function placeOrder({ customer, cart, branch, items, paymentOption, custom
             // instruction is NOT folded in here any more — it already rides in
             // the delivery_address JSON's driver_instructions key (see
             // legacyDeliveryAddress above), which is where the EPOS reads it
-            // and shows it as its own line. remark carries the customer note +
-            // Cooking only, so the two instructions stay SEPARATE on the POS
-            // exactly like a legacy webordering order.
-            remark:            [customerNote,
-                                labelled('Cooking', cart.remark)]
-                                   .map((s) => String(s || '').trim()).filter(Boolean)
-                                   .join('  |  ') || null,
+            // and shows it as its own line.
+            // LEGACY PARITY (user request 28 Jul 2026): remark is the BARE
+            // cooking text, exactly like webordering (orders.remark =
+            // cart.remark) — the POS "Order Notes" line printed our
+            // "Cooking: …" label, which a legacy order never shows. The
+            // customerNote param is ignored here: the web checkout never
+            // sends customer_note, and the Stripe webhook flow passed
+            // cart.remark through it, which duplicated the text.
+            remark:            String(cart.remark || '').trim() || null,
             is_pre_order:      Number(cart.is_pre_order) || 0,
             scheduled_date:    scheduledDate,
             scheduled_time:    scheduledTime,

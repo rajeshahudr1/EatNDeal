@@ -530,14 +530,20 @@
     }
 
     /**
-     * hasRequiredOptions — true when this product can't be added blind.
+     * hasAnyOptions — true when this product has ANY option group at all
+     * (required OR optional), i.e. there is something to choose.
+     *
+     * Was required-only; user request 28 Jul 2026: an optional-group item
+     * must ALSO open the sheet from +Add (the customer would otherwise
+     * never see the optional extras). Only a truly option-less item adds
+     * in one tap.
      *
      * The menu card carries no option data, so we ask the same endpoint the
      * item sheet uses. It needs the restaurant slug as well as the id (an id
      * on its own 404s), which is why the Add button renders data-rest.
      * Any failure resolves false — a network hiccup must never block ordering.
      */
-    function hasRequiredOptions(params) {
+    function hasAnyOptions(params) {
         var qs = new URLSearchParams();
         if (params.id)   { qs.set('id',   params.id); }
         if (params.rest) { qs.set('rest', params.rest); }
@@ -548,12 +554,7 @@
         }).then(function (r) { return r.json().catch(function () { return null; }); })
           .then(function (env) {
               if (!env || env.status !== 200 || !env.data) { return false; }
-              var any = function (list) {
-                  return (list || []).some(function (g) {
-                      return (g && g.required) || any(g && g.groups);
-                  });
-              };
-              return any(env.data.groups);
+              return !!(env.data.groups && env.data.groups.length);
           })
           .catch(function () { return false; });
     }
@@ -571,11 +572,10 @@
             rest: btn.getAttribute('data-rest') || '',
             item: btn.getAttribute('data-item') || '',
         };
-        // A product with required choices (sauce, size, …) can't go in on one
-        // tap — it would be added at the base price with nothing chosen. Open
-        // the item sheet so the customer picks, exactly as tapping the card
-        // does. Everything else still adds in a single tap.
-        hasRequiredOptions(params).then(function (mustChoose) {
+        // A product with ANY choices (required sauce OR optional extras)
+        // opens the item sheet so the customer picks, exactly as tapping
+        // the card does. Only a truly option-less item adds in one tap.
+        hasAnyOptions(params).then(function (mustChoose) {
             btn.disabled = false;
             if (mustChoose && window.EatNDealUi && window.EatNDealUi.productModal) {
                 window.EatNDealUi.productModal.open(params);

@@ -639,6 +639,13 @@ async function recomputeTotals(cartId) {
     const beforeRedeem = subTotal + deliveryFees + serviceCharge + bagCharge + charityAmt - discount;
     const hasRedeemCol = await hasUsedCashbackCol();
     let usedCashback = hasRedeemCol ? (Number(cart.used_cashback) || 0) : 0;
+    // ONE money-off promo at a time (legacy Cart.php:345 —
+    // `used_cashback = discount > 0 ? 0 : used_cashback`): if ANY
+    // discount is on the cart (coupon, voucher or auto discount),
+    // the cashback redeem is dropped. This is the authoritative gate —
+    // it also catches orderings the endpoint guards can't (cashback
+    // applied first, coupon after; auto discount qualifying later).
+    if (usedCashback > 0 && discount > 0) { usedCashback = 0; }
     if (hasRedeemCol && usedCashback > 0) {
         // Cap against BOTH pools the customer can spend here — this restaurant's
         // cashback AND their EatNDeal marketplace cashback (company_id = 0).
@@ -1391,11 +1398,11 @@ async function setCoupon(cartId, coupon, discount, freeDelivery) {
         free_delivery: freeDelivery ? 1 : 0,
     };
     if (freeDelivery) { patch.delivery_fees = 0; }
-    // Cashback redeem is NOT cleared — legacy parity (user decision, 27 Jul
-    // 2026): the legacy order save subtracts used_cashback regardless of an
-    // applied coupon, so coupon + cashback stack there and stack here too.
-    // recomputeTotals still re-clamps used_cashback to the live balance and
-    // to the post-discount payable, so the pairing can't go negative.
+    // ONE promo at a time (user decision, 28 Jul 2026, matching legacy
+    // Cart.php:345 which zeroes used_cashback whenever discount > 0):
+    // applying a coupon drops any cashback redeem on the cart.
+    // recomputeTotals enforces the same rule as a backstop.
+    if (await hasUsedCashbackCol()) { patch.used_cashback = 0; }
     await db('cart').where({ id: cartId }).update(patch);
 }
 
@@ -1451,7 +1458,9 @@ async function setVoucher(cartId, voucher, discount) {
         discount:      round2(discount),
         free_delivery: 0,                 // vouchers don't waive delivery
     };
-    // Cashback redeem stacks with a voucher too — legacy parity, see setCoupon.
+    // ONE promo at a time — a voucher drops any cashback redeem too
+    // (same rule as setCoupon; recomputeTotals backstops it).
+    if (await hasUsedCashbackCol()) { patch.used_cashback = 0; }
     await db('cart').where({ id: cartId }).update(patch);
 }
 

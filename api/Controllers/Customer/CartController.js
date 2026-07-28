@@ -1278,6 +1278,14 @@ async function applyLoyalty(req, res) {
             return H.errorResponse(res,
                 'Cashback can’t be used with a voucher. Remove the voucher to use your reward.', 422);
         }
+        // Auto-applied restaurant discount counts too (legacy Cart.php:345
+        // zeroes used_cashback whenever ANY discount > 0). Without this the
+        // redeem would be accepted here and then silently dropped by
+        // recomputeTotals' one-promo gate — a confusing dead click.
+        if (Number(open.discount) > 0) {
+            return H.errorResponse(res,
+                'Cashback can’t be used together with a discount.', 422);
+        }
 
         // Cap = THIS restaurant's pool only (its balance, its use_max_cashback,
         // the sub-total — see maxRedeemable). The EatNDeal marketplace pool is

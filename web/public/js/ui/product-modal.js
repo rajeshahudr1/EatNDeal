@@ -180,6 +180,11 @@
                   ? (Number(bogo.buyQty) + Number(bogo.getQty))
                   : 1;
               seedDefaults();
+              // NOTE (28 Jul 2026): the modal ALWAYS renders here — even for
+              // an option-less item — because open() only fires from a card /
+              // image tap, and that must keep showing the item sheet. The
+              // one-tap add for option-less items lives on the +Add button
+              // instead (ui/cart.js onQuickAdd → hasAnyOptions).
               renderMain();
           })
           .catch(function () { showError('Could not reach the server.'); });
@@ -702,6 +707,12 @@
             remark:     String(note).trim().slice(0, 120),
         };
 
+        postAdd(body, btn);
+    }
+
+    // Shared POST /cart/add pipeline — owns the 401 redirect, the
+    // branch-conflict confirm and the success toast.
+    function postAdd(body, btn) {
         if (btn) { btn.disabled = true; btn.classList.add('is-loading'); }
         fetch('/cart/add', {
             method:      'POST',

@@ -118,7 +118,7 @@ async function listForCustomer(customerId, opts) {
     const payRows = orderIds.length
         ? await db('orders_payments').whereIn('orders_id', orderIds)
             .orderBy('id', 'desc')
-            .select('orders_id', 'payment_id', 'payment_amount', 'payment_status')
+            .select('orders_id', 'payment_id', 'payment_type', 'payment_amount', 'payment_status')
         : [];
     const payByOrder = new Map();
     payRows.forEach((p) => {
@@ -141,7 +141,10 @@ async function listForCustomer(customerId, opts) {
             createdAt:    r.created_at || null,
             itemCount:    countByOrder.get(String(r.id)) || 0,
             payment: pay ? {
-                method: Number(pay.payment_id) === 1 ? 'Cash' : 'Card',
+                // payment_id is a PER-COMPANY paymentoptions id (cash is NOT
+                // always 1) — trust the stored payment_type label first and
+                // only fall back to the old 1=Cash enum for legacy rows.
+                method: pay.payment_type || (Number(pay.payment_id) === 1 ? 'Cash' : 'Card'),
                 amount: Number(pay.payment_amount) || 0,
                 status: Number(pay.payment_status) === 0 ? 'Pending' : 'Paid',
             } : null,
@@ -296,6 +299,15 @@ async function loadDetail(orderId, customerId) {
                 }
                 noteParts.push(p);
             });
+            // Legacy-parity format (28 Jul 2026): remark now stores the BARE
+            // cooking text (same as a webordering order), so an unlabelled
+            // remark IS the cooking instruction — show it in the cooking box,
+            // not as a generic note. Orders placed while the "Cooking:" label
+            // existed still parse via the labelled branch above.
+            if (!cookingInstructions && noteParts.length) {
+                cookingInstructions = noteParts.join(' · ');
+                noteParts.length = 0;
+            }
             // Orders placed after the legacy-parity split (27 Jul 2026) no
             // longer carry the drop-off in remark at all — it lives in the
             // delivery_address JSON's driver_instructions key (the same place
@@ -347,7 +359,10 @@ async function loadDetail(orderId, customerId) {
             })),
         })),
         payment: payment ? {
-            method: Number(payment.payment_id) === 1 ? 'Cash' : 'Card',
+            // payment_id is a PER-COMPANY paymentoptions id (cash is NOT
+            // always 1) — trust the stored payment_type label first and
+            // only fall back to the old 1=Cash enum for legacy rows.
+            method: payment.payment_type || (Number(payment.payment_id) === 1 ? 'Cash' : 'Card'),
             amount: Number(payment.payment_amount) || 0,
             status: Number(payment.payment_status) === 0 ? 'Pending' : 'Paid',
         } : null,

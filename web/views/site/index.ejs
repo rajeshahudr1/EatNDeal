@@ -134,9 +134,15 @@
                     obvious you PICK a platform, then scan the QR that swaps in below. %>
                 <input type="radio" name="app-plat" id="app-android" class="app-mini__radio" checked>
                 <input type="radio" name="app-plat" id="app-ios" class="app-mini__radio">
+                <%# Each QR is ALSO a link to the same /app?platform=… redirect it
+                    encodes — scanning and clicking land on the same store page. %>
                 <div class="app-mini__qr">
-                    <img class="app-mini__img app-mini__img--ios" src="/img/app-qr-ios.svg?v=<%= ASSET_VERSION %>" alt="Scan to install on iOS" loading="lazy">
-                    <img class="app-mini__img app-mini__img--android" src="/img/app-qr-android.svg?v=<%= ASSET_VERSION %>" alt="Scan to install on Android" loading="lazy">
+                    <a href="/app?platform=ios" target="_blank" rel="noopener" title="Open the App Store">
+                        <img class="app-mini__img app-mini__img--ios" src="/img/app-qr-ios.svg?v=<%= ASSET_VERSION %>" alt="Scan or tap to install on iOS" loading="lazy">
+                    </a>
+                    <a href="/app?platform=android" target="_blank" rel="noopener" title="Open the Play Store">
+                        <img class="app-mini__img app-mini__img--android" src="/img/app-qr-android.svg?v=<%= ASSET_VERSION %>" alt="Scan or tap to install on Android" loading="lazy">
+                    </a>
                 </div>
                 <div class="app-mini__body">
                     <%# Platform picker + "Rate us". The two sit on one row, but only

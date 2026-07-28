@@ -87,6 +87,20 @@ async function sendOtp(req, res) {
     try {
         const { country_code, contact_no } = req.body;
 
+        // Blocked-account gate BEFORE any OTP goes out (user request
+        // 28 Jul 2026): a banned / deleted / disabled account gets the
+        // reason-ful refusal right here — sending a code they can never
+        // use (verifyOtp would reject them anyway) just wastes an SMS
+        // and the customer's time.
+        const existing = await customers.findByPhone({ countryCode: country_code, contactNo: contact_no });
+        const preState = customers.classify(existing);
+        if (preState === 'deleted' || preState === 'banned') {
+            return H.errorResponse(res, customers.blockMessage(existing, preState), 403);
+        }
+        if (preState === 'disabled') {
+            return H.errorResponse(res, MSG.auth.accountDisabled, 403);
+        }
+
         const result = await otp.generateAndSend({
             countryCode: country_code,
             contactNo:   contact_no,

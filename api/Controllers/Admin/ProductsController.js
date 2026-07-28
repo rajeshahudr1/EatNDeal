@@ -32,6 +32,15 @@ const LIST_STATUSES = [0, 1, 3, 4, 5];
 
 function money(n) { return F.formatMoney(n); }
 function nowStr() { return new Date().toISOString().slice(0, 19).replace('T', ' '); }
+// A DATE column read back as a JS Date sits at LOCAL midnight —
+// toISOString() would shift it into UTC and show the PREVIOUS day.
+// Format from the local getters instead.
+function localYmd(v) {
+    const d = v instanceof Date ? v : new Date(v);
+    if (isNaN(d.getTime())) { return ''; }
+    const p = (n) => String(n).padStart(2, '0');
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+}
 
 // Resolve {companyId, actorId} + the company's branch. 422 (returns null) if
 // a super admin hasn't picked a company.
@@ -154,7 +163,7 @@ async function list(req, res) {
             show_marketplace: Number(p.show_marketplace) || 0,
             status: Number(p.status),
             image_url: p.url ? (upBase + '/' + cid + '/products/' + p.url) : '',
-            availability_date: p.availability_date ? new Date(p.availability_date).toISOString().slice(0, 10) : '',
+            availability_date: p.availability_date ? localYmd(p.availability_date) : '',
             availability_time: p.availability_time ? String(p.availability_time).slice(0, 5) : '',
         }));
 
@@ -217,9 +226,20 @@ async function updateStatus(req, res) {
         if (!ids.length || !LIST_STATUSES.includes(status)) {
             return H.errorResponse(res, 'Missing parameters.', 422);
         }
+        // The picker sends a LOCAL "YYYY-MM-DDTHH:MM" (datetime-local) and
+        // Helpers/availability.parseUntil reads the stored value back as
+        // LOCAL too. toISOString() converted to UTC in between, shifting
+        // the cut-off by the server's whole UTC offset — the product came
+        // back hours early and "Unavailable until" looked broken. Keep the
+        // local wall-clock parts instead.
         const until = req.body.unavailable_until ? new Date(req.body.unavailable_until) : null;
-        const aDate = until && !isNaN(until) ? until.toISOString().slice(0, 10) : null;
-        const aTime = until && !isNaN(until) ? until.toISOString().slice(11, 19) : null;
+        const pad2 = (n) => String(n).padStart(2, '0');
+        const aDate = until && !isNaN(until)
+            ? (until.getFullYear() + '-' + pad2(until.getMonth() + 1) + '-' + pad2(until.getDate()))
+            : null;
+        const aTime = until && !isNaN(until)
+            ? (pad2(until.getHours()) + ':' + pad2(until.getMinutes()) + ':00')
+            : null;
 
         for (const id of ids) {
             const owned = await db('products').where({ id, company_id: cid }).andWhereRaw("status <> '2'").first();
@@ -490,11 +510,11 @@ async function getProduct(req, res) {
                 image: img ? (img.url || '') : '',
                 image_url: img && img.url ? (upBase + '/' + cid + '/products/' + img.url) : '',
                 availability_until: (av && av.availability_date)
-                    ? (new Date(av.availability_date).toISOString().slice(0, 10) + 'T' + String(av.availability_time || '00:00').slice(0, 5))
+                    ? (localYmd(av.availability_date) + 'T' + String(av.availability_time || '00:00').slice(0, 5))
                     : '',
                 schedule: p.schedule || 'No Schedule',
-                schedule_start_date: sched && sched.start_date ? new Date(sched.start_date).toISOString().slice(0, 10) : '',
-                schedule_end_date: sched && sched.end_date ? new Date(sched.end_date).toISOString().slice(0, 10) : '',
+                schedule_start_date: sched && sched.start_date ? localYmd(sched.start_date) : '',
+                schedule_end_date: sched && sched.end_date ? localYmd(sched.end_date) : '',
                 schedule_start_time: sched && sched.start_time ? String(sched.start_time).slice(0, 5) : '',
                 schedule_end_time: sched && sched.end_time ? String(sched.end_time).slice(0, 5) : '',
                 schedule_days: (sched && sched.days) ? String(sched.days).split(',').map((x) => Number(x)).filter((x) => x > 0) : [],

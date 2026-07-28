@@ -50,7 +50,15 @@
                     var sel = document.querySelector('.pr-status[data-id="' + id + '"]');
                     if (sel) { sel.value = String(status); sel.setAttribute('data-prev', String(status)); }
                     var lbl = document.querySelector('[data-until="' + id + '"]');
-                    if (lbl) { lbl.hidden = status !== 5; }
+                    if (lbl) {
+                        lbl.hidden = status !== 5;
+                        // Refresh the label text + the click-to-edit prefill so
+                        // a re-pick shows the NEW cut-off without a reload.
+                        if (status === 5 && until) {
+                            lbl.textContent = 'until ' + until.slice(0, 10) + ' ' + until.slice(11, 16) + ':00 ✎';
+                            lbl.setAttribute('data-until-val', until.slice(0, 16));
+                        }
+                    }
                 });
             } else {
                 toast('error', res.msg || 'Could not update status.');
@@ -264,6 +272,20 @@
                     } else { toast('error', res.msg || 'Could not delete.'); }
                 });
             } else { hideModals(); }
+            return;
+        }
+
+        // Click the "until …" label — edit the existing cut-off (the status
+        // select fires no change event when the value stays 5).
+        var untilLbl = t.closest('[data-until]');
+        if (untilLbl) {
+            var uid = Number(untilLbl.getAttribute('data-until'));
+            if (uid) {
+                pendingStatus = { ids: [uid], selects: [] };
+                var pre = document.querySelector('[data-until-input]');
+                if (pre) { pre.value = untilLbl.getAttribute('data-until-val') || ''; }
+                showModal('until');
+            }
             return;
         }
 

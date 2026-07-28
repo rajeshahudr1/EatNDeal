@@ -134,7 +134,10 @@
                     <div class="pr-item__row2">
                         <span class="pr-statuswrap">
                             <%- statusSel(p.id, p.status) %>
-                            <span class="pr-until" data-until="<%= p.id %>" <%= p.status === 5 && p.availability_date ? '' : 'hidden' %>>until <%= p.availability_date %> <%= p.availability_time %></span>
+                            <%# Click to change the date/time — selecting "Unavailable
+                                Until" again fires no change event, so this is the way
+                                to EDIT an existing cut-off without flipping status. %>
+                            <button type="button" class="pr-until" data-until="<%= p.id %>" data-until-val="<%= p.availability_date %>T<%= String(p.availability_time || '00:00').slice(0, 5) %>" title="Change date & time" <%= p.status === 5 && p.availability_date ? '' : 'hidden' %>>until <%= p.availability_date %> <%= p.availability_time %> ✎</button>
                         </span>
                         <label class="pr-mp" title="Show on marketplace">
                             <input type="checkbox" class="pr-mp-toggle" data-id="<%= p.id %>" <%= Number(p.show_marketplace) === 1 ? 'checked' : '' %>>

@@ -20,17 +20,18 @@
             <section class="ckt-card" aria-label="Delivery details">
                 <header class="ckt-card__head">
                     <h2 class="ckt-card__title"><%= cart.serveType === 2 ? 'Pickup details' : 'Delivery details' %></h2>
-                    <%# Only show the modes THIS restaurant offers (config-level,
-                        from cart.canDelivery / cart.canPickup). A single-mode
-                        restaurant shows just its one tab (no toggle to a mode it
-                        doesn't do). Both default true when unknown. %>
-                    <% var __canDel = cart.canDelivery !== false; var __canPick = cart.canPickup !== false; %>
-                    <div class="ckt-mode<%= (__canDel && __canPick) ? '' : ' ckt-mode--single' %>" role="tablist" aria-label="Order type">
-                        <% if (__canDel) { %>
-                        <button type="button" class="ckt-mode__tab<%= cart.serveType === 3 ? ' is-active' : '' %>" data-action="cart-set-mode" data-mode="3" role="tab" aria-selected="<%= cart.serveType === 3 ? 'true' : 'false' %>">Delivery</button>
+                    <%# Only the modes THIS restaurant can take right now
+                        (cart.canDelivery / cart.canPickup — full gates: flags +
+                        hours + open-or-preorderable). One usable mode → just
+                        its tab. NEITHER usable → both tabs render DISABLED so
+                        the customer sees why nothing is clickable. %>
+                    <% var __canDel = cart.canDelivery !== false; var __canPick = cart.canPickup !== false; var __noneUsable = !__canDel && !__canPick; %>
+                    <div class="ckt-mode<%= (__canDel && __canPick) || __noneUsable ? '' : ' ckt-mode--single' %>" role="tablist" aria-label="Order type">
+                        <% if (__canDel || __noneUsable) { %>
+                        <button type="button" class="ckt-mode__tab<%= cart.serveType === 3 ? ' is-active' : '' %>" data-action="cart-set-mode" data-mode="3" role="tab" aria-selected="<%= cart.serveType === 3 ? 'true' : 'false' %>"<%= __noneUsable ? ' disabled' : '' %>>Delivery</button>
                         <% } %>
-                        <% if (__canPick) { %>
-                        <button type="button" class="ckt-mode__tab<%= cart.serveType === 2 ? ' is-active' : '' %>" data-action="cart-set-mode" data-mode="2" role="tab" aria-selected="<%= cart.serveType === 2 ? 'true' : 'false' %>">Pickup</button>
+                        <% if (__canPick || __noneUsable) { %>
+                        <button type="button" class="ckt-mode__tab<%= cart.serveType === 2 ? ' is-active' : '' %>" data-action="cart-set-mode" data-mode="2" role="tab" aria-selected="<%= cart.serveType === 2 ? 'true' : 'false' %>"<%= __noneUsable ? ' disabled' : '' %>>Pickup</button>
                         <% } %>
                     </div>
                 </header>

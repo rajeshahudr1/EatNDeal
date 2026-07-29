@@ -41,6 +41,49 @@ const StoreHours = require('../../Helpers/storeHours');
 const { db }    = require('../../config/db');
 
 /**
+ * usableModes
+ *
+ * What:  Which fulfilment modes this branch can ACTUALLY take right now —
+ *        three gates ANDed (legacy Branch::getWebsiteStatus +
+ *        ServiceAvailability parity):
+ *          1. branch option flags (offeredServices — permanent off),
+ *          2. the week's configured service hours,
+ *          3. live: service open NOW, or pre_order=1 with bookable slots
+ *             (today or a schedule day). slotsForBranch already applies
+ *             the per-service optionClosed + branch closures.
+ *        Returns { pickup, delivery, verdict } — verdict is the branch's
+ *        availability compute() result, for reuse by the caller.
+ * Type:  READ.
+ */
+async function usableModes(branch) {
+    const offered = StoreHours.offeredServices(branch);
+    const out = { pickup: offered.pickup, delivery: offered.delivery, verdict: null };
+    if (!branch) { return out; }
+    try {
+        const cfg = await StoreHours.configuredServicesForBranch(branch.company_id, branch.branch_id || branch.id);
+        out.pickup   = out.pickup   && cfg.pickup;
+        out.delivery = out.delivery && cfg.delivery;
+
+        out.verdict = await StoreHours.availabilityForBranch(branch);
+        const canPre = Number(branch.pre_order) === 1;
+        const modeUsable = async (serveTypeN, svcKey) => {
+            const svc = out.verdict && out.verdict.services ? out.verdict.services[svcKey] : null;
+            if (svc && svc.status === 'open') { return true; }
+            if (!canPre) { return false; }
+            // TODAY's slots only — the schedule picker is today-only (user
+            // decision 27 Jul 2026), so tomorrow's slots must NOT keep a
+            // mode alive: "Closed Today" pickup counted as usable through
+            // its NEXT-day slots and stayed selectable (user report 29 Jul).
+            const daySlots = await StoreHours.slotsForBranch(branch, serveTypeN);
+            return daySlots.length > 0;
+        };
+        if (out.pickup)   { out.pickup   = await modeUsable(2, 'takeaway'); }
+        if (out.delivery) { out.delivery = await modeUsable(3, 'delivery'); }
+    } catch (e) { /* on any hiccup keep the broader answer */ }
+    return out;
+}
+
+/**
  * resolveOwner
  *
  * What:  Resolves the cart OWNER from a request (body or query). A cart
@@ -109,6 +152,11 @@ async function get(req, res) {
         const branch = await M.loadActiveBranch(open.branch_id);
 
         // Bring the cart into line with the header's Delivery/Pickup choice.
+        // Which modes are USABLE right now — flags + configured hours +
+        // (open now OR pre-orderable). Computed ONCE up front; the header
+        // sync, the auto-switch and the cart tabs all decide from it.
+        let modesInfo = branch ? await usableModes(branch) : null;
+
         // Order mode is ONE decision shown in three places (header toggle,
         // restaurant tabs, cart); without this the cart kept its own copy, so
         // choosing Pickup on the home page and opening the cart showed
@@ -117,8 +165,9 @@ async function get(req, res) {
         if (branch && req.query.serve_type != null) {
             const want = Number(req.query.serve_type) === 2 ? 2 : 3;
             if (Number(open.serve_type) !== want) {
-                const offered = StoreHours.offeredServices(branch);
-                const canHave = want === 2 ? offered.pickup : offered.delivery;
+                // Full usable-gate, not just config flags — the header toggle
+                // must not be able to push the cart into a closed service.
+                const canHave = want === 2 ? modesInfo.pickup : modesInfo.delivery;
                 let pinned = false;
                 if (want === 3) {
                     const box = await db('cart_details')
@@ -128,7 +177,31 @@ async function get(req, res) {
                 }
                 if (canHave && !pinned) {
                     await Cart.setMode(open.id, want, branch);
+                    open.serve_type = want;
                     if (want === 3 && !owner.isGuest) {
+                        await Cart.ensureDefaultDeliveryAddress(open.id, owner.customerId, branch);
+                    }
+                }
+            }
+        }
+
+        // If the cart is STUCK in a mode the restaurant can't serve right now
+        // (e.g. pickup option closed / branch shut with no pickup slots), flip
+        // it to the usable mode — hiding the tab alone left the cart ordering
+        // through a closed service (user report 29 Jul 2026). A Surprise Box
+        // cart stays pinned to Pickup regardless.
+        if (branch && modesInfo) {
+            const curIsPickup = Number(open.serve_type) === 2;
+            const curOk   = curIsPickup ? modesInfo.pickup   : modesInfo.delivery;
+            const otherOk = curIsPickup ? modesInfo.delivery : modesInfo.pickup;
+            if (!curOk && otherOk) {
+                const boxPin = await db('cart_details')
+                    .where({ cart_id: open.id, is_surprise_item: 1, is_deleted: 0 }).first('id');
+                if (!boxPin) {
+                    const next = curIsPickup ? 3 : 2;
+                    await Cart.setMode(open.id, next, branch);
+                    open.serve_type = next;
+                    if (next === 3 && !owner.isGuest) {
                         await Cart.ensureDefaultDeliveryAddress(open.id, owner.customerId, branch);
                     }
                 }
@@ -241,20 +314,31 @@ async function get(req, res) {
             }
         } catch (e) { availableSlots = []; scheduleDays = []; }
 
-        // Which fulfilment modes this restaurant offers (config-level) — so the
-        // cart/checkout can hide the Pickup or Delivery tab for a single-mode
-        // restaurant. Defaults to both when the branch didn't load.
-        const offered = StoreHours.offeredServices(branch);
+        // Which fulfilment modes this restaurant offers — computed EARLIER
+        // (usableModes, reused from the auto-switch block) so the cart tabs
+        // and the switch decide from the same answer.
+        const offered = modesInfo
+            ? { pickup: modesInfo.pickup, delivery: modesInfo.delivery }
+            : StoreHours.offeredServices(branch);
+        // The CART's current mode's live open state — for the Schedule gate
+        // below (legacy: pre-order only while that service is closed).
+        const curSvcKey = Number(v.cart.serve_type) === 2 ? 'takeaway' : 'delivery';
+        const curModeOpen = !!(modesInfo && modesInfo.verdict
+            && modesInfo.verdict.services
+            && modesInfo.verdict.services[curSvcKey]
+            && modesInfo.verdict.services[curSvcKey].status === 'open');
 
-        // Pre-order applicability — EXACT legacy Branch::getWebsiteStatus:
-        // `pre_order = 1` offers the Schedule picker WHENEVER bookable slots
-        // exist — open OR closed (the "advance order" feature; legacy's open
-        // path literally sets `$isPreOrder = true` whenever the toggle is on,
-        // Branch.php:965). An open restaurant just defaults to ASAP with
-        // Schedule as an option; a closed one requires picking a slot.
+        // Pre-order applicability — LEGACY PARITY (corrected 29 Jul 2026):
+        // Branch::getWebsiteStatus sets isSkipPickup/Delivery when that
+        // service is open RIGHT NOW, which SKIPS it in the pre-order slot
+        // scan — so isPreOrderPickup/Delivery stays 0 and the checkout's
+        // Schedule card never shows while open. Pre-order appears ONLY when
+        // the cart's mode is currently closed (opening later — "until"),
+        // pre_order = 1, and bookable slots exist. Open = ASAP only.
         let canSchedule = false;
         try {
-            canSchedule = !!branch && Number(branch.pre_order) === 1 && availableSlots.length > 0;
+            canSchedule = !!branch && Number(branch.pre_order) === 1
+                && availableSlots.length > 0 && !curModeOpen;
         } catch (e) { canSchedule = false; }
 
         // "You save via 3rd party platforms" — legacy checkout parity (see
@@ -843,9 +927,12 @@ async function setMode(req, res) {
         const branch = await M.loadActiveBranch(open.branch_id);
         if (!branch) { return H.errorResponse(res, 'This restaurant is no longer available.', 404); }
 
-        // Reject a mode this restaurant doesn't offer (a delivery-only
-        // restaurant can't be switched to Pickup, and vice-versa).
-        if (!StoreHours.offersMode(branch, b.serve_type)) {
+        // Reject a mode this restaurant can't take right now (a delivery-only
+        // restaurant can't be switched to Pickup, a closed-with-no-slots
+        // service can't be picked either) — the SAME gates the cart tabs use.
+        const um = await usableModes(branch);
+        const modeOk = Number(b.serve_type) === 2 ? um.pickup : um.delivery;
+        if (!modeOk) {
             return H.errorResponse(res,
                 'This restaurant doesn\'t offer ' + (Number(b.serve_type) === 2 ? 'pickup' : 'delivery') + '.',
                 422, { code: 'mode.unavailable' });
@@ -1018,9 +1105,18 @@ async function setSchedule(req, res) {
                 return H.errorResponse(res, 'That date and time is not valid.', 422);
             }
             // 15-minute lead-time floor — gives the kitchen a sensible
-            // minimum window. Anything sooner is treated as "ASAP".
-            const minLead = Date.now() + 15 * 60 * 1000;
-            if (scheduledDate.getTime() < minLead) {
+            // minimum window. The slot value is STORE (UK) WALL TIME, so it
+            // must be pinned to the store timezone before comparing with
+            // now — `new Date("…T12:09")` parses in the SERVER's zone, and
+            // on a non-UK box a perfectly future UK slot read as "in the
+            // past" and bounced with this very message (user report
+            // 29 Jul 2026; legacy compares on its own clock so it never saw
+            // this).
+            const schedMs = StoreHours.storeWallToMs(rawScheduled);
+            if (!Number.isFinite(schedMs)) {
+                return H.errorResponse(res, 'That date and time is not valid.', 422);
+            }
+            if (schedMs < Date.now() + 15 * 60 * 1000) {
                 return H.errorResponse(res, 'Please choose a time at least 15 minutes from now.', 422);
             }
             // Must be a REAL opening slot for this restaurant + mode — blocks

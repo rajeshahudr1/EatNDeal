@@ -102,6 +102,10 @@
     transition: background 150ms ease, color 150ms ease;
 }
 .ckt-mode__tab.is-active { background: #1a1a1a; color: #fff; }
+/* Neither mode usable (store fully closed, no pre-order) — both tabs render
+   but nothing is clickable. */
+.ckt-mode__tab:disabled { opacity: 0.45; cursor: not-allowed; }
+.ckt-mode__tab:disabled.is-active { background: #9a9a9a; }
 
 /* Row inside a card — pin/clock/card icon + body + Edit pill. */
 .ckt-row {

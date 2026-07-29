@@ -125,7 +125,10 @@ async function validate(cartId, owner, ctx) {
     // bookable slot, so a branch with no upcoming shifts never offers it.
     let canPreOrder = false;
     if (!isOpen && Number(branch.pre_order) === 1) {
-        const days = await StoreHours.scheduleDaysForBranch(branch, Number(cart.serve_type) === 2 ? 2 : 3);
+        // TODAY only — the schedule picker is today-only (user decision
+        // 27 Jul 2026), so tomorrow's slots must not claim "you can
+        // still pre-order" for a day the picker can't reach.
+        const days = await StoreHours.scheduleDaysForBranch(branch, Number(cart.serve_type) === 2 ? 2 : 3, { days: 1 });
         canPreOrder = days.some(d => d.slots && d.slots.length);
     }
     if (!isOpen && level === LEVEL.PLACE) {
@@ -138,12 +141,11 @@ async function validate(cartId, owner, ctx) {
     } else if (!isOpen) {
         // ONE closed message everywhere. When the branch carries its own
         // closure notice (admin's clossed_text, e.g. "…reopen day on 20/07"),
-        // that is what the customer already sees in the toast at place-time —
-        // so the checkout banner must say the same thing rather than a second,
-        // different sentence. Only add "you can still pre-order" when they
-        // genuinely can.
+        // the banner uses it as authored — and when pre-ordering is genuinely
+        // possible, the "you can still pre-order" hint rides along on BOTH
+        // shapes (user request 29 Jul 2026); without pre-order, no hint.
         pushWarn(out, 'branch.closed', (avail && avail.message)
-            ? closedMsg
+            ? (canPreOrder ? (closedMsg + ' — you can still pre-order.') : closedMsg)
             : (canPreOrder
                 ? 'The restaurant is closed right now — you can still pre-order.'
                 : 'The restaurant is closed right now.'));

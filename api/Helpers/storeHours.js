@@ -233,9 +233,15 @@ function fillMsg(branch, reopenMs) {
     const date = dt ? dt.toLocaleDateString('en-GB', { timeZone: DISPLAY_TZ, day: '2-digit', month: '2-digit', year: 'numeric' }) : '';
     const time = dt ? dt.toLocaleTimeString('en-GB', { timeZone: DISPLAY_TZ, hour: '2-digit', minute: '2-digit' }) : '';
     const day  = dt ? dt.toLocaleDateString('en-GB', { timeZone: DISPLAY_TZ, weekday: 'long' }) : '';
+    // If the authored template shows the {date} but never the {time}, ride
+    // the time along with the date ("29/07/2026, 14:30") — a reopen DATE
+    // alone hides that the shop is back the SAME day (user request
+    // 29 Jul 2026).
+    const hasTimeTag = /\{time\}/.test(String(tpl));
+    const dateOut = (!hasTimeTag && time) ? (date + ', ' + time) : date;
     return String(tpl)
         .replace(/\{branch_name\}/g, branchName(branch))
-        .replace(/\{date\}/g, date)
+        .replace(/\{date\}/g, dateOut)
         .replace(/\{time\}/g, time)
         .replace(/\{day\}/g, day)
         .replace(/\{contact_number\}/g, branch.contact_number || '');
@@ -465,6 +471,34 @@ async function loadShiftsToday(companyId, branchId) {
 }
 
 /**
+ * configuredServicesForBranch — which fulfilment modes this branch has ANY
+ * open shift for across the WHOLE week. LEGACY PARITY
+ * (ServiceAvailability::check → restricAddCartService): the old checkout
+ * only ever offers Pickup/Delivery when store_business_hours actually has
+ * that service configured — a restaurant with no TakeAway shifts never
+ * shows a Pickup option, whatever the branch flags say. A branch with NO
+ * hours rows at all keeps both on (same as compute()'s configured=false
+ * default-open path).
+ */
+async function configuredServicesForBranch(companyId, branchId) {
+    try {
+        const rows = await db('store_business_hours as h')
+            .innerJoin('store_business_hour_shifts as s', 's.business_hour_id', 'h.id')
+            .where({ 'h.company_id': companyId, 'h.branch_id': branchId })
+            .whereIn('s.service_type_id', [SERVICE.TAKEAWAY, SERVICE.DELIVERY])
+            .where('s.is_open', 1)
+            .distinct('s.service_type_id');
+        const set = new Set(rows.map((r) => Number(r.service_type_id)));
+        // Any hours at all? (an all-closed week still counts as configured)
+        const any = await db('store_business_hours').where({ branch_id: branchId }).first('id');
+        if (!any) { return { delivery: true, pickup: true }; }
+        return { delivery: set.has(SERVICE.DELIVERY), pickup: set.has(SERVICE.TAKEAWAY) };
+    } catch (e) {
+        return { delivery: true, pickup: true };
+    }
+}
+
+/**
  * availabilityForBranch — one branch row (needs id/branch_id + company_id +
  * the close-flag columns). Does the holiday + shift reads, returns compute().
  */
@@ -574,7 +608,12 @@ function buildSlots(branch, shifts, holidayToday, serveType, opts) {
         let o = clockMin(s.open_time), c = clockMin(s.close_time);
         if (o == null || c == null) { continue; }
         if (c <= o) { c += 1440; }                          // overnight
-        let t = Math.max(o, Math.ceil(startFloor / SLOT_STEP) * SLOT_STEP);
+        // LEGACY PARITY (user request 29 Jul 2026): the 15-min grid is
+        // anchored at the SHIFT'S OPEN TIME, not midnight — open 11:54
+        // makes 12:09 / 12:24 …, exactly like the old webordering picker
+        // (Branch.php steps openTimestamp + n×15min). Midnight-snapping
+        // produced 12:00/12:15 instead.
+        let t = o + Math.max(0, Math.ceil((startFloor - o) / SLOT_STEP)) * SLOT_STEP;
         for (; t < c; t += SLOT_STEP) {                     // < close (no slot AT close)
             const dayOff = Math.floor(t / 1440);
             const mod = t - dayOff * 1440;
@@ -661,7 +700,9 @@ function buildSlotsForDate(branch, shifts, holiday, serveType, targetDate, isTod
         let o = clockMin(s.open_time), c = clockMin(s.close_time);
         if (o == null || c == null) { continue; }
         if (c <= o) { c = 1440; }                              // overnight → cap at end of this calendar day
-        let t = Math.max(o, Math.ceil(startFloor / SLOT_STEP) * SLOT_STEP);
+        // 15-min grid anchored at the shift's open time — legacy parity,
+        // see the identical note in buildSlots above.
+        let t = o + Math.max(0, Math.ceil((startFloor - o) / SLOT_STEP)) * SLOT_STEP;
         for (; t < c; t += SLOT_STEP) {                        // < close (no slot AT close)
             if (seen.has(t)) { continue; }
             seen.add(t);
@@ -816,7 +857,9 @@ module.exports = {
     availabilityForBranch,
     availabilityForBranches,
     offeredServices,
+    configuredServicesForBranch,
     offersMode,
+    storeWallToMs,
     slotsForBranch,
     scheduleDaysForBranch,
     weekHoursForBranch,

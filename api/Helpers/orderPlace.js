@@ -286,12 +286,12 @@ async function placeOrder({ customer, cart, branch, items, paymentOption, custom
         Number(cart.serve_type) === 2 ? 'pickup' : 'delivery',
     );
 
-    // The flat service charge is already inside cart.grandtotal
-    // (recomputeTotals — legacy parity: charged on EVERY order, cash or
-    // card), so the recorded total is the grandtotal itself. cardCharge is
-    // kept only as the figure stored on the order's service-charge column.
-    const isCard       = Number(paymentOption) === 2;
-    const cardCharge   = isCard ? await Cart.cardServiceCharge(cart.company_id) : 0;
+    // The flat service charge is already inside cart.grandtotal AND stored
+    // on service_charge_amount (recomputeTotals — legacy parity: charged on
+    // EVERY order, cash or card). It must NOT be written to
+    // stripe_service_charge as well: that column made the order page show
+    // the SAME £1 twice ("Service charge" + "Card service charge") — legacy
+    // has ONE service charge per order (user report 29 Jul 2026).
     const grandTotal   = Math.round((Number(cart.grandtotal) || 0) * 100) / 100;
 
     // Loyalty redeem is ALREADY subtracted from cart.grandtotal by
@@ -375,7 +375,9 @@ async function placeOrder({ customer, cart, branch, items, paymentOption, custom
             service_charge_amount: Number(cart.service_charge_amount) || 0,
             service_charge_rate:   Number(cart.service_charge_rate)   || 0,
             // Card surcharge (0 for cash) — what Stripe added on top.
-            stripe_service_charge: cardCharge,
+            // Always 0 — the flat service charge lives on
+            // service_charge_amount; writing it here too double-displayed it.
+            stripe_service_charge: 0,
             charity_amount:    Number(cart.charity_amount) || 0,
             fix_charity_discount: Number(cart.fix_charity_discount) || 0,
             used_cashback:     usedCashback,

@@ -221,7 +221,7 @@
                         <span class="ckt-loyalty__bal"><%= sym %><%= rwBal.toFixed(2) %> available</span></p>
                     <div class="ckt-loyalty__row">
                         <span class="ckt-loyalty__cur"><%= sym %></span>
-                        <input type="number" class="ckt-loyalty__input" data-cart-loyalty-input min="0" step="0.01" max="<%= rwMax.toFixed(2) %>" inputmode="decimal" placeholder="0.00" value="<%= rwMax.toFixed(2) %>">
+                        <input type="number" class="ckt-loyalty__input" data-cart-loyalty-input min="0.01" step="0.01" max="<%= rwMax.toFixed(2) %>" inputmode="decimal" placeholder="0.00" value="<%= rwMax.toFixed(2) %>">
                         <button type="button" class="ckt-loyalty__apply" data-action="cart-apply-loyalty">Use</button>
                     </div>
                     <% if (rwMax < rwBal) { %>

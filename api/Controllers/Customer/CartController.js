@@ -1306,7 +1306,7 @@ async function applyLoyalty(req, res) {
         // than the balance says so instead of quietly applying the max.
         const apply = Math.round(amount * 100) / 100;
         if (apply <= 0) {
-            return H.errorResponse(res, 'Enter how much reward to use — 0 isn\'t allowed.', 422);
+            return H.errorResponse(res, 'Enter an amount greater than £0.', 422);
         }
         if (apply > max + 0.005) {
             return H.errorResponse(res,

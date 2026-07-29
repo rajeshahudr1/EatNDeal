@@ -389,12 +389,14 @@
                                 <% if (p.veg && __vegLbl[p.veg]) { %><span class="veg-marker veg-marker--<%= p.veg %>" aria-label="<%= __vegLbl[p.veg] %>" title="<%= __vegLbl[p.veg] %>"></span><% } %>
                                 <% if (p.isFeatured) { %><span class="rd-product__badge">Bestseller</span><% } %>
                                 <%# Offer chips overlay the image corner so the body keeps a uniform height.
-                                    Cashback is a SIGNED-IN perk (it lands on the account's wallet), so
-                                    guests don't see the badge — user request 28 Jul 2026. %>
-                                <% var __showCb = !!(typeof user_session !== 'undefined' && user_session) && p.cashback && p.cashback.amount > 0; %>
-                                <% if ((p.bogo && p.bogo.buyQty > 0 && p.bogo.getQty > 0) || __showCb) { %>
+                                    ALL loyalty perks (BOGO + cashback + whatever comes next) are
+                                    SIGNED-IN only — guests see none of them (user request 29 Jul 2026). %>
+                                <% var __inSes = !!(typeof user_session !== 'undefined' && user_session); %>
+                                <% var __showBg = __inSes && p.bogo && p.bogo.buyQty > 0 && p.bogo.getQty > 0; %>
+                                <% var __showCb = __inSes && p.cashback && p.cashback.amount > 0; %>
+                                <% if (__showBg || __showCb) { %>
                                     <div class="rd-product__promos">
-                                        <% if (p.bogo && p.bogo.buyQty > 0 && p.bogo.getQty > 0) { %>
+                                        <% if (__showBg) { %>
                                             <span class="rd-product__bogo">🎁 Buy <%= p.bogo.buyQty %> Get <%= p.bogo.getQty %> Free</span>
                                         <% } %>
                                         <% if (__showCb) { %>

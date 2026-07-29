@@ -38,11 +38,13 @@
                         <% var __vegLbl = { 'veg':'Vegetarian', 'non-veg':'Non-vegetarian', 'vegan':'Vegan', 'gluten-free':'Gluten free' }; %>
                         <% if (p.veg && __vegLbl[p.veg]) { %><span class="veg-marker veg-marker--<%= p.veg %>" title="<%= __vegLbl[p.veg] %>" aria-label="<%= __vegLbl[p.veg] %>"></span><% } %>
                         <%# Offer chips overlay the image corner so the card body keeps a uniform height.
-                            Cashback is a signed-in perk — guests don't see the badge. %>
-                        <% var __hpCb = !!(typeof user_session !== 'undefined' && user_session) && p.cashback && p.cashback.amount > 0; %>
-                        <% if ((p.bogo && p.bogo.buyQty > 0 && p.bogo.getQty > 0) || __hpCb) { %>
+                            ALL loyalty perks (BOGO + cashback) are signed-in only — guests see none. %>
+                        <% var __hpSes = !!(typeof user_session !== 'undefined' && user_session); %>
+                        <% var __hpBg = __hpSes && p.bogo && p.bogo.buyQty > 0 && p.bogo.getQty > 0; %>
+                        <% var __hpCb = __hpSes && p.cashback && p.cashback.amount > 0; %>
+                        <% if (__hpBg || __hpCb) { %>
                         <span class="hp-card__offers">
-                            <% if (p.bogo && p.bogo.buyQty > 0 && p.bogo.getQty > 0) { %><span class="hp-card__offer hp-card__offer--bogo">🎁 Buy <%= p.bogo.buyQty %> Get <%= p.bogo.getQty %></span><% } %>
+                            <% if (__hpBg) { %><span class="hp-card__offer hp-card__offer--bogo">🎁 Buy <%= p.bogo.buyQty %> Get <%= p.bogo.getQty %></span><% } %>
                             <% if (__hpCb) { %><span class="hp-card__offer hp-card__offer--cashback">💸 <%= sym %><%= Number(p.cashback.amount).toFixed(2) %></span><% } %>
                         </span>
                         <% } %>

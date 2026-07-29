@@ -889,9 +889,12 @@
         var panel = btn.closest('[data-cart-loyalty]');
         var input = panel && panel.querySelector('[data-cart-loyalty-input]');
         var max   = panel ? (parseFloat(panel.getAttribute('data-reward-max')) || 0) : 0;
-        var amount = input ? parseFloat(input.value) : max;
-        if (!isFinite(amount) || amount <= 0) { amount = max; }
-        if (!(amount > 0)) { toast('error', 'Enter how much reward to use.'); return; }
+        // EXACTLY what was typed — no silent auto-fill (user request
+        // 29 Jul 2026): 0/empty and over-balance both stop with an error.
+        var amount = input ? parseFloat(input.value) : NaN;
+        if (!isFinite(amount) || amount <= 0) { toast('error', 'Enter how much reward to use — 0 isn\'t allowed.'); return; }
+        if (amount > max) { toast('error', 'You only have £' + max.toFixed(2) + ' reward available — enter that or less.'); return; }
+        amount = Math.round(amount * 100) / 100;
         btn.disabled = true;
         postCart('/cart/apply-loyalty', { amount: amount }).then(function (env) {
             handleEnvelope(env, { reload: true });

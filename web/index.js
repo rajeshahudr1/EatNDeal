@@ -707,10 +707,13 @@ app.get('/product/json', async (req, res) => {
         if (!r || !r.body) {
             return res.status(200).json({ status: 502, show: true, msg: 'Could not load the item.' });
         }
-        // Cashback is a signed-in perk — strip it for guests so the item
-        // popup matches the cards (which hide the badge when logged out).
+        // Loyalty perks (cashback + BOGO) are signed-in only — strip them
+        // for guests so the item popup matches the cards (which hide the
+        // badges when logged out). Guests can't check out anyway (cart-add
+        // requires sign-in), so no pricing path is affected.
         if (!(req.session && req.session.user) && r.body.data) {
             r.body.data.cashback = null;
+            r.body.data.bogo = null;
         }
         return res.status(200).json(r.body);
     } catch (err) {

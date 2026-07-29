@@ -1301,9 +1301,16 @@ async function applyLoyalty(req, res) {
             return H.errorResponse(res, 'You have no reward to use on this order yet.', 422);
         }
 
-        const apply = Math.min(Math.max(0, amount), max);
+        // EXACTLY the requested amount or an error — never silently clamp
+        // (user request 29 Jul 2026): 0 is refused, and asking for more
+        // than the balance says so instead of quietly applying the max.
+        const apply = Math.round(amount * 100) / 100;
         if (apply <= 0) {
-            return H.errorResponse(res, 'Enter how much reward to use.', 422);
+            return H.errorResponse(res, 'Enter how much reward to use — 0 isn\'t allowed.', 422);
+        }
+        if (apply > max + 0.005) {
+            return H.errorResponse(res,
+                'You only have £' + max.toFixed(2) + ' reward available — enter that or less.', 422);
         }
 
         await Cart.setUsedCashback(open.id, apply);

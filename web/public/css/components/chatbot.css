@@ -70,6 +70,16 @@ body.rd-infomodal-open .chatbot { display: none; }
 .chatbot__action-btn:hover { filter: brightness(1.05); }
 .chatbot__action-btn:disabled { opacity: .6; cursor: default; }
 
+/* Deep-link buttons under a reply — navigation, styled like soft chips. */
+.chatbot__links { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 2px; align-self: flex-start; }
+.chatbot__link {
+    display: inline-block; padding: 6px 12px; border-radius: 999px;
+    background: #fff; border: 1.5px solid var(--color-primary, #e5252a);
+    color: var(--color-primary, #e5252a); font-size: 0.78rem; font-weight: 700;
+    text-decoration: none;
+}
+.chatbot__link:hover { background: var(--color-primary, #e5252a); color: #fff; }
+
 .chatbot__chips { flex: 0 0 auto; display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 12px; background: var(--color-bg, #fff); border-top: 1px solid var(--color-border-soft, #eef1f5); }
 .chatbot__chip { border: 1px solid var(--color-primary, #e5252a); background: var(--color-primary-soft, #fde8e8); color: var(--color-primary, #e5252a); font-size: 0.78rem; font-weight: 700; padding: 5px 11px; border-radius: 999px; cursor: pointer; }
 .chatbot__chip:hover { background: var(--color-primary, #e5252a); color: #fff; }

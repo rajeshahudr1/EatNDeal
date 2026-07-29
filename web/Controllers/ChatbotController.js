@@ -17,6 +17,12 @@ async function ask(req, res) {
     const loc  = (req.session && req.session.userLocation) || null;
     const payload = { message: (req.body && req.body.message) || '' };
     if (user && user.id) { payload.customer_id = user.id; }
+    // Conversation context (last restaurant etc.) — echoed by the widget so
+    // short follow-ups stay on topic. Sanitised to the two known keys.
+    const ctx = req.body && req.body.ctx;
+    if (ctx && typeof ctx === 'object' && Number(ctx.companyId) > 0) {
+        payload.ctx = { intent: String(ctx.intent || ''), companyId: Number(ctx.companyId), companyName: String(ctx.companyName || '').slice(0, 120) };
+    }
     // Saved delivery location (top-of-app selector) → drives the "near me"
     // intents; the postcode drives zone-based delivery-fee answers.
     if (loc && loc.lat != null && loc.lng != null) { payload.lat = loc.lat; payload.lng = loc.lng; }

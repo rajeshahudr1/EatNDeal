@@ -17,6 +17,9 @@
     var input   = root.querySelector('[data-chatbot-input]');
     var DEFAULT_CHIPS = ['Where is my order?', 'Restaurants near me', 'Offers for me', 'My loyalty points', 'What can you do?'];
     var opened = false, busy = false;
+    // The last reply's context (e.g. which restaurant we were talking about)
+    // — echoed back so short follow-ups ("their offers?") stay on topic.
+    var lastCtx = null;
 
     function esc(s) { var d = document.createElement('div'); d.textContent = (s == null ? '' : String(s)); return d.innerHTML; }
     // Render **bold** + newlines; everything else escaped (no HTML injection).
@@ -73,6 +76,24 @@
         body.appendChild(wrap);
         body.scrollTop = body.scrollHeight;
     }
+    // Link buttons under a reply — real navigation, no bare "click here".
+    function renderLinks(links) {
+        if (!links || !links.length) { return; }
+        var wrap = document.createElement('div');
+        wrap.className = 'chatbot__links';
+        links.forEach(function (l) {
+            if (!l || !l.href) { return; }
+            var a = document.createElement('a');
+            a.className = 'chatbot__link';
+            a.href = l.href;
+            a.textContent = l.label || 'Open';
+            wrap.appendChild(a);
+        });
+        if (wrap.children.length) {
+            body.appendChild(wrap);
+            body.scrollTop = body.scrollHeight;
+        }
+    }
     function send(text) {
         text = String(text || '').trim();
         if (!text || busy) { return; }
@@ -84,7 +105,7 @@
         fetch('/chatbot/ask', {
             method: 'POST', credentials: 'same-origin',
             headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-            body: JSON.stringify({ message: text }),
+            body: JSON.stringify({ message: text, ctx: lastCtx }),
         })
             .then(function (r) { return r.json().catch(function () { return { status: 0 }; }); })
             .then(function (env) {
@@ -92,7 +113,10 @@
                 var d = env && env.data;
                 addMsg((d && d.reply) || (env && env.msg) || 'Sorry, please try again.', 'bot');
                 if (d && d.action) { renderAction(d.action); }
+                renderLinks(d && d.links);
                 renderChips((d && d.chips) || DEFAULT_CHIPS);
+                // Keep (or clear) the conversation context for follow-ups.
+                lastCtx = (d && d.ctx) || lastCtx;
             })
             .catch(function () { typing.remove(); addMsg('Could not reach the assistant. Please try again.', 'bot'); })
             .then(function () { busy = false; });

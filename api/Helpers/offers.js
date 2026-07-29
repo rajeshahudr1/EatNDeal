@@ -141,7 +141,9 @@ async function offersFeed(limit) {
         .innerJoin('company as c', 'c.id', 'o.company_id')
         .where('o.publish_online', 1)
         .andWhere('o.status', 1)          // hide soft-deleted (status=2) banners
-        .andWhere('c.is_marketplace', 1)
+        // Full tenant eligibility — a DEACTIVATED (is_active=0) company's
+        // banners must vanish with it (user report 29 Jul 2026).
+        .modify(M.eligibleCompanyScope, 'c')
         .andWhere((qb) => withinWindow(qb, 'o.start_date', 'o.end_date'))
         .orderBy('o.id', 'desc')
         .limit(limit || 8)
@@ -176,8 +178,7 @@ async function offersFeed(limit) {
 async function groupedOffers() {
     const cos = await db('company as c')
         .innerJoin('branch as b', 'b.company_id', 'c.id')
-        .where('c.is_marketplace', 1)
-        .whereNull('c.deleted_at')
+        .modify(M.eligibleCompanyScope, 'c')
         .andWhere('b.status', '<>', '2')
         .select(
             'c.id as company_id', 'b.id as branch_id',
@@ -356,7 +357,8 @@ async function offersPageData() {
     const empty = { restaurantOffers: [], productOffers: [], commonOffers: [], total: 0 };
     const cos = await db('company as c')
         .innerJoin('branch as b', 'b.company_id', 'c.id')
-        .where('c.is_marketplace', 1).whereNull('c.deleted_at').andWhere('b.status', '<>', '2')
+        .modify(M.eligibleCompanyScope, 'c')
+        .andWhere('b.status', '<>', '2')
         .select('c.id as company_id', 'b.id as branch_id', 'c.business_name', 'c.domain_name', 'b.banner_image', 'b.business_image')
         .orderBy([{ column: 'c.id', order: 'asc' }, { column: 'b.id', order: 'asc' }]);
     const seen = new Set();

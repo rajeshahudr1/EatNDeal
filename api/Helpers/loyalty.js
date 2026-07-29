@@ -2116,6 +2116,126 @@ async function earnCollectionCashback({ customerId, companyId, orderId, subtotal
 }
 
 /**
+ * previewEligibleCashbacks
+ *
+ * What:  READ-ONLY port of legacy CustomerRewards::getLoyaltyEligibleCashbacks
+ *        — the "Extra Cashback Available" list the old checkout shows next to
+ *        the basket. Computes what THIS order would earn, rule by rule, with
+ *        the admin-commission skim applied — but never writes anything; the
+ *        real earn still happens at order-complete via the earn* functions
+ *        above (which use the same maths, so the preview always matches).
+ *
+ *        Rule types (legacy order):
+ *          referral            → 'Referral Reward.'      (first order + referred)
+ *          cashback (stamp)    → 'Digital Stamp Card.'   (tiered rule)
+ *          cash_king           → 'Chose Cash Option & Earn Cash Reward.'
+ *          collection_cashback → 'Chose Collection & Earn Pickup Reward.'
+ *          special_offer       → 'Celebration Reward.'   (today's offer, once)
+ *        (legacy's referee row is rendered d-none — never shown — so it is
+ *        skipped here; smart_campaign is commented out in legacy.)
+ * Type:  READ.
+ *
+ * Inputs: { customerId, companyId, subTotal }  (sub-total AFTER discount —
+ *         same figure the legacy JS posts as sub_total_after_discount)
+ * Output: [{ key, message, amount }] — amount already commission-skimmed.
+ */
+async function previewEligibleCashbacks({ customerId, companyId, subTotal }) {
+    const out = [];
+    try {
+        if (!customerId || !hasScope(companyId) || !(await isReady())) { return out; }
+        const cfg = await loadConfig(companyId);
+        if (!cfg) { return out; }
+        const sub = round2(Number(subTotal) || 0);
+        if (sub <= 0) { return out; }
+
+        const commPct = Number(cfg.loyalty_commission) || 0;
+        // Legacy rounds ONLY the final figure (number_format) — no
+        // intermediate round2, or £10.10 @5% −10% shows 0.46 not 0.45.
+        const netOf = (gross) => {
+            const c = commPct > 0 ? (gross * commPct / 100) : 0;
+            return round2(gross - c);
+        };
+        const rcid = await customers.appIdOf(customerId);
+
+        // referral — first order + referred_by + trigger-2 rule + not already
+        // given. Mirrors earnReferral's checks exactly (order semantics incl.).
+        if (rcid !== null && (await ruleEnabled(companyId, 'referral'))) {
+            const prior = await db('orders')
+                .where({ company_id: companyId, user_id: customerId, status: '1' }).first('id');
+            if (!prior) {
+                const cust = await db('customer').where({ id: customerId }).first('referred_by', 'company_id');
+                const referredBy = await resolveReferrerId(cust);
+                if (referredBy != null) {
+                    const rule = await db('loyalty_referral_cashback_rule')
+                        .where({ company_id: companyId, trigger: 2 }).whereNull('deleted_at').first();
+                    const referrerCb = rule ? (Number(rule.referrer_cashback) || 0) : 0;
+                    if (rule && referrerCb > 0) {
+                        const already = await db(REWARDS)
+                            .where({ company_id: companyId, customer_id: rcid, entity_type: 'referral', entity_id: rule.id }).first('id');
+                        if (!already) {
+                            const a = netOf(referrerCb);
+                            if (a > 0) { out.push({ key: 'referral', message: 'Referral Reward.', amount: a }); }
+                        }
+                    }
+                }
+            }
+        }
+
+        // cashback (stamp card) — the customer's tier's rule, best matching
+        // min_order_amount. Same lookup as earnStampCashback.
+        if (await ruleEnabled(companyId, 'cashback')) {
+            const tier = await getCustomerTier(companyId, customerId);
+            const rule = await db('loyalty_cashback_rule')
+                .where({ company_id: companyId, tier_type: tier }).whereNull('deleted_at')
+                .andWhere('min_order_amount', '<=', sub)
+                .orderBy('min_order_amount', 'desc').first();
+            if (rule) {
+                let gross = Number(rule.cashback) || 0;
+                if (String(rule.value_type) === '%') { gross = sub * (Number(rule.cashback) || 0) / 100; }
+                const a = netOf(gross);
+                if (a > 0) { out.push({ key: 'cashback', message: 'Digital Stamp Card.', amount: a }); }
+            }
+        }
+
+        // cash_king — % of the sub-total for paying cash.
+        if (Number(cfg.cash_king) > 0 && (await ruleEnabled(companyId, 'cash_king'))) {
+            const a = netOf(sub * Number(cfg.cash_king) / 100);
+            if (a > 0) { out.push({ key: 'cash_king', message: 'Chose Cash Option & Earn Cash Reward.', amount: a }); }
+        }
+
+        // collection_cashback — % of the sub-total for picking up.
+        if (Number(cfg.collection_cashback) > 0 && (await ruleEnabled(companyId, 'collection_cashback'))) {
+            const a = netOf(sub * Number(cfg.collection_cashback) / 100);
+            if (a > 0) { out.push({ key: 'collection_cashback', message: 'Chose Collection & Earn Pickup Reward.', amount: a }); }
+        }
+
+        // special_offer — today's offer, once per day. Same as earnSpecialOffer.
+        if (rcid !== null && (await ruleEnabled(companyId, 'special_offer'))) {
+            const today = fmtDate(new Date());
+            const rule = await db('loyalty_special_offer_rule')
+                .where({ company_id: companyId }).whereNull('deleted_at')
+                .whereRaw('DATE(offer_date) = ?', [today]).first();
+            if (rule && Number(rule.cashback) > 0) {
+                const already = await db(REWARDS)
+                    .where({ company_id: companyId, customer_id: rcid, entity_type: 'special_offer', entity_id: rule.id })
+                    .whereRaw('DATE(created_at) = CURRENT_DATE').first('id');
+                if (!already) {
+                    let gross = Number(rule.cashback) || 0;
+                    if (String(rule.value_type) === '%') { gross = sub * (Number(rule.cashback) || 0) / 100; }
+                    const a = netOf(gross);
+                    if (a > 0) { out.push({ key: 'special_offer', message: 'Celebration Reward.', amount: a }); }
+                }
+            }
+        }
+    } catch (e) { /* display-only — never block the cart */ }
+    // Display order — same as the legacy widget: Cash Reward, Pickup
+    // Reward, Digital Stamp Card, then the occasional one-offs.
+    const ORDER = { cash_king: 1, collection_cashback: 2, cashback: 3, referral: 4, special_offer: 5 };
+    out.sort((a, b) => (ORDER[a.key] || 9) - (ORDER[b.key] || 9));
+    return out;
+}
+
+/**
  * bogoForProduct
  *
  * What:  The active BOGOF (buy-X-get-Y) rule for a product — product-level
@@ -2250,6 +2370,9 @@ module.exports = {
     earnForOrder, earnOrderStreak, earnStampCashback, earnProductCashback, earnSpecialOffer,
     earnReferral, earnEventCashback, earnSmartCampaign, earnCollectionCashback,
     bogoForProduct, payableQtyFor, bogoMapFor, productCashbackMapFor,
+    // Read-only "Extra Cashback Available" list for the cart (legacy
+    // getLoyaltyEligibleCashbacks) — display twin of the earn* functions.
+    previewEligibleCashbacks,
     balanceFor, cardsFor, historyFor, reviewTypesFor, reviewRestaurants, maxRedeemable, consumeForRedeem, burnUnusedStamps, reverseForOrder, streakProgressFor, stampJourneyFor,
     // Dual redeem — the restaurant's pool + the marketplace's, on one order.
     redeemPoolsFor, consumeAcrossPools,

@@ -1637,6 +1637,8 @@ function publicCartView(cart, items, opts) {
         // "You save via 3rd party platforms" banner figure (legacy
         // third_party_discount) — > 0 shows the Congratulations banner.
         thirdPartySavings: (opts && typeof opts.thirdPartySavings === 'number') ? opts.thirdPartySavings : 0,
+        // "Extra Cashback Available" preview rows (legacy checkout widget).
+        extraCashback:    (opts && Array.isArray(opts.extraCashback)) ? opts.extraCashback : [],
         subTotal:         Number(cart.sub_total)      || 0,
         bagCharge:        Number(cart.bag_charge)     || 0,
         deliveryFees:     Number(cart.delivery_fees)  || 0,
@@ -1749,7 +1751,7 @@ async function thirdPartySavings(cartId, items) {
     const ids = [...new Set(paid.map((it) => it.product_id))];
     if (!ids.length) { return 0; }
     const rows = await db('products').whereIn('id', ids)
-        .select('id', 'online_platform_price', 'marketplace_price', 'price_after_tax');
+        .select('id', 'online_platform_price', 'price_before_tax');
     const byId = {};
     rows.forEach((p) => { byId[String(p.id)] = p; });
 
@@ -1758,7 +1760,12 @@ async function thirdPartySavings(cartId, items) {
         const p = byId[String(it.product_id)];
         if (!p) { return; }
         const qty = Number(it.product_qty) || 0;
-        totalOurs   += M.pickPrice(p) * qty;
+        // EXACT legacy formula (webordering CartController:470-506):
+        // price_before_tax vs online_platform_price. It was the marketplace
+        // price before, which sits ABOVE the third-party price by design, so
+        // the saving was always ≤ 0 and the banner never showed (user report
+        // 29 Jul 2026 — "same logic lena").
+        totalOurs   += (Number(p.price_before_tax) || 0) * qty;
         totalOnline += (Number(p.online_platform_price) || 0) * qty;
     });
     const saving = round2(totalOnline - totalOurs);

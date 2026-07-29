@@ -102,6 +102,22 @@
     transition: background 150ms ease, color 150ms ease;
 }
 .ckt-mode__tab.is-active { background: #1a1a1a; color: #fff; }
+/* "Extra Cashback Available" — legacy checkout widget parity. */
+.ckt-xcash {
+    display: flex; gap: 10px; align-items: flex-start;
+    margin: 0 0 12px; padding: 12px 14px; border-radius: 12px;
+    background: #f0faf3; border: 1px solid #d5eedf;
+}
+.ckt-xcash__icon { font-size: 1.1rem; }
+.ckt-xcash__body { flex: 1 1 auto; min-width: 0; }
+.ckt-xcash__title { display: block; font-weight: 800; font-size: 0.85rem; color: #15803d; margin-bottom: 4px; }
+.ckt-xcash__row { display: flex; justify-content: space-between; gap: 10px; font-size: 0.8rem; padding: 2px 0; color: #2b2b2b; }
+.ckt-xcash__amt { font-weight: 800; color: #15803d; white-space: nowrap; }
+.ckt-xcash__kw { color: #15803d; font-weight: 800; }
+/* The Pickup nudge line — legacy paints the WHOLE line bold red on pink. */
+.ckt-xcash__row--hl { background: #ffe9ec; border-radius: 6px; padding: 2px 6px; color: #dc2626; font-weight: 700; }
+.ckt-xcash__row--hl .ckt-xcash__kw, .ckt-xcash__row--hl .ckt-xcash__amt { color: #dc2626; }
+
 /* Neither mode usable (store fully closed, no pre-order) — both tabs render
    but nothing is clickable. */
 .ckt-mode__tab:disabled { opacity: 0.45; cursor: not-allowed; }

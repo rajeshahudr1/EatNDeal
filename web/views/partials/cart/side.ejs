@@ -87,6 +87,34 @@
             </div>
             <% } %>
 
+            <%# "Extra Cashback Available" — legacy checkout parity
+                (getLoyaltyEligibleCashbacks preview, api Helpers/loyalty
+                previewEligibleCashbacks). One line per eligible rule; the
+                Pickup line is highlighted while the cart is on Delivery —
+                same nudge the legacy widget gives. %>
+            <% if (cart.extraCashback && cart.extraCashback.length) { %>
+            <div class="ckt-xcash" role="status">
+                <span class="ckt-xcash__icon" aria-hidden="true">💵</span>
+                <div class="ckt-xcash__body">
+                    <span class="ckt-xcash__title">Extra Cashback Available</span>
+                    <%# Bold green keywords — exactly the legacy widget's markup
+                        (its messages carry <b style=green> around Cash /
+                        Collection / the reward names). Built HERE per key so
+                        the api keeps returning plain text. %>
+                    <% var __xcMsg = {
+                           cash_king:           'Chose <b class="ckt-xcash__kw">Cash</b> Option &amp; Earn <b class="ckt-xcash__kw">Cash Reward</b>.',
+                           collection_cashback: 'Chose <b class="ckt-xcash__kw">Collection</b> &amp; Earn <b class="ckt-xcash__kw">Pickup Reward</b>.',
+                       }; %>
+                    <% cart.extraCashback.forEach(function (x) { %>
+                    <div class="ckt-xcash__row<%= (x.key === 'collection_cashback' && cart.serveType !== 2) ? ' ckt-xcash__row--hl' : '' %>">
+                        <span class="ckt-xcash__msg"><%- __xcMsg[x.key] || x.message %></span>
+                        <span class="ckt-xcash__amt"><%= sym %><%= Number(x.amount).toFixed(2) %></span>
+                    </div>
+                    <% }); %>
+                </div>
+            </div>
+            <% } %>
+
             <%# Basket summary disclosure — collapsed by default. Wraps
                 the existing items list verbatim so stepper/remove
                 handlers keep firing through /js/ui/cart.js. A "Clear"

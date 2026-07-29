@@ -347,9 +347,28 @@ async function get(req, res) {
         try { thirdPartySavings = await Cart.thirdPartySavings(open.id, items); }
         catch (e) { thirdPartySavings = 0; }
 
+        // "Extra Cashback Available" — legacy checkout parity
+        // (getLoyaltyEligibleCashbacks): what THIS order would earn, per
+        // rule, on the sub-total AFTER discount. Read-only preview; signed-in
+        // customers only (the legacy widget needs a registered customer too).
+        let extraCashback = [];
+        if (!owner.isGuest) {
+            try {
+                const Loyalty = require('../../Helpers/loyalty');
+                const subAfterDiscount = Math.max(0,
+                    (Number(v.cart.sub_total) || 0) - (Number(v.cart.discount) || 0));
+                extraCashback = await Loyalty.previewEligibleCashbacks({
+                    customerId: owner.customerId,
+                    companyId:  open.company_id,
+                    subTotal:   subAfterDiscount,
+                });
+            } catch (e) { extraCashback = []; }
+        }
+
         const view  = Cart.publicCartView(v.cart, items, {
             charityTiers, cardServiceCharge, rewardBalance, rewardMax, availableSlots, scheduleDays,
             canDelivery: offered.delivery, canPickup: offered.pickup, canSchedule,
+            extraCashback,
             rewardPools, thirdPartySavings,
         });
 

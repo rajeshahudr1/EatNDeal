@@ -31,7 +31,7 @@
         <div>
             <h2 class="ly__title">🧑 Customers</h2>
             <p class="ly__sub"><%= (pd && pd.marketplace === false) ? 'This restaurant\'s customers' : 'All marketplace customers' %>
-                <% if (pd) { %> · <strong><%= pd.total %></strong> total · <strong><%= pd.this_month %></strong> joined this month · <strong><%= pd.banned %></strong> banned<% } %>
+                <% if (pd) { %> · <strong><%= pd.total %></strong> total · <strong><%= pd.this_month %></strong> joined this month · <strong><%= pd.banned %></strong> banned · <strong><%= pd.deleted || 0 %></strong> deleted<% } %>
             </p>
         </div>
     </div>

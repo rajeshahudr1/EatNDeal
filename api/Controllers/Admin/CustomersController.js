@@ -166,6 +166,10 @@ async function list(req, res) {
         const monthStart = mStart.getFullYear() + '-' + String(mStart.getMonth() + 1).padStart(2, '0') + '-01';
         const mCnt = await scoped(cid).whereRaw('DATE(customer.created_at) >= ?', [monthStart]).count('* as n').first();
         const bCnt = await scoped(cid).where('status', '3').count('* as n').first();
+        // Soft-deleted rows — scoped() excludes them, so count directly.
+        const dCnt = await db(T)
+            .modify((qb) => { if (cid) { qb.where('company_id', cid); } else { qb.whereNull('company_id'); } })
+            .where('status', '2').count('* as n').first();
 
         return H.successResponse(res, {
             customers:   rows.map(mapRow),
@@ -173,6 +177,7 @@ async function list(req, res) {
             total,
             this_month:  Number(mCnt && mCnt.n) || 0,
             banned:      Number(bCnt && bCnt.n) || 0,
+            deleted:     Number(dCnt && dCnt.n) || 0,
             page,
             limit:       isAll ? 'all' : limit,
             total_pages: totalPages,

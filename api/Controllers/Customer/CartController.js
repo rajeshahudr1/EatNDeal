@@ -1423,6 +1423,13 @@ async function applyLoyalty(req, res) {
         if (apply <= 0) {
             return H.errorResponse(res, 'Enter an amount greater than £0.', 422);
         }
+        // WHOLE pounds only — legacy webordering floors the redeem input
+        // (checkout.php "Integer only"), so pennies are never spendable.
+        // We refuse rather than floor silently (no-silent-clamp rule).
+        if (apply % 1 !== 0) {
+            return H.errorResponse(res,
+                'Rewards can only be used in whole pounds — e.g. £1 or £2.', 422);
+        }
         if (apply > max + 0.005) {
             return H.errorResponse(res,
                 'You only have £' + max.toFixed(2) + ' reward available — enter that or less.', 422);

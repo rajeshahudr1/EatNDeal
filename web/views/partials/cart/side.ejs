@@ -249,11 +249,14 @@
                         <span class="ckt-loyalty__bal"><%= sym %><%= rwBal.toFixed(2) %> available</span></p>
                     <div class="ckt-loyalty__row">
                         <span class="ckt-loyalty__cur"><%= sym %></span>
-                        <input type="number" class="ckt-loyalty__input" data-cart-loyalty-input min="0.01" step="0.01" max="<%= rwMax.toFixed(2) %>" inputmode="decimal" placeholder="0.00" value="<%= rwMax.toFixed(2) %>">
+<%# Whole pounds only — legacy webordering floors the redeem
+                            amount (checkout.php "Integer only"), so £1.95 balance
+                            ⇒ £1 max. rwMax arrives already floored by the API. %>
+                        <input type="number" class="ckt-loyalty__input" data-cart-loyalty-input min="1" step="1" max="<%= Math.floor(rwMax) %>" inputmode="numeric" placeholder="0" value="<%= Math.floor(rwMax) %>">
                         <button type="button" class="ckt-loyalty__apply" data-action="cart-apply-loyalty">Use</button>
                     </div>
                     <% if (rwMax < rwBal) { %>
-                    <p class="ckt-loyalty__note">Up to <%= sym %><%= rwMax.toFixed(2) %> can be used on this order.</p>
+                    <p class="ckt-loyalty__note">Up to <%= sym %><%= Math.floor(rwMax) %> can be used on this order (whole pounds only).</p>
                     <% } %>
                 <% } %>
             </div>
@@ -300,8 +303,8 @@
                 <div class="ckt-donated__left">
                     <span class="ckt-donated__icon" aria-hidden="true">❤️</span>
                     <div>
-                        <p class="ckt-donated__title">Thank You for Your Contribution!</p>
-                        <p class="ckt-donated__sub">This amount will be donated</p>
+                        <p class="ckt-donated__title">Community Support Included</p>
+                        <p class="ckt-donated__sub">A contribution has been added to this order to help support projects and families in your local area.</p>
                     </div>
                 </div>
                 <div class="ckt-donated__badge">

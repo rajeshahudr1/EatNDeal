@@ -893,6 +893,9 @@
         // 29 Jul 2026): 0/empty and over-balance both stop with an error.
         var amount = input ? parseFloat(input.value) : NaN;
         if (!isFinite(amount) || amount <= 0) { toast('error', 'Enter an amount greater than £0.'); return; }
+        // Whole pounds only — mirrors the legacy webordering redeem
+        // ("Integer only" floor) and the API's own whole-pound check.
+        if (amount % 1 !== 0) { toast('error', 'Rewards can only be used in whole pounds — e.g. £1 or £2.'); return; }
         if (amount > max) { toast('error', 'You only have £' + max.toFixed(2) + ' reward available — enter that or less.'); return; }
         amount = Math.round(amount * 100) / 100;
         btn.disabled = true;

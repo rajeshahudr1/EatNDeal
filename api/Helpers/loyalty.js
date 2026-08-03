@@ -1049,7 +1049,12 @@ async function maxRedeemable({ customerId, companyId, subTotal }) {
     let max = Math.min(bal, sub);
     const flatCap = Number(cfg.use_max_cashback) || 0;   // 0 = no cap (legacy)
     if (flatCap > 0) { max = Math.min(max, flatCap); }
-    return round2(Math.max(0, max));
+    // WHOLE pounds only — legacy webordering floors both the cap and the
+    // typed amount (checkout.php "Allow only whole cashback amount":
+    // Math.floor on max + input), so a £1.95 balance lets you redeem £1.
+    // Flooring HERE makes every consumer (rewardMax in the cart payload,
+    // the apply endpoint's cap, recomputeTotals' re-clamp) agree.
+    return Math.floor(Math.max(0, max));
 }
 
 /**
